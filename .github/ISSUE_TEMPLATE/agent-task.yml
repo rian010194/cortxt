@@ -1,0 +1,116 @@
+name: Agent task
+description: Propose a manually approved task for the AI Workspace
+title: "[Task]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form records work only. Creating the issue does not start an agent.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What outcome should this task produce?
+      placeholder: Describe one bounded outcome.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: work_type
+    attributes:
+      label: Work type
+      options:
+        - Research
+        - Implementation
+        - Review
+        - Planning
+    validations:
+      required: true
+
+  - type: dropdown
+    id: suggested_route
+    attributes:
+      label: Suggested route
+      description: This is a proposal; the operator approves the final route.
+      options:
+        - Researcher (Kimi)
+        - Builder (Kimi)
+        - Codex Reviewer (read-only)
+        - Coordinator (planning only)
+        - Operator decides
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and inputs
+      description: Link relevant issues, repositories, files, or sources. Do not paste secrets.
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use a checklist of observable conditions.
+      placeholder: |
+        - [ ] Expected result is present
+        - [ ] Evidence or test result is recorded
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and prohibited actions
+      description: State file, network, tool, publishing, and scope limits.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: write_scope
+    attributes:
+      label: Write permission
+      options:
+        - Read-only
+        - Sandbox or worktree only
+        - Named files or directory only
+        - No file access required
+    validations:
+      required: true
+
+  - type: input
+    id: runtime
+    attributes:
+      label: Maximum runtime
+      description: Required stop limit for a worker run.
+      placeholder: 10 minutes
+    validations:
+      required: true
+
+  - type: input
+    id: budget
+    attributes:
+      label: Maximum model budget
+      description: Enter a USD cap or state that only a free endpoint may be used.
+      placeholder: USD 0.25
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Required output and evidence
+      description: Define what must be returned to this issue.
+      placeholder: Result, sources or diff, test evidence, provider, model, runtime, and observed cost.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: approval
+    attributes:
+      label: Dispatch safety
+      options:
+        - label: I understand that this issue must not start automatically and requires explicit operator approval before dispatch.
+          required: true
