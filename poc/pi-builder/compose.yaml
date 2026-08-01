@@ -1,0 +1,25 @@
+services:
+  pi-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-workspace/pi-builder-poc:0.82.1
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    volumes:
+      - type: bind
+        source: ./workspace
+        target: /workspace
+      - type: volume
+        source: pi-state
+        target: /pi-state
+    command: ["--version"]
+
+volumes:
+  pi-state:
