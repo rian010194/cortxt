@@ -1,0 +1,8 @@
+# Runtime credentials must never be committed.
+.env
+.env.*
+!.env.example
+
+# The mounted workspace is runtime data, not source.
+workspace/*
+!workspace/.gitkeep
