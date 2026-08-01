@@ -1,6 +1,8 @@
-# Pi Builder container POC
+# Pi Builder runtime experiment
 
-Purpose: verify Pi core as a short-lived Builder runtime before connecting Kimi, GitHub or n8n.
+Status: verified experiment, not a production harness runtime.
+
+Purpose: verify Pi core as a short-lived Builder runtime before connecting Kimi, GitHub or n8n. Reusable parts may be promoted to `harness/runtime/pi/` only after the runtime contract, observability, readiness, and failure behavior are stable.
 
 Security baseline:
 
