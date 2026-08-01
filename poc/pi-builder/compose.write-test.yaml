@@ -1,0 +1,23 @@
+services:
+  pi-builder-restricted:
+    volumes:
+      - type: bind
+        source: "${PI_BUILDER_WORKSPACE:?set PI_BUILDER_WORKSPACE to an absolute task workspace path}"
+        target: /workspace
+      - type: bind
+        source: ./models.json
+        target: /pi-state/models.json
+        read_only: true
+    command:
+      - --provider
+      - moonshotai
+      - --model
+      - kimi-k2.6
+      - -p
+      - >-
+        Modify only /workspace/artifact.md. Replace its complete contents with
+        this exact UTF-8 text: "# Builder–Codex POC\n\nSTATUS:
+        BUILDER_IMPLEMENTED\nEVIDENCE: SINGLE_FILE_WRITE_OK\n". The \n
+        sequences specify newlines and must not be written literally. Do not
+        create, rename, or modify any other file. Perform the edit, verify the
+        final content, then report completion briefly.
