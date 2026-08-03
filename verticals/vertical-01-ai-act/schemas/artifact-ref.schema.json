@@ -1,0 +1,75 @@
+{
+  "$id": "https://github.com/rian010194/ai-workspace-control-plane/schemas/artifact-ref.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Lightweight, content-free artifact reference for result envelopes and package manifests. v0.1.0.",
+  "version": "0.1.0",
+  "type": "object",
+  "required": [
+    "artifact_id",
+    "artifact_type",
+    "mime_type",
+    "size_bytes",
+    "checksum",
+    "retention_class",
+    "scope"
+  ],
+  "properties": {
+    "artifact_id": {
+      "type": "string",
+      "description": "UUID or run-scoped identifier."
+    },
+    "artifact_type": {
+      "type": "string",
+      "enum": [
+        "file",
+        "log",
+        "report",
+        "diff",
+        "other"
+      ]
+    },
+    "mime_type": {
+      "type": "string",
+      "description": "RFC 6838 media type."
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "checksum": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "examples": [
+            "sha256"
+          ]
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "retention_class": {
+      "type": "string",
+      "enum": [
+        "ephemeral",
+        "review",
+        "archive"
+      ]
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "synthetic",
+        "redistributable",
+        "restricted"
+      ],
+      "description": "Real customer documents must use restricted and must never be committed to the vertical package repository."
+    }
+  }
+}

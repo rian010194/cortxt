@@ -1,0 +1,60 @@
+fixture_id: v01-syn-bnd-002
+fixture_type: boundary
+input:
+  case_id: SYNTH-BND-002
+  system_description:
+    name: DriverWatch
+    purpose: Monitor driver fatigue and emotional state (drowsiness, stress) via in-cabin cameras to trigger audio alerts and recommend rest stops.
+    intended_market: EU automotive OEMs
+    operator_type: provider
+  system_capabilities:
+  - facial expression analysis
+  - eye-tracking
+  - emotion recognition
+  - real-time safety alerting
+  known_standards:
+  - ISO 26262
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+  - Art5
+  - Art6
+expected_output:
+  case_id: SYNTH-BND-002
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: true
+    confidence: uncertain
+    basis_articles:
+    - Art2
+    - Art3
+    - Art5
+  classification:
+    system_risk_class: uncertain
+    basis_annex: null
+  obligations_assessed: []
+  decision_brief:
+    language: sv
+    text: Systemet DriverWatch är gränsfall. Känsligenkänning i arbetsmiljö (förare) kan vara förbjudet enligt Artikel 5(1)(f), men säkerhetsargumentet kan utgöra undantag. Riskklass är osäker.
+  uncertainties:
+  - topic: Article 5(1)(f) prohibition of emotion recognition in workplace vs safety justification
+    reason: Emotion recognition in the workplace is prohibited, but DriverWatch is marketed as a safety system. It is unclear whether road safety constitutes an exception.
+    suggested_research: Verify whether in-vehicle driver-monitoring emotion recognition is exempt from Article 5(1)(f) under any safety or transport-regulation exception.
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /applicability/confidence
+  operator: equals
+  expected_value: uncertain
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: uncertain
+- path: /uncertainties
+  operator: exists
+  expected_value: null
+model_assisted_assertions:
+- rubric: The decision brief should discuss in Swedish the tension between prohibition (förbjudet) and safety justification (säkerhetsargument).
+  required_model_capabilities:
+  - structured-output
+human_review_required: true

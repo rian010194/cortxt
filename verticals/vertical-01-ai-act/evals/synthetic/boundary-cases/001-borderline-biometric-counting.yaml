@@ -1,0 +1,63 @@
+fixture_id: v01-syn-bnd-001
+fixture_type: boundary
+input:
+  case_id: SYNTH-BND-001
+  system_description:
+    name: CrowdCount AI
+    purpose: Estimate the number of people in a public space using overhead cameras and silhouette detection. Does not identify individuals or store facial data.
+    intended_market: EU retail and transport operators
+    operator_type: deployer
+  system_capabilities:
+  - silhouette detection
+  - crowd density estimation
+  - no facial recognition
+  known_standards: []
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+  - Art5
+  - Art6
+expected_output:
+  case_id: SYNTH-BND-001
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: true
+    confidence: uncertain
+    basis_articles:
+    - Art2
+    - Art3
+  classification:
+    system_risk_class: uncertain
+    basis_annex: null
+  obligations_assessed: []
+  decision_brief:
+    language: sv
+    text: Systemet CrowdCount AI kan omfattas av AI-förordningen, men riskklassificeringen är osäker. Avsaknaden av identifiering talar emot Annex III, medan biometrisk bearbetning talar för. Primärkällsverifiering krävs.
+  uncertainties:
+  - topic: Annex III point 1(a) vs point 1(b) biometric boundary
+    reason: The system processes biometric data (silhouettes) but claims not to identify individuals. It is unclear whether pure counting falls under Annex III point 1(a) or 1(b).
+    suggested_research: Verify whether crowd-counting by silhouette is classified as biometric identification or categorisation under Annex III.
+  - topic: Article 3(1) AI definition for silhouette detection
+    reason: The underlying model may use machine learning or traditional computer vision. The AI definition boundary is unclear without architecture details.
+    suggested_research: Confirm whether silhouette-detection models typically qualify as AI systems under Article 3(1).
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /applicability/confidence
+  operator: equals
+  expected_value: uncertain
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: uncertain
+- path: /uncertainties
+  operator: exists
+  expected_value: null
+- path: /obligations_assessed
+  operator: equals
+  expected_value: []
+model_assisted_assertions:
+- rubric: The decision brief should be in Swedish and express uncertainty (osäker) about the risk classification, mentioning biometric processing.
+  required_model_capabilities:
+  - structured-output
+human_review_required: true

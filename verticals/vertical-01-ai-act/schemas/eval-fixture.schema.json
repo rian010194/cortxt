@@ -1,0 +1,94 @@
+{
+  "$id": "https://github.com/rian010194/ai-workspace-control-plane/schemas/eval-fixture.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Synthetic evaluation fixture with expected outcomes and deterministic assertions. v0.1.0.",
+  "version": "0.1.0",
+  "type": "object",
+  "required": [
+    "fixture_id",
+    "fixture_type",
+    "input",
+    "expected_output",
+    "deterministic_assertions",
+    "model_assisted_assertions",
+    "human_review_required"
+  ],
+  "properties": {
+    "fixture_id": {
+      "type": "string",
+      "description": "Stable identifier."
+    },
+    "fixture_type": {
+      "type": "string",
+      "enum": [
+        "positive",
+        "negative",
+        "boundary",
+        "uncertainty"
+      ]
+    },
+    "input": {
+      "$ref": "https://github.com/rian010194/ai-workspace-control-plane/schemas/ai-act-assessment-input.schema.json",
+      "description": "Must validate against ai-act-assessment-input.schema.json."
+    },
+    "expected_output": {
+      "$ref": "https://github.com/rian010194/ai-workspace-control-plane/schemas/ai-act-assessment-output.schema.json",
+      "description": "Must validate against ai-act-assessment-output.schema.json."
+    },
+    "deterministic_assertions": {
+      "type": "array",
+      "description": "Checkable without a language model.",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "operator",
+          "expected_value"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "JSON Pointer into the actual output."
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "equals",
+              "contains",
+              "exists",
+              "type_is"
+            ]
+          },
+          "expected_value": {}
+        }
+      }
+    },
+    "model_assisted_assertions": {
+      "type": "array",
+      "description": "Probabilistic checks that require a model grader.",
+      "items": {
+        "type": "object",
+        "required": [
+          "rubric",
+          "required_model_capabilities"
+        ],
+        "properties": {
+          "rubric": {
+            "type": "string"
+          },
+          "required_model_capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "human_review_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set true for fixtures that test legal conclusions near boundary lines."
+    }
+  }
+}

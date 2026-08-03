@@ -1,0 +1,71 @@
+manifest_version: v0.1
+vertical_id: vertical-01-ai-act
+package_version: 0.1.0
+schema_dependency: t_178c23d5
+fixture_schema_uri: ./schemas/eval-fixture.schema.json
+
+categories:
+  - id: positive-cases
+    description: Cases expected to trigger clear, high-confidence classifications
+    fixtures:
+      - path: positive-cases/001-high-risk-medical-diagnostic.yaml
+        id: v01-syn-pos-001
+        tags: [positive, high-risk, medical, annex-iii]
+      - path: positive-cases/002-prohibited-social-scoring.yaml
+        id: v01-syn-pos-002
+        tags: [positive, prohibited, social-scoring, article-5]
+      - path: positive-cases/003-high-risk-recruitment.yaml
+        id: v01-syn-pos-003
+        tags: [positive, high-risk, employment, annex-iii]
+
+  - id: negative-cases
+    description: Cases expected to fall outside the AI Act material scope
+    fixtures:
+      - path: negative-cases/001-traditional-accounting-software.yaml
+        id: v01-syn-neg-001
+        tags: [negative, out-of-scope, no-ai, traditional-software]
+      - path: negative-cases/002-simple-calculator-app.yaml
+        id: v01-syn-neg-002
+        tags: [negative, out-of-scope, no-ai, calculator]
+      - path: negative-cases/003-game-ai-npc.yaml
+        id: v01-syn-neg-003
+        tags: [negative, out-of-scope, video-game, no-real-world-impact]
+
+  - id: boundary-cases
+    description: Edge cases at scope or risk-class boundaries
+    fixtures:
+      - path: boundary-cases/001-borderline-biometric-counting.yaml
+        id: v01-syn-bnd-001
+        tags: [boundary, biometric, annex-iii, counting-vs-identification]
+      - path: boundary-cases/002-borderline-emotion-safety-exception.yaml
+        id: v01-syn-bnd-002
+        tags: [boundary, emotion-recognition, article-5, safety-exception]
+      - path: boundary-cases/003-borderline-education-emotion.yaml
+        id: v01-syn-bnd-003
+        tags: [boundary, education, emotion-recognition, high-risk-plus-prohibited]
+
+  - id: uncertainty-cases
+    description: Cases where the model should flag ambiguity or insufficient data
+    fixtures:
+      - path: uncertainty-cases/001-incomplete-description.yaml
+        id: v01-syn-unc-001
+        tags: [uncertainty, incomplete-description, low-confidence]
+      - path: uncertainty-cases/002-novel-technology.yaml
+        id: v01-syn-unc-002
+        tags: [uncertainty, novel-technology, generative-ai, synthetic-biology]
+      - path: uncertainty-cases/003-dual-use-military-civilian.yaml
+        id: v01-syn-unc-003
+        tags: [uncertainty, dual-use, military, civilian, scope]
+
+summary:
+  total_fixtures: 12
+  deterministic_assertions_count: 44
+  coverage:
+    - Article 2 (scope) — all fixtures
+    - Article 3 (AI definition) — negative + positive
+    - Article 5 (prohibited) — pos-002, bnd-002, bnd-003
+    - Annex I (harmonised legislation) — pos-001 (MDR)
+    - Annex III (high-risk) — pos-001, pos-003, bnd-001, bnd-003
+    - Articles 9-12 (obligations) — pos-001, pos-003, bnd-002
+    - Article 2(3) military exclusion — unc-003
+    - GPAI boundary — unc-002 (noted as out-of-scope for v0.1)
