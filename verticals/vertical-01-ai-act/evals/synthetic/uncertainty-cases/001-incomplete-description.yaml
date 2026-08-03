@@ -1,0 +1,61 @@
+fixture_id: v01-syn-unc-001
+fixture_type: uncertainty
+input:
+  case_id: SYNTH-UNC-001
+  system_description:
+    name: Project X
+    purpose: AI system for internal use.
+    intended_market: Unknown
+    operator_type: provider
+  system_capabilities:
+  - AI processing
+  known_standards: []
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+  - Art5
+  - Art6
+expected_output:
+  case_id: SYNTH-UNC-001
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: false
+    confidence: needs_more_info
+    basis_articles:
+    - Art2
+    - Art3
+  classification:
+    system_risk_class: uncertain
+    basis_annex: null
+  obligations_assessed: []
+  decision_brief:
+    language: sv
+    text: Beskrivningen av Project X är för knapphändig för att göra en säker bedömning. Ytterligare information om syfte, marknad och teknisk arkitektur krävs.
+  uncertainties:
+  - topic: Insufficient system description
+    reason: The purpose is too vague ('internal use'), intended_market is 'Unknown', and capabilities list contains only a generic phrase.
+    suggested_research: Request detailed system description including specific use case, technical architecture, and intended deployers.
+  - topic: Operator type unverified
+    reason: The operator_type is stated as provider, but the actual role in the value chain is unclear from the description.
+    suggested_research: Confirm whether the entity is a provider, deployer, importer, or distributor under Article 3.
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /applicability/confidence
+  operator: equals
+  expected_value: needs_more_info
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: uncertain
+- path: /uncertainties
+  operator: exists
+  expected_value: null
+- path: /obligations_assessed
+  operator: equals
+  expected_value: []
+model_assisted_assertions:
+- rubric: The decision brief should explicitly request more information in Swedish.
+  required_model_capabilities:
+  - structured-output
+human_review_required: false

@@ -1,0 +1,99 @@
+fixture_id: v01-syn-pos-001
+fixture_type: positive
+input:
+  case_id: SYNTH-POS-001
+  system_description:
+    name: MedDiagnose AI
+    purpose: Analyse patient symptoms and suggest preliminary diagnoses for healthcare professionals.
+    intended_market: EU hospitals and clinics
+    operator_type: provider
+  system_capabilities:
+  - natural-language medical intake
+  - symptom-to-disease ranking
+  - treatment recommendation suggestions
+  known_standards:
+  - ISO 13485
+  - MDR 2017/745
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+  - Art5
+  - Art6
+  - Art9
+  - Art10
+  - Art11
+  - Art12
+expected_output:
+  case_id: SYNTH-POS-001
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: true
+    confidence: probable
+    basis_articles:
+    - Art2
+    - Art3
+    - Art6
+  classification:
+    system_risk_class: high_risk
+    basis_annex: Annex III
+  obligations_assessed:
+  - article: Art9
+    applies: true
+    summary: Risk management system required throughout lifecycle. Needs primary-source research for exact ISO 14971 alignment.
+    evidence_refs:
+    - EUR-Lex 32024R1689
+    - ISO 14971:2019
+    primary_source_verified: false
+  - article: Art10
+    applies: true
+    summary: Data governance obligations apply; training data quality must be documented. Needs primary-source research for post-deployment data scope.
+    evidence_refs:
+    - EUR-Lex 32024R1689
+    primary_source_verified: false
+  - article: Art11
+    applies: true
+    summary: Technical documentation per Annex IV required. Needs primary-source research for component-level documentation.
+    evidence_refs:
+    - EUR-Lex 32024R1689
+    - Annex IV
+    primary_source_verified: false
+  - article: Art12
+    applies: true
+    summary: Automatic logging of operation events required. Needs primary-source research for retention period.
+    evidence_refs:
+    - EUR-Lex 32024R1689
+    primary_source_verified: false
+  decision_brief:
+    language: sv
+    text: Systemet MedDiagnose AI sannolikt omfattas av AI-förordningen och klassas som högrisk enligt Annex III (hälsa). Artiklarna 9-12 är tillämpliga. Primärkällsverifiering krävs för samtliga skyldigheter.
+  uncertainties:
+  - topic: Annex III point 1(a) medical device overlap
+    reason: MDR classification may affect AI Act risk class.
+    suggested_research: Verify MDR Article 51 classification against AI Act Annex III point 1(a).
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /applicability/ai_act_applies
+  operator: equals
+  expected_value: true
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: high_risk
+- path: /classification/basis_annex
+  operator: equals
+  expected_value: Annex III
+- path: /obligations_assessed
+  operator: exists
+  expected_value: null
+- path: /decision_brief/language
+  operator: equals
+  expected_value: sv
+- path: /uncertainties
+  operator: exists
+  expected_value: null
+model_assisted_assertions:
+- rubric: The decision brief text should be in Swedish and mention high risk (högrisk) and Annex III.
+  required_model_capabilities:
+  - structured-output
+human_review_required: false

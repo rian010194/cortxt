@@ -1,0 +1,48 @@
+fixture_id: v01-syn-neg-002
+fixture_type: negative
+input:
+  case_id: SYNTH-NEG-002
+  system_description:
+    name: CalcSimple
+    purpose: Basic arithmetic operations (addition, subtraction, multiplication, division) for personal and educational use.
+    intended_market: Global consumer market
+    operator_type: provider
+  system_capabilities:
+  - basic arithmetic
+  - history of last 10 calculations
+  known_standards: []
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+expected_output:
+  case_id: SYNTH-NEG-002
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: false
+    confidence: certain
+    basis_articles:
+    - Art2
+    - Art3
+  classification:
+    system_risk_class: minimal_risk
+    basis_annex: null
+  obligations_assessed: []
+  decision_brief:
+    language: sv
+    text: Systemet CalcSimple är en enkel kalkylator utan AI-funktionalitet och omfattas därför inte av AI-förordningen.
+  uncertainties: []
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /applicability/ai_act_applies
+  operator: equals
+  expected_value: false
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: minimal_risk
+- path: /obligations_assessed
+  operator: equals
+  expected_value: []
+model_assisted_assertions: []
+human_review_required: false

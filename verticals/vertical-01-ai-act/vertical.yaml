@@ -1,0 +1,49 @@
+vertical_id: vertical-01-ai-act
+package_version: 0.1.0
+contract_version: 0.1.0
+supported_workflows:
+  - workflow_id: classify
+    input_schema_uri: ./schemas/ai-act-assessment-input.schema.json
+    output_schema_uri: ./schemas/ai-act-assessment-output.schema.json
+    capability_tags:
+      - structured-output
+      - document-reading
+  - workflow_id: assess-obligations
+    input_schema_uri: ./schemas/ai-act-assessment-output.schema.json
+    output_schema_uri: ./schemas/ai-act-assessment-output.schema.json
+    capability_tags:
+      - structured-output
+      - document-reading
+capability_tags:
+  - structured-output
+  - document-reading
+required_schemas:
+  - ./schemas/vertical-manifest.schema.json
+  - ./schemas/ai-act-assessment-input.schema.json
+  - ./schemas/ai-act-assessment-output.schema.json
+  - ./schemas/eval-fixture.schema.json
+  - ./schemas/artifact-ref.schema.json
+instructions_index:
+  system-prompt-classify: ./instructions/system-prompt-classify.md
+  system-prompt-obligations: ./instructions/system-prompt-obligations.md
+eval_suite:
+  fixture_directory: ./evals/synthetic
+  fixture_schema_uri: ./schemas/eval-fixture.schema.json
+  minimum_fixture_count: 12
+artifact_policy:
+  allowed_mime_types:
+    - application/json
+    - text/markdown
+    - text/yaml
+  max_size_bytes: 10485760
+  retention_class: review
+non_goals:
+  - Articles 14-15 deferred to v0.2
+  - GPAI obligations (Articles 52-55) out of scope
+  - Market surveillance and conformity assessment body logic out of scope
+  - Cross-border enforcement and penalty calculation out of scope
+  - Real-time legal updates out of scope
+  - Dispatch or orchestration owned by harness
+  - Container or sandbox policy owned by harness
+  - Credential or API-key management owned by harness
+  - Post-market monitoring or drift detection out of scope

@@ -1,0 +1,65 @@
+fixture_id: v01-syn-unc-003
+fixture_type: uncertainty
+input:
+  case_id: SYNTH-UNC-003
+  system_description:
+    name: DualNav Vision
+    purpose: Autonomous navigation and object detection for unmanned ground vehicles. Developed for civilian logistics but shares core software with military reconnaissance platforms.
+    intended_market: EU civilian logistics and defence contractors
+    operator_type: provider
+  system_capabilities:
+  - autonomous navigation
+  - real-time object detection
+  - terrain classification
+  - multi-sensor fusion
+  known_standards:
+  - STANAG 4586
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+  - Art5
+  - Art6
+expected_output:
+  case_id: SYNTH-UNC-003
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: false
+    confidence: uncertain
+    basis_articles:
+    - Art2
+    - Art2(3)
+  classification:
+    system_risk_class: uncertain
+    basis_annex: null
+  obligations_assessed: []
+  decision_brief:
+    language: sv
+    text: Systemet DualNav Vision är dubbelanvändningsbar (civil/militär). Artikel 2(3) utesluter militära tillämpningar, men det civila logistiksyftet kan omfattas. Bedömningen är osäker.
+  uncertainties:
+  - topic: Article 2(3) military exclusion for dual-use systems
+    reason: The system is explicitly developed for both civilian logistics and military reconnaissance. It is unclear whether the military exclusion applies to the entire system, only the military variant, or neither when marketed jointly.
+    suggested_research: Verify EUR-Lex guidance or Commission Q&A on dual-use AI systems and the scope of Article 2(3) exclusion.
+  - topic: Annex III point 2 critical infrastructure boundary
+    reason: If the civilian logistics use case qualifies as critical infrastructure (transport), the system could be high-risk.
+    suggested_research: Confirm whether autonomous ground-vehicle navigation for logistics falls under Annex III point 2 (critical infrastructure).
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /applicability/confidence
+  operator: equals
+  expected_value: uncertain
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: uncertain
+- path: /uncertainties
+  operator: exists
+  expected_value: null
+- path: /obligations_assessed
+  operator: equals
+  expected_value: []
+model_assisted_assertions:
+- rubric: The decision brief should mention in Swedish the dual-use nature (dubbelanvändningsbar) and the military exclusion (militär uteslutning).
+  required_model_capabilities:
+  - structured-output
+human_review_required: true

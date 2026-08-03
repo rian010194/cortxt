@@ -1,0 +1,91 @@
+{
+  "$id": "https://github.com/rian010194/ai-workspace-control-plane/schemas/ai-act-assessment-input.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Input envelope for a single AI Act applicability and obligations assessment. v0.1.0.",
+  "version": "0.1.0",
+  "type": "object",
+  "required": [
+    "case_id",
+    "system_description",
+    "system_capabilities",
+    "jurisdiction_hints",
+    "question_focus"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "pattern": "^(SYNTH-|EXT-).+$",
+      "description": "Synthetic fixtures must use SYNTH- prefix. External cases may use EXT-."
+    },
+    "system_description": {
+      "type": "object",
+      "required": [
+        "name",
+        "purpose",
+        "intended_market",
+        "operator_type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "intended_market": {
+          "type": "string"
+        },
+        "operator_type": {
+          "type": "string",
+          "enum": [
+            "deployer",
+            "provider",
+            "importer",
+            "distributor"
+          ]
+        }
+      }
+    },
+    "system_capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Free-text capability list used for Annex III screening."
+    },
+    "known_standards": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional cited harmonised standards or technical specifications."
+    },
+    "jurisdiction_hints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "e.g. [\"EU\"]; future-proof for EEA/EFTA extensions."
+    },
+    "question_focus": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Art2",
+          "Art3",
+          "Art5",
+          "Art6",
+          "Art9",
+          "Art10",
+          "Art11",
+          "Art12"
+        ]
+      },
+      "description": "Which articles to assess. v0.1 default set. Articles 14-15 are deferred to v0.2."
+    }
+  }
+}

@@ -1,0 +1,58 @@
+fixture_id: v01-syn-neg-001
+fixture_type: negative
+input:
+  case_id: SYNTH-NEG-001
+  system_description:
+    name: LedgerPro Classic
+    purpose: Double-entry bookkeeping, invoicing, and VAT reporting for small businesses using deterministic rule-based logic.
+    intended_market: EU small and medium enterprises
+    operator_type: provider
+  system_capabilities:
+  - automated ledger posting
+  - VAT calculation
+  - invoice generation
+  known_standards:
+  - ISO 27001
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+  - Art5
+  - Art6
+expected_output:
+  case_id: SYNTH-NEG-001
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: false
+    confidence: certain
+    basis_articles:
+    - Art2
+    - Art3
+  classification:
+    system_risk_class: minimal_risk
+    basis_annex: null
+  obligations_assessed: []
+  decision_brief:
+    language: sv
+    text: Systemet LedgerPro Classic omfattas inte av AI-förordningen eftersom det saknar självständigt inlärande och använder enbart deterministiska regler. Klassas som minimal risk.
+  uncertainties: []
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /applicability/ai_act_applies
+  operator: equals
+  expected_value: false
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: minimal_risk
+- path: /obligations_assessed
+  operator: equals
+  expected_value: []
+- path: /decision_brief/language
+  operator: equals
+  expected_value: sv
+model_assisted_assertions:
+- rubric: The decision brief should explain in Swedish that the system is not an AI system under Article 3(1).
+  required_model_capabilities:
+  - structured-output
+human_review_required: false
