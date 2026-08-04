@@ -1,0 +1,54 @@
+name: "operator-receptionist"
+version: "1.0.0"
+maturity: "experimental"
+category: "software-development"
+description: "Receptionist for operator requests — translates natural language into GitHub issues, cost-first dispatch, and result tracking."
+author: "Cortxt"
+license: "MIT"
+depends_on: []
+interface:
+  input_schema: "operator-receptionist.input.schema.json"
+  output_schema: "operator-receptionist.output.schema.json"
+  error_codes: "operator-receptionist.errors.schema.json"
+  openapi: "operator-receptionist.openapi.yaml"
+error_taxonomy:
+  transient:
+    - "RATE_LIMITED"
+    - "UPSTREAM_ERROR"
+    - "TIMEOUT"
+    - "AUTH_EXPIRED"
+  permanent:
+    - "VALIDATION_ERROR"
+    - "PERMISSION_DENIED"
+    - "NOT_FOUND"
+    - "QUOTA_EXHAUSTED"
+  retry_policy:
+    transient:
+      max_attempts: 3
+      base_delay_ms: 500
+      max_delay_ms: 10000
+      backoff: "exponential"
+    permanent:
+      max_attempts: 0
+compatibility:
+  breaking_changes: []
+  deprecated_in: null
+  removed_in: null
+observability:
+  metrics:
+    - "request.total"
+    - "request.duration_ms"
+    - "request.success"
+    - "request.error"
+    - "dispatch.total"
+    - "dispatch.cost_usd"
+  traces: true
+  logs: "structured-json"
+interface_files:
+  typescript: "interfaces/operator-receptionist.ts"
+  openapi: "openapi/operator-receptionist.yaml"
+  json_schemas:
+    - "schemas/operator-receptionist.input.schema.json"
+    - "schemas/operator-receptionist.output.schema.json"
+    - "schemas/operator-receptionist.errors.schema.json"
+  python_stubs: "stubs/operator-receptionist.pyi"
