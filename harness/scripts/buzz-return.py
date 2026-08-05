@@ -44,14 +44,23 @@ def find_buzz() -> str | None:
 
 def _env_key() -> str | None:
     k = os.environ.get("BUZZ_PRIVATE_KEY")
-    return k if k else None
+    if k:
+        return k
+    # Fallback: read persistent user-scope env set via `setx` (never printed).
+    try:
+        import subprocess as _sp
+        out = _sp.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             "[Environment]::GetEnvironmentVariable('BUZZ_PRIVATE_KEY','User')"],
+            capture_output=True, text=True, timeout=30,
+        ).stdout.strip()
+        return out or None
+    except Exception:
+        return None
 
 
 def _key_available() -> bool:
-    if _env_key():
-        return True
-    # credential-manager fallback handled by caller via --key-from-vault
-    return False
+    return _env_key() is not None
 
 
 def main(argv=None) -> int:
