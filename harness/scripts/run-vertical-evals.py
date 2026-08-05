@@ -13,8 +13,8 @@ Exit code 0 = all fixtures pass; 1 = any failure.
 """
 from __future__ import annotations
 
+import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -27,7 +27,16 @@ PKG = ROOT / "verticals" / "vertical-01-ai-act"
 SCHEMAS = PKG / "schemas"
 EVALS = PKG / "evals" / "synthetic"
 
-BASE = "https://github.com/rian010194/ai-workspace-control-plane/schemas/"
+# JSON type name -> Python type (for the `type_is` operator).
+TYPE_MAP = {
+    "null": type(None),
+    "boolean": bool,
+    "object": dict,
+    "array": list,
+    "string": str,
+    "integer": int,
+    "number": (int, float),
+}
 
 
 def make_registry() -> referencing.Registry:
@@ -72,13 +81,15 @@ def json_pointer_get(doc, pointer: str):
 
 
 def check_assertion(actual, a: dict):
+    """Evaluate one deterministic_assertion. Returns (ok, message)."""
     path = a["path"]
     op = a["operator"]
     expected = a["expected_value"]
     try:
         val = json_pointer_get(actual, path)
     except (KeyError, TypeError, IndexError, ValueError) as e:
-        return False, f"path {path} missing/not resolvable ({e})"
+        return False, f"path {path}: not resolvable ({e})"
+
     if op == "equals":
         return val == expected, f"{path}: expected {expected!r}, got {val!r}"
     if op == "contains":
@@ -86,76 +97,95 @@ def check_assertion(actual, a: dict):
     if op == "exists":
         return True, f"{path}: exists"
     if op == "type_is":
-        return isinstance(val, expected), f"{path}: expected type {expected}"
-    return False, f"unknown operator {op}"
+        type_ = TYPE_MAP.get(expected)
+        if type_ is None:
+            return False, f"{path}: unknown type_is value {expected!r}"
+        return isinstance(val, type_), f"{path}: expected type {expected!r}, got {type(val).__name__}"
+    return False, f"{path}: unknown operator {op!r}"
 
 
-def run() -> int:
+def run(report_path: Path | None = None) -> int:
     input_schema = load_json(SCHEMAS / "ai-act-assessment-input.schema.json")
     output_schema = load_json(SCHEMAS / "ai-act-assessment-output.schema.json")
     fixture_schema = load_json(SCHEMAS / "eval-fixture.schema.json")
 
-    fixture_files = sorted(EVALS.rglob("*.yaml"))
-    fixture_files = [f for f in fixture_files if f.name != "manifest.yaml"]
+    fixture_files = sorted(
+        p for p in EVALS.rglob("*.yaml") if p.name != "manifest.yaml"
+    )
 
     total_assertions = 0
     passed_assertions = 0
-    failed = []
+    failed_assertions = []      # list of "fixture :: message"
+    failed_fixtures = set()     # fixture keys with any failure
     results = {}
 
     for fp in fixture_files:
         fx = yaml.safe_load(fp.read_text(encoding="utf-8"))
         name = fp.relative_to(EVALS)
-        row = {"file": str(name), "fixture_id": fx.get("fixture_id"),
+        key = str(name)
+        row = {"file": key, "fixture_id": fx.get("fixture_id"),
                "type": fx.get("fixture_type"), "checks": []}
 
-        # AC3-ish structural validation against fixture schema ($refs resolved manually)
+        # structural validation against fixture schema (with $ref resolution)
         try:
             validate_with_refs(fx, fixture_schema)
             row["fixture_schema"] = "valid"
         except jsonschema.ValidationError as e:
             row["fixture_schema"] = f"INVALID: {e.message}"
-            failed.append(name)
+            failed_fixtures.add(key)
 
-        # validate input and expected_output against their schemas
-        for key, schema in (("input", input_schema), ("expected_output", output_schema)):
+        # validate input and expected_output against their schemas (registry-aware)
+        for sub, schema in (("input", input_schema), ("expected_output", output_schema)):
+            sub_path = f"{sub}_schema"
             try:
-                jsonschema.validate(fx[key], schema)
-                row[f"{key}_schema"] = "valid"
+                validate_with_refs(fx[sub], schema)
+                row[sub_path] = "valid"
             except jsonschema.ValidationError as e:
-                row[f"{key}_schema"] = f"INVALID: {e.message}"
-                failed.append(name)
+                row[sub_path] = f"INVALID: {e.message}"
+                failed_fixtures.add(key)
 
         # run deterministic assertions against expected_output
         for a in fx.get("deterministic_assertions", []):
             total_assertions += 1
             ok, msg = check_assertion(fx.get("expected_output", {}), a)
             passed_assertions += int(ok)
-            row["checks"].append({"assertion": a["path"], "ok": ok})
+            row["checks"].append({"assertion": a["path"], "ok": ok, "message": msg})
             if not ok:
-                failed.append(f"{name} :: {msg}")
+                failed_assertions.append(msg)
+                failed_fixtures.add(key)
 
-        # report model-assisted + human gates (not executed)
         row["model_assisted"] = len(fx.get("model_assisted_assertions", []))
         row["human_review_required"] = fx.get("human_review_required", False)
-        results[str(name)] = row
+        results[key] = row
 
     summary = {
         "vertical": "vertical-01-ai-act",
         "fixtures": len(fixture_files),
+        "fixtures_passed": len(fixture_files) - len(failed_fixtures),
+        "fixtures_failed": sorted(failed_fixtures),
         "assertions_total": total_assertions,
         "assertions_passed": passed_assertions,
-        "fixtures_failed": sorted({str(f) for f in failed}),
+        "assertions_failed": sorted(failed_assertions),
         "results": results,
     }
     print(json.dumps(summary, indent=2, ensure_ascii=False))
+    if report_path:
+        Path(report_path).write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
 
-    ok = passed_assertions == total_assertions and not failed
-    print("\nRESULT:", "PASS" if ok else "FAIL",
-          f"({passed_assertions}/{total_assertions} assertions, "
-          f"{len(fixture_files) - len(summary['fixtures_failed'])}/{len(fixture_files)} fixtures)")
+    ok = passed_assertions == total_assertions and not failed_fixtures
+    print(
+        "\nRESULT:", "PASS" if ok else "FAIL",
+        f"({passed_assertions}/{total_assertions} assertions, "
+        f"{len(fixture_files) - len(failed_fixtures)}/{len(fixture_files)} fixtures)",
+    )
     return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--report", type=Path, default=None,
+                    help="Write the JSON report to this path.")
+    args = ap.parse_args()
+    sys.exit(run(args.report))
