@@ -112,7 +112,13 @@ def main(argv=None) -> int:
             return 0
 
         env = os.environ.copy()
-        # key already present in env (BUZZ_PRIVATE_KEY); do not add it explicitly
+        key = _env_key()
+        if key is None:
+            print("BUZZ_RETURN_BLOCKED: unable to resolve BUZZ_PRIVATE_KEY", file=sys.stderr)
+            return 3
+        # Inject the resolved key into the subprocess env so buzz.exe sees it
+        # even when the caller's process env was stale. Never print it.
+        env["BUZZ_PRIVATE_KEY"] = key
         res = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
         if res.returncode == 0:
             print("BUZZ_RETURN_OK:", res.stdout.strip())
