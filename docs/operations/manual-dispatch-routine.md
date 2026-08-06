@@ -4,6 +4,16 @@
 
 Until the general automated dispatcher exists, this is the repeatable routine for moving an approved GitHub issue into a Hermes or Pi runtime run, and returning the result to GitHub.
 
+> **2026-08-06 — automated wrapper added:** the steps below are codified and
+> verified in `harness/scripts/dispatch-manual.sh` (minimal contract-compliant
+> manual dispatch adapter, proven end-to-end on issue #25). It enforces the
+> same fail-closed guard (no dispatching a blocked ticket, acceptance criteria
+> present, workflow status `Ready`), generates `run_id` in the shell, transitions
+> `Ready → In progress → Review`, posts the result envelope, and pushes status to
+> Buzz. `Done` remains operator-only. Run it from the repo root:
+> `OPENROUTER_API_KEY=... bash harness/scripts/dispatch-manual.sh "<owner/repo#N>" researcher`
+> See the script header for the contract mapping.
+
 ## Prerequisites
 
 - [ ] Issue is in GitHub Project column **Ready**.
