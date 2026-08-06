@@ -9,6 +9,52 @@ export type RiskClass = 'prohibited' | 'high_risk' | 'limited_risk' | 'minimal_r
 export type Confidence = 'certain' | 'probable' | 'uncertain' | 'needs_more_info';
 export type QuestionFocus = 'Art2' | 'Art3' | 'Art5' | 'Art6' | 'Art9' | 'Art10' | 'Art11' | 'Art12';
 
+// Curated capability presets for the Annex III screening — reduces free-text
+// typos and guides toward the categories the classifier actually screens on.
+// Grouped by AI Act Annex III area. Users may still add free-text capabilities.
+export interface CapabilityPreset {
+  label: string;
+  group: string;
+}
+export const capabilityPresets: CapabilityPreset[] = [
+  // Biometric (Annex III 1(a)-(c))
+  { label: 'Remote biometric identification', group: 'Biometri' },
+  { label: 'Facial recognition', group: 'Biometri' },
+  { label: 'Emotion recognition', group: 'Biometri' },
+  { label: 'Biometric categorisation', group: 'Biometri' },
+  // Critical infrastructure (Annex III 2)
+  { label: 'Critical infrastructure management', group: 'Kritisk infrastruktur' },
+  // Education (Annex III 3)
+  { label: 'Admissions / access to education', group: 'Utbildning' },
+  { label: 'Exam or assessment scoring', group: 'Utbildning' },
+  // Employment (Annex III 4)
+  { label: 'Recruitment / CV screening', group: 'Anställning' },
+  { label: 'Performance monitoring of staff', group: 'Anställning' },
+  { label: 'Promotion or termination decisions', group: 'Anställning' },
+  // Essential services (Annex III 5)
+  { label: 'Credit scoring / lending decisions', group: 'Väsentliga tjänster' },
+  { label: 'Insurance / health underwriting', group: 'Väsentliga tjänster' },
+  { label: 'Medical diagnosis support', group: 'Väsentliga tjänster' },
+  { label: 'Housing / social-benefits eligibility', group: 'Väsentliga tjänster' },
+  { label: 'Emergency-dispatch prioritisation', group: 'Väsentliga tjänster' },
+  // Law enforcement (Annex III 6)
+  { label: 'Law-enforcement risk assessment', group: 'Brottsbekämpning' },
+  { label: 'Evidence or polygraph evaluation', group: 'Brottsbekämpning' },
+  { label: 'Recidivism / profiling during investigation', group: 'Brottsbekämpning' },
+  // Migration / asylum / border (Annex III 7)
+  { label: 'Asylum / visa risk assessment', group: 'Migration & gräns' },
+  { label: 'Border surveillance', group: 'Migration & gräns' },
+  // Justice / democratic processes (Annex III 8)
+  { label: 'Applying law / interpreting facts', group: 'Rättskipning' },
+  { label: 'Election / democratic-process influence', group: 'Rättskipning' },
+  // General / other (for systems that may still be in scope but not Annex III-listed)
+  { label: 'Chatbot / conversational interface', group: 'Övrigt' },
+  { label: 'Content moderation / recommendation', group: 'Övrigt' },
+  { label: 'Document processing / OCR', group: 'Övrigt' },
+  { label: 'Robotics / autonomous systems', group: 'Övrigt' },
+  { label: 'Algorithmic trading / finance', group: 'Övrigt' },
+];
+
 export interface AssessmentInput {
   case_id: string;
   system_description: {
