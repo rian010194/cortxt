@@ -1,0 +1,43 @@
+# ---- Secrets & env ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Agent-local state (prompts, traces, reasoning — never commit) ----
+.trace/
+.hermes/
+.kanban/
+*.trace
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- Node / builds ----
+node_modules/
+web/node_modules/
+web/build/
+web/dist/
+web/.next/
+web/out/
+web/public/build/
+*.tsbuildinfo
+
+# ---- OS / editor junk ----
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# ---- Accidental empty debris dirs ----
+Appar/
+Avancerade/
+
+# ---- Lock/scratch ----
+*.dispatch.lock
+*.init.lock
