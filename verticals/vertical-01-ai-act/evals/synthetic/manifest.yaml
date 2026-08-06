@@ -59,7 +59,7 @@ categories:
 
 summary:
   total_fixtures: 12
-  deterministic_assertions_count: 44
+  deterministic_assertions_count: 47
   coverage:
     - Article 2 (scope) — all fixtures
     - Article 3 (AI definition) — negative + positive
