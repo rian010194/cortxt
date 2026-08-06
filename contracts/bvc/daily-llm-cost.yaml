@@ -1,0 +1,45 @@
+contract:
+  name: "daily-llm-cost"
+  version: "1.0.0"
+  description: "Daily LLM API cost within budget"
+  expectation: "Daily LLM cost < $50 across all providers"
+  measurement:
+    source: "custom"
+    custom_endpoint: "https://api.openrouter.ai/v1/usage?date=today"
+    custom_method: "GET"
+    custom_headers:
+      Authorization: "Bearer ${OPENROUTER_API_KEY}"
+    query: "total_cost_usd"
+    unit: "USD"
+    sample_window: "24h"
+    evaluation_interval: "1h"
+  thresholds:
+    warn: 35
+    fail: 50
+    critical: 75
+  labels:
+    service: "llm-gateway"
+    team: "platform"
+    severity: "high"
+    runbook: "https://wiki.cortxt.io/runbooks/llm-cost"
+  alerting:
+    on: "fail"
+    channels: ["buzz", "github"]
+    cooldown: "1h"
+    escalation:
+      - after: "2h"
+        channel: "buzz"
+        message: "ESCALATION: Daily LLM cost > $50 for 2h"
+  remediation:
+    runbook: "https://wiki.cortxt.io/runbooks/llm-cost"
+    auto_mitigation: false
+  validity:
+    starts_at: "2026-08-01T00:00:00Z"
+    expires_at: null
+    environments: ["production"]
+metadata:
+  created_by: "platform-team"
+  created_at: "2026-08-03T00:00:00Z"
+  approved_by: "rikard"
+  approved_at: "2026-08-03T00:00:00Z"
+  changelog: ["Initial version"]

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ProfileManifest",
+  "type": "object",
+  "required": ["name", "version", "model", "provider", "skills", "config", "delegation", "failure_domain", "cost_tier", "latency_budget"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+    "version": {"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$"},
+    "description": {"type": "string"},
+    "model": {"type": "string"},
+    "provider": {"type": "string"},
+    "skills": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9-]+$"}
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "delegation": {
+          "type": "object",
+          "properties": {
+            "max_concurrent_children": {"type": "integer", "minimum": 1, "maximum": 10},
+            "max_spawn_depth": {"type": "integer", "minimum": 0, "maximum": 3}
+          }
+        },
+        "tools": {"type": "array", "items": {"type": "string"}},
+        "model_params": {"type": "object"}
+      }
+    },
+    "delegation": {
+      "type": "object",
+      "required": ["max_concurrent_children", "max_spawn_depth"],
+      "properties": {
+        "max_concurrent_children": {"type": "integer", "minimum": 1, "maximum": 10},
+        "max_spawn_depth": {"type": "integer", "minimum": 0, "maximum": 3}
+      }
+    },
+    "failure_domain": {"enum": ["orchestration", "research", "execution", "review", "observability", "specialist", "receptionist-layer"]},
+    "cost_tier": {"enum": ["free", "low", "medium", "high", "premium"]},
+    "latency_budget": {"enum": ["interactive", "batch", "async"]},
+    "parallelism_class": {"enum": ["sequential", "parallel-2", "parallel-N", "fan-out"]},
+    "auditability_level": {"enum": ["none", "log-only", "full-trace", "signed-attestation"]},
+    "auditor_pool": {"type": "boolean"}
+  }
+}
