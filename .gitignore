@@ -34,9 +34,9 @@ Thumbs.db
 desktop.ini
 *.log
 
-# ---- Accidental empty debris dirs ----
-Appar/
-Avancerade/
+# ---- Accidental empty debris files/dirs ----
+Appar
+Avancerade
 
 # ---- Lock/scratch ----
 *.dispatch.lock
