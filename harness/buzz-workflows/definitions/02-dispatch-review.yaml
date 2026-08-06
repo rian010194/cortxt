@@ -1,0 +1,20 @@
+name: vertical_01_dispatch_review
+description: Route a completed Builder milestone to Codex Reviewer.
+enabled: false
+trigger:
+  on: message_posted
+  filter: 'str_starts_with(trigger_text, "[BUILD_COMPLETE]")'
+steps:
+  - id: dispatch_reviewer
+    name: Dispatch completed milestone
+    timeout_secs: 30
+    action: send_message
+    text: |
+      @Codex Reviewer Review the completed Vertical 01 milestone below.
+      Prioritize findings as blocking, high, medium, or low. Start the response
+      with exactly one outcome marker: [REVIEW_APPROVED],
+      [REVIEW_CHANGES_REQUIRED], or [RESEARCH_REQUIRED].
+
+      Builder handoff:
+      Trigger message ID: {{trigger.message_id}}
+      {{trigger.text}}
