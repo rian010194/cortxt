@@ -1,13 +1,14 @@
 # Buzz Boundaries: What Buzz Is and Is Not Today
 
 **Status:** operational baseline  
-**Last updated:** 2026-08-03  
+**Last updated:** 2026-08-06  
 **Authority:** `docs/agents/current-operating-model.md`
 
 ## One-sentence summary
 
-Buzz is the **operator dialog and approval surface**. It is **not** the durable
-task registry, the execution runtime, or an automated dispatch hub.
+Hermes desktop is the **primary operator surface** for work. Buzz is the
+**remote/mobile complement** for monitoring and approval. Buzz is **not** the
+durable task registry, the execution runtime, or an automated dispatch hub.
 
 ---
 
@@ -37,9 +38,14 @@ task registry, the execution runtime, or an automated dispatch hub.
 
 ## What Buzz should be used for today
 
-1. **Scope clarification** — discuss requirements with the operator.
-2. **Approval gating** — explicit operator sign-off before dispatch.
-3. **Status display** — read-only view of runtime state (via Kanban mirror or GitHub).
+> Note: Rikard works primarily in **Hermes desktop** (one coordinator session
+> that routes to Researcher/Builder as runtime workers). Buzz is the remote
+> complement, not a per-agent window. GitHub remains the source of truth on both
+> surfaces.
+
+1. **Scope clarification** — discuss requirements with the operator (remote).
+2. **Approval gating** — explicit operator sign-off before dispatch (remote).
+3. **Status display** — read-only view of runtime state (via Kanban mirror or GitHub, e.g. `buzz-return.py`/`kanban-buzz-push`).
 4. **Emergency stop** — operator can interrupt or block a run.
 
 ## What Buzz must not be used for today
