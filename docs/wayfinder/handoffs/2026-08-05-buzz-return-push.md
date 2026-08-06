@@ -101,3 +101,25 @@ e) Testa med en riktig men testmärkt statusrad (t.ex. "[TEST-PUSH]") och
   format: uri, output-schema-constraints) — finns som separat work-paket.
 - Verifiera att den gamla Kanban→GitHub mirror-cron faktiskt körs (`hermes cron
   list` visade inga jobb 2026-08-05).
+
+---
+
+## Utförande-status (2026-08-05, nästa session)
+
+- **Uppgift 1 (buzz-return.py):** redan verifierad/committad (a86267b, 5a07989,
+  5bb342e). Dry-run exit 0, ingen nyckel-läckage, live-sändning `accepted:true`.
+  Ingen redundans behövs.
+- **Uppgift 2 (kanban-buzz-push.py):** BYGGT + committat (`7a215f2`) på
+  `agent/separate-harness-verticals`. Återanvänder buzz-return.py via subprocess
+  (delar nyckelhantering, duplicerar inte). Seedar baslinje första körning —
+  inga historiska kort backfylls i kanalen. Tyst stdout när inget nytt →
+  cron-watchdog-säker.
+- **Cron:** registrerad som `kanban-buzz-push` (id `7be74453ce0e`, every 5m,
+  forever, no-agent, deliver local) → wrapper `kanban-buzz-push-cron.py` i
+  `~/AppData/Local/hermes/scripts/`. Manuell trigg exekverade rent (`ok`).
+- **Live-test:** en [TEST-PUSH]-statusrad sänd till Vertical 01-kanalen,
+  `accepted:true` (event `6e587cdb…`). ✓
+- ⚠️ **BLOCKERARE:** `hermes cron list` → **"Gateway is not running — jobs
+  won't fire automatically."** Jobbet är registrerat men tickar INTE utan
+  gateway-daemon. Detta är sannolikt också varför den gamla mirror-cron aldrig
+  körde. Beslut krävs: starta/installera gateway (daemon) eller köra manuellt.
