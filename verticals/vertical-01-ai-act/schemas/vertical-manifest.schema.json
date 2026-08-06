@@ -48,11 +48,11 @@
           },
           "input_schema_uri": {
             "type": "string",
-            "format": "uri"
+            "format": "uri-reference"
           },
           "output_schema_uri": {
             "type": "string",
-            "format": "uri"
+            "format": "uri-reference"
           },
           "capability_tags": {
             "type": "array",
@@ -60,7 +60,8 @@
               "type": "string"
             }
           }
-        }
+        },
+        "additionalProperties": false
       }
     },
     "capability_tags": {
@@ -74,7 +75,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "format": "uri"
+        "format": "uri-reference"
       },
       "description": "URIs of schemas the harness must resolve before validating inputs/outputs."
     },
@@ -98,13 +99,14 @@
         },
         "fixture_schema_uri": {
           "type": "string",
-          "format": "uri"
+          "format": "uri-reference"
         },
         "minimum_fixture_count": {
           "type": "integer",
           "minimum": 1
         }
-      }
+      },
+      "additionalProperties": false
     },
     "artifact_policy": {
       "type": "object",
@@ -127,7 +129,8 @@
         "retention_class": {
           "type": "string"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "non_goals": {
       "type": "array",
@@ -136,5 +139,6 @@
       },
       "description": "Explicitly deferred capabilities."
     }
-  }
+  },
+  "additionalProperties": false
 }

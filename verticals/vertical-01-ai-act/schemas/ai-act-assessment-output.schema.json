@@ -111,6 +111,26 @@
           "primary_source_verified": {
             "type": "boolean"
           }
+        },
+        "if": {
+          "properties": {
+            "primary_source_verified": {
+              "const": false
+            }
+          },
+          "required": [
+            "primary_source_verified"
+          ]
+        },
+        "then": {
+          "properties": {
+            "summary": {
+              "pattern": "Needs primary-source research"
+            }
+          },
+          "required": [
+            "summary"
+          ]
         }
       }
     },
@@ -158,8 +178,8 @@
       }
     },
     "schema_validation_passed": {
-      "type": "boolean",
-      "description": "True when the producing agent confirms this object validates against the output schema."
+      "description": "True when the producing agent confirms this object validates against the output schema.",
+      "const": true
     }
   },
   "if": {
