@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SkillManifest",
+  "type": "object",
+  "required": ["name", "version", "maturity", "category", "description", "author", "license", "depends_on", "interface", "error_taxonomy", "compatibility", "observability"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+    "version": {"type": "string", "pattern": "^(>=|<=|>|<|~|\\^)?\\d+\\.\\d+(\\.\\d+)?(-[a-z0-9]+)?$"},
+    "maturity": {"enum": ["experimental", "stable", "deprecated"]},
+    "category": {"type": "string"},
+    "description": {"type": "string", "minLength": 10},
+    "author": {"type": "string"},
+    "license": {"type": "string"},
+    "depends_on": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version", "required"],
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "version": {"type": "string", "pattern": "^(>=|<=|>|<|~|\\^)?\\d+\\.\\d+(\\.\\d+)?(-[a-z0-9]+)?$"},
+          "required": {"type": "boolean"}
+        }
+      }
+    },
+    "interface": {
+      "type": "object",
+      "required": ["input_schema", "output_schema", "error_codes", "openapi"],
+      "properties": {
+        "input_schema": {"type": "string", "pattern": "^[a-z0-9-]+\\.input\\.schema\\.json$"},
+        "output_schema": {"type": "string", "pattern": "^[a-z0-9-]+\\.output\\.schema\\.json$"},
+        "error_codes": {"type": "string", "pattern": "^[a-z0-9-]+\\.errors\\.schema\\.json$"},
+        "openapi": {"type": "string", "pattern": "^[a-z0-9-]+\\.openapi\\.yaml$"}
+      }
+    },
+    "error_taxonomy": {
+      "type": "object",
+      "required": ["transient", "permanent", "retry_policy"],
+      "properties": {
+        "transient": {"type": "array", "items": {"type": "string"}},
+        "permanent": {"type": "array", "items": {"type": "string"}},
+        "retry_policy": {
+          "type": "object",
+          "required": ["transient", "permanent"],
+          "properties": {
+            "transient": {
+              "type": "object",
+              "required": ["max_attempts", "base_delay_ms", "max_delay_ms", "backoff"],
+              "properties": {
+                "max_attempts": {"type": "integer", "minimum": 1, "maximum": 10},
+                "base_delay_ms": {"type": "integer", "minimum": 100, "maximum": 10000},
+                "max_delay_ms": {"type": "integer", "minimum": 1000, "maximum": 300000},
+                "backoff": {"enum": ["exponential", "linear", "fixed"]}
+              }
+            },
+            "permanent": {
+              "type": "object",
+              "required": ["max_attempts"],
+              "properties": {
+                "max_attempts": {"type": "integer", "const": 0}
+              }
+            }
+          }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "required": ["breaking_changes", "deprecated_in", "removed_in"],
+      "properties": {
+        "breaking_changes": {"type": "array", "items": {"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$"}},
+        "deprecated_in": {"type": ["string", "null"], "pattern": "^\\d+\\.\\d+\\.\\d+$"},
+        "removed_in": {"type": ["string", "null"], "pattern": "^\\d+\\.\\d+\\.\\d+$"}
+      }
+    },
+    "observability": {
+      "type": "object",
+      "required": ["metrics", "traces", "logs"],
+      "properties": {
+        "metrics": {"type": "array", "items": {"type": "string"}},
+        "traces": {"type": "boolean"},
+        "logs": {"enum": ["structured-json", "text"]}
+      }
+    },
+    "interface_files": {
+      "type": "object",
+      "properties": {
+        "typescript": {"type": "string", "pattern": "^interfaces/[a-z0-9-]+\\.ts$"},
+        "openapi": {"type": "string", "pattern": "^openapi/[a-z0-9-]+\\.yaml$"},
+        "json_schemas": {"type": "array", "items": {"type": "string", "pattern": "^schemas/[a-z0-9.-]+\\.schema\\.json$"}},
+        "python_stubs": {"type": "string", "pattern": "^stubs/[a-z0-9-]+\\.pyi$"}
+      }
+    }
+  }
+}

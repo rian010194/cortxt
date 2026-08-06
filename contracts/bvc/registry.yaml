@@ -1,0 +1,30 @@
+contracts:
+  - name: "service-availability"
+    path: "contracts/bvc/service-availability.yaml"
+    enabled: true
+    schedule: "*/1 * * * *"
+    owner: "platform-team"
+  
+  - name: "api-error-rate"
+    path: "contracts/bvc/api-error-rate.yaml"
+    enabled: true
+    schedule: "*/1 * * * *"
+    owner: "platform-team"
+  
+  - name: "api-latency-p95"
+    path: "contracts/bvc/api-latency-p95.yaml"
+    enabled: true
+    schedule: "*/1 * * * *"
+    owner: "platform-team"
+  
+  - name: "daily-llm-cost"
+    path: "contracts/bvc/daily-llm-cost.yaml"
+    enabled: true
+    schedule: "0 * * * *"
+    owner: "platform-team"
+  
+  - name: "deployment-success-rate"
+    path: "contracts/bvc/deployment-success-rate.yaml"
+    enabled: true
+    schedule: "0 * * * *"
+    owner: "platform-team"
