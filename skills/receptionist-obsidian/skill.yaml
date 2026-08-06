@@ -1,0 +1,69 @@
+name: "receptionist-obsidian"
+version: "0.1.0"
+maturity: "experimental"
+category: "software-development"
+description: "Receptionist for Obsidian vault - CRUD, search, webhook, frontmatter, dataview queries, templates"
+author: "Cortxt"
+license: "MIT"
+depends_on:
+  - name: "receptionist-base"
+    version: ">=0.1.0"
+    required: true
+  - name: "credential-manager"
+    version: ">=0.1.0"
+    required: true
+interface:
+  input_schema: "receptionist-obsidian.input.schema.json"
+  output_schema: "receptionist-obsidian.output.schema.json"
+  error_codes: "receptionist-obsidian.errors.schema.json"
+  openapi: "receptionist-obsidian.openapi.yaml"
+error_taxonomy:
+  transient:
+    - "RATE_LIMITED"
+    - "UPSTREAM_ERROR"
+    - "TIMEOUT"
+    - "AUTH_EXPIRED"
+  permanent:
+    - "VALIDATION_ERROR"
+    - "PERMISSION_DENIED"
+    - "NOT_FOUND"
+    - "VAULT_NOT_FOUND"
+    - "FILE_NOT_FOUND"
+    - "TEMPLATE_NOT_FOUND"
+    - "DATAVIEW_ERROR"
+    - "FRONTMATTER_PARSE_ERROR"
+    - "ENCODING_ERROR"
+  retry_policy:
+    transient:
+      max_attempts: 3
+      base_delay_ms: 500
+      max_delay_ms: 10000
+      backoff: "exponential"
+    permanent:
+      max_attempts: 0
+compatibility:
+  breaking_changes: []
+  deprecated_in: null
+  removed_in: null
+observability:
+  metrics:
+    - "request.total"
+    - "request.duration_ms"
+    - "request.success"
+    - "request.error"
+    - "rate_limit.remaining"
+    - "cache.hit"
+    - "cache.miss"
+    - "vault.files_read"
+    - "vault.files_written"
+    - "dataview.queries"
+  traces: true
+  logs: "structured-json"
+interface_files:
+  typescript: "interfaces/receptionist-obsidian.ts"
+  openapi: "openapi/receptionist-obsidian.yaml"
+  json_schemas:
+    - "schemas/receptionist-obsidian.input.schema.json"
+    - "schemas/receptionist-obsidian.output.schema.json"
+    - "schemas/receptionist-obsidian.errors.schema.json"
+  python_stubs: "stubs/receptionist-obsidian.pyi"
