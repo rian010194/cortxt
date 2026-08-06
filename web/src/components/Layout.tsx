@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, GitBranch, Users, Wrench, KanbanSquare,
-  Send, Boxes, Activity, Radio
+  Send, Boxes, Activity, Radio, Scale
 } from 'lucide-react';
 
 const navItems = [
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/kanban', icon: KanbanSquare, label: 'Kanban' },
   { to: '/dispatch', icon: Send, label: 'Dispatch' },
   { to: '/verticals', icon: Boxes, label: 'Verticals' },
+  { to: '/assess', icon: Scale, label: 'AI Act Bedömning' },
   { to: '/telemetry', icon: Activity, label: 'Telemetry' },
 ];
 
