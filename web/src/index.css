@@ -46,4 +46,7 @@
   .nav-link.active {
     @apply bg-brand-900/40 text-brand-300 border border-brand-700/30;
   }
+  .inp {
+    @apply w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-500;
+  }
 }

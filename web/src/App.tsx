@@ -7,6 +7,7 @@ import Skills from './pages/Skills';
 import Kanban from './pages/Kanban';
 import Dispatch from './pages/Dispatch';
 import Verticals from './pages/Verticals';
+import Assess from './pages/Assess';
 import Telemetry from './pages/Telemetry';
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
           <Route path="/kanban" element={<Kanban />} />
           <Route path="/dispatch" element={<Dispatch />} />
           <Route path="/verticals" element={<Verticals />} />
+          <Route path="/assess" element={<Assess />} />
           <Route path="/telemetry" element={<Telemetry />} />
         </Routes>
       </Layout>
