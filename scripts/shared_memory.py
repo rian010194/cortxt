@@ -13,57 +13,137 @@ from pathlib import Path
 from typing import Any, Optional, Dict, List
 from contextlib import contextmanager
 
+# Target (run-scoped) schema — shared verbatim by the initial CREATE and the
+# legacy migration so the two can never drift (#50). `_FRESH` variants drop the
+# IF-NOT-EXISTS guard because the migration creates a brand-new table after a
+# rename and must fail loudly on a collision rather than silently no-op.
+_MEMORY_TABLE_SQL = """CREATE TABLE IF NOT EXISTS memory (
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    owner_agent TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    trace_id TEXT,
+    version INTEGER DEFAULT 1,
+    PRIMARY KEY (run_id, key)
+)"""
+_MEMORY_TABLE_SQL_FRESH = _MEMORY_TABLE_SQL.replace(
+    "CREATE TABLE IF NOT EXISTS", "CREATE TABLE", 1)
+
+_LOCKS_TABLE_SQL = """CREATE TABLE IF NOT EXISTS locks (
+    key TEXT NOT NULL,
+    owner_agent TEXT NOT NULL,
+    acquired_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    run_id TEXT NOT NULL,
+    PRIMARY KEY (run_id, key)
+)"""
+_LOCKS_TABLE_SQL_FRESH = _LOCKS_TABLE_SQL.replace(
+    "CREATE TABLE IF NOT EXISTS", "CREATE TABLE", 1)
+
+
 class SharedMemory:
     """Thread-safe shared memory using SQLite WAL mode."""
-    
+
+    # Reserved run scope for rows that predate run-scoping and carry no usable
+    # run attribution (legacy `locks`). They are preserved under this reserved
+    # scope so they can never leak into / contend with a real run (#50).
+    LEGACY_RUN_ID = "__legacy__"
+
     def __init__(self, workspace_path: str, run_id: str):
         self.workspace_path = Path(workspace_path)
         self.run_id = run_id
         self.db_path = self.workspace_path / ".shared_memory" / "memory.db"
         self.lock = threading.RLock()
         self._init_db()
-    
+
+    @staticmethod
+    def _table_exists(conn, name: str) -> bool:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (name,)).fetchone() is not None
+
+    @classmethod
+    def _migrate_schema(cls, conn):
+        """Upgrade a legacy DB to the run-scoped composite-PK schema.
+
+        Two legacy shapes are migrated in place WITHOUT destroying data:
+          * `memory` with a `key`-only primary key (keeps each row's run_id);
+          * `locks` with no `run_id` column (rows go under `LEGACY_RUN_ID`).
+
+        The whole upgrade runs in a SINGLE transaction: any failure rolls back
+        and leaves the legacy DB exactly as it was (fail-closed, no dropped or
+        half-migrated data). Fresh DBs (no tables) are left for the initial
+        CREATE in `_init_db`.
+        """
+        memory_exists = cls._table_exists(conn, "memory")
+        locks_exist = cls._table_exists(conn, "locks")
+        if not (memory_exists or locks_exist):
+            return  # fresh DB: nothing legacy to migrate
+
+        memory_legacy = memory_exists and [
+            r["name"] for r in conn.execute("PRAGMA table_info(memory)") if r["pk"]
+        ] == ["key"]
+        locks_legacy = locks_exist and "run_id" not in {
+            r["name"] for r in conn.execute("PRAGMA table_info(locks)")
+        }
+        if not (memory_legacy or locks_legacy):
+            return  # already target schema
+
+        conn.execute("BEGIN")
+        try:
+            if memory_legacy:
+                # Rebuild with composite (run_id,key) PK. Legacy `memory` already
+                # had a run_id column, so each row's own run attribution is kept.
+                conn.execute("ALTER TABLE memory RENAME TO __memory_legacy_backup")
+                conn.execute(_MEMORY_TABLE_SQL_FRESH)
+                conn.execute(
+                    """INSERT INTO memory
+                          (key, value, created_at, updated_at, expires_at,
+                           owner_agent, run_id, trace_id, version)
+                       SELECT key, value, created_at, updated_at, expires_at,
+                              owner_agent, COALESCE(run_id, ?), trace_id, version
+                       FROM __memory_legacy_backup""",
+                    (cls.LEGACY_RUN_ID,))
+                conn.execute("DROP TABLE __memory_legacy_backup")
+            if locks_legacy:
+                # Add run_id for the first time; legacy lock rows get a reserved
+                # scope so they neither leak into nor block a real run.
+                conn.execute("ALTER TABLE locks RENAME TO __locks_legacy_backup")
+                conn.execute(_LOCKS_TABLE_SQL_FRESH)
+                conn.execute(
+                    """INSERT INTO locks (key, owner_agent, acquired_at, expires_at, run_id)
+                       SELECT key, owner_agent, acquired_at, expires_at, ?
+                       FROM __locks_legacy_backup""",
+                    (cls.LEGACY_RUN_ID,))
+                conn.execute("DROP TABLE __locks_legacy_backup")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        else:
+            conn.execute("COMMIT")
+
     def _init_db(self):
-        """Initialize database with WAL mode and schema."""
+        """Initialize database with WAL mode, run-scoped schema, and a
+        transactional, data-preserving migration for legacy DBs (#50)."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         with self._connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=5000")
             conn.execute("PRAGMA synchronous=NORMAL")
-            
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS memory (
-                    key TEXT NOT NULL,
-                    value TEXT NOT NULL,
-                    created_at INTEGER NOT NULL,
-                    updated_at INTEGER NOT NULL,
-                    expires_at INTEGER,
-                    owner_agent TEXT NOT NULL,
-                    run_id TEXT NOT NULL,
-                    trace_id TEXT,
-                    version INTEGER DEFAULT 1,
-                    PRIMARY KEY (run_id, key)
-                )
-            """)
-            
+            self._migrate_schema(conn)
+
+            conn.execute(_MEMORY_TABLE_SQL)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_run ON memory(run_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_expires ON memory(expires_at)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_owner ON memory(owner_agent)")
-            
+
             # Locks table for distributed locking — scoped per run_id so a lock
             # in one run never leaks/contends with another (#50).
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS locks (
-                    key TEXT NOT NULL,
-                    owner_agent TEXT NOT NULL,
-                    acquired_at INTEGER NOT NULL,
-                    expires_at INTEGER NOT NULL,
-                    run_id TEXT NOT NULL,
-                    PRIMARY KEY (run_id, key)
-                )
-            """)
-            
+            conn.execute(_LOCKS_TABLE_SQL)
             conn.commit()
     
     @contextmanager
