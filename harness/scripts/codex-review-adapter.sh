@@ -27,7 +27,9 @@
 # Usage:
 #   CODEX_CLI_PATH=... ./codex-review-adapter.sh <full-commit-sha> [--base <rev>]
 #     --base defaults to <sha>~1 (net change of the single commit).
-#   Env: CODEX_CLI_PATH (optional; defaults to the Desktop-bundled CLI).
+#   Env: CODEX_CLI_PATH (required if 'codex' is not on PATH). No hardcoded
+#     versioned default — resolve off PATH first, else require explicit
+#     CODEX_CLI_PATH; fail closed when neither is present.
 #
 # Outputs run artifacts to .hermes/codex/reviews/<sha>/ (gitignored) and prints
 # a JSON result-envelope to stdout for the caller to consume/route.
@@ -44,30 +46,45 @@
 #      gitignored and local.
 set -euo pipefail
 
+log(){ echo "[codex-review] $*" >&2; }
+die(){ echo "ABORT: $*" >&2; exit 1; }
+
 REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUNNER="$SELF_DIR/codex-review-runner.ps1"
 RUNNER_WIN="$(cygpath -w "$RUNNER" 2>/dev/null || echo "$RUNNER")"
-[ -f "$RUNNER" ] || die_missing=1
-CODEX="${CODEX_CLI_PATH:-C:/Users/rikar/AppData/Local/OpenAI/Codex/bin/cfac6bda2d141e07/codex.exe}"
+[ -f "$RUNNER" ] || die "runner not found: $RUNNER"
+
+# Codex CLI MUST be explicit or resolvable; never a versioned absolute default.
+# 2026-08-09 rework (#70): a hardcoded per-version path breaks on any install
+# change. Resolve dynamically off PATH first; if not found, require the caller to
+# export CODEX_CLI_PATH. Fail closed (die) when neither is present.
+if [ -n "${CODEX_CLI_PATH:-}" ]; then
+    CODEX="$CODEX_CLI_PATH"
+elif command -v codex >/dev/null 2>&1; then
+    CODEX="$(command -v codex)"
+else
+    die "codex CLI not found: set CODEX_CLI_PATH or add 'codex' to PATH (fail-closed)"
+fi
+[ -e "$CODEX" ] || die "CODEX_CLI_PATH points to missing file: $CODEX"
 MAX_RUNTIME=540
 SKIP_TRUSTED_DIR="--skip-git-repo-check"
 
-log(){ echo "[codex-review] $*" >&2; }
-die(){ echo "ABORT: $*" >&2; exit 1; }
-[ -z "${die_missing:-}" ] || die "runner not found: $RUNNER"
-
 SHA="${1:-}"; [ -n "$SHA" ] || die "usage: codex-review-adapter.sh <full-commit-sha> [--base <rev>]"
 BASE="${2:-}"
-if [ "$BASE" = "--base" ] && [ -n "${3:-}" ]; then BASE="$3"; else BASE="${BASE:-$SHA~1}"; fi
-case "$SHA" in [0-9a-f]*) ;; *) die "bad sha: $SHA (expected full hex)";; esac
+if [ "$BASE" = "--base" ]; then BASE="${3:-}"; fi
+BASE="${BASE:-${SHA}~1}"
+# Exactly 40 lowercase hex characters (2026-08-09 rework, #70).
+[ "${#SHA}" -eq 40 ] || die "bad sha: $SHA (expected exactly 40 lowercase hex chars)"
+case "$SHA" in *[!0-9a-f]*) die "bad sha: $SHA (non-lowercase-hex character)";; esac
+[ -n "${BASE:-}" ] || die "bad --base"
 
 cd "$REPO_DIR"
 git rev-parse "$SHA" >/dev/null 2>&1 || die "commit $SHA not found locally"
 git rev-parse "$BASE" >/dev/null 2>&1 || die "base $BASE not found locally"
 
-# --- run identity (shell, outside model) ---
-RUN_ID="$(date -u +%Y%m%d_%H%M%S)_$(openssl rand -hex 4)"
+# --- run identity (shell, outside model) — real UUID per contracts schema ---
+RUN_ID="$(python -c "import uuid; print(uuid.uuid4())" 2>/dev/null || date -u +%Y%m%d_%H%M%S-%N)"
 log "run_id=$RUN_ID commit=$SHA base=$BASE"
 
 # --- before fingerprint (content-level) ---
@@ -118,27 +135,41 @@ rm -f "$OUT_DIR/last_message.md" "$OUT_DIR/stdout.jsonl" "$OUT_DIR/stderr.log"
 
 # --- THE single spawn path: trusted PID-bound ps1 runner ---
 # Same runner that produced all valid verdicts this session. No inline helper.
+# Capture the runner's exit code (2026-08-09 rework, #70): success REQUIRES
+# runner exit 0; a nonzero exit (incl. timeout 124) is never "succeeded".
+RUNNER_RC=0
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$RUNNER_WIN" \
     -CodexPath "$CODEX" \
     -PromptFile "$(cygpath -w /tmp/codex-review-prompt.$$)" \
     -LastMessageOut "$(cygpath -w "$OUT_DIR/last_message.md")" \
     -StdoutJson "$(cygpath -w "$OUT_DIR/stdout.jsonl")" \
     -StderrLog "$(cygpath -w "$OUT_DIR/stderr.log")" \
-    -MaxSec "$MAX_RUNTIME" \
-    || true
-log "runner finished (see $(basename "$OUT_DIR")/stderr.log for the [run] line)"
+    -MaxSec "$MAX_RUNTIME" || RUNNER_RC=$?
+log "runner rc=$RUNNER_RC (see $(basename "$OUT_DIR")/stderr.log for the [run] line)"
 
-# Verdict only counts if a FRESH model result exists (the runner purges first).
-if [ ! -f "$OUT_DIR/stdout.jsonl" ] && [ ! -f "$OUT_DIR/last_message.md" ]; then
-    log "NO fresh model output — review did not run (fail-closed, not a verdict)"
-    VERDICT="ERROR"
-else
-    VERDICT="ERROR"
-    [ -f "$OUT_DIR/last_message.md" ] && VERDICT="$(grep -oE 'VERDICT: (GODKÄND|KRÄVER ÄNDRINGAR|INGESTION MISSLYCKADES)' "$OUT_DIR/last_message.md" | head -1 | sed 's/VERDICT: //' || echo ERROR)"
+# Verdict only from a FRESH model result (the runner purges first). A value of
+# INGESTION MISSLYCKADES is NOT success even if a file exists.
+VERDICT="ERROR"
+if [ -f "$OUT_DIR/last_message.md" ]; then
+    VERDICT="$(grep -oE 'VERDICT: (GODKÄND|KRÄVER ÄNDRINGAR|INGESTION MISSLYCKADES)' "$OUT_DIR/last_message.md" | head -1 | sed 's/VERDICT: //' || echo ERROR)"
     VERDICT="${VERDICT:-ERROR}"
 fi
+
+# --- status determination (2026-08-09 rework, #70) ---
+#   runner rc 124           -> timeout           -> timed_out
+#   runner rc 0 AND fresh last_message AND valid verdict -> succeeded
+#   everything else         -> failed
+STATUS="failed"
+if [ "$RUNNER_RC" -eq 124 ]; then
+    STATUS="timed_out"
+elif [ "$RUNNER_RC" -eq 0 ] && [ -f "$OUT_DIR/last_message.md" ] \
+     && { [ "$VERDICT" = "GODKÄND" ] || [ "$VERDICT" = "KRÄVER ÄNDRINGAR" ]; }; then
+    STATUS="succeeded"
+else
+    STATUS="failed"
+fi
 COST="unknown"; grep -iq "KOSTNAD: unknown" "$OUT_DIR/last_message.md" 2>/dev/null && COST="unknown"
-log "verdict=$VERDICT cost=$COST"
+log "verdict=$VERDICT status=$STATUS cost=$COST runner_rc=$RUNNER_RC"
 
 # --- after fingerprint (content-level) ---
 AFTER_FP="$( ( git status --porcelain; git diff; git diff --cached; git rev-parse HEAD ) | git hash-object --stdin )"
@@ -149,7 +180,7 @@ cat > /tmp/codex-review-envelope.$$ <<JSON
 {
   "issue_id": "commit $SHA",
   "run_id": "$RUN_ID",
-  "status": "$( [ "$VERDICT" = "ERROR" ] && echo failed || echo succeeded )",
+  "status": "$STATUS",
   "runtime": "codex-cli (diff-inline via codex-review-adapter.sh -> codex-review-runner.ps1)",
   "worker_role": "codex-reviewer",
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
