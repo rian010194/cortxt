@@ -138,6 +138,13 @@ FIN_STATUS="${FIN_STATUS:-succeeded}"
 FINISHED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # --- Step 4: result envelope posted to the issue (source of truth) ---
+# Honest cost/usage: the manual dispatch adapter does NOT measure model usage or
+# cost, so it MUST report 'unknown', never 0 and never a guessed provider label.
+# #58/#71: 'Cost | USD 0.00 (free :free openrouter model)' was a false default —
+# it claimed a specific provider+cost regardless of the actual model used.
+COST_STATUS="unknown (not measured by dispatch-manual.sh)"
+COST_CONFIDENCE="unknown"
+USAGE_STATUS="unknown (usage not captured by dispatch-manual.sh)"
 ENVELOPE="## Run result: \`$RUN_ID\`
 
 | Field | Value |
@@ -148,7 +155,8 @@ ENVELOPE="## Run result: \`$RUN_ID\`
 | Model | $MODEL_HINT |
 | Started at | $STARTED |
 | Finished at | $FINISHED |
-| Cost | USD 0.00 (free :free openrouter model) |
+| Cost | $COST_STATUS (confidence: $COST_CONFIDENCE) |
+| Usage | $USAGE_STATUS |
 | Error | none |
 
 **Work output (evidence):**
