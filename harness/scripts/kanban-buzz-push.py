@@ -160,6 +160,11 @@ def main(argv=None) -> int:
     tasks = get_tasks(KANBAN_DB)
     pushed = 0
     newly_seeded = 0
+    # Dry-run is observation-only: it MUST NOT persist or mutate state, so a
+    # later real run is never suppressed by a previous --dry-run (#51).
+    # We compute the dry-run summary against a throwaway dict; the on-disk
+    # state stays untouched until a real (non-dry-run) run saves it.
+    write_state = state if not dry_run else {}
 
     for task in tasks:
         tid = task["id"]
@@ -167,8 +172,9 @@ def main(argv=None) -> int:
 
         # First sighting: seed the baseline so we never backfill history.
         if tid not in state:
-            state[tid] = status
             newly_seeded += 1
+            if not dry_run:
+                write_state[tid] = status
             continue
 
         if state[tid] == status:
@@ -176,14 +182,15 @@ def main(argv=None) -> int:
 
         content = format_status(task)
         if push_status(content, dry_run=dry_run):
-            state[tid] = status
             pushed += 1
             if not dry_run:
+                write_state[tid] = status
                 print(f"PUSHED: {content}")  # stdout: only on real pushes
             else:
                 print(f"[dry-run] WOULD PUSH: {content}")
 
-    save_state(state)
+    if not dry_run:
+        save_state(write_state)
     # In dry-run we always print a summary; in real mode stdout stays empty
     # except for actual pushes (cron watchdog stays quiet on no-change).
     if dry_run:
