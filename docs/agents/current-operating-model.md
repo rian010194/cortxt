@@ -53,7 +53,9 @@ theoretical:
 - Hermes Kanban board `cortxt-cp` created with gateway dispatch proven (scratch
   workspace, 36s `ready → running → done`).
 - Hermes Kanban swarm-mode demonstrated: parallel workers → verifier → synthesizer.
-- Kanban-to-GitHub mirror script and cron job operational (polls every 10 min).
+- Kanban-to-GitHub mirror **script** exists; **no mirror cron is registered**
+  (verified 2026-08-09 — `hermes cron list` shows only `kanban-buzz-push`). The
+  mirror is a manual/available capability, not an active scheduled function.
 - Manual dispatch routine documented with run_id generation, runtime selection,
   result envelope, and operator approval checklist.
 - OpenRouter served the Coordinator profile and Kimi served the worker profiles.
