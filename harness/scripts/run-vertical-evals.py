@@ -80,6 +80,43 @@ def json_pointer_get(doc, pointer: str):
     return cur
 
 
+def json_eq(a, b):
+    """JSON-semantic equality.
+
+    Booleans are NOT numbers in JSON (True != 1); numbers compare numerically
+    (1 == 1.0); containers recurse. Fixes #45 (Python-like True==1 / bool
+    accepted as integer in assertions).
+    """
+    if isinstance(a, bool) or isinstance(b, bool):
+        return isinstance(a, bool) and isinstance(b, bool) and a is b
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return float(a) == float(b)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(json_eq(x, y) for x, y in zip(a, b))
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(k in b and json_eq(a[k], b[k]) for k in a)
+    return a == b
+
+
+def json_type_name(val) -> str:
+    """JSON canonical type name (bool distinct from number). Fixes #45."""
+    if val is None:
+        return "null"
+    if isinstance(val, bool):
+        return "boolean"
+    if isinstance(val, int):
+        return "integer"
+    if isinstance(val, float):
+        return "number"
+    if isinstance(val, str):
+        return "string"
+    if isinstance(val, list):
+        return "array"
+    if isinstance(val, dict):
+        return "object"
+    return type(val).__name__
+
+
 def check_assertion(actual, a: dict):
     """Evaluate one deterministic_assertion. Returns (ok, message)."""
     path = a["path"]
@@ -91,16 +128,16 @@ def check_assertion(actual, a: dict):
         return False, f"path {path}: not resolvable ({e})"
 
     if op == "equals":
-        return val == expected, f"{path}: expected {expected!r}, got {val!r}"
+        return json_eq(val, expected), f"{path}: expected {expected!r}, got {val!r}"
     if op == "contains":
         return expected in val, f"{path}: expected to contain {expected!r}"
     if op == "exists":
         return True, f"{path}: exists"
     if op == "type_is":
-        type_ = TYPE_MAP.get(expected)
-        if type_ is None:
+        if expected not in TYPE_MAP:
             return False, f"{path}: unknown type_is value {expected!r}"
-        return isinstance(val, type_), f"{path}: expected type {expected!r}, got {type(val).__name__}"
+        return (json_type_name(val) == expected,
+                f"{path}: expected type {expected!r}, got {json_type_name(val)}")
     return False, f"{path}: unknown operator {op!r}"
 
 
