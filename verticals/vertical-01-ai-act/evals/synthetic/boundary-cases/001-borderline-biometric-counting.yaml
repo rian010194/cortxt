@@ -34,11 +34,11 @@ expected_output:
   obligations_assessed: []
   decision_brief:
     language: sv
-    text: "Systemet CrowdCount AI kan omfattas av AI-förordningen, men riskklassificeringen är osäker. Det är oklart om silhouettbaserad trängselräkning över huvud taget utgör biometrisk behandling enligt Art 3(34)/GDPR Art 4(11), eftersom den varken identifierar individer eller lagrar ansiktsdata. Avgörs det att tekniken är biometrisk återstår Annex III-gränsen. Primärkällsverifiering krävs."
+    text: "Systemet CrowdCount AI kan omfattas av AI-förordningen, men riskklassificeringen är osäker. Det är oklart om siluettbaserad trängselräkning över huvud taget utgör biometrisk behandling enligt Art 3(34)/GDPR Art 4(14), eftersom den varken identifierar individer eller lagrar ansiktsdata. Avgörs det att tekniken är biometrisk återstår Annex III-gränsen. Primärkällsverifiering krävs."
   uncertainties:
-  - topic: Whether silhouette crowd-counting constitutes biometric processing (AI Act Art 3(34)/GDPR Art 4(11))
+  - topic: Whether silhouette crowd-counting constitutes biometric processing (AI Act Art 3(34)/GDPR Art 4(14))
     reason: The decision to treat silhouettes as biometric data is not yet established. Biometric data under Art 3(34) requires data relating to physical characteristics that allow or confirm the UNIQUE identification of a natural person; this system neither identifies nor stores facial data. It is therefore uncertain whether silhouette-based crowd counting constitutes biometric processing at all.
-    suggested_research: Verify whether silhouette-based crowd counting falls within biometric data as defined by AI Act Art 3(34) and GDPR Art 4(11), absent individual identification.
+    suggested_research: Verify whether silhouette-based crowd counting falls within biometric data as defined by AI Act Art 3(34) and GDPR Art 4(14), absent individual identification.
   - topic: Annex III point 1(a) vs point 1(b) (only if biometric processing is established)
     reason: IF the technique is determined to be biometric processing, it is further unclear whether it performs biometric identification (point 1(a)) or biometric categorisation (point 1(b)) under Annex III. The claim of no individual identification is relevant but not decisive.
     suggested_research: Confirm the Annex III point 1(a)/1(b) classification for biometric crowd counting once the biometric-data premise is resolved.
@@ -60,7 +60,7 @@ deterministic_assertions:
   operator: equals
   expected_value: []
 model_assisted_assertions:
-- rubric: The decision brief should be in Swedish and express uncertainty (osäker) about whether silhouette crowd-counting constitutes biometric processing, per AI Act Art 3(34)/GDPR Art 4(11).
+- rubric: The decision brief should be in Swedish and express uncertainty (osäker) about whether silhouette crowd-counting constitutes biometric processing, per AI Act Art 3(34)/GDPR Art 4(14).
   required_model_capabilities:
   - structured-output
 human_review_required: true
