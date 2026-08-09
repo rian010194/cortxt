@@ -262,18 +262,19 @@ def main():
         # stub adapter returns KRÄVER on first call, GODKÄND on subsequent (rework fixes it)
         adapter_b = write_stub_b(out_dir, invlog_b)
 
-        # rework dispatch stub: simulates the implementation worker delivering a reworked
-        # commit. Returns a 40-hex NEW SHA on stdout (single line). No real git mutation:
-        # the orchestrator's loop passes the new SHA to the NEXT stub-review (which ignores
-        # reachability); the pre-loop git-cat-file check only guards the FIRST SHA.
+        # rework dispatch stub: simulates the Builder dispatch adapter delivering a reworked,
+        # pushed commit. Contract (#82/#1): args = (owner/repo#issue, round); must emit
+        # BUILDER_DISPATCH_DONE ... head=<40hex> on stdout, exit 0 (orchestrator parses head=).
+        args_log = os.path.join(out_dir, "dispatch-args.log")
         rework_stub = os.path.join(out_dir, "rework.sh")
         with open(rework_stub, "w", encoding="utf-8") as f:
-            # exactly 40 hex: 38 'c's + 2-digit round -> 40
             f.write(
                 "#!/usr/bin/env bash\n"
                 "set -euo pipefail\n"
-                'ROUND="${3:-0}"\n'
-                'printf "%s%02d\\n" "cccccccccccccccccccccccccccccccccccccc" "$((ROUND))"\n'
+                'ISSUE="${1:-}"; ROUND="${2:-0}"\n'
+                'printf "%s %s" "$ISSUE" "$ROUND" >> "' + args_log + '" # record real production args\n'
+                'printf "BUILDER_DISPATCH_DONE issue=%s round=%s head=cccccccccccccccccccccccccccccccccccccc%02d model=Qwen3-Coder-Next-FP8 model_cost_status=unknown\\n" "$ISSUE" "$ROUND" "$((ROUND))"\n'
+                'echo "RC=0"\n'
             )
         os.chmod(rework_stub, 0o755)
 
@@ -287,6 +288,17 @@ def main():
                   + out_b2.count("VERDICT"))
         check("B KRÄVER->rework->GODKÄND: >=2 independent Codex reviews (2 rounds)", rounds >= 2, "rounds=%d" % rounds)
         check("B final verdict GODKÄND", "GODKÄND" in out_b2.split("ROUNDTRIP_END")[-1] or "GODKÄND" in out_b2, out_b2[-300:])
+        # #82/#1 + #12: assert the REAL production dispatch signature (owner/repo#issue, round),
+        # captured by the stub's arg recorder — not a mock that adapts to implementation bugs.
+        if os.path.exists(args_log):
+            sig = open(args_log, encoding="utf-8").read()
+            import re as _re
+            issue_part, _, round_part = sig.partition(" ")
+            check("B dispatch signature: owner/repo#issue + numeric round",
+                  _re.match(r"^[^/]+/[^/]+#[0-9]+$", issue_part) and _re.fullmatch(r"\d+", round_part),
+                  "sig=%r" % sig)
+        else:
+            check("B dispatch signature: owner/repo#issue + numeric round", False, "args log missing")
 
         # ---------- Path C: fail-closed timeout ----------
         invlog_c = os.path.join(out_dir, "inv_c.log")
@@ -355,7 +367,12 @@ def main():
         adapter_r7 = write_kraver_always(out_dir, invlog_r7, name="stub-kraver-r7.sh")  # KRÄVER every call
         rework_ok = os.path.join(out_dir, "rework-ok.sh")
         with open(rework_ok, "w", encoding="utf-8") as f:
-            f.write("#!/usr/bin/env bash\nset -euo pipefail\nR=${3:-0}\nprintf 'dddddddddddddddddddddddddddddddddddddddd%02d\\n' \"$((R))\"\n")
+            f.write(
+                "#!/usr/bin/env bash\nset -euo pipefail\n"
+                'R="${2:-0}"\n'
+                'printf "BUILDER_DISPATCH_DONE issue=x round=%s head=dddddddddddddddddddddddddddddddddddddddd%02d model=Q model_cost_status=unknown\\n" "$R" "$((R))"\n'
+                'echo "RC=0"\n'
+            )
         os.chmod(rework_ok, 0o755)
         p_r7 = run_orchestrator(adapter_r7, rework_ok, sha_a, base, max_rework=2)
         calls = sum(1 for _ in open(invlog_r7)) if os.path.exists(invlog_r7) else 0
@@ -365,7 +382,11 @@ def main():
         # R8: Builder dispatch that does NOT deliver a 40-hex PR-head -> fail-closed (Codex #10)
         rework_bad = os.path.join(out_dir, "rework-bad.sh")
         with open(rework_bad, "w", encoding="utf-8") as f:
-            f.write("#!/usr/bin/env bash\nset -euo pipefail\necho 'not-a-sha'\n")
+            f.write(
+                "#!/usr/bin/env bash\nset -euo pipefail\n"
+                'echo "BUILDER_DISPATCH_FAILED issue=82 round=1 (no head)"\n'
+                'echo "RC=0"\n'
+            )
         os.chmod(rework_bad, 0o755)
         adapter_r8 = write_kraver_always(out_dir, "", name="stub-kraver-r8.sh")
         p_r8 = run_orchestrator(adapter_r8, rework_bad, sha_a, base, max_rework=2)

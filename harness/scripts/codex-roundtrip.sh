@@ -53,12 +53,12 @@ DRYRUN=""
 ISSUE=""
 SHA=""
 BASE=""
+REWORK_BRANCH=""   # the draft-PR head branch; set from -b/PR head, NOT the diff base
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Adapter path overrideable for deterministic NO-MODEL verification (a stub that
 # emits the same envelope contract without calling a model). Default: merged adapter.
 ADAPTER="${CODEX_ROUNDTRIP_ADAPTER:-$SELF_DIR/codex-review-adapter.sh}"
 OUTPUT_CAP_TOKENS="${CODEX_ROUNDTRIP_OUTPUT_CAP:-12000}"   # #82/#12: cap configured BEFORE any model run
-MAX_ADAPTER_CALLS=3                                            # #82/#9: initial + max 2 reworks => 3 Codex calls hard ceiling
 WF_FIELD="PVTSSF_lAHOBcHJy84BfFfWzhZa88A"
 PROJECT_ID="PVT_kwHOBcHJy84BfFfW"
 OPT_REVIEW="4bfdd926"; OPT_BLOCKED="20948c2f"
@@ -75,6 +75,7 @@ while [ $# -gt 0 ]; do
     -c|--commit)      SHA="${2:-}"; shift 2;;
     -b|--base)        BASE="${2:-}"; shift 2;;
     --pr)             PR_NUM="${2:-}"; shift 2;;
+    --branch)         REWORK_BRANCH="${2:-}"; shift 2;;
     --max-rework)     MAX_REWORK="${2:-}"; shift 2;;
     --rework-dispatch) REWORK_DISPATCH="${2:-}"; shift 2;;
     --dry-run)        DRYRUN=1; shift;;
@@ -87,6 +88,13 @@ done
 [ -n "$BASE" ]  || die "missing -b <base-rev>"
 [ -f "$ADAPTER" ] || die "adapter not found: $ADAPTER (must run on integration-branch tree with merged PR #81)"
 [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || die "bad commit sha: $SHA (exactly 40 lowercase hex required)"
+
+# #82/#9: compute the Codex-call ceiling AFTER arg parsing so --max-rework is honored;
+# validate it (>=1, integer). ceiling = 1 initial + MAX_REWORK reworks.
+MAX_REWORK="${MAX_REWORK:-2}"
+[[ "$MAX_REWORK" =~ ^[0-9]+$ ]] && [ "$MAX_REWORK" -ge 1 ] || die "bad --max-rework '$MAX_REWORK' (must be integer >= 1)"
+MAX_ADAPTER_CALLS=$((1 + MAX_REWORK))
+log "rework ceiling: MAX_REWORK=$MAX_REWORK MAX_ADAPTER_CALLS=$MAX_ADAPTER_CALLS"
 
 # --- ensure git state: the reviewed commit must be reachable locally ---
 git cat-file -e "$SHA" 2>/dev/null || die "commit $SHA not reachable locally — fetch first"
@@ -114,10 +122,11 @@ query {
 }" --jq '.data.repository.issue.projectItems.nodes[] | select(.project.number==4) | .fieldValueByName.name' 2>/dev/null | head -1)" \
     || true
   log "issue #$ISSUE workflow status = '${ISSUE_WF:-<not-on-project-4>}'"
-  # If attached to Project 4, must be Ready to dispatch; if not attached, this is a warning only.
-  if [ -n "$ISSUE_WF" ] && [ "$ISSUE_WF" != "Ready" ]; then
-    die "issue #$ISSUE workflow is '$ISSUE_WF', not 'Ready' -> fail-closed before dispatch"
+  # #82/#7: missing Project-4 item OR missing Workflow Status must fail-closed; Ready explicit.
+  if [ -z "$ISSUE_WF" ]; then
+    die "issue #$ISSUE has no Workflow Status on Project 4 (missing item/status) -> fail-closed"
   fi
+  [ "$ISSUE_WF" = "Ready" ] || die "issue #$ISSUE workflow is '$ISSUE_WF', not 'Ready' -> fail-closed before dispatch"
 else
   die "gh not authenticated (and CODEX_ROUNDTRIP_NO_GITHUB not set)"
 fi
@@ -129,6 +138,10 @@ if [ -n "$PR_NUM" ] && [ -z "$NO_GITHUB" ]; then
   PR_STATE="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['state'])")"
   PR_HEAD="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['headRefOid'])")"
   PR_BASE="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['baseRefName'])")"
+  PR_HEAD_BRANCH="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['headRefName'])")"
+  # #82/#4: the PR head BRANCH NAME (for the rework push/branch checks) is separate from the
+  # diff base SHA. Set REWORK_BRANCH from the PR head branch unless --branch overrode it.
+  REWORK_BRANCH="${REWORK_BRANCH:-$PR_HEAD_BRANCH}"
   PR_DRAFT_RAW="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['isDraft'])")"
   # json 'true'/'false' -> python True/False -> normalize to lowercase for bash compare
   PR_DRAFT="$(printf '%s' "$PR_DRAFT_RAW" | tr '[:upper:]' '[:lower:]')"
@@ -241,7 +254,7 @@ print(v if isinstance(v,int) else '')
   out_tokens="${out_tokens:-}"
   cap_verified=false
   if [ -z "$out_tokens" ]; then
-    echo "{\"round\":$round,\"status\":\"blocked\",\"verdict\":\"$verdict\",\"reason\":\"output-token usage not reported; cap ($OUTPUT_CAP_TOKENS) unverifiable -> fail-closed\",\"cost_conf\":unknown,\"output_tokens\":null,\"cap_verified\":false,\"artifacts\":$artifacts_json}"
+    echo "{\"round\":$round,\"status\":\"blocked\",\"verdict\":\"$verdict\",\"reason\":\"output-token usage not reported; cap ($OUTPUT_CAP_TOKENS) unverifiable -> fail-closed\",\"cost_conf\":\"unknown\",\"output_tokens\":null,\"cap_verified\":false,\"artifacts\":$artifacts_json}"
     return 0
   fi
   if [ "$out_tokens" -gt "$OUTPUT_CAP_TOKENS" ]; then
@@ -361,14 +374,31 @@ $artifacts_line
 > does not substitute its own judgment for the Codex verdict. Merge / Done /
 > deploy remain operator-only.
 EOF
-  local body_win
+  local body_win post_json cid readback json_file
   body_win="$(cygpath -w "$body_file")"
-  # Post via gh api to capture the NUMERIC comment id reliably (#82/#6).
-  local post_json cid readback
-  post_json="$(gh api "repos/$REPO/issues/$ISSUE/comments" -f body=@"$body_win" 2>/tmp/roundtrip-post.err)" \
-    || { log "evidence POST failed: $(tail -2 /tmp/roundtrip-post.err)"; rm -f "$body_file"; return 1; }
-  cid="$(printf '%s' "$post_json" | python -c "import sys,json;print(json.load(sys.stdin).get('id',''))")"
-  [ -n "$cid" ] || { log "evidence POST returned no numeric id"; rm -f "$body_file"; return 1; }
+  # #82/#3: post via gh api using the VERIFIED JSON/--input path so the BODY CONTENT
+  # (not the path) is posted. Build {"body": <content>} to a temp JSON file, then --input it.
+  json_file="$(mktemp)"
+  set +e
+  python - "$body_win" "$(cygpath -w "$json_file")" <<'PY' >/tmp/roundtrip-post.err 2>&1
+import sys, json
+body = open(sys.argv[1], encoding="utf-8").read()
+open(sys.argv[2], "w", encoding="utf-8").write(json.dumps({"body": body}))
+PY
+  PY_RC=$?
+  set -e
+  if [ "$PY_RC" -ne 0 ]; then
+    log "evidence JSON build failed: $(tail -2 /tmp/roundtrip-post.err)"; rm -f "$body_file" "$json_file"; return 1
+  fi
+  # perform the GH POST using the JSON payload file (verified --input path)
+  json_file_win="$(cygpath -w "$json_file")"
+  post_json="$(gh api "repos/$REPO/issues/$ISSUE/comments" --input "$json_file_win" 2>/tmp/roundtrip-post-id.err)"
+  cid="$(printf '%s' "$post_json" | python -c "import sys,json;print(json.load(sys.stdin).get('id','') or '')")"
+  rm -f "$json_file"
+  if [ -z "$cid" ] || [ -z "$post_json" ]; then
+    log "evidence POST failed: $(tail -2 /tmp/roundtrip-post-id.err 2>/dev/null)"
+    rm -f "$body_file"; return 1
+  fi
   # Read back the EXACT id and confirm body contains artifacts + marker (#82/#6,/#8).
   readback="$(gh api "repos/$REPO/issues/$ISSUE/comments" \
     --jq ".[] | select(.id==$cid) | .body" 2>/dev/null)" || true
@@ -458,23 +488,35 @@ while :; do
       echo "ROUNDTRIP_END $RES (dry-run: rework would dispatch via ${REWORK_DISPATCH:-<none>})"
       exit 0
     fi
+    # #82/#10: post + read back the KRÄVER review evidence BEFORE dispatch (fail-closed).
+    if ! post_evidence "$CALLS" "$VERDICT" "$RES" "$SHA"; then
+      log "TERMINAL fail-closed: KRÄVER evidence posting/read-back failed -> not proceeding"
+      echo "ROUNDTRIP_END $RES"; exit 5
+    fi
     # #82/#10: use the REAL bounded Hermes Builder dispatch adapter (not an arbitrary hook).
     if [ -z "$REWORK_DISPATCH" ] || [ ! -x "$REWORK_DISPATCH" ]; then
       die "--rework-dispatch (Hermes Builder dispatch adapter) required but missing/not executable: $REWORK_DISPATCH"
     fi
-    # The Builder dispatch adapter must: run the builder on InferX (12k cap), commit, PUSH a NEW
-    # PR-head, and print the NEW pushed 40-hex commit SHA on stdout. fail-closed on any miss.
-    NEW_SHA="$(set +e; "$REWORK_DISPATCH" "$REPO" "$ISSUE" "$CALLS"; echo "RC=$?")"
-    NEW_RC="${NEW_SHA##*RC=}"; NEW_SHA="${NEW_SHA%RC=*}"
-    NEW_SHA="$(printf '%s' "$NEW_SHA" | tr -d ' \r\n' | tail -c 40)"
-    if [ "$NEW_RC" != "0" ] || ! [[ "$NEW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-      die "Builder dispatch did not deliver a pushed 40-hex PR-head (rc=$NEW_RC) -> fail-closed"
+    # #82/#5: capture pre-builder HEAD; post-builder must be a NEW pushed commit == PR's new remote head.
+    PRE_HEAD="$(git rev-parse HEAD)"
+    # #82/#1: argument contract = (owner/repo#issue, round) — identical to the Builder adapter.
+    DISPATCH_ISSUE="${REPO}#${ISSUE}"
+    BUILD_OUT="$(set +e; "$REWORK_DISPATCH" "$DISPATCH_ISSUE" "$CALLS"; echo "RC=$?")"
+    BUILD_RC="$(printf '%s' "$BUILD_OUT" | grep -oE 'RC=[0-9]+$' | head -1 | cut -d= -f2 || true)"
+    # extract the 40-hex SHA from the BUILDER_DISPATCH_DONE ... head=<sha> line (#82/#5)
+    NEW_SHA="$(printf '%s' "$BUILD_OUT" | grep -oE 'head=[0-9a-f]{40}' | head -1 | cut -d= -f2 || true)"
+    if [ -z "$BUILD_RC" ] || [ "$BUILD_RC" != "0" ] || ! [[ "$NEW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+      die "Builder dispatch did not deliver a pushed 40-hex PR-head (rc=${BUILD_RC:-?}) -> fail-closed"
     fi
-    # Require the new head to actually exist on origin (local==remote for the reworked PR head).
-    # In NO_GITHUB deterministic mode the dispatch is a stub; the fetch/push guarantee is a
-    # real-run concern (the verifier exercises the SHA-format + rc fail-closed instead).
+    [ "$NEW_SHA" != "$PRE_HEAD" ] || die "Builder produced no NEW commit (head unchanged) -> fail-closed"
+    # Must be on the right branch and pushed == the branch's new remote head.
     if [ -z "$NO_GITHUB" ]; then
-      git fetch origin "$NEW_SHA" 2>/dev/null || die "new PR-head $NEW_SHA not on origin -> fail-closed"
+      git fetch origin "$REWORK_BRANCH" 2>/dev/null || true
+      local_br="$(git rev-parse --verify "$REWORK_BRANCH" 2>/dev/null || true)"
+      remote_br="$(git rev-parse --verify "origin/$REWORK_BRANCH" 2>/dev/null || true)"
+      if [ "$NEW_SHA" != "$remote_br" ] || [ "$remote_br" != "$local_br" ]; then
+        die "new head $NEW_SHA != origin/$REWORK_BRANCH ($remote_br) / local ($local_br) -> fail-closed"
+      fi
     fi
     SHA="$NEW_SHA"
     continue
