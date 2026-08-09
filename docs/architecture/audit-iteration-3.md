@@ -26,7 +26,7 @@
 > Corrected (2026-08-09): this summary's counts were wrong. Current verified
 > state: **21 directories** under `skills/` (20 with artifact files), **116
 > actual files** (not 84),
-> **4 `skill.yaml` manifests** (not 3), **not all 22 skills share a single count**
+> **4 `skill.yaml` manifests** (not 3), **not all 21 skill directories share a single artifact count**
 > — some are wrappers/templates. See correction banner at top of file.
 
 - **21 directories** directly under `skills/`; **20 skills** have artifact files
