@@ -1,8 +1,18 @@
 # Plan Audit — Iteration 3 (Artifact Audit)
 
+> **⚠ STATUS (corrected 2026-08-09):** This is a **historical audit of a plan
+> (AGENT_ARCHITECTURE v0.2)**, NOT current reality. Its headline numbers are
+> **superseded and internally inconsistent** — issue #59 flags it as stale.
+> Verified current state (2026-08-09): **21 interface-uppsättningar**
+> (interfaces/openapi/schemas/stubs), **116 actual artifact files** (not 84),
+> and **4 `skill.yaml` manifests** (not 3). The "All 8 gaps CLOSED / Approved for
+> implementation" verdict below reflects the *then-presented plan*, and must not
+> be read as approval of current repo content. Prefer live inventory
+> (`find skills -name skill.yaml`, per-dir file counts) over this document.
+
 **Plan:** `docs/architecture/AGENT_ARCHITECTURE.md` (v0.2 — Iteration 2 revised)  
 **Auditor:** Fresh-eyes artifact existence review (never saw v0.1, Iteration 1, or Iteration 2)  
-**Date:** 2026-08-03  
+**Date:** 2026-08-03 (historical; see correction banner above)  
 **Method:** Verify every skill has `.ts`, `.yaml`, `.json`, `.pyi` files in `skills/<name>/interfaces/`, `skills/<name>/openapi/`, `skills/<name>/schemas/`, `skills/<name>/stubs/`. CI gate validates conformance. Action item precision (GAP-03) assessed.
 
 ---
@@ -11,7 +21,15 @@
 
 **All 8 critical gaps from Iteration 2 are CLOSED with actual artifacts.** The repository now contains:
 
-- **21 skills** × **4 artifact types** = **84 interface files** (TypeScript, OpenAPI 3.1, JSON Schemas, Python stubs) — plus 21 skill manifests (3 with `skill.yaml`, 18 implicitly via generated artifacts)
+> Corrected (2026-08-09): this summary's counts were wrong. Current verified
+> state: **21 interface-uppsättningar × 4 dirs**, **116 actual files** (not 84),
+> **4 `skill.yaml` manifests** (not 3), **not all 22 skills share a single count**
+> — some are wrappers/templates. See correction banner at top of file.
+
+- **21 skills-baserade interface-uppsättningar × 4 artifact types**
+  (interfaces/, openapi/, schemas/, stubs/) = **116 actual files**
+  (previously-stated 84 was incorrect) — plus 4 explicit `skill.yaml` manifests
+  (not 18-via-generated; generated-interface claim not assumed)
 - **4 validation scripts** (`validate_skill_manifest.py`, `check_breaking_changes.py`, `generate_interfaces.py`, `profile_cli.py`) — all functional
 - **2 JSON schemas** (`skill-manifest.schema.json`, `profile-manifest.schema.json`) — both validate
 - **6 BVC contracts** (5 contracts + `registry.yaml`) — complete
