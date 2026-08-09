@@ -23,9 +23,13 @@ def check(name, cond, detail=""):
     print(f"  {'ok' if cond else 'FAIL':4} {name}" + (f"  {detail}" if detail and not cond else ""))
     if not cond: fail.append(name)
 
+# r1 and r2 SHARE the same workspace/database but have different run_ids — this
+# actually exercises run isolation + lock scoping inside one shared SQLite file
+# (#50), not two separate databases.
 ws = tempfile.mkdtemp(prefix="sm51-")
-r1 = sm.SharedMemory(str(Path(ws) / "run_a"), "run_a")
-r2 = sm.SharedMemory(str(Path(ws) / "run_b"), "run_b")
+r1 = sm.SharedMemory(str(Path(ws) / "run"), "run_a")
+r2 = sm.SharedMemory(str(Path(ws) / "run"), "run_b")
+assert r1.db_path == r2.db_path, "test must share one database"
 
 print("== #50.1: set() on existing key returns True + bumps version ==")
 check("fresh set True", r1.set("k", {"v": 1}) is True)
