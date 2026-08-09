@@ -47,6 +47,10 @@ check("1 == 1.0 (numeric)", aeq(1, 1.0))
 check("equals(1) matches 1", aeq(1, 1))
 check("False != 0 (bool not number)", not aeq(False, 0))
 check("string == string", aeq("x", "x"))
+check("large ints keep precision (2^53 != 2^53+1)", not aeq(9007199254740992, 9007199254740993))
+check("int == float still equal (1 == 1.0)", aeq(1, 1.0))
+check("mixed big int/float not falsely equal (2^53+1 != 2^53.0)",
+      not aeq(9007199254740993, 9007199254740992.0))
 
 print()
 if fail:
