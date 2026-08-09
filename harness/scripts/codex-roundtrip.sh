@@ -54,11 +54,20 @@ ISSUE=""
 SHA=""
 BASE=""
 REWORK_BRANCH=""   # the draft-PR head branch; set from -b/PR head, NOT the diff base
+REWORK_BASE_BRANCH=""  # expected PR base BRANCH name (Codex-item1); compared vs PR baseRefName
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Adapter path overrideable for deterministic NO-MODEL verification (a stub that
 # emits the same envelope contract without calling a model). Default: merged adapter.
 ADAPTER="${CODEX_ROUNDTRIP_ADAPTER:-$SELF_DIR/codex-review-adapter.sh}"
-OUTPUT_CAP_TOKENS="${CODEX_ROUNDTRIP_OUTPUT_CAP:-12000}"   # #82/#12: cap configured BEFORE any model run
+# #82/#5: output-token cap is HARD-CAPPED at 12000. An env var may only LOWER it (down to a
+# floor of 1), NEVER raise it. Codex item: env may never increase the cap.
+ENV_CAP="${CODEX_ROUNDTRIP_OUTPUT_CAP:-12000}"
+[[ "$ENV_CAP" =~ ^[0-9]+$ ]] && [ "$ENV_CAP" -ge 1 ] || { echo "ABORT: bad CODEX_ROUNDTRIP_OUTPUT_CAP '$ENV_CAP' (integer >= 1)" >&2; exit 1; }
+if [ "$ENV_CAP" -gt 12000 ]; then
+  echo "FAIL-CLOSED: CODEX_ROUNDTRIP_OUTPUT_CAP $ENV_CAP exceeds hard cap 12000 (env may never raise it); refusing" >&2
+  exit 1
+fi
+OUTPUT_CAP_TOKENS="$ENV_CAP"
 WF_FIELD="PVTSSF_lAHOBcHJy84BfFfWzhZa88A"
 PROJECT_ID="PVT_kwHOBcHJy84BfFfW"
 OPT_REVIEW="4bfdd926"; OPT_BLOCKED="20948c2f"
@@ -76,6 +85,7 @@ while [ $# -gt 0 ]; do
     -b|--base)        BASE="${2:-}"; shift 2;;
     --pr)             PR_NUM="${2:-}"; shift 2;;
     --branch)         REWORK_BRANCH="${2:-}"; shift 2;;
+    --base-branch)    REWORK_BASE_BRANCH="${2:-}"; shift 2;;
     --max-rework)     MAX_REWORK="${2:-}"; shift 2;;
     --rework-dispatch) REWORK_DISPATCH="${2:-}"; shift 2;;
     --dry-run)        DRYRUN=1; shift;;
@@ -88,6 +98,9 @@ done
 [ -n "$BASE" ]  || die "missing -b <base-rev>"
 [ -f "$ADAPTER" ] || die "adapter not found: $ADAPTER (must run on integration-branch tree with merged PR #81)"
 [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || die "bad commit sha: $SHA (exactly 40 lowercase hex required)"
+# #82/Codex-item1: the diff BASE SHA fed to the Codex adapter is distinct from the PR base
+# BRANCH name; captured AFTER arg parsing so -b is authoritative.
+DIFF_BASE_SHA="$BASE"
 
 # #82/#9: compute the Codex-call ceiling AFTER arg parsing so --max-rework is honored;
 # validate it (>=1, integer). ceiling = 1 initial + MAX_REWORK reworks.
@@ -137,11 +150,14 @@ if [ -n "$PR_NUM" ] && [ -z "$NO_GITHUB" ]; then
     || die "cannot read PR $PR_NUM"
   PR_STATE="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['state'])")"
   PR_HEAD="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['headRefOid'])")"
-  PR_BASE="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['baseRefName'])")"
+  PR_BASE_BRANCH="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['baseRefName'])")"   # branch NAME
   PR_HEAD_BRANCH="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['headRefName'])")"
-  # #82/#4: the PR head BRANCH NAME (for the rework push/branch checks) is separate from the
-  # diff base SHA. Set REWORK_BRANCH from the PR head branch unless --branch overrode it.
+  # #82/Codex-item1: the PR base BRANCH NAME is compared against the expected branch, and MUST
+  # NOT be conflated with the diff base SHA (`DIFF_BASE_SHA` is what the adapter is fed).
   REWORK_BRANCH="${REWORK_BRANCH:-$PR_HEAD_BRANCH}"
+  if [ -n "$REWORK_BASE_BRANCH" ]; then
+    [ "$PR_BASE_BRANCH" = "$REWORK_BASE_BRANCH" ] || die "PR $PR_NUM base branch ($PR_BASE_BRANCH) != expected ($REWORK_BASE_BRANCH) -> fail-closed"
+  fi
   PR_DRAFT_RAW="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['isDraft'])")"
   # json 'true'/'false' -> python True/False -> normalize to lowercase for bash compare
   PR_DRAFT="$(printf '%s' "$PR_DRAFT_RAW" | tr '[:upper:]' '[:lower:]')"
@@ -149,8 +165,7 @@ if [ -n "$PR_NUM" ] && [ -z "$NO_GITHUB" ]; then
   [ "$PR_STATE" = "OPEN" ] || die "PR $PR_NUM state is $PR_STATE, not OPEN -> fail-closed"
   [ "$PR_DRAFT" = "true" ] || die "PR $PR_NUM is not a draft -> fail-closed (review targets drafts only)"
   [ "$PR_HEAD" = "$SHA" ] || die "PR $PR_NUM head ($PR_HEAD) != requested commit ($SHA) -> fail-closed"
-  [ "$PR_BASE" = "$BASE" ] || die "PR $PR_NUM base ($PR_BASE) != requested base ($BASE) -> fail-closed"
-  log "PR #$PR_NUM verified: OPEN, draft, head=$PR_HEAD base=$PR_BASE"
+  log "PR #$PR_NUM verified: OPEN, draft, head=$PR_HEAD base_branch=${PR_BASE_BRANCH:-n/a}"
 fi
 
 # --- ROUND function: run exactly ONE Codex review via the merged adapter ---
@@ -436,7 +451,7 @@ while :; do
     echo "ROUNDTRIP_END {\"round\":$CALLS,\"status\":\"blocked\",\"verdict\":\"CEILING\"}"
     exit 4
   fi
-  RES="$(run_one_review "$SHA" "$BASE" "$CALLS")"
+  RES="$(run_one_review "$SHA" "$DIFF_BASE_SHA" "$CALLS")"
   STATUS="$(echo "$RES" | python -c "import sys,json;print(json.load(sys.stdin).get('status','failed'))")"
   VERDICT="$(echo "$RES" | python -c "import sys,json;print(json.load(sys.stdin).get('verdict','unknown'))")"
 
