@@ -115,21 +115,111 @@ def make_stub_adapter(out_dir, scenario):
     return path
 
 
-def run_orchestrator(adapter, rework_dispatch, sha, base, issue="82", max_rework=2, extra_args=None):
+def run_orchestrator(adapter, rework_dispatch, sha, base, issue="82", max_rework=2, extra_args=None,
+                     no_github=True, mock_dir=None, env_extra=None):
     env = dict(os.environ)
+    if env_extra:
+        env.update(env_extra)
     env["CODEX_ROUNDTRIP_ADAPTER"] = adapter
-    env["CODEX_ROUNDTRIP_NO_GITHUB"] = "1"
+    # Explicitly control the NO_GITHUB flag so it exactly matches the parameter,
+    # regardless of any inherited CODEX_ROUNDTRIP_NO_GITHUB env var.
+    if no_github:
+        env["CODEX_ROUNDTRIP_NO_GITHUB"] = "1"
+    else:
+        env.pop("CODEX_ROUNDTRIP_NO_GITHUB", None)
+    if mock_dir:
+        env["PATH"] = mock_dir + os.pathsep + env.get("PATH", "")
     bash = shutil.which("bash") or "bash"
     args = [bash, ORCH, "-i", issue, "-c", sha, "-b", base, "--max-rework", str(max_rework)]
     if extra_args:
         args += extra_args
     if rework_dispatch:
         args += ["--rework-dispatch", rework_dispatch]
-    # Ensure 'python' (not python3) resolves on Windows MSYS
     env["PATH"] = env.get("PATH", "")
     proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
                           errors="replace", env=env, cwd=REPO_ROOT)
     return proc
+
+
+def make_gh_mock(out_dir, cfg):
+    """Write a deterministic `gh` shim to out_dir/bin controlling GitHub behavior.
+    Built with plain Python concatenation (no nested-heredoc escaping). Behavior is
+    driven by env vars the python driver sets per test."""
+    bin_dir = os.path.join(out_dir, "bin")
+    os.makedirs(bin_dir, exist_ok=True)
+    sh = os.path.join(bin_dir, "gh")
+    L = []
+    L.append("#!/usr/bin/env bash")
+    L.append('CMD="$1"; shift || true')
+    L.append("""
+case "$CMD" in
+  auth) echo "logged in"; exit 0;;
+  issue)
+    if [ "$1" = "view" ]; then printf '%s' "$GHMOCK_ISSUE_STATE"; exit 0; fi
+    exit 0;;
+  pr)
+    # state,isDraft,headRefOid,baseRefName,headRefName
+    printf '{"state":"%s","isDraft":%s,"headRefOid":"%s","baseRefName":"%s","headRefName":"agent/x"}' \\
+      "$GHMOCK_PR_STATE" "$GHMOCK_PR_DRAFT" "$GHMOCK_PR_HEAD" "$GHMOCK_PR_BASE"
+    exit 0;;
+  project)
+    if [ "$1" = "item-list" ]; then
+      printf '{"items":[{"id":"PVTI_mock","content":{"number":%s}}]}' "$GHMOCK_ISSUE_NUM"; exit 0
+    fi
+    if [ "$1" = "item-edit" ]; then exit 0; fi
+    exit 0;;
+  api)
+    SUB="$1"
+    if [ "$SUB" = "graphql" ]; then
+      # Honor --jq by inspecting the query text: issue-read filters projectItems;
+      # node-read filters node(id). Emit the status the python test configured.
+      if printf '%s ' "$@" | grep -q 'projectItems'; then
+        printf '%s' "$GHMOCK_WF_STATUS"   # issue workflow read (Ready check)
+      else
+        printf '%s' "$GHMOCK_WF_NAME"     # set_item_status read-back (Review/Blocked)
+      fi
+      exit 0
+    fi
+    # issues/N/comments POST or read-back (path ends with /comments)
+    case "$SUB" in *comments)
+      if [[ "$*" == *--jq* ]]; then
+        # read-back path: return the body or empty
+        if [ "$GHMOCK_READBACK" = "empty" ]; then exit 0; fi
+        echo "## Codex review evidence - ROUNDTRIP #$GHMOCK_ISSUE_NUM, round 1"
+        echo "- abc | hash \`abc123\` | size 42"
+        exit 0
+      fi
+      # POST: return numeric comment id
+      printf '{"id":%s}' "$GHMOCK_COMMENT_ID"; exit 0;;
+    esac
+    exit 0;;
+  *) exit 0;;
+esac
+""")
+    with open(sh, "w", encoding="utf-8") as f:
+        f.write("\n".join(L))
+    os.chmod(sh, 0o755)
+    return bin_dir
+
+
+def run_gh_mocked(adapter, out_dir, cfg, sha, base, extra_args=None, issue="82"):
+    """Run the orchestrator against the deterministic gh mock (NO_GITHUB off)."""
+    bin_dir = make_gh_mock(out_dir, cfg)
+    env_extra = {
+        "GHMOCK_ISSUE_STATE": cfg.get("issue_state", "OPEN"),
+        "GHMOCK_WF_STATUS": cfg.get("wf_status", "Ready"),
+        "GHMOCK_PR_STATE": cfg.get("pr_state", "OPEN"),
+        "GHMOCK_PR_DRAFT": cfg.get("pr_draft", "true"),
+        "GHMOCK_PR_HEAD": cfg.get("pr_head", sha),
+        "GHMOCK_PR_BASE": cfg.get("pr_base", base),
+        "GHMOCK_ISSUE_NUM": issue,
+        "GHMOCK_COMMENT_ID": cfg.get("comment_id", "424242"),
+        "GHMOCK_READBACK": cfg.get("readback", "post"),
+        # node-shape status used for set_item_status read-back (Review/Blocked)
+        "GHMOCK_WF_NAME": cfg.get("wf_name", "Review"),
+    }
+    return run_orchestrator(adapter, None, sha, base, issue=issue, no_github=False,
+                            mock_dir=bin_dir, extra_args=extra_args, env_extra=env_extra)
 
 
 def main():
@@ -229,6 +319,59 @@ def main():
         p_g = run_orchestrator(adapter_g, None, sha_a, base)
         check("G unknown verdict: exit 3 (fail-closed)", p_g.returncode == 3, "rc=%d" % p_g.returncode)
 
+        # ===== Codex #82 rework regressions (NO-MODEL) =====
+
+        # R1: issue workflow NOT Ready -> fail-closed (Codex #1/#4)
+        adapter_r1 = make_stub_adapter(out_dir, {"verdict": "GODKAND"})
+        p_r1 = run_gh_mocked(adapter_r1, out_dir, {"wf_status": "Todo"}, sha_a, base)
+        check("R1 issue not Ready: fail-closed (nonzero)", p_r1.returncode != 0, "rc=%d" % p_r1.returncode)
+        check("R1 issue not Ready: refused before dispatch", "not 'Ready'" in (p_r1.stdout+p_r1.stderr), "")
+
+        # R2: PR supplied but NOT draft -> fail-closed (Codex #5)
+        p_r2 = run_gh_mocked(adapter_r1, out_dir, {"pr_draft": "false"}, sha_a, base,
+                             extra_args=["--pr", "5"])
+        check("R2 non-draft PR: fail-closed (nonzero)", p_r2.returncode != 0, "rc=%d" % p_r2.returncode)
+        check("R2 non-draft PR: refused", "not a draft" in (p_r2.stdout+p_r2.stderr), "")
+
+        # R3: PR head != requested commit -> fail-closed (Codex #5)
+        p_r3 = run_gh_mocked(adapter_r1, out_dir, {"pr_head": "f"*40}, sha_a, base,
+                             extra_args=["--pr", "5"])
+        check("R3 wrong PR head: fail-closed (nonzero)", p_r3.returncode != 0, "rc=%d" % p_r3.returncode)
+        check("R3 wrong PR head: refused", "head" in (p_r3.stdout+p_r3.stderr), "")
+
+        # R4: evidence read-back fails -> run must NOT report success (Codex #6/#8)
+        adapter_r4 = make_stub_adapter(out_dir, {"verdict": "GODKAND"})
+        p_r4 = run_gh_mocked(adapter_r4, out_dir, {"readback": "empty"}, sha_a, base)
+        check("R4 evidence read-back fail: not success (rc=5)", p_r4.returncode == 5, "rc=%d" % p_r4.returncode)
+
+        # R5: schema-INVALID envelope -> fail-closed (Codex #7)
+        adapter_r5 = write_schema_invalid_adapter(out_dir)
+        p_r5 = run_orchestrator(adapter_r5, None, sha_a, base)
+        check("R5 schema-invalid envelope: fail-closed (nonzero)", p_r5.returncode != 0, "rc=%d" % p_r5.returncode)
+        check("R5 schema-invalid envelope: reason mentions invalid", "invalid" in (p_r5.stdout+p_r5.stderr).lower(), "")
+
+        # R7: exactly 3 Codex calls for 2 reworks (initial + 2), then ceiling -> blocked/exit 4 (Codex #9)
+        invlog_r7 = os.path.join(out_dir, "inv_r7.log")
+        adapter_r7 = write_kraver_always(out_dir, invlog_r7, name="stub-kraver-r7.sh")  # KRÄVER every call
+        rework_ok = os.path.join(out_dir, "rework-ok.sh")
+        with open(rework_ok, "w", encoding="utf-8") as f:
+            f.write("#!/usr/bin/env bash\nset -euo pipefail\nR=${3:-0}\nprintf 'dddddddddddddddddddddddddddddddddddddddd%02d\\n' \"$((R))\"\n")
+        os.chmod(rework_ok, 0o755)
+        p_r7 = run_orchestrator(adapter_r7, rework_ok, sha_a, base, max_rework=2)
+        calls = sum(1 for _ in open(invlog_r7)) if os.path.exists(invlog_r7) else 0
+        check("R7 2 reworks => exactly 3 Codex calls", calls == 3, "calls=%d rc=%d" % (calls, p_r7.returncode))
+        check("R7 ceiling -> blocked/exit 4", p_r7.returncode == 4, "rc=%d" % p_r7.returncode)
+
+        # R8: Builder dispatch that does NOT deliver a 40-hex PR-head -> fail-closed (Codex #10)
+        rework_bad = os.path.join(out_dir, "rework-bad.sh")
+        with open(rework_bad, "w", encoding="utf-8") as f:
+            f.write("#!/usr/bin/env bash\nset -euo pipefail\necho 'not-a-sha'\n")
+        os.chmod(rework_bad, 0o755)
+        adapter_r8 = write_kraver_always(out_dir, "", name="stub-kraver-r8.sh")
+        p_r8 = run_orchestrator(adapter_r8, rework_bad, sha_a, base, max_rework=2)
+        check("R8 builder-no-pushed-head: fail-closed (nonzero)", p_r8.returncode != 0, "rc=%d" % p_r8.returncode)
+        check("R8 builder-no-pushed-head: refused", "did not deliver" in (p_r8.stdout+p_r8.stderr), "")
+
     if verbose:
         for c in CHECKS:
             print(c)
@@ -273,6 +416,58 @@ def write_stub_b(out_dir, invlog):
         'echo "REVIEW_ENVELOPE_JSON"\n'
         "cat <<'ENVEOF'\n" + envelope_b() + "\nENVEOF\n"
         'echo "CODEX_REVIEW_DONE run_id=1 commit=\\"$SHA\\" verdict=$v cost=unknown"\n'
+        "exit 0\n"
+    )
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(body)
+    os.chmod(path, 0o755)
+    return path
+
+
+def write_schema_invalid_adapter(out_dir):
+    """Adapter whose envelope misses a REQUIRED field (cost) -> schema-invalid."""
+    path = os.path.join(out_dir, "stub-schema-invalid.sh")
+    env = json.dumps({
+        "issue_id": "commit x",
+        "run_id": "33333333-4444-4333-8444-555555555555",
+        "status": "succeeded",
+        "runtime": "stub",
+        "worker_role": "codex-reviewer",
+        "started_at": "2026-08-09T00:00:00Z",
+        "finished_at": "2026-08-09T00:00:01Z",
+        "model": "gpt-5.6-sol",
+        "usage": {"output_tokens": 512},
+        # NOTE: 'cost' deliberately omitted -> schema-invalid
+        "artifacts": [{"ref": "a", "hash": "x", "size": 1}],
+        "evidence": ["stub"],
+    })
+    body = (
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'SHA="${1:-}"\n'
+        'echo "REVIEW_ENVELOPE_JSON"\n'
+        "cat <<'ENVEOF'\n" + env + "\nENVEOF\n"
+        'echo "CODEX_REVIEW_DONE run_id=1 commit=\\"$SHA\\" verdict=GODKÄND cost=unknown"\n'
+        "exit 0\n"
+    )
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(body)
+    os.chmod(path, 0o755)
+    return path
+
+
+def write_kraver_always(out_dir, invlog, name="stub-kraver.sh"):
+    """Adapter that always returns KRÄVER ÄNDRINGAR (for ceiling/count tests)."""
+    path = os.path.join(out_dir, name)
+    body = (
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'SHA="${1:-}"\n'
+    )
+    if invlog:
+        body += 'echo "$(date +%s)" >> "' + invlog + '"\n'
+    body += (
+        'echo "REVIEW_ENVELOPE_JSON"\n'
+        "cat <<'ENVEOF'\n" + envelope_b() + "\nENVEOF\n"
+        'echo "CODEX_REVIEW_DONE run_id=1 commit=\\"$SHA\\" verdict=KRÄVER ÄNDRINGAR cost=unknown"\n'
         "exit 0\n"
     )
     with open(path, "w", encoding="utf-8") as f:
