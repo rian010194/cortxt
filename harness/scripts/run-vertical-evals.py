@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 import jsonschema
@@ -80,17 +81,26 @@ def json_pointer_get(doc, pointer: str):
     return cur
 
 
+def _as_frac(x):
+    """Exact rational value of a JSON number (int or float).
+
+    int -> Fraction(n, 1); float -> Fraction.from_float (exact binary value),
+    so cross-type numeric equality NEVER loses integer precision. #45.
+    """
+    return Fraction(x) if isinstance(x, int) else Fraction.from_float(x)
+
+
 def json_eq(a, b):
     """JSON-semantic equality.
 
     Booleans are NOT numbers in JSON (True != 1); numbers compare numerically
-    (1 == 1.0); containers recurse. Fixes #45 (Python-like True==1 / bool
-    accepted as integer in assertions).
+    and exactly via Fraction, so 1 == 1.0 but large ints never falsely collide
+    (9007199254740993 != 9007199254740992.0); containers recurse. #45.
     """
     if isinstance(a, bool) or isinstance(b, bool):
         return isinstance(a, bool) and isinstance(b, bool) and a is b
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
-        return float(a) == float(b)
+        return _as_frac(a) == _as_frac(b)
     if isinstance(a, list) and isinstance(b, list):
         return len(a) == len(b) and all(json_eq(x, y) for x, y in zip(a, b))
     if isinstance(a, dict) and isinstance(b, dict):
