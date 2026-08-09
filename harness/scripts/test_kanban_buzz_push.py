@@ -59,10 +59,15 @@ def state_bytes():
 
 
 def run(extra_args, push_return=True):
-    """Call main(''[...]) with push_status stubbed (no network)."""
-    kbp.push_status = lambda content, dry_run=False: push_return
+    """Call main() with push_status stubbed (no network). Records calls."""
+    calls = []
+    def fake_push(content, dry_run=False):
+        calls.append((content, dry_run))
+        return push_return
+    kbp.push_status = fake_push
     argv = ["prog"] + extra_args
-    return kbp.main(argv)
+    rc = kbp.main(argv)
+    return rc, calls
 
 
 fails = []
@@ -79,7 +84,7 @@ make_db(db1, [("t1", "done"), ("t2", "pending")])
 os.makedirs(Path(kbp.STATE_FILE).parent, exist_ok=True)
 Path(kbp.STATE_FILE).write_text(json.dumps({"t2": "pending"}))
 before = state_bytes()
-rc = run(["--dry-run"])
+rc, _calls = run(["--dry-run"])
 out_before = before
 after = state_bytes()
 check("rc=0", rc == 0, f"rc={rc}")
@@ -87,23 +92,37 @@ check("state file unchanged by --dry-run", after == before,
       f"before={before!r} after={after!r}")
 
 print("== test 2: later real run not suppressed by earlier --dry-run ==")
-# Run --dry-run again (sees t1 as NEW -- must NOT be persisted), then a REAL run.
-rc = run(["--dry-run"])
-mid = state_bytes()
-check("dry-run still leaves state unchanged", mid == out_before)
-rc_real = run([])   # real mode, stubbed push returns True
-real_after = json.loads(state_bytes() or "{}")
-check("real run persists state (rc=0)", rc_real == 0, f"rc={rc_real}")
-# t1 was NEW and must now be present + advanced to 'done' (not suppressed)
-check("real run advanced t1 (not suppressed by prior dry-run)",
-      real_after.get("t1") == "done", repr(real_after))
+# Scenario: an EXISTING task x1 in state with old status 'in_progress', but the
+# DB now says 'done'. A --dry-run must detect the change but NOT persist it;
+# a following REAL run must then detect the same change and actually push.
+make_db(db1, [("x1", "done")])                      # status changed since basel
+Path(kbp.STATE_FILE).write_text(json.dumps({"x1": "in_progress"}))  # old persisted
+dry_before = state_bytes()
+rc, calls_dry = run(["--dry-run"])
+check("dry-run rc=0", rc == 0, f"rc={rc}")
+# dry-run detects the change (would push, dry_run=True) but must NOT persist
+check("dry-run saw the change (would push)", any(c[1] for c in calls_dry),
+      repr(calls_dry))
+check("state still old status after dry-run",
+      json.loads(state_bytes() or "{}").get("x1") == "in_progress",
+      repr(json.loads(state_bytes() or "{}")))
+
+rc, calls_real = run([])   # real run after the dry-run
+check("real run rc=0", rc == 0, f"rc={rc}")
+# The real run must ACTUALLY push (real push call recorded, not dry-run) ...
+check("real run actually pushed x1", any(not c[1] and "x1" in c[0] for c in calls_real),
+      repr(calls_real))
+# ... and only THEn persist the new status.
+check("real run persisted advanced x1",
+      json.loads(state_bytes() or "{}").get("x1") == "done",
+      repr(json.loads(state_bytes() or "{}")))
 
 print("== test 3: normal non-dry-run behaviour unchanged ==")
 # fresh DB: t3 pending, then change t3 to done, run real -> state advances
 db3 = kbp.KANBAN_DB
 make_db(db3, [("t3", "done")])
 Path(kbp.STATE_FILE).write_text(json.dumps({"t3": "pending"}))
-rc = run([])
+rc, _calls3 = run([])
 after3 = json.loads(state_bytes())
 check("real run advanced t3 done", rc == 0 and after3.get("t3") == "done",
       repr(after3))
