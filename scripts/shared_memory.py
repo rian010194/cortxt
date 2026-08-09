@@ -34,7 +34,7 @@ class SharedMemory:
             
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS memory (
-                    key TEXT PRIMARY KEY,
+                    key TEXT NOT NULL,
                     value TEXT NOT NULL,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
@@ -42,7 +42,8 @@ class SharedMemory:
                     owner_agent TEXT NOT NULL,
                     run_id TEXT NOT NULL,
                     trace_id TEXT,
-                    version INTEGER DEFAULT 1
+                    version INTEGER DEFAULT 1,
+                    PRIMARY KEY (run_id, key)
                 )
             """)
             
@@ -50,13 +51,16 @@ class SharedMemory:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_expires ON memory(expires_at)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_owner ON memory(owner_agent)")
             
-            # Locks table for distributed locking
+            # Locks table for distributed locking — scoped per run_id so a lock
+            # in one run never leaks/contends with another (#50).
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS locks (
-                    key TEXT PRIMARY KEY,
+                    key TEXT NOT NULL,
                     owner_agent TEXT NOT NULL,
                     acquired_at INTEGER NOT NULL,
-                    expires_at INTEGER NOT NULL
+                    expires_at INTEGER NOT NULL,
+                    run_id TEXT NOT NULL,
+                    PRIMARY KEY (run_id, key)
                 )
             """)
             
@@ -83,17 +87,19 @@ class SharedMemory:
         
         with self.lock:
             with self._connect() as conn:
-                # UPSERT with optimistic locking
+                # UPSERT scoped to (run_id, key); version correctly bumps on
+                # re-set (the old `WHERE memory.version = excluded.version - 1`
+                # never matched because excluded.version is always the INSERT
+                # literal 1 => an existing row's set() always returned False, #50).
                 cursor = conn.execute("""
                     INSERT INTO memory (key, value, created_at, updated_at, expires_at, owner_agent, run_id, version)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-                    ON CONFLICT(key) DO UPDATE SET
+                    ON CONFLICT(run_id, key) DO UPDATE SET
                         value = excluded.value,
                         updated_at = excluded.updated_at,
                         expires_at = excluded.expires_at,
                         owner_agent = excluded.owner_agent,
                         version = memory.version + 1
-                    WHERE memory.version = excluded.version - 1
                 """, (key, value_json, now, now, expires_at, owner_agent, self.run_id))
                 
                 success = cursor.rowcount > 0
@@ -169,31 +175,31 @@ class SharedMemory:
             return [dict(row) for row in rows]
     
     def acquire_lock(self, key: str, owner_agent: str, ttl_ms: int = 5000) -> bool:
-        """Acquire a distributed lock."""
+        """Acquire a distributed lock, scoped to this run (#50)."""
         now = self._now_ms()
         expires_at = now + ttl_ms
         
         with self._connect() as conn:
-            # Try to insert lock (fails if exists and not expired)
+            # Try to insert lock (fails if exists and not expired); run-scoped.
             cursor = conn.execute("""
-                INSERT INTO locks (key, owner_agent, acquired_at, expires_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET
+                INSERT INTO locks (key, owner_agent, acquired_at, expires_at, run_id)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(run_id, key) DO UPDATE SET
                     owner_agent = excluded.owner_agent,
                     acquired_at = excluded.acquired_at,
                     expires_at = excluded.expires_at
                 WHERE locks.expires_at < excluded.acquired_at
-            """, (key, owner_agent, now, expires_at))
+            """, (key, owner_agent, now, expires_at, self.run_id))
             
             conn.commit()
             return cursor.rowcount > 0
     
     def release_lock(self, key: str, owner_agent: str) -> bool:
-        """Release a distributed lock."""
+        """Release a lock owned by this agent in this run (#50)."""
         with self._connect() as conn:
             cursor = conn.execute("""
-                DELETE FROM locks WHERE key = ? AND owner_agent = ?
-            """, (key, owner_agent))
+                DELETE FROM locks WHERE key = ? AND owner_agent = ? AND run_id = ?
+            """, (key, owner_agent, self.run_id))
             conn.commit()
             return cursor.rowcount > 0
     
