@@ -55,6 +55,7 @@ SHA=""
 BASE=""
 REWORK_BRANCH=""   # the draft-PR head branch; set from -b/PR head, NOT the diff base
 REWORK_BASE_BRANCH=""  # expected PR base BRANCH name (Codex-item1); compared vs PR baseRefName
+BUILDER_PUSH_BRANCH="" # PR's verified headRefName; the ONLY branch the builder may push to (Codex-item3)
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Adapter path overrideable for deterministic NO-MODEL verification (a stub that
 # emits the same envelope contract without calling a model). Default: merged adapter.
@@ -70,7 +71,7 @@ fi
 OUTPUT_CAP_TOKENS="$ENV_CAP"
 WF_FIELD="PVTSSF_lAHOBcHJy84BfFfWzhZa88A"
 PROJECT_ID="PVT_kwHOBcHJy84BfFfW"
-OPT_REVIEW="4bfdd926"; OPT_BLOCKED="20948c2f"
+OPT_INPROGRESS="89a2da8a"; OPT_REVIEW="4bfdd926"; OPT_BLOCKED="20948c2f"
 ENV_SCHEMA="$SELF_DIR/../../contracts/result-envelope.schema.json"
 
 log(){ echo "[roundtrip] $*" >&2; }
@@ -155,9 +156,14 @@ if [ -n "$PR_NUM" ] && [ -z "$NO_GITHUB" ]; then
   # #82/Codex-item1: the PR base BRANCH NAME is compared against the expected branch, and MUST
   # NOT be conflated with the diff base SHA (`DIFF_BASE_SHA` is what the adapter is fed).
   REWORK_BRANCH="${REWORK_BRANCH:-$PR_HEAD_BRANCH}"
-  if [ -n "$REWORK_BASE_BRANCH" ]; then
-    [ "$PR_BASE_BRANCH" = "$REWORK_BASE_BRANCH" ] || die "PR $PR_NUM base branch ($PR_BASE_BRANCH) != expected ($REWORK_BASE_BRANCH) -> fail-closed"
-  fi
+  # Codex-item2: when --pr is used, the expected base branch MUST be supplied (flag or trusted
+  # config) — the baseRefName check may never be silently skipped.
+  REWORK_BASE_BRANCH="${REWORK_BASE_BRANCH:-${CODEX_ROUNDTRIP_BASE_BRANCH:-}}"
+  [ -n "$REWORK_BASE_BRANCH" ] || die "--pr requires --base-branch (or trusted CODEX_ROUNDTRIP_BASE_BRANCH); baseRefName check cannot be skipped -> fail-closed"
+  [ "$PR_BASE_BRANCH" = "$REWORK_BASE_BRANCH" ] || die "PR $PR_NUM base branch ($PR_BASE_BRANCH) != expected ($REWORK_BASE_BRANCH) -> fail-closed"
+  # Codex-item3: the PR's VERIFIED headRefName is the ONLY builder push target; the builder must
+  # never infer the push branch from an arbitrary current checkout.
+  BUILDER_PUSH_BRANCH="$PR_HEAD_BRANCH"
   PR_DRAFT_RAW="$(echo "$PR_JSON" | python -c "import sys,json;print(json.load(sys.stdin)['isDraft'])")"
   # json 'true'/'false' -> python True/False -> normalize to lowercase for bash compare
   PR_DRAFT="$(printf '%s' "$PR_DRAFT_RAW" | tr '[:upper:]' '[:lower:]')"
@@ -167,6 +173,11 @@ if [ -n "$PR_NUM" ] && [ -z "$NO_GITHUB" ]; then
   [ "$PR_HEAD" = "$SHA" ] || die "PR $PR_NUM head ($PR_HEAD) != requested commit ($SHA) -> fail-closed"
   log "PR #$PR_NUM verified: OPEN, draft, head=$PR_HEAD base_branch=${PR_BASE_BRANCH:-n/a}"
 fi
+# Codex-item3: when no PR is used, the builder push branch falls back to the work branch
+# (REWORK_BRANCH or current branch). When a PR IS used, BUILDER_PUSH_BRANCH is the verified
+# headRefName set above — never inferred from an arbitrary checkout.
+REWORK_BRANCH="${REWORK_BRANCH:-$(git branch --show-current 2>/dev/null || true)}"
+BUILDER_PUSH_BRANCH="${BUILDER_PUSH_BRANCH:-$REWORK_BRANCH}"
 
 # --- ROUND function: run exactly ONE Codex review via the merged adapter ---
 # Always emits a uniform JSON: {status, verdict, reason?, cost_conf, output_tokens?}
@@ -312,8 +323,9 @@ set_item_status(){
   id="$(get_item_id)" || return 1
   [ -n "$id" ] || { log "set_item_status: item id not found for #$ISSUE"; return 1; }
   case "$want" in
-    blocked) want_opt="$OPT_BLOCKED";;
-    review)  want_opt="$OPT_REVIEW";;
+    blocked)     want_opt="$OPT_BLOCKED";;
+    review)      want_opt="$OPT_REVIEW";;
+    in_progress) want_opt="$OPT_INPROGRESS";;
     *) log "set_item_status: unknown status $want"; return 1;;
   esac
   gh project item-edit --id "$id" --project-id "$PROJECT_ID" \
@@ -330,13 +342,21 @@ query { node(id: \"$id\") {
 }}" --jq '.data.node.fieldValueByName.name' 2>/dev/null || true)"
   # map option back to desired label
   local want_label
-  want_label="Blocked"; [ "$want" = "review" ] && want_label="Review"
+  case "$want" in
+    blocked) want_label="Blocked";;
+    review)  want_label="Review";;
+    in_progress) want_label="In progress";;
+  esac
   if [ "$got" != "$want_label" ]; then
     log "set_item_status read-back mismatch: want=$want_label got=$got"
     return 1
   fi
   log "project #$ISSUE workflow -> $want_label (verified)"
   return 0
+}
+start_item(){
+  [ -n "$NO_GITHUB" ] && { log "NO_GITHUB: skip In-progress claim"; return 0; }
+  set_item_status "in_progress"
 }
 
 block_item(){
@@ -441,6 +461,14 @@ PY
 # --- main round-trip loop ---
 # #82/#9: rework ceiling = max 3 Codex adapter CALLS total (initial review + 2 reworks).
 echo "ROUNDTRIP_BEGIN repo=$REPO issue=$ISSUE commit=$SHA base=$BASE max_calls=$MAX_ADAPTER_CALLS dr=$([ -n "$DRYRUN" ] && echo yes || echo no)"
+# Codex-item6: valid claim -> Ready -> In progress (fail-closed + read-back verified).
+if [ -z "$DRYRUN" ]; then
+  if ! start_item; then
+    log "TERMINAL fail-closed: Ready->In progress claim failed"
+    echo "ROUNDTRIP_END {\"status\":\"failed\",\"reason\":\"claim transition failed\"}"
+    exit 5
+  fi
+fi
 FINAL_RESULT=""
 CALLS=0
 while :; do
@@ -514,9 +542,11 @@ while :; do
     fi
     # #82/#5: capture pre-builder HEAD; post-builder must be a NEW pushed commit == PR's new remote head.
     PRE_HEAD="$(git rev-parse HEAD)"
-    # #82/#1: argument contract = (owner/repo#issue, round) — identical to the Builder adapter.
+    # #82/#1+#3: argument contract = (owner/repo#issue, round, PR-head-branch) — identical to the
+    # Builder adapter; the push target is the PR's verified headRefName, never inferred.
     DISPATCH_ISSUE="${REPO}#${ISSUE}"
-    BUILD_OUT="$(set +e; "$REWORK_DISPATCH" "$DISPATCH_ISSUE" "$CALLS"; echo "RC=$?")"
+    [ -n "$BUILDER_PUSH_BRANCH" ] || die "BUILDER_PUSH_BRANCH empty (PR headRefName not verified) -> fail-closed"
+    BUILD_OUT="$(set +e; "$REWORK_DISPATCH" "$DISPATCH_ISSUE" "$CALLS" "$BUILDER_PUSH_BRANCH"; echo "RC=$?")"
     BUILD_RC="$(printf '%s' "$BUILD_OUT" | grep -oE 'RC=[0-9]+$' | head -1 | cut -d= -f2 || true)"
     # extract the 40-hex SHA from the BUILDER_DISPATCH_DONE ... head=<sha> line (#82/#5)
     NEW_SHA="$(printf '%s' "$BUILD_OUT" | grep -oE 'head=[0-9a-f]{40}' | head -1 | cut -d= -f2 || true)"
@@ -524,14 +554,20 @@ while :; do
       die "Builder dispatch did not deliver a pushed 40-hex PR-head (rc=${BUILD_RC:-?}) -> fail-closed"
     fi
     [ "$NEW_SHA" != "$PRE_HEAD" ] || die "Builder produced no NEW commit (head unchanged) -> fail-closed"
-    # Must be on the right branch and pushed == the branch's new remote head.
+    # Codex-item3/4: the builder pushed to the PR's VERIFIED headRefName (BUILDER_PUSH_BRANCH).
+    # After the (isolated) worktree push, verify NEW_SHA == remote branch == GitHub PR head
+    # WITHOUT requiring the shared local branch to move (it stays untouched).
     if [ -z "$NO_GITHUB" ]; then
-      git fetch origin "$REWORK_BRANCH" 2>/dev/null || true
-      local_br="$(git rev-parse --verify "$REWORK_BRANCH" 2>/dev/null || true)"
-      remote_br="$(git rev-parse --verify "origin/$REWORK_BRANCH" 2>/dev/null || true)"
-      if [ "$NEW_SHA" != "$remote_br" ] || [ "$remote_br" != "$local_br" ]; then
-        die "new head $NEW_SHA != origin/$REWORK_BRANCH ($remote_br) / local ($local_br) -> fail-closed"
+      [ -n "$BUILDER_PUSH_BRANCH" ] || die "BUILDER_PUSH_BRANCH empty (PR headRefName not verified) -> fail-closed"
+      git fetch origin "$BUILDER_PUSH_BRANCH" 2>/dev/null || true
+      remote_br="$(git rev-parse --verify "origin/$BUILDER_PUSH_BRANCH" 2>/dev/null || true)"
+      pr_head_now="$(gh pr view "$PR_NUM" -R "$REPO" --json headRefOid -q .headRefOid 2>/dev/null || true)"
+      if [ "$NEW_SHA" != "$remote_br" ] || [ "$remote_br" != "$pr_head_now" ]; then
+        die "new head $NEW_SHA != origin/$BUILDER_PUSH_BRANCH ($remote_br) != GitHub PR head ($pr_head_now) -> fail-closed"
       fi
+      # the shared local branch must remain at PRE_HEAD (untouched by the isolated push)
+      shared_local="$(git rev-parse --verify HEAD)"
+      [ "$shared_local" = "$PRE_HEAD" ] || die "shared local branch moved unexpectedly ($shared_local != $PRE_HEAD) -> fail-closed"
     fi
     SHA="$NEW_SHA"
     continue
