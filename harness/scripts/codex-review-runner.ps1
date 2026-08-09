@@ -22,8 +22,13 @@
 # spawn, 0 tokens, empty files ("helper exits after a second"). Here the deadline
 # is a real [int] parameter defaulting to 540.
 #
-# Exit code: 0 if the child was killed by timeout (the review did not finish),
-# else the child's exit code. The verdict lives in <LastMessageOut>.
+# Exit code contract (2026-08-09 security rework, #70):
+#   0                  child finished and exited 0 (success path for a real review
+#                      = an actual model verdict, validated by the adapter)
+#   <child exit code>  child finished with that exit code
+#   124                child was KILLED by the process-tree timeout (distinct so
+#                      the adapter maps this to envelope status "timed_out", never
+#                      "succeeded"/"failed"). The verdict lives in <LastMessageOut>.
 param(
     [Parameter(Mandatory=$true)][string]$CodexPath,
     [Parameter(Mandatory=$true)][string]$PromptFile,
@@ -64,11 +69,39 @@ if ($exe.EndsWith('.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
     $argv = $argsList
 }
 
-$sw = [System.Diagnostics.Stopwatch]::StartNew()
-$p = Start-Process -FilePath $exe -ArgumentList $argv -PassThru `
-        -RedirectStandardInput $PromptFile -RedirectStandardOutput $StdoutJson `
-        -RedirectStandardError $StderrLog -WindowStyle Hidden
+# Spawn via System.Diagnostics.Process (not Start-Process): the Start-Process
+# cmdlet returns a NULL ExitCode whenever standard streams are redirected to
+# files (verified 2026-08-09), which made the exit code unreliable and could
+# turn a nonzero child into a false "0". .NET Process reads ExitCode correctly
+# with redirection, and supports the same pass-through PID for taskkill /T.
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = $exe
+$psi.Arguments = ($argv -join ' ')
+$psi.UseShellExecute = $false
+$psi.RedirectStandardInput = $true
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
+$psi.CreateNoWindow = $true
+$p = New-Object System.Diagnostics.Process
+$p.StartInfo = $psi
+$null = $p.Start()
 
+# Feed the review brief (the embedded diff) to Codex stdin, then drain stdout
+# and stderr to the run files asynchronously so a chatty model never deadlocks.
+try { $p.StandardInput.AutoFlush = $true; } catch {}
+try {
+    $promptLines = [System.IO.File]::ReadAllLines($PromptFile)
+} catch { $promptLines = @() }
+if ($promptLines.Count -gt 0) {
+    $p.StandardInput.Write(($promptLines -join "`n"))
+}
+$p.StandardInput.Close()
+$outWriter = [System.IO.StreamWriter]::new($StdoutJson, $false, (New-Object System.Text.UTF8Encoding($false)))
+$errWriter = [System.IO.StreamWriter]::new($StderrLog, $false, (New-Object System.Text.UTF8Encoding($false)))
+$outTask  = $p.StandardOutput.BaseStream.CopyToAsync($outWriter.BaseStream)
+$errTask  = $p.StandardError.BaseStream.CopyToAsync($errWriter.BaseStream)
+
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
 $timedOut = $false
 while (-not $p.HasExited) {
     if ($sw.Elapsed.TotalSeconds -ge $MaxSec) {
@@ -85,9 +118,19 @@ while (-not $p.HasExited) {
     Start-Sleep -Milliseconds 400
 }
 if (-not $p.HasExited) { $p.WaitForExit() }
-$p.Refresh() 2>$null
+$p.WaitForExit()   # flush; ensures ExitCode + async copies settle
+$outTask.Wait(1000) | Out-Null; $errTask.Wait(1000) | Out-Null
+$outWriter.Dispose(); $errWriter.Dispose()
+
 $code = $null
-try { $code = $p.ExitCode } catch { $code = $null }
+try {
+    $code = $p.ExitCode
+    if ($null -eq $code -or [string]::IsNullOrEmpty("$code")) {
+        $code = 1   # exit code unknown => nonsuccess (fail-closed)
+    }
+} catch {
+    $code = 1
+}
 
 # treeGone determination, race-free: a just-exited PID can still be listed by
 # Get-Process briefly, so pause and re-check twice before concluding the tree is
@@ -103,5 +146,5 @@ $treeGone = -not $stillPresent
 Write-Output ("[run] pid={0} exit={1} secs={2} timeout={3} treeGone={4}" -f `
               $p.Id, $code, [int]$sw.Elapsed.TotalSeconds, $timedOut, $treeGone)
 
-if ($timedOut) { exit 0 }
+if ($timedOut) { exit 124 }   # distinct: envelope status -> timed_out (never succeeded)
 exit $code
