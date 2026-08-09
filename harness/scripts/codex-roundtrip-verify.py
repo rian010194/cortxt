@@ -393,6 +393,12 @@ def main():
         check("R8 builder-no-pushed-head: fail-closed (nonzero)", p_r8.returncode != 0, "rc=%d" % p_r8.returncode)
         check("R8 builder-no-pushed-head: refused", "did not deliver" in (p_r8.stdout+p_r8.stderr), "")
 
+        # R9: --max-rework validation (#82/#9): invalid value must fail-closed BEFORE dispatch.
+        adapter_r9 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
+        p_r9 = run_orchestrator(adapter_r9, None, sha_a, base, max_rework=0)  # 0 -> invalid
+        check("R9 --max-rework=0: fail-closed (nonzero)", p_r9.returncode != 0, "rc=%d" % p_r9.returncode)
+        check("R9 --max-rework=0: refused", "max-rework" in (p_r9.stdout+p_r9.stderr).lower(), "")
+
     if verbose:
         for c in CHECKS:
             print(c)
