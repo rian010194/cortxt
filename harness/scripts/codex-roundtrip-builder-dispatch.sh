@@ -23,11 +23,13 @@
 # Contract: docs/architecture/dispatch-contract.md ; docs/operations/manual-dispatch-routine.md
 set -euo pipefail
 
-REPO_ARG="${1:-}"; ROUND="${2:-1}"; DRYRUN=""
+REPO_ARG="${1:-}"; ROUND="${2:-1}"; PUSH_BRANCH="${3:-}"; DRYRUN=""
 case " $* " in *" --dry-run "*) DRYRUN=1;; esac
-[ -n "$REPO_ARG" ] || { echo "usage: codex-roundtrip-builder-dispatch.sh <owner/repo#issue> [round] [--dry-run]" >&2; exit 2; }
+[ -n "$REPO_ARG" ] || { echo "usage: codex-roundtrip-builder-dispatch.sh <owner/repo#issue> [round] <PR-head-branch> [--dry-run]" >&2; exit 2; }
 REPO="${REPO_ARG%%#*}"; ISSUE="${REPO_ARG##*#}"
-BRANCH="$(git branch --show-current)" || BRANCH="agent/roundtrip-82-codex-orchestrator"
+# Codex-item3: the PR's verified headBranch is the ONLY push target; never infer from current checkout.
+[ -n "$PUSH_BRANCH" ] || { echo "ABORT: PR head branch (push target) not supplied -> fail-closed (Codex-item3)" >&2; exit 1; }
+BRANCH="$PUSH_BRANCH"
 
 # --- InferX model (operator decision 2026-08-09); NO fallback ---
 INFERX_BASE_URL="${INFERX_BASE_URL:-https://model.inferx.net/endpoints/v1}"
@@ -58,13 +60,33 @@ STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 model_cost_status="unknown"
 WORK_RC=0
 
-# #82/#2: enforce the 12,000-token output cap in the ACTUAL InferX request, not a dormant var.
-# The InferX provider config in the builder profile must carry an explicit max_tokens <= 12000;
-# fail-closed (do NOT run) if the runtime/profile does not expose an explicit cap.
-CAP_KV="$(grep -iE '^\s*max_(output_)?tokens\s*:' "$PROFILE_DIR/config.yaml" 2>/dev/null | tail -1 | tr -d ' \t' | tr '[:upper:]' '[:lower:]' || true)"
-CAP_VAL="${CAP_KV##*:}"
+# #82/#5 (Codex): hard-cap the builder output to 1..12000 tokens. An env var may only LOWER it,
+# never raise it. Enforce BEFORE considering any model run.
+OUTPUT_CAP_ENV="${CODEX_ROUNDTRIP_OUTPUT_CAP:-12000}"
+[[ "$OUTPUT_CAP_ENV" =~ ^[0-9]+$ ]] && [ "$OUTPUT_CAP_ENV" -ge 1 ] || { echo "ABORT: bad CODEX_ROUNDTRIP_OUTPUT_CAP '$OUTPUT_CAP_ENV'" >&2; exit 1; }
+if [ "$OUTPUT_CAP_ENV" -gt 12000 ]; then
+  echo "FAIL-CLOSED: builder output cap $OUTPUT_CAP_ENV exceeds hard cap 12000 (env may never raise it)" >&2; exit 1
+fi
+OUTPUT_CAP="$OUTPUT_CAP_ENV"
+
+# #82/#2+#5: enforce the cap in the ACTUAL InferX request. The cap must be found in the SPECIFIC
+# inferx provider section of the builder profile config (not the last max_tokens anywhere in the file).
+INFERX_SECTION="$(python - <<'PY' 2>/dev/null || true
+import yaml, os, sys
+p=os.path.expandvars(r"%LOCALAPPDATA%\hermes\profiles\builder\config.yaml")
+try:
+    d=yaml.safe_load(open(p,encoding="utf-8"))
+    for c in (d or {}).get("custom_providers",[]) or []:
+        if c.get("name")=="inferx":
+            print(str(c.get("max_tokens","")))
+            break
+except Exception as e:
+    pass
+PY
+)"
+CAP_VAL="$INFERX_SECTION"
 if [ -z "$CAP_VAL" ] || [ "$CAP_VAL" -lt 1 ] || [ "$CAP_VAL" -gt "$OUTPUT_CAP" ]; then
-  echo "ABORT: no explicit max_tokens <= $OUTPUT_CAP configured in builder profile InferX provider (got '${CAP_VAL:-<none>}') -> fail-closed BEFORE model run" >&2
+  echo "ABORT: inferx provider max_tokens not <= $OUTPUT_CAP in builder profile (got '${CAP_VAL:-<none>}') -> fail-closed BEFORE model run" >&2
   exit 1
 fi
 
