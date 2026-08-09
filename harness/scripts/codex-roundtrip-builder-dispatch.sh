@@ -68,15 +68,34 @@ if [ -z "$CAP_VAL" ] || [ "$CAP_VAL" -lt 1 ] || [ "$CAP_VAL" -gt "$OUTPUT_CAP" ]
   exit 1
 fi
 
+# --- isolation + scope (Codex-items 3 & 4): explicit worktree + file allowlist ---
+# The builder may only change these files; anything else (incl. pre-existing dirty state)
+# or an unexpected change fails closed. Run happens in a THROWAWAY WORKTREE so the shared
+# working tree / branch history is never mutated by the worker.
+ALLOWED_FILES=(
+  "harness/scripts/codex-roundtrip.sh"
+  "harness/scripts/codex-roundtrip-verify.py"
+  "harness/scripts/codex-roundtrip-builder-dispatch.sh"
+)
+PRE_HEAD="$(git rev-parse HEAD)"
+# fail-closed if the shared working tree is dirty (existing/untracked changes) before dispatch
+if [ -n "$(git status --porcelain)" ]; then
+  echo "ABORT: shared working tree is not clean before builder dispatch (fail-closed, Codex-item3)" >&2
+  exit 1
+fi
+# create a throwaway worktree at the current HEAD for the builder to edit
+WT_DIR="$(mktemp -d)/wt"
+git worktree add "$WT_DIR" "$PRE_HEAD" >/tmp/roundtrip-wt.log 2>&1 || {
+  echo "ABORT: could not create clean worktree: $(tail -2 /tmp/roundtrip-wt.log)" >&2; exit 1; }
+cleanup(){ git worktree remove --force "$WT_DIR" 2>/dev/null || true; git worktree prune 2>/dev/null || true; }
+trap cleanup EXIT
+
 # --- run the Hermes builder worker on InferX (paid); cap enforced at the API request ---
-# Invoke the builder with the explicit InferX provider + model (never the profile's
-# free OpenRouter default; no silent fallback). Provider `inferx` is defined in the
-# builder profile's custom_providers (base_url https://model.inferx.net/endpoints/v1),
-# and now carries the explicit max_tokens cap verified above.
+# Working directory = the isolated worktree; the builder is told it may only edit allowlisted files.
 set +e
-BUILD_OUT="$(INFERX_API_KEY="$INFERX_API_KEY" \
+( cd "$WT_DIR" && INFERX_API_KEY="$INFERX_API_KEY" \
   timeout "$MAX_RUNTIME" hermes -p "$PROFILE" --provider inferx -m "$INFERX_MODEL" \
-    -z "$REWORK_PROMPT" 2>/tmp/roundtrip-builder.err)"
+    -z "$REWORK_PROMPT" ) >/tmp/roundtrip-builder.out 2>/tmp/roundtrip-builder.err
 WORK_RC=$?
 set -e
 
@@ -88,16 +107,35 @@ if [ $WORK_RC -ne 0 ]; then
   exit 1
 fi
 
-# --- the builder must have committed the rework; obtain the NEW head ---
-NEW_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
-if [ -z "$NEW_SHA" ] || ! [[ "$NEW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "BUILDER_DISPATCH_FAILED: no valid HEAD commit after builder run (fail-closed)"
+# --- Codex-item3: verify ONLY allowlisted files changed (fail-closed on foreign changes) ---
+CHANGED="$(git -C "$WT_DIR" status --porcelain | awk '{print $2}')"
+UNEXPECTED="$(comm -23 <(printf '%s\n' "$CHANGED" | sort -u) <(printf '%s\n' "${ALLOWED_FILES[@]}" | sort -u))"
+if [ -n "$UNEXPECTED" ]; then
+  echo "ABORT: builder changed unexpected files (fail-closed, Codex-item3): $UNEXPECTED" >&2
   exit 1
 fi
+[ -n "$CHANGED" ] || { echo "ABORT: builder made NO changes (fail-closed, Codex-item4)" >&2; exit 1; }
 
-# --- push the branch (control plane does the push, worker never does) ---
-if ! git push -u origin "$BRANCH" >/tmp/roundtrip-push.log 2>&1; then
-  echo "ABORT: push of $BRANCH failed (control-plane push): $(tail -1 /tmp/roundtrip-push.log)" >&2
+# --- Codex-item4: control plane creates an EXACT scoped commit from THIS run's diff ---
+# Stage ONLY the allowlisted files that actually changed; commit with the run_id in the message.
+git -C "$WT_DIR" add -- "${ALLOWED_FILES[@]}" 2>/dev/null || true
+git -C "$WT_DIR" commit -m "feat(#82): builder scoped rework (run $RUN_ID)" -q >/tmp/roundtrip-commit.log 2>&1 || {
+  echo "ABORT: scoped commit failed: $(tail -2 /tmp/roundtrip-commit.log)" >&2; exit 1; }
+NEW_SHA="$(git -C "$WT_DIR" rev-parse HEAD)"
+if [ "$NEW_SHA" = "$PRE_HEAD" ] || ! [[ "$NEW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ABORT: scoped commit did not produce a NEW valid head (fail-closed, Codex-item4)" >&2; exit 1
+fi
+# diff of the scoped commit must touch ONLY allowlisted files (belt & braces)
+SCOPE_DIFF="$(git -C "$WT_DIR" diff --name-only "$PRE_HEAD" "$NEW_SHA")"
+if [ -n "$(comm -23 <(printf '%s\n' "$SCOPE_DIFF" | sort -u) <(printf '%s\n' "${ALLOWED_FILES[@]}" | sort -u))" ]; then
+  echo "ABORT: scoped commit includes non-allowed files (fail-closed)" >&2; exit 1
+fi
+
+# --- push the branch (control plane does the push, worker never does) — fast-forward only ---
+# Push the ISOLATED worktree's exact head commit to the remote branch; does not mutate the
+# shared checkout. Remote must fast-forward (a non-FF push is refused -> fail-closed).
+if ! git -C "$WT_DIR" push origin "HEAD:$BRANCH" >/tmp/roundtrip-push.log 2>&1; then
+  echo "ABORT: push of $BRANCH (HEAD:$BRANCH) failed (control-plane push): $(tail -1 /tmp/roundtrip-push.log)" >&2
   exit 1
 fi
 
