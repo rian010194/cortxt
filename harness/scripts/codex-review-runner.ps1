@@ -76,7 +76,16 @@ if ($exe.EndsWith('.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
 # with redirection, and supports the same pass-through PID for taskkill /T.
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $exe
-$psi.Arguments = ($argv -join ' ')
+# P1 fix: never join argv with raw spaces — paths containing spaces or special
+# chars would be split. Quote each argument (Windows CommandLineToArgvW rule:
+# surround in double quotes, escape inner quotes by doubling) and join with a
+# single space so $exe's path and every file argument survive unchanged.
+function Quote-Arg([string]$a) {
+    if ($a -eq '') { return '""' }
+    if ($a -notmatch '[ "]') { return $a }          # no space/quote => safe as-is
+    return '"' + ($a -replace '"', '""') + '"'
+}
+$psi.Arguments = (($argv | ForEach-Object { Quote-Arg $_ }) -join ' ')
 $psi.UseShellExecute = $false
 $psi.RedirectStandardInput = $true
 $psi.RedirectStandardOutput = $true

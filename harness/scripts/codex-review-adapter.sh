@@ -83,8 +83,15 @@ cd "$REPO_DIR"
 git rev-parse "$SHA" >/dev/null 2>&1 || die "commit $SHA not found locally"
 git rev-parse "$BASE" >/dev/null 2>&1 || die "base $BASE not found locally"
 
-# --- run identity (shell, outside model) — real UUID per contracts schema ---
-RUN_ID="$(python -c "import uuid; print(uuid.uuid4())" 2>/dev/null || date -u +%Y%m%d_%H%M%S-%N)"
+# --- run identity (shell, outside model) — must ALWAYS be a schema-valid UUID ---
+# P1 fix: never fall back to a timestamp pseudo-id when Python/uuid is missing.
+# If a real UUID cannot be produced we stop fail-closed with NO envelope (a
+# non-UUID run_id would violate contracts/result-envelope.schema.json).
+UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+RUN_ID="$(python -c "import uuid; print(uuid.uuid4())" 2>/dev/null || true)"
+if [[ ! "$RUN_ID" =~ $UUID_RE ]]; then
+    die "run_id generation failed (python uuid missing?) — cannot emit a schema-valid envelope"
+fi
 log "run_id=$RUN_ID commit=$SHA base=$BASE"
 
 # --- before fingerprint (content-level) ---
