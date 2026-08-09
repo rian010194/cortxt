@@ -33,6 +33,7 @@ BRANCH="$(git branch --show-current)" || BRANCH="agent/roundtrip-82-codex-orches
 INFERX_BASE_URL="${INFERX_BASE_URL:-https://model.inferx.net/endpoints/v1}"
 INFERX_MODEL="Qwen3-Coder-Next-FP8"
 OUTPUT_CAP="${CODEX_ROUNDTRIP_OUTPUT_CAP:-12000}"
+MAX_RUNTIME=540   # operator-approved max runtime for the new builder attempt (2026-08-09)
 PROFILE="builder"
 
 # Resolve the InferX api_key from the builder profile config (cleartext; never printed).
@@ -53,16 +54,28 @@ REWORK_PROMPT="${CODEX_ROUNDTRIP_BUILDER_PROMPT_REWORK:-}"
 
 RUN_ID="$(date -u +%Y%m%d_%H%M%S)_$(openssl rand -hex 4)"
 STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-model_cost_status="not_applicable"
+# #82/#6: the builder MODEL IS run; cost is not measured by this adapter -> unknown (never not_applicable).
+model_cost_status="unknown"
 WORK_RC=0
 
-# --- run the Hermes builder worker on InferX (paid), output cap enforced via a wrapper ---
+# #82/#2: enforce the 12,000-token output cap in the ACTUAL InferX request, not a dormant var.
+# The InferX provider config in the builder profile must carry an explicit max_tokens <= 12000;
+# fail-closed (do NOT run) if the runtime/profile does not expose an explicit cap.
+CAP_KV="$(grep -iE '^\s*max_(output_)?tokens\s*:' "$PROFILE_DIR/config.yaml" 2>/dev/null | tail -1 | tr -d ' \t' | tr '[:upper:]' '[:lower:]' || true)"
+CAP_VAL="${CAP_KV##*:}"
+if [ -z "$CAP_VAL" ] || [ "$CAP_VAL" -lt 1 ] || [ "$CAP_VAL" -gt "$OUTPUT_CAP" ]; then
+  echo "ABORT: no explicit max_tokens <= $OUTPUT_CAP configured in builder profile InferX provider (got '${CAP_VAL:-<none>}') -> fail-closed BEFORE model run" >&2
+  exit 1
+fi
+
+# --- run the Hermes builder worker on InferX (paid); cap enforced at the API request ---
 # Invoke the builder with the explicit InferX provider + model (never the profile's
 # free OpenRouter default; no silent fallback). Provider `inferx` is defined in the
-# builder profile's custom_providers (base_url https://model.inferx.net/endpoints/v1).
+# builder profile's custom_providers (base_url https://model.inferx.net/endpoints/v1),
+# and now carries the explicit max_tokens cap verified above.
 set +e
 BUILD_OUT="$(INFERX_API_KEY="$INFERX_API_KEY" \
-  timeout 300 hermes -p "$PROFILE" --provider inferx -m "$INFERX_MODEL" \
+  timeout "$MAX_RUNTIME" hermes -p "$PROFILE" --provider inferx -m "$INFERX_MODEL" \
     -z "$REWORK_PROMPT" 2>/tmp/roundtrip-builder.err)"
 WORK_RC=$?
 set -e
