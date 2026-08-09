@@ -53,6 +53,12 @@ class SharedMemory:
     LEGACY_RUN_ID = "__legacy__"
 
     def __init__(self, workspace_path: str, run_id: str):
+        if run_id == self.LEGACY_RUN_ID:
+            # Fail-closed (#50 review P1): the reserved scope must never be
+            # usable by a real run, or it could both see legacy memory rows and
+            # be blocked by legacy locks, breaking the isolation guarantee.
+            raise ValueError(
+                f"run_id '{run_id}' is reserved for legacy migration rows")
         self.workspace_path = Path(workspace_path)
         self.run_id = run_id
         self.db_path = self.workspace_path / ".shared_memory" / "memory.db"

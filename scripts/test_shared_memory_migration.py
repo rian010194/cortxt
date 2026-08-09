@@ -158,6 +158,15 @@ fr = sm.SharedMemory(str(Path(wsl) / "run"), "run_f")
 check("fresh set works", fr.set("x", 1) is True)
 check("fresh db row scoped to its run", fr.get("x") == 1)
 
+# ---------- 7. reserved legacy run_id cannot be used by a real run (review P1) ----------
+print("== MIG.7: reserved legacy run_id rejected (review P1 fix) ==")
+_raised = False
+try:
+    sm.SharedMemory(str(Path(wsl) / "run"), sm.SharedMemory.LEGACY_RUN_ID)
+except ValueError:
+    _raised = True
+check("constructing with __legacy__ raises ValueError", _raised)
+
 print()
 if fail:
     print(f"#50 MIGRATION: {len(fail)} FAILURE(S): {fail}")
