@@ -2,24 +2,37 @@
 
 ## Purpose
 
-Automatically post completed Kanban task results as comments on the corresponding GitHub issues. Keeps GitHub as the durable record while Kanban handles execution.
+Post completed Kanban task results as comments on the corresponding GitHub
+issues. Keeps GitHub as the durable record while Kanban handles execution.
+
+> **Status (verified 2026-08-09):** **script + wrapper exist; NO cron is
+> registered.** `hermes cron list` currently contains only `kanban-buzz-push`
+> (every 5 min). There is **no** `mirror-kanban-to-github` cron, and the
+> documented id `2279ca7e474f` is **not** registered. The mirror therefore does
+> NOT run automatically today. It is a *manual/available* capability, not an
+> active scheduled function. History is recorded in the git log; the active
+> function column below reflects only what is verifiably wired now.
 
 ## Components
 
-| File | Purpose |
-|------|---------|
-| `harness/scripts/mirror-kanban-to-github.py` | Polls Kanban DB, posts comments via `gh` CLI |
-| `harness/scripts/mirror-kanban-to-github.bat` | Windows wrapper (Hermes venv Python) |
-| Hermes cron job `mirror-kanban-to-github` | Runs every 10 minutes |
+| File | Purpose | Active? |
+|------|---------|---------|
+| `harness/scripts/mirror-kanban-to-github.py` | Reads Kanban DB, posts comments via `gh` CLI | Available (manual) |
+| `harness/scripts/mirror-kanban-to-github.bat` | Windows wrapper (Hermes venv Python) | Available (manual) |
+| Hermes cron job `mirror-kanban-to-github` | Runs every 10 minutes | **NO — not registered (verified 2026-08-09)** |
 
-## How it works
+## How it works (manual invocation)
 
-1. Cron job runs `mirror-kanban-to-github.bat` every 10 minutes.
+1. Run `mirror-kanban-to-github.bat` (or the python directly, see below).
 2. Script queries `kanban.db` for `done` tasks not yet mirrored.
 3. Extracts `owner/repo#issue` from the task body.
 4. Formats a result envelope comment.
 5. Posts to GitHub via `gh issue comment`.
 6. Tracks mirrored tasks in `.mirrored.json` to avoid duplicates.
+
+> Automatic scheduling is **not** active. Re-activating it (e.g. creating the
+> cron job) is tracked and must first demonstrate correct idempotence and
+> fail-closed behaviour per the operating model; it is not assumed.
 
 ## Task body format for auto-linking
 
@@ -49,21 +62,25 @@ Or with Python directly:
   "$(cygpath -w harness/scripts/mirror-kanban-to-github.py)"
 ```
 
-## Cron job management
+## Scheduled (cron) management
+
+**No cron is currently registered**, so these commands are shown for when a
+cron is created — do not run them expecting a live job today:
 
 ```bash
-# View status
+# View current scheduled jobs (authoritative)
 hermes cron list
 
-# Pause
-hermes cron pause 2279ca7e474f
-
-# Resume
-hermes cron resume 2279ca7e474f
-
-# Remove
-hermes cron remove 2279ca7e474f
+# When (and only when) the mirror job is registered:
+#   hermes cron list            # get the real job id
+#   hermes cron pause <id>      # same job id
+#   hermes cron resume <id>
+#   hermes cron remove <id>
 ```
+
+> The id `2279ca7e474f` referenced in older revisions was not verifiable as
+> registered (checked `hermes cron list` on 2026-08-09). Do not trust that id
+> or any other id from documentation — read `hermes cron list` for the live one.
 
 ## Comment format
 
