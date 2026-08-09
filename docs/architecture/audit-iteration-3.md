@@ -3,8 +3,10 @@
 > **⚠ STATUS (corrected 2026-08-09):** This is a **historical audit of a plan
 > (AGENT_ARCHITECTURE v0.2)**, NOT current reality. Its headline numbers are
 > **superseded and internally inconsistent** — issue #59 flags it as stale.
-> Verified current state (2026-08-09): **21 interface-uppsättningar**
-> (interfaces/openapi/schemas/stubs), **116 actual artifact files** (not 84),
+> Verified current state (2026-08-09): **21 directories** directly under
+> `skills/`, of which **20 skills** contain artifact files under one of
+> interfaces/, openapi/, schemas/, or stubs/ — totaling **116 actual artifact
+> files** (not 84),
 > and **4 `skill.yaml` manifests** (not 3). The "All 8 gaps CLOSED / Approved for
 > implementation" verdict below reflects the *then-presented plan*, and must not
 > be read as approval of current repo content. Prefer live inventory
@@ -22,13 +24,15 @@
 **All 8 critical gaps from Iteration 2 are CLOSED with actual artifacts.** The repository now contains:
 
 > Corrected (2026-08-09): this summary's counts were wrong. Current verified
-> state: **21 interface-uppsättningar × 4 dirs**, **116 actual files** (not 84),
+> state: **21 directories** under `skills/` (20 with artifact files), **116
+> actual files** (not 84),
 > **4 `skill.yaml` manifests** (not 3), **not all 22 skills share a single count**
 > — some are wrappers/templates. See correction banner at top of file.
 
-- **21 skills-baserade interface-uppsättningar × 4 artifact types**
-  (interfaces/, openapi/, schemas/, stubs/) = **116 actual files**
-  (previously-stated 84 was incorrect) — plus 4 explicit `skill.yaml` manifests
+- **21 directories** directly under `skills/`; **20 skills** have artifact files
+  (interfaces/, openapi/, schemas/, stubs/) totaling **116 actual files**
+  (previously-stated 84 was incorrect; artifact count varies per skill) — plus
+  4 explicit `skill.yaml` manifests
   (not 18-via-generated; generated-interface claim not assumed)
 - **4 validation scripts** (`validate_skill_manifest.py`, `check_breaking_changes.py`, `generate_interfaces.py`, `profile_cli.py`) — all functional
 - **2 JSON schemas** (`skill-manifest.schema.json`, `profile-manifest.schema.json`) — both validate
