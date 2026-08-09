@@ -38,7 +38,7 @@ complement for monitoring status and approvals, not a per-agent surface.
 | Pi Builder | Short-lived, containerized Kimi runtime for bounded file writes | It remains an experiment pending production hardening and a general dispatcher interface. |
 | Kimi/Moonshot | Heavy research, analysis, implementation, and tests | Cost and tool limits must be explicit; unknown provider cost must never be treated as zero. |
 | OpenRouter | Coordinator model gateway and later fallback/specialized routing | The free Coordinator test model is not approved for confidential material. |
-| Codex | High-risk architecture/security input and independent, compact, read-only final review | It is not the default planner, researcher, or builder. Verified 2026-08-09: the **inline-diff-via-stdin** read-only path works on Windows; the bare `codex exec review --commit` path does **not** (Windows sandbox cannot spawn pwsh — `CreateProcessAsUserW` denied). Use `codex-review-adapter.sh` for the working path. |
+| Codex | High-risk architecture/security input and independent, compact, read-only final review | It is not the default planner, researcher, or builder and should receive only the issue, criteria, diff/artifact, and test evidence needed for review. |
 | Operator | Approval of scope, budget, irreversible effects, merge, publication, deploy, and final completion | No agent may approve its own work. |
 
 ## Verified capabilities

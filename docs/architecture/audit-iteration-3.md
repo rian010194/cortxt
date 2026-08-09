@@ -12,7 +12,7 @@
 
 **Plan:** `docs/architecture/AGENT_ARCHITECTURE.md` (v0.2 — Iteration 2 revised)  
 **Auditor:** Fresh-eyes artifact existence review (never saw v0.1, Iteration 1, or Iteration 2)  
-**Date:** 2026-08-03 (historical; see correction banner above)  
+**Date:** 2026-08-03 (historical; see correction banner above)
 **Method:** Verify every skill has `.ts`, `.yaml`, `.json`, `.pyi` files in `skills/<name>/interfaces/`, `skills/<name>/openapi/`, `skills/<name>/schemas/`, `skills/<name>/stubs/`. CI gate validates conformance. Action item precision (GAP-03) assessed.
 
 ---
