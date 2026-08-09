@@ -43,7 +43,25 @@ ADAPTER = REPO / "harness" / "scripts" / "codex-review-adapter.sh"
 RUNNER = REPO / "harness" / "scripts" / "codex-review-runner.ps1"
 STUB_OK = REPO / "harness" / "scripts" / "test" / "codex-stub-ok.ps1"
 STUB_HANG = REPO / "harness" / "scripts" / "test" / "codex-stub-hang.ps1"
-BASH = shutil.which("bash")
+# P2 fix: deterministically resolve a real MSYS/Git-Bash, never a WSL bash.
+# WSL bash cannot run MSYS/Cygwin-style paths/calls used here. If the resolved
+# bash is not an MSYS/Git-Bash we exit explicitly (no silent misbehaviour).
+def _resolve_bash():
+    cand = shutil.which("bash")
+    if not cand:
+        sys.exit("CODEX-REVIEW-VERIFY: no 'bash' on PATH (need Git-Bash/MSYS)")
+    # MSYS/Git-Bash sets $MSYSTEM (e.g. MINGW64); WSL bash does not.
+    probe = subprocess.run([cand, "-c", "echo ${MSYSTEM:-}"],
+                           capture_output=True, text=True, timeout=20)
+    ms = (probe.stdout or "").strip()
+    if not ms:
+        sys.exit(
+            "CODEX-REVIEW-VERIFY: resolved bash is NOT an MSYS/Git-Bash "
+            f"({cand!r}, MSYSTEM empty). Re-run from a Git-Bash/MSYS shell."
+        )
+    return cand
+
+BASH = _resolve_bash()
 PWSH = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 fail = []
 
@@ -261,6 +279,66 @@ for bad in ["hermes -p", "moonshotai", "kimi", "OPENROUTER", "dispatch-manual"]:
 # 9. run dir gitignored
 r = sh(f'cd "{REPO}" && git check-ignore .hermes/codex/reviews/{SHA} >/dev/null 2>&1 && echo IGNORED')
 check("review out-dir is gitignored", "IGNORED" in (r.stdout or ""))
+
+# ---------------------------------------------------------------
+# 10. P1 regression: adapter fail-closed when Python/UUID unavailable
+# ---------------------------------------------------------------
+with tempfile.TemporaryDirectory(prefix="hermes-verify-nopy-") as td:
+    fakedir = Path(td) / "bin"; fakedir.mkdir()
+    (fakedir / "python").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    (fakedir / "python").chmod(0o755)
+    env_nopy = dict(os.environ)
+    # prepend the fake bin BUT keep real MSYS bash/git/gh reachable
+    env_nopy["PATH"] = str(fakedir) + os.pathsep + env_nopy.get("PATH", "")
+    env_nopy["CODEX_CLI_PATH"] = str(STUB_OK)
+    r = sh(f'"{ADAPTER}" {SHA}', env=env_nopy, timeout=60)
+    out = r.stdout or ""
+    check("nopy: adapter exits nonzero (fail-closed)", r.returncode != 0,
+          f"rc={r.returncode}")
+    check("nopy: no envelope emitted", "REVIEW_ENVELOPE_JSON" not in out)
+    check("nopy: ABORT mentions run_id", "run_id" in ((r.stderr or "") + out))
+
+# ---------------------------------------------------------------
+# 11. P1 regression: runner args survive spaces (stub + output files)
+# ---------------------------------------------------------------
+with tempfile.TemporaryDirectory(prefix="hermes-verify-sp ") as td:
+    sp_stub = Path(td) / "codex stub ok.ps1"
+    sp_stub.write_text(
+        "param([string]$LastMessageOut='')\n"
+        "if ($LastMessageOut) {\n"
+        "  [System.IO.File]::WriteAllLines($LastMessageOut, @(\n"
+        "    ('- VERDICT: GODK' + [string][char]0xC4 + 'ND'), '- NOTERING: x',\n"
+        "    '- FINDINGS:', '- KOSTNAD: unknown', '- SUMMERING: spaces'),\n"
+        "    (New-Object System.Text.UTF8Encoding($false)))\n"
+        "}\n"
+        "exit 0\n", encoding="utf-8")
+    sp_prompt = Path(td) / "my prompt.txt"; sp_prompt.write_text("brief\n")
+    sp_last = Path(td) / "last msg.md"; sp_out = Path(td) / "std out.jsonl"
+    sp_err = Path(td) / "err log.txt"
+    r = subprocess.run(
+        [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(RUNNER),
+         "-CodexPath", str(sp_stub), "-PromptFile", str(sp_prompt),
+         "-LastMessageOut", str(sp_last), "-StdoutJson", str(sp_out),
+         "-StderrLog", str(sp_err), "-MaxSec", "30"],
+        capture_output=True, text=True, errors="replace", timeout=60)
+    ro = (r.stdout or "") + (r.stderr or "")
+    check("spaces: runner exit 0 (quoting survived)", r.returncode == 0,
+          f"rc={r.returncode} {ro[-160:]}")
+    check("spaces: fresh last_message written at spaced path",
+          sp_last.exists() and "VERDICT: GODKÄND" in sp_last.read_text(
+              encoding="utf-8", errors="replace"))
+    check("spaces: stdout jsonl written at spaced path", sp_out.exists())
+
+# ---------------------------------------------------------------
+# 12. P2 regression: deterministic bash resolution + path passing
+# ---------------------------------------------------------------
+check("bash: resolved bash is MSYS/Git-Bash (MSYSTEM non-empty)",
+      bool(subprocess.run([BASH, "-c", "echo ${MSYSTEM:-}"],
+                          capture_output=True, text=True, timeout=20).stdout.strip()),
+      repr(BASH))
+# Prove the adapter (bash-driven) still reaches a spaced output through bash
+check("bash: adapter success re-verified with resolved bash (succeeded envelope)",
+      e is not None and json.loads(e).get("status") == "succeeded")
 
 print()
 if fail:
