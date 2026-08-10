@@ -827,6 +827,9 @@ def transition_tests(out_dir, check, g, sha_a, base):
         # the sibling's valid hash must NOT let the empty-hash artifact be accepted as verified.
         "multi_one_missing": {'artifacts': '[{"ref":"r1","hash":"goodhash","size":1},{"ref":"r2","hash":"","size":2}]',
                               "accept": False},
+        # (#89 Codex-P2) NON-STRING hash (numeric) must not crash and is treated as missing ->
+        # FAIL-CLOSED (n_dict != n_hash), not a ValueType crash and not accepted.
+        "numeric_hash":   {'artifacts': '[{"ref":"r","hash":12345,"size":1}]', "accept": False},
     }
     for cname, cspec in artifact_cases_89.items():
         a_art = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a, "artifact": cspec["artifacts"]})
@@ -855,9 +858,14 @@ def transition_tests(out_dir, check, g, sha_a, base):
     a_artv = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a,
                                          "artifact": '[{"ref":"%s","hash":"abc123","size":42}]' % sha_a})
     p_artv = run_gh_mocked(a_artv, out_dir, {}, sha_a, base)
-    check("#89 valid artifact: hash round-trips into posted evidence body",
-          "abc123" in ((p_artv.stdout or "") + (p_artv.stderr or "")),
-          "body did not contain artifact hash")
+    # #89 Codex-P1: the POSTED round-trip body is what the stateful gh-mock writes to
+    # GHMOCK_READBACK_FILE (read-back returns exactly what was posted) — NOT stdout/stderr,
+    # which never carries the raw body. Assert the hash is present in the posted body file.
+    rb_file = os.path.join(out_dir, "readback-body-%d.md" % os.getpid())
+    rb_body = open(rb_file, encoding="utf-8").read() if os.path.exists(rb_file) else ""
+    check("#89 valid artifact: hash round-trips into posted evidence body (read-back file)",
+          "abc123" in rb_body and p_artv.returncode == 0,
+          "body did not contain artifact hash; rc=%d" % p_artv.returncode)
 
 
     # T2: terminal-fail (timeout) -> Blocked (final Blocked, not Review/In progress)
