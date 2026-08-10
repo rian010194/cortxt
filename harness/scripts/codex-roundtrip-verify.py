@@ -778,12 +778,22 @@ def transition_tests(out_dir, check, g, sha_a, base):
           "Ready->In progress" in (p_t1.stdout + p_t1.stderr), "")
 
     # T2: terminal-fail (timeout) -> Blocked (final Blocked, not Review/In progress)
+    # Use a DEDICATED tx_log so the exact timeout sequence is captured under p_t2's own file,
+    # independent of any later test overwriting the shared log (Codex-fynd: T9 must not read
+    # another run's log via "latest mtime").
+    t2_tx_log = os.path.join(out_dir, "tx-log-t2-%d" % os.getpid())
     a_to = make_stub_adapter(out_dir, {"verdict": "GODKAND", "rc": 124, "sha": sha_a})
-    p_t2 = run_gh_mocked(a_to, out_dir, {}, sha_a, base)   # NOPASS: rc=124 -> fail_terminal
+    p_t2 = run_gh_mocked(a_to, out_dir, {"tx_log": t2_tx_log}, sha_a, base)  # NOPASS: rc=124 -> fail_terminal
     sf = state_file()
     final = open(sf, encoding="utf-8").read().strip() if sf else ""
     check("T2 timeout -> Blocked", p_t2.returncode not in (0, 5) and final == "Blocked",
           "rc=%d state=%r" % (p_t2.returncode, final))
+    # Save T2's exact sequence IMMEDIATELY after p_t2, from its own log file, so T9 can later
+    # assert the timeout class proof against this captured value (not the latest-mtime log).
+    t2_seq = []
+    if os.path.exists(t2_tx_log):
+        with open(t2_tx_log, encoding="utf-8") as _f:
+            t2_seq = [ln.strip() for ln in _f if ln.strip()]
 
     # T3: GODKÄND evidence POST/read-back failure -> fail_terminal (Ready->In progress->Blocked), rc 5
     a_t3 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
@@ -828,12 +838,13 @@ def transition_tests(out_dir, check, g, sha_a, base):
     p_t8 = run_gh_mocked(a_t8, out_dir, {}, sha_a, base, rework_dispatch=rework_noh)
     assert_blocked_sequence("T8 builder delivered no valid head -> Blocked", p_t8, 3)
 
-    # T9: ADAPTER terminal status (rc 124) ALSO leaves exact Ready->In progress->Blocked sequence.
-    # T2 already asserted final state; here assert the explicit sequence for the timeout class.
-    seq_t2 = tx_seq()
+    # T9: ADAPTER terminal status (rc 124) leaves the exact Ready->In progress->Blocked sequence.
+    # This asserts the TIMEOUT class proof against the sequence captured from p_t2's OWN dedicated
+    # log immediately after that run (t2_seq) — NOT a re-read of the "latest mtime" log, which
+    # after T8 would silently be T8's (same-shaped) sequence and prove nothing about the timeout run.
     check("T9 timeout tx sequence = Ready, In progress, Blocked",
-          seq_t2[:1] == ["Ready"] and "In progress" in seq_t2 and seq_t2[-1] == "Blocked",
-          "seq=%r" % seq_t2)
+          t2_seq[:1] == ["Ready"] and "In progress" in t2_seq and t2_seq[-1] == "Blocked",
+          "seq=%r" % t2_seq)
 
 
 if __name__ == "__main__":
