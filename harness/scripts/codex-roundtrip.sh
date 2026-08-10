@@ -421,7 +421,7 @@ print(v if isinstance(v,int) else 'unknown')
 import sys,json
 d=json.load(sys.stdin)
 arts=d.get('artifacts',[])
-def _s(v): return str(v).replace('%','%%') if v is not None else ''
+def _s(v): return str(v) if v is not None else ''
 lines=['- \`%s\` | hash \`%s\` | size %s' % (_s(a.get('ref')), _s(a.get('hash')), _s(a.get('size'))) for a in arts if isinstance(a,dict)]
 print('\n'.join(lines) if lines else '(none)')
 ")"
@@ -480,13 +480,32 @@ PY
   if [ -z "$readback" ]; then
     log "evidence read-back FAILED for comment id $cid"; rm -f "$body_file"; return 1
   fi
-  # confirm the body contains the artifact hashes (not just the header marker)
+  # confirm the body contains a STRICT per-artifact hash set. #89/AC2 + Codex-P1: read-back must
+  # carry EVERY non-empty artifact hash from the envelope verbatim, and the number of dict artifacts
+  # equals the number of non-empty-hash artifacts — so an artifact with an empty/null/missing hash is
+  # NEVER accepted just because a sibling artifact happened to have a valid hash.
   local artifact_ok=0
-  if [ "$(echo "$result" | python -c "import sys,json;print(len(json.load(sys.stdin).get('artifacts',[])))")" -eq 0 ]; then
+  local hashset n_dict n_hash
+  hashset="$(echo "$result" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+arts=[a for a in d.get('artifacts',[]) if isinstance(a,dict)]
+hs=[a.get('hash') for a in arts]
+print(('\\n'.join(h for h in hs if h) ) if any(hs) else '')
+" )"
+  n_dict="$(echo "$result" | python -c "import sys,json;print(len([a for a in json.load(sys.stdin).get('artifacts',[]) if isinstance(a,dict)]))")"
+  n_hash="$(printf '%s\n' "$hashset" | grep -c . || true)"
+  if [ "$n_dict" -eq 0 ]; then
+    # no artifacts expected -> empty list is allowed by contract
     artifact_ok=1
     log "note: no artifacts in envelope (capability still recorded)"
-  elif printf '%s' "$readback" | grep -qE 'hash `[^`]+`' ; then
+  elif [ "$n_dict" -eq "$n_hash" ]; then
+    # every dict artifact must have a non-empty hash, and every such hash must appear in read-back
     artifact_ok=1
+    while IFS= read -r h; do
+      [ -n "$h" ] || continue
+      printf '%s' "$readback" | grep -qF -- "$h" || { artifact_ok=0; break; }
+    done <<< "$hashset"
   fi
   if printf '%s' "$readback" | grep -q "ROUNDTRIP #$ISSUE, round $round" && [ "$artifact_ok" -eq 1 ]; then
     log "evidence posted + read back verified: issue #$ISSUE comment id $cid (round $round, verdict=$verdict)"
