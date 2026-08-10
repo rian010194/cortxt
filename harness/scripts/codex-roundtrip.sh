@@ -60,15 +60,17 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Adapter path overrideable for deterministic NO-MODEL verification (a stub that
 # emits the same envelope contract without calling a model). Default: merged adapter.
 ADAPTER="${CODEX_ROUNDTRIP_ADAPTER:-$SELF_DIR/codex-review-adapter.sh}"
-# #82/#5: output-token cap is HARD-CAPPED at 12000. An env var may only LOWER it (down to a
-# floor of 1), NEVER raise it. Codex item: env may never increase the cap.
-ENV_CAP="${CODEX_ROUNDTRIP_OUTPUT_CAP:-12000}"
-[[ "$ENV_CAP" =~ ^[0-9]+$ ]] && [ "$ENV_CAP" -ge 1 ] || { echo "ABORT: bad CODEX_ROUNDTRIP_OUTPUT_CAP '$ENV_CAP' (integer >= 1)" >&2; exit 1; }
-if [ "$ENV_CAP" -gt 12000 ]; then
-  echo "FAIL-CLOSED: CODEX_ROUNDTRIP_OUTPUT_CAP $ENV_CAP exceeds hard cap 12000 (env may never raise it); refusing" >&2
-  exit 1
-fi
-OUTPUT_CAP_TOKENS="$ENV_CAP"
+# Operator #82/AC6 (2026-08-10): Codex reviewer runs on the operator's Codex subscription, so
+# there is NO hard 12k-output-token cap for the adapter. Runtime terms instead:
+#   - PID-bound max 540 s per call (enforced by the merged adapter's MAX_RUNTIME);
+#   - max 3 Codex calls per round-trip (MAX_ADAPTER_CALLS below);
+#   - no auto-retry, no reviewer/provider fallback;
+#   - fail-closed on timeout / transport / invalid envelope / ingestion failure;
+#   - usage reported when present; missing usage = model_cost_status unknown (never fabricated,
+#     and does NOT block a valid subscription run).
+MAX_RUNTIME=540   # operator-AC6: PID-bound max runtime per Codex call
+# Deterministic max size of the review artifact the orchestrator ingests (memory/ingestion safety).
+MAX_ARTIFACT_BYTES="${CODEX_ROUNDTRIP_MAX_ARTIFACT_BYTES:-200000}"
 WF_FIELD="PVTSSF_lAHOBcHJy84BfFfWzhZa88A"
 PROJECT_ID="PVT_kwHOBcHJy84BfFfW"
 OPT_INPROGRESS="89a2da8a"; OPT_REVIEW="4bfdd926"; OPT_BLOCKED="20948c2f"
@@ -209,6 +211,13 @@ run_one_review(){
   fi
   preview="$(printf '%s\n' "$out" | sed -n "$((env_start+1)),$((env_end-1))p")"
 
+  # Operator-AC6: deterministic max review-artifact size at ingestion (memory/ingestion safety).
+  # If the artifact exceeds the cap, fail-closed (ingestion failure) — do not ingest it.
+  if [ -n "${preview:-}" ] && [ "${#preview}" -gt "$MAX_ARTIFACT_BYTES" ]; then
+    echo "{\"round\":$round,\"status\":\"failed\",\"verdict\":\"unknown\",\"reason\":\"review artifact exceeds deterministic max ${MAX_ARTIFACT_BYTES} bytes\",\"cost_conf\":\"unknown\",\"output_tokens\":null}"
+    return 0
+  fi
+
   # Authoritative verdict: from the adapter's own CODEX_REVIEW_DONE line (which comes
   # from last_message.md, freshly produced by the runner). GODKÄND / KRÄVER ÄNDRINGAR
   # are success capability verdicts; INGESTION MISSLYCKADES is NOT success.
@@ -254,7 +263,7 @@ else:
     print('NO_JSONSCHEMA missing=%s' % (','.join(missing) if missing else ''))
 ")"
   if [ -n "$schema_error" ]; then
-    echo "{\"round\":$round,\"status\":\"failed\",\"verdict\":\"unknown\",\"reason\":\"invalid envelope: $schema_error\",\"cost_conf\":\"unknown\",\"output_tokens\":null,\"cap_verified\":false,\"artifacts\":[]}"
+    echo "{\"round\":$round,\"status\":\"failed\",\"verdict\":\"unknown\",\"reason\":\"invalid envelope: $schema_error\",\"cost_conf\":\"unknown\",\"output_tokens\":null,\"artifacts\":[]}"
     return 0
   fi
 
@@ -266,10 +275,9 @@ d=json.load(sys.stdin)
 print(json.dumps([{'ref':a.get('ref'),'hash':a.get('hash'),'size':a.get('size')} for a in d.get('artifacts',[]) if isinstance(a,dict)]))
 ")"
 
-  # Output-token cap (pre-configured BEFORE the model run, #82/#12): if the envelope
-  # does NOT report usage.output_tokens, the cap CANNOT be verified -> fail-closed
-  # (missing verifiable cap/usage must NOT be presented as evidence of compliance).
-  local out_tokens cap_verified
+  # Usage (operator #82/AC6): report output_tokens WHEN the envelope provides it; missing usage
+  # is model_cost_status: unknown (never fabricated) and does NOT block a valid subscription run.
+  local out_tokens
   out_tokens="$(printf '%s' "$preview" | python -c "
 import sys,json
 d=json.load(sys.stdin)
@@ -278,27 +286,17 @@ v=u.get('output_tokens')
 print(v if isinstance(v,int) else '')
 ")"
   out_tokens="${out_tokens:-}"
-  cap_verified=false
-  if [ -z "$out_tokens" ]; then
-    echo "{\"round\":$round,\"status\":\"blocked\",\"verdict\":\"$verdict\",\"reason\":\"output-token usage not reported; cap ($OUTPUT_CAP_TOKENS) unverifiable -> fail-closed\",\"cost_conf\":\"unknown\",\"output_tokens\":null,\"cap_verified\":false,\"artifacts\":$artifacts_json}"
-    return 0
-  fi
-  if [ "$out_tokens" -gt "$OUTPUT_CAP_TOKENS" ]; then
-    echo "{\"round\":$round,\"status\":\"failed\",\"verdict\":\"unknown\",\"reason\":\"output token cap exceeded ($out_tokens > $OUTPUT_CAP_TOKENS)\",\"cost_conf\":\"unknown\",\"output_tokens\":$out_tokens,\"cap_verified\":false,\"artifacts\":$artifacts_json}"
-    return 0
-  fi
-  cap_verified=true
 
   # Envelope status must itself be succeeded for a valid review result.
   local env_status cost_conf
   env_status="$(printf '%s' "$preview" | python -c "import sys,json;print(json.load(sys.stdin).get('status',''))")"
   cost_conf="$(printf '%s' "$preview" | python -c "import sys,json;print(json.dumps(json.load(sys.stdin).get('cost',{}).get('confidence','unknown')))")"
   if [ "$env_status" != "succeeded" ]; then
-    echo "{\"round\":$round,\"status\":\"$env_status\",\"verdict\":\"$verdict\",\"reason\":\"envelope status $env_status (not succeeded)\",\"cost_conf\":$cost_conf,\"output_tokens\":$out_tokens,\"cap_verified\":$cap_verified,\"artifacts\":$artifacts_json}"
+    echo "{\"round\":$round,\"status\":\"$env_status\",\"verdict\":\"$verdict\",\"reason\":\"envelope status $env_status (not succeeded)\",\"cost_conf\":$cost_conf,\"output_tokens\":${out_tokens:-null},\"artifacts\":$artifacts_json}"
     return 0
   fi
 
-  echo "{\"round\":$round,\"status\":\"succeeded\",\"verdict\":\"$verdict\",\"reason\":\"\",\"cost_conf\":$cost_conf,\"output_tokens\":$out_tokens,\"cap_verified\":$cap_verified,\"artifacts\":$artifacts_json}"
+  echo "{\"round\":$round,\"status\":\"succeeded\",\"verdict\":\"$verdict\",\"reason\":\"\",\"cost_conf\":$cost_conf,\"output_tokens\":${out_tokens:-null},\"artifacts\":$artifacts_json}"
 }
 
 # --- GitHub project item id lookup (content number = issue) ---
@@ -393,9 +391,15 @@ mv_review(){
 post_evidence(){
   [ -n "$NO_GITHUB" ] && { log "NO_GITHUB: skip evidence posting"; return 0; }
   local round="$1" verdict="$2" result="$3" sha="$4"
-  local cost_conf artifacts_line cap_verified
+  local cost_conf out_tokens artifacts_line
   cost_conf="$(echo "$result" | python -c "import sys,json;print(json.load(sys.stdin).get('cost_conf','unknown'))")"
-  cap_verified="$(echo "$result" | python -c "import sys,json;print(json.load(sys.stdin).get('cap_verified',False))")"
+  # Usage reported when the envelope provides it; missing -> model_cost_status unknown (not fabricated).
+  out_tokens="$(echo "$result" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+v=d.get('output_tokens')
+print(v if isinstance(v,int) else 'unknown')
+")"
   # Preserve artifacts ref/hash/size from the envelope through the posted evidence (#82/#8).
   artifacts_line="$(echo "$result" | python -c "
 import sys,json
@@ -415,7 +419,7 @@ print('\n'.join([('- `%s` | hash `%s` | size %s' % (a.get('ref',''), a.get('hash
 | Codex verdict | **$verdict** |
 | Run status | $([ "$verdict" = GODKÄND ] && echo 'succeeded (Review)' || echo 'failed/blocked') |
 | Cost confidence | $cost_conf (honest: unknown unless measured, never 0) |
-| Output-cap verified (<=12000) | $cap_verified |
+| Output usage (tokens) | $out_tokens (unknown = not reported, not fabricated) |
 | PR | ${PR_NUM:-n/a} |
 
 **Reproducible evidence (ref + hash + size only — no raw prompt, no secrets, no confidential artifacts):**
@@ -556,29 +560,29 @@ while :; do
     # #82/#1+#3: argument contract = (owner/repo#issue, round, PR-head-branch) — identical to the
     # Builder adapter; the push target is the PR's verified headRefName, never inferred.
     DISPATCH_ISSUE="${REPO}#${ISSUE}"
-    [ -n "$BUILDER_PUSH_BRANCH" ] || die "BUILDER_PUSH_BRANCH empty (PR headRefName not verified) -> fail-closed"
+    [ -n "$BUILDER_PUSH_BRANCH" ] || fail_terminal 3 "{\"status\":\"blocked\",\"reason\":\"BUILDER_PUSH_BRANCH empty (PR headRefName not verified)\"}"
     BUILD_OUT="$(set +e; "$REWORK_DISPATCH" "$DISPATCH_ISSUE" "$CALLS" "$BUILDER_PUSH_BRANCH"; echo "RC=$?")"
     BUILD_RC="$(printf '%s' "$BUILD_OUT" | grep -oE 'RC=[0-9]+$' | head -1 | cut -d= -f2 || true)"
     # extract the 40-hex SHA from the BUILDER_DISPATCH_DONE ... head=<sha> line (#82/#5)
     NEW_SHA="$(printf '%s' "$BUILD_OUT" | grep -oE 'head=[0-9a-f]{40}' | head -1 | cut -d= -f2 || true)"
     if [ -z "$BUILD_RC" ] || [ "$BUILD_RC" != "0" ] || ! [[ "$NEW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-      die "Builder dispatch did not deliver a pushed 40-hex PR-head (rc=${BUILD_RC:-?}) -> fail-closed"
+      fail_terminal 3 "{\"status\":\"blocked\",\"reason\":\"builder dispatch did not deliver a pushed 40-hex PR-head\"}"
     fi
-    [ "$NEW_SHA" != "$PRE_HEAD" ] || die "Builder produced no NEW commit (head unchanged) -> fail-closed"
+    [ "$NEW_SHA" != "$PRE_HEAD" ] || fail_terminal 3 "{\"status\":\"blocked\",\"reason\":\"builder produced no NEW commit\"}"
     # Codex-item3/4: the builder pushed to the PR's VERIFIED headRefName (BUILDER_PUSH_BRANCH).
     # After the (isolated) worktree push, verify NEW_SHA == remote branch == GitHub PR head
     # WITHOUT requiring the shared local branch to move (it stays untouched).
     if [ -z "$NO_GITHUB" ]; then
-      [ -n "$BUILDER_PUSH_BRANCH" ] || die "BUILDER_PUSH_BRANCH empty (PR headRefName not verified) -> fail-closed"
+      [ -n "$BUILDER_PUSH_BRANCH" ] || fail_terminal 3 "{\"status\":\"blocked\",\"reason\":\"BUILDER_PUSH_BRANCH empty\"}"
       git fetch origin "$BUILDER_PUSH_BRANCH" 2>/dev/null || true
       remote_br="$(git rev-parse --verify "origin/$BUILDER_PUSH_BRANCH" 2>/dev/null || true)"
       pr_head_now="$(gh pr view "$PR_NUM" -R "$REPO" --json headRefOid -q .headRefOid 2>/dev/null || true)"
       if [ "$NEW_SHA" != "$remote_br" ] || [ "$remote_br" != "$pr_head_now" ]; then
-        die "new head $NEW_SHA != origin/$BUILDER_PUSH_BRANCH ($remote_br) != GitHub PR head ($pr_head_now) -> fail-closed"
+        fail_terminal 3 "{\"status\":\"blocked\",\"reason\":\"new head != remote branch != PR head\"}"
       fi
       # the shared local branch must remain at PRE_HEAD (untouched by the isolated push)
       shared_local="$(git rev-parse --verify HEAD)"
-      [ "$shared_local" = "$PRE_HEAD" ] || die "shared local branch moved unexpectedly ($shared_local != $PRE_HEAD) -> fail-closed"
+      [ "$shared_local" = "$PRE_HEAD" ] || fail_terminal 3 "{\"status\":\"blocked\",\"reason\":\"shared local branch moved unexpectedly\"}"
     fi
     SHA="$NEW_SHA"
     continue

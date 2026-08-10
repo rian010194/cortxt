@@ -55,13 +55,15 @@ def make_stub_adapter(out_dir, scenario):
       verdict:  GODKAND | KRAVER | INGESTION | UNKNOWN
       rc:       exit code returned (124 for timeout simulation; 0 otherwise)
       broken:   omit the REVIEW_ENVELOPE_JSON markers (broken envelope)
-      over_cap: report usage.output_tokens above 12000
+      no_usage: omit usage entirely (operator-AC6: missing usage -> unknown, NOT a blocker)
+      big_artifact: emit an envelope larger than MAX_ARTIFACT_BYTES (ingestion fail-closed)
       invocation_log: file appended to each time the stub runs (retry counting)
     """
     verdict = scenario.get("verdict", "GODKAND")
     rc = scenario.get("rc", 0)
     broken = scenario.get("broken", False)
-    over_cap = scenario.get("over_cap", False)
+    no_usage = scenario.get("no_usage", False)
+    big_artifact = scenario.get("big_artifact", False)
     invlog = scenario.get("invocation_log", "")
     vmap = {
         "GODKAND": "GODKÄND",
@@ -70,12 +72,15 @@ def make_stub_adapter(out_dir, scenario):
         "UNKNOWN": "RANDOM TEXT",
     }
     verdict_str = vmap[verdict]
-    out_tokens = 13000 if over_cap else 512
+    out_tokens = 512
     usage_json = json.dumps({"input_tokens": 1000, "output_tokens": out_tokens,
                              "cache_tokens": 0, "reasoning_tokens": 0})
     cost_json = json.dumps({"confidence": "unknown"})
     sha = scenario.get("sha", "a" * 40)
-    envelope = json.dumps({
+    artifacts = [{"ref": sha, "hash": "abc123", "size": 42}]
+    if big_artifact:
+        artifacts = [{"ref": sha, "hash": "abc123", "size": 42, "blob": "x" * 300000}]
+    env = {
         "issue_id": "commit %s" % sha,
         "run_id": "11111111-2222-4333-8444-555555555555",
         "status": "succeeded",
@@ -84,11 +89,15 @@ def make_stub_adapter(out_dir, scenario):
         "started_at": "2026-08-09T00:00:00Z",
         "finished_at": "2026-08-09T00:00:01Z",
         "model": "gpt-5.6-sol",
-        "usage": json.loads(usage_json),
         "cost": json.loads(cost_json),
-        "artifacts": [{"ref": sha, "hash": "abc123", "size": 42}],
+        "artifacts": artifacts,
         "evidence": ["stub"],
-    })
+    }
+    if not no_usage:
+        env["usage"] = json.loads(usage_json)
+    else:
+        # operator-AC6: usage present but EMPTY (schema-valid) -> output_tokens unknown, NOT a block
+        env["usage"] = {}
     # Use a quoted heredoc 'EOF' so the envelope is emitted verbatim (no shell expansion).
     header = "#!/usr/bin/env bash\nset -euo pipefail\n"
     if invlog:
@@ -96,7 +105,7 @@ def make_stub_adapter(out_dir, scenario):
     body = header + (
         'SHA="${1:-}"\n'
         'echo "REVIEW_ENVELOPE_JSON"\n'
-        "cat <<'ENVEOF'\n" + envelope + "\nENVEOF\n"
+        "cat <<'ENVEOF'\n" + json.dumps(env) + "\nENVEOF\n"
         'echo "CODEX_REVIEW_DONE run_id=1 commit=\\"$SHA\\" verdict=%s cost=unknown"\n' % verdict_str +
         "exit %d\n" % rc
     )
@@ -332,11 +341,15 @@ def main():
         p_e = run_orchestrator(adapter_e, None, sha_a, base)
         check("E ingestion failure: exit 3 (not success)", p_e.returncode == 3, "rc=%d" % p_e.returncode)
 
-        # ---------- Edge: output token cap exceeded ----------
-        adapter_f = make_stub_adapter(out_dir, {"verdict": "GODKAND", "over_cap": True})
+        # ---------- Edge (operator-AC6): missing usage -> unknown, NOT a blocker ----------
+        adapter_f = make_stub_adapter(out_dir, {"verdict": "GODKAND", "no_usage": True})
         p_f = run_orchestrator(adapter_f, None, sha_a, base)
-        check("F output-cap exceeded: exit 3", p_f.returncode == 3, "rc=%d" % p_f.returncode)
-        check("F output-cap: reason mentions cap", "cap" in p_f.stdout.lower(), p_f.stdout[-300:])
+        check("F' missing-usage GODKÄND: exit 0 (does NOT block)", p_f.returncode == 0,
+              "rc=%d" % p_f.returncode)
+        # the final envelope reports output_tokens null/unknown (from empty usage), not fabricated
+        check("F' missing-usage: output_tokens not fabricated",
+              'output_tokens":null' in p_f.stdout or 'output_tokens": null' in p_f.stdout,
+              p_f.stdout[-200:])
 
         # ---------- Edge: unknown verdict fail-closed ------
         adapter_g = make_stub_adapter(out_dir, {"verdict": "UNKNOWN"})
@@ -418,11 +431,12 @@ def main():
 
         # ===== Codex-item6: regressions for the new deterministic guards =====
 
-        # RR1: output cap env may NEVER raise above 12,000 (Codex-item5/#5) -> fail-closed.
-        adapter_rr1 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
-        p_rr1 = run_orchestrator(adapter_rr1, None, sha_a, base, env_extra={"CODEX_ROUNDTRIP_OUTPUT_CAP": "13000"})
-        check("RR1 cap>12000 env: fail-closed (nonzero)", p_rr1.returncode != 0, "rc=%d" % p_rr1.returncode)
-        check("RR1 cap>12000 env: refused", "exceeds hard cap 12000" in (p_rr1.stdout+p_rr1.stderr), "")
+        # RR4: review artifact exceeds deterministic MAX_ARTIFACT_BYTES -> ingestion fail-closed.
+        adapter_rr4 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a, "big_artifact": True})
+        p_rr4 = run_orchestrator(adapter_rr4, None, sha_a, base)
+        check("RR4 big-artifact ingestion: exit 3 (fail-closed)", p_rr4.returncode == 3,
+              "rc=%d" % p_rr4.returncode)
+        check("RR4 big-artifact: refused for size", "artifact" in p_rr4.stdout.lower(), "")
 
         # RR2: PR base BRANCH name vs expected base branch mismatch (#82/Codex-item1) -> fail-closed.
         adapter_rr2 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
