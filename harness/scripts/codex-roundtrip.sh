@@ -490,8 +490,11 @@ PY
 import sys,json
 d=json.load(sys.stdin)
 arts=[a for a in d.get('artifacts',[]) if isinstance(a,dict)]
-hs=[a.get('hash') for a in arts]
-print(('\\n'.join(h for h in hs if h) ) if any(hs) else '')
+# #89 Codex-P2: only STRING hashes count as valid. A numeric/bool/list/dict hash is NOT
+# truthy-joinable and must NOT count toward n_hash, so a non-str hash artifact is treated as
+# missing (n_dict != n_hash -> fail-closed) instead of crashing the join with a TypeError.
+hs=[a.get('hash') for a in arts if isinstance(a.get('hash'), str)]
+print(('\\n'.join(h for h in hs if h)) if any(hs) else '')
 " )"
   n_dict="$(echo "$result" | python -c "import sys,json;print(len([a for a in json.load(sys.stdin).get('artifacts',[]) if isinstance(a,dict)]))")"
   n_hash="$(printf '%s\n' "$hashset" | grep -c . || true)"
