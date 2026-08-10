@@ -292,19 +292,26 @@ export default function Assess() {
     if (errs.length > 0) return;
     setEntries(setEntry(entries, id, { running: true }));
     setTimeout(() => {
-      let result: AssessmentOutput;
-      if (target.fixture_id) {
-        const fx = assessFixtures.find(f => f.fixture_id === target.fixture_id);
-        if (fx && JSON.stringify(fx.input) === JSON.stringify(target.input)) {
-          result = fx.expected_output;
-        } else {
-          result = demoPlaceholder(target.input);
+      setEntries(es => {
+        const current = es.find(e => e.id === id);
+        if (!current) return es;
+        if (JSON.stringify(current.input) !== JSON.stringify(target.input)) {
+          return setEntry(es, id, { running: false });
         }
-      } else {
-        const fx = assessFixtures.find(f => f.input.case_id === target.input.case_id);
-        result = fx ? fx.expected_output : demoPlaceholder(target.input);
-      }
-      setEntries(es => setEntry(es, id, { running: false, result }));
+        let result: AssessmentOutput;
+        if (current.fixture_id) {
+          const fx = assessFixtures.find(f => f.fixture_id === current.fixture_id);
+          if (fx && JSON.stringify(fx.input) === JSON.stringify(current.input)) {
+            result = fx.expected_output;
+          } else {
+            result = demoPlaceholder(current.input);
+          }
+        } else {
+          const fx = assessFixtures.find(f => f.input.case_id === current.input.case_id);
+          result = fx ? fx.expected_output : demoPlaceholder(current.input);
+        }
+        return setEntry(es, id, { running: false, result });
+      });
     }, 400);
   };
 
