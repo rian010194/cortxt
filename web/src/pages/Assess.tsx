@@ -27,6 +27,7 @@ interface Entry {
   result: AssessmentOutput | null;
   errors: string[];
   running: boolean;
+  revision: number;
   fixture_id?: string;
 }
 
@@ -38,7 +39,7 @@ const newEntry = (): Entry => ({
     system_capabilities: [], known_standards: [], jurisdiction_hints: ['EU'],
     question_focus: ['Art2', 'Art3', 'Art5', 'Art6'],
   },
-  result: null, errors: [], running: false,
+  result: null, errors: [], running: false, revision: 0,
 });
 
 function demoPlaceholder(input: AssessmentInput): AssessmentOutput {
@@ -106,7 +107,7 @@ function CapabilityPicker({ input, onCaps }: { input: AssessmentInput; onCaps: (
 // ---- single system card ----
 function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Entry) => void; onRun: () => void }) {
   const { input } = entry;
-  const set = (patch: Partial<AssessmentInput>) => onChange({ ...entry, input: { ...input, ...patch }, result: null });
+  const set = (patch: Partial<AssessmentInput>) => onChange({ ...entry, input: { ...input, ...patch }, result: null, revision: entry.revision + 1 });
   const setDesc = (patch: Partial<AssessmentInput['system_description']>) =>
     set({ system_description: { ...input.system_description, ...patch } });
   const r = entry.result;
@@ -288,6 +289,7 @@ export default function Assess() {
     const target = entries.find(e => e.id === id);
     if (!target) return;
     const errs = validateInput(target.input);
+    const runRevision = target.revision;
     setEntries(setEntry(entries, id, { errors: errs }));
     if (errs.length > 0) return;
     setEntries(setEntry(entries, id, { running: true }));
@@ -295,20 +297,18 @@ export default function Assess() {
       setEntries(es => {
         const current = es.find(e => e.id === id);
         if (!current) return es;
-        if (JSON.stringify(current.input) !== JSON.stringify(target.input)) {
-          return setEntry(es, id, { running: false });
-        }
+        // Any assessment-relevant input change (revision bump) during the run annuls THIS run:
+        // never apply a stale result. Only toggle `running` (never touch `result` or a newer state).
+        if (current.revision !== runRevision) return setEntry(es, id, { running: false });
         let result: AssessmentOutput;
         if (current.fixture_id) {
           const fx = assessFixtures.find(f => f.fixture_id === current.fixture_id);
-          if (fx && JSON.stringify(fx.input) === JSON.stringify(current.input)) {
-            result = fx.expected_output;
-          } else {
-            result = demoPlaceholder(current.input);
-          }
+          result = fx && JSON.stringify(fx.input) === JSON.stringify(current.input)
+            ? fx.expected_output
+            : demoPlaceholder(current.input);
         } else {
-          const fx = assessFixtures.find(f => f.input.case_id === current.input.case_id);
-          result = fx ? fx.expected_output : demoPlaceholder(current.input);
+          // No fixture_id → free input: case_id alone must never yield a fixture reference.
+          result = demoPlaceholder(current.input);
         }
         return setEntry(es, id, { running: false, result });
       });
