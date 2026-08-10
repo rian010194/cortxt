@@ -27,6 +27,7 @@ interface Entry {
   result: AssessmentOutput | null;
   errors: string[];
   running: boolean;
+  fixture_id?: string;
 }
 
 const newEntry = (): Entry => ({
@@ -105,7 +106,7 @@ function CapabilityPicker({ input, onCaps }: { input: AssessmentInput; onCaps: (
 // ---- single system card ----
 function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Entry) => void; onRun: () => void }) {
   const { input } = entry;
-  const set = (patch: Partial<AssessmentInput>) => onChange({ ...entry, input: { ...input, ...patch } });
+  const set = (patch: Partial<AssessmentInput>) => onChange({ ...entry, input: { ...input, ...patch }, result: null });
   const setDesc = (patch: Partial<AssessmentInput['system_description']>) =>
     set({ system_description: { ...input.system_description, ...patch } });
   const r = entry.result;
@@ -278,7 +279,7 @@ export default function Assess() {
   const addFixture = (id: string) => {
     const fx = assessFixtures.find(f => f.fixture_id === id);
     if (!fx) return;
-    const e: Entry = { ...newEntry(), id: crypto.randomUUID(), input: fx.input, result: fx.expected_output };
+    const e: Entry = { ...newEntry(), id: crypto.randomUUID(), input: fx.input, result: fx.expected_output, fixture_id: fx.fixture_id };
     setEntries(es => [...es, e]);
   };
   const remove = (id: string) => setEntries(es => es.filter(e => e.id !== id && e.id !== '__delete__'));
@@ -291,8 +292,19 @@ export default function Assess() {
     if (errs.length > 0) return;
     setEntries(setEntry(entries, id, { running: true }));
     setTimeout(() => {
-      const fx = assessFixtures.find(f => f.input.case_id === target.input.case_id);
-      setEntries(es => setEntry(es, id, { running: false, result: fx ? fx.expected_output : demoPlaceholder(target.input) }));
+      let result: AssessmentOutput;
+      if (target.fixture_id) {
+        const fx = assessFixtures.find(f => f.fixture_id === target.fixture_id);
+        if (fx && JSON.stringify(fx.input) === JSON.stringify(target.input)) {
+          result = fx.expected_output;
+        } else {
+          result = demoPlaceholder(target.input);
+        }
+      } else {
+        const fx = assessFixtures.find(f => f.input.case_id === target.input.case_id);
+        result = fx ? fx.expected_output : demoPlaceholder(target.input);
+      }
+      setEntries(es => setEntry(es, id, { running: false, result }));
     }, 400);
   };
 
