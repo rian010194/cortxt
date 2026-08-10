@@ -72,12 +72,12 @@ Agenten ska nu automatiskt:
 2. **Skapa** GitHub-issue med scope, acceptance criteria, budget
 3. **Välja** modell enligt cost-first routing:
 
-|| Uppgiftstyp | Modell | Kostnad |
+| Uppgiftstyp | Modell | Kostnad |
 |---|---|---|
-|| Planering, research | **nemotron-3-ultra** | FREE |
-|| Research med kod | **kimi-k2.5** | $0.38/M |
-|| Implementation | **kimi-k2.6** | $0.55/M |
-|| Säkerhetsgranskning | **codex** | $1.75/M |
+| Planering, research | **nemotron-3-ultra** | FREE |
+| Research med kod | **kimi-k2.5** | $0.38/M |
+| Implementation | **kimi-k2.6** | $0.55/M |
+| Säkerhetsgranskning | **codex** | $1.75/M |
 
 4. **Föreslå** Ready-status
 
