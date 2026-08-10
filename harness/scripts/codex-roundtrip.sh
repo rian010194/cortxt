@@ -23,8 +23,11 @@
 #   2. Issue must be OPEN and workflow Ready (dispatch contract) before review.
 #   3. Review adapter invoked EXACTLY once per round; no silent model/provider
 #      fallback; NO automatic retry on HTTP 402/404/429.
-#   4. Output cap: max 12,000 output tokens per model run (validated against
-#      the envelope usage when present); exceed -> blocked/failed.
+#   4. Runtime bounding (operator #82/AC6): PID-bound max 540 s / call and max 3 Codex calls,
+#      enforced by the merged adapter + MAX_ADAPTER_CALLS. The deterministic review-artifact
+#      ingestion cap (MAX_ARTIFACT_BYTES, UTF-8 bytes) guards memory. NO hard 12k-output-token
+#      cap exists for the Codex reviewer (operator subscription); the hard 12,000 cap applies
+#      ONLY to the InferX Builder adapter (codex-roundtrip-builder-dispatch.sh), not here.
 #   5. Envelope status derived ONLY from runner exit code + whitelisted verdict
 #      (same contract as codex-review-verify.py). Never fabricate verdict/usage.
 #   6. A worker NEVER approves its own work; Hermes NEVER substitutes its own
@@ -62,14 +65,17 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 ADAPTER="${CODEX_ROUNDTRIP_ADAPTER:-$SELF_DIR/codex-review-adapter.sh}"
 # Operator #82/AC6 (2026-08-10): Codex reviewer runs on the operator's Codex subscription, so
 # there is NO hard 12k-output-token cap for the adapter. Runtime terms instead:
-#   - PID-bound max 540 s per call (enforced by the merged adapter's MAX_RUNTIME);
+#   - PID-bound max 540 s per call (enforced by the merged adapter's MAX_RUNTIME in
+#     codex-review-adapter.sh / codex-roundtrip-builder-dispatch.sh — NOT a local var here);
 #   - max 3 Codex calls per round-trip (MAX_ADAPTER_CALLS below);
 #   - no auto-retry, no reviewer/provider fallback;
 #   - fail-closed on timeout / transport / invalid envelope / ingestion failure;
 #   - usage reported when present; missing usage = model_cost_status unknown (never fabricated,
 #     and does NOT block a valid subscription run).
-MAX_RUNTIME=540   # operator-AC6: PID-bound max runtime per Codex call
+# NOTE: no local MAX_RUNTIME variable here — runtime bounding is the merged adapter's contract;
+# a dead local copy was removed to avoid implying this orchestrator enforces it directly.
 # Deterministic max size of the review artifact the orchestrator ingests (memory/ingestion safety).
+# Fail-closed: must be a positive integer; validated before any run (byte count, NOT bash chars).
 MAX_ARTIFACT_BYTES="${CODEX_ROUNDTRIP_MAX_ARTIFACT_BYTES:-200000}"
 WF_FIELD="PVTSSF_lAHOBcHJy84BfFfWzhZa88A"
 PROJECT_ID="PVT_kwHOBcHJy84BfFfW"
@@ -109,6 +115,9 @@ DIFF_BASE_SHA="$BASE"
 # validate it (>=1, integer). ceiling = 1 initial + MAX_REWORK reworks.
 MAX_REWORK="${MAX_REWORK:-2}"
 [[ "$MAX_REWORK" =~ ^[0-9]+$ ]] && [ "$MAX_REWORK" -ge 1 ] || die "bad --max-rework '$MAX_REWORK' (must be integer >= 1)"
+# #82/AC6: MAX_ARTIFACT_BYTES must fail-closed as a positive integer BEFORE any run, so a
+# malformed/missing cap can never silently disable the ingestion guard.
+[[ "$MAX_ARTIFACT_BYTES" =~ ^[0-9]+$ ]] && [ "$MAX_ARTIFACT_BYTES" -ge 1 ] || die "bad MAX_ARTIFACT_BYTES '$MAX_ARTIFACT_BYTES' (must be positive integer) -> fail-closed"
 MAX_ADAPTER_CALLS=$((1 + MAX_REWORK))
 log "rework ceiling: MAX_REWORK=$MAX_REWORK MAX_ADAPTER_CALLS=$MAX_ADAPTER_CALLS"
 
@@ -212,9 +221,13 @@ run_one_review(){
   preview="$(printf '%s\n' "$out" | sed -n "$((env_start+1)),$((env_end-1))p")"
 
   # Operator-AC6: deterministic max review-artifact size at ingestion (memory/ingestion safety).
-  # If the artifact exceeds the cap, fail-closed (ingestion failure) — do not ingest it.
-  if [ -n "${preview:-}" ] && [ "${#preview}" -gt "$MAX_ARTIFACT_BYTES" ]; then
-    echo "{\"round\":$round,\"status\":\"failed\",\"verdict\":\"unknown\",\"reason\":\"review artifact exceeds deterministic max ${MAX_ARTIFACT_BYTES} bytes\",\"cost_conf\":\"unknown\",\"output_tokens\":null}"
+  # Compare against ACTUAL UTF-8 BYTE size (wc -c), NOT bash ${#preview} character length, so
+  # multibyte verdicts/content are not under-counted. Exceeds cap -> fail-closed (ingestion failure).
+  local preview_bytes preview_size
+  preview_bytes="$(printf '%s' "$preview" | wc -c | tr -d ' ')"
+  preview_size="${preview_bytes:-0}"
+  if [ -n "$preview" ] && [ "$preview_size" -gt "$MAX_ARTIFACT_BYTES" ]; then
+    echo "{\"round\":$round,\"status\":\"failed\",\"verdict\":\"unknown\",\"reason\":\"review artifact exceeds deterministic max ${MAX_ARTIFACT_BYTES} bytes (was ${preview_size} UTF-8 bytes)\",\"cost_conf\":\"unknown\",\"output_tokens\":null}"
     return 0
   fi
 
@@ -524,15 +537,14 @@ while :; do
     log "VERDICT GODKÄND (call $CALLS) — capability result, NOT approval. merge/Done is operator-only."
     if [ -z "$DRYRUN" ]; then
       # FAIL-CLOSED (#82/#6): evidence + Review transition MUST succeed or the run is NOT success.
+      # Post-claim terminal failure -> go through fail_terminal (Blocked + read-back), never bare exit.
       if ! post_evidence "$CALLS" "$VERDICT" "$RES" "$SHA"; then
         log "TERMINAL fail-closed: evidence posting/read-back failed -> not success"
-        echo "ROUNDTRIP_END $RES"
-        exit 5
+        fail_terminal 5 "$RES"
       fi
       if ! mv_review; then
         log "TERMINAL fail-closed: Review transition/read-back failed -> not success"
-        echo "ROUNDTRIP_END $RES"
-        exit 5
+        fail_terminal 5 "$RES"
       fi
     fi
     echo "ROUNDTRIP_END $RES"
@@ -547,13 +559,15 @@ while :; do
       exit 0
     fi
     # #82/#10: post + read back the KRÄVER review evidence BEFORE dispatch (fail-closed).
+    # Post-claim terminal failure -> fail_terminal (Blocked + read-back), never bare exit.
     if ! post_evidence "$CALLS" "$VERDICT" "$RES" "$SHA"; then
       log "TERMINAL fail-closed: KRÄVER evidence posting/read-back failed -> not proceeding"
-      echo "ROUNDTRIP_END $RES"; exit 5
+      fail_terminal 5 "$RES"
     fi
     # #82/#10: use the REAL bounded Hermes Builder dispatch adapter (not an arbitrary hook).
+    # Missing/not-executable AFTER a successful claim is a terminal failure -> Blocked + read-back.
     if [ -z "$REWORK_DISPATCH" ] || [ ! -x "$REWORK_DISPATCH" ]; then
-      die "--rework-dispatch (Hermes Builder dispatch adapter) required but missing/not executable: $REWORK_DISPATCH"
+      fail_terminal 3 "{\"status\":\"blocked\",\"reason\":\"--rework-dispatch (Hermes Builder dispatch adapter) missing/not executable: ${REWORK_DISPATCH:-<none>}\"}"
     fi
     # #82/#5: capture pre-builder HEAD; post-builder must be a NEW pushed commit == PR's new remote head.
     PRE_HEAD="$(git rev-parse HEAD)"
