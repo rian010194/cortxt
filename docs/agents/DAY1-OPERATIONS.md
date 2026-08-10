@@ -106,9 +106,12 @@ När worker är klar:
 
 | Du säger | Händer |
 |---|---|
-| "Ja" / "Godkänn" | Issue flyttas till Review; Done är ditt separata beslut |
+| "Ja" / "Godkänn" | Issue flyttas till Review; Done kräver ditt separata beslut |
+| "Done" / "Godkänn Done" (efter granskning i Review) | Coordinator flyttar Workflow Status till Done — endast på ditt uttryckliga kommando |
 | "Nej, gör om [feedback]" | Issue flyttas till Ready med din kommentar |
 | "Blockerad — [orsak]" | Issue får label `blocked` |
+
+**Done verkställs enbart så här:** du säger uttryckligen att ärendet ska stängas (t.ex. "Done" eller "Godkänn Done") sedan ärendet ligger i Review och du granskat evidence. Coordinator svarar genom att överföra Workflow Status till `Done`. Inga andra vägar sätter Done — varken "Ja/Godkänn" i Review-steget eller någon agent automatiskt.
 
 **Regel:** Ingen agent får godkänna sitt eget arbete. Alltid du. Done är alltid ditt beslut — aldrig automatiskt.
 
