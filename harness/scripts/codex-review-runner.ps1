@@ -22,6 +22,11 @@
 # spawn, 0 tokens, empty files ("helper exits after a second"). Here the deadline
 # is a real [int] parameter defaulting to 540.
 #
+# UTF-8 fix (2026-08-10, #85): StandardInput.Write() uses the console's input
+# encoding (Windows-1252 on this host), which corrupts UTF-8 Swedish characters.
+# Fix: write raw UTF-8 bytes to StandardInput.BaseStream. Also read the prompt
+# file with explicit UTF-8 encoding.
+#
 # Exit code contract (2026-08-09 security rework, #70):
 #   0                  child finished and exited 0 (success path for a real review
 #                      = an actual model verdict, validated by the adapter)
@@ -62,9 +67,25 @@ if ($exe.EndsWith('.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
               '-LastMessageOut', $LastMessageOut)
     $exe = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 } elseif (-not $exe.EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
-    # cmd-hosted stub/wrapper (non-exe, non-ps1). Visible, tested shim.
-    $argv = @('/c', $exe) + $argsList
-    $exe = 'C:\Windows\System32\cmd.exe'
+    # Prefer native codex.exe if available (avoids cmd.exe console encoding issues).
+    # The npm package bundles the native exe under a predictable vendor path.
+    # NOTE: $exe may arrive as an MSYS path (\c\Users...) when called from bash;
+    # normalize to a Windows path before probing.
+    $npmDir = Split-Path $exe -Parent
+    # Convert MSYS \c\... paths to C:\... if needed
+    if ($npmDir -match '^\\([a-zA-Z])\\') {
+        $npmDir = ($npmDir -replace '^\\([a-zA-Z])\\', '$1:\\') -replace '\\', '\'
+    }
+    $nativeExe = Join-Path $npmDir "node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe"
+    if (Test-Path $nativeExe -PathType Leaf) {
+        $exe = $nativeExe
+        # Native exe: pass args directly (no cmd.exe wrapper)
+        $argv = $argsList
+    } else {
+        # Fallback: cmd-hosted stub/wrapper (non-exe, non-ps1). Visible, tested shim.
+        $argv = @('/c', $exe) + $argsList
+        $exe = 'C:\Windows\System32\cmd.exe'
+    }
 } else {
     $argv = $argsList
 }
@@ -93,20 +114,31 @@ $psi.RedirectStandardError = $true
 $psi.CreateNoWindow = $true
 $p = New-Object System.Diagnostics.Process
 $p.StartInfo = $psi
+
+# UTF-8 encoding for all stream operations
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+
+# Set console encoding to UTF-8 BEFORE process creation so that
+# Process.StandardInput uses UTF-8 instead of Windows-1252.
+[Console]::InputEncoding = $utf8
+[Console]::OutputEncoding = $utf8
+
 $null = $p.Start()
 
-# Feed the review brief (the embedded diff) to Codex stdin, then drain stdout
-# and stderr to the run files asynchronously so a chatty model never deadlocks.
-try { $p.StandardInput.AutoFlush = $true; } catch {}
+# Feed the review brief (the embedded diff) to Codex stdin.
+# Read the prompt file with explicit UTF-8 encoding.
 try {
-    $promptLines = [System.IO.File]::ReadAllLines($PromptFile)
-} catch { $promptLines = @() }
-if ($promptLines.Count -gt 0) {
-    $p.StandardInput.Write(($promptLines -join "`n"))
+    $promptText = [System.IO.File]::ReadAllText($PromptFile, $utf8)
+} catch { $promptText = '' }
+if ($promptText.Length -gt 0) {
+    $p.StandardInput.Write($promptText)
 }
 $p.StandardInput.Close()
-$outWriter = [System.IO.StreamWriter]::new($StdoutJson, $false, (New-Object System.Text.UTF8Encoding($false)))
-$errWriter = [System.IO.StreamWriter]::new($StderrLog, $false, (New-Object System.Text.UTF8Encoding($false)))
+
+# Drain stdout and stderr to the run files asynchronously so a chatty model
+# never deadlocks. Write with UTF-8 NO-BOM to preserve raw bytes exactly.
+$outWriter = [System.IO.StreamWriter]::new($StdoutJson, $false, $utf8)
+$errWriter = [System.IO.StreamWriter]::new($StderrLog, $false, $utf8)
 $outTask  = $p.StandardOutput.BaseStream.CopyToAsync($outWriter.BaseStream)
 $errTask  = $p.StandardError.BaseStream.CopyToAsync($errWriter.BaseStream)
 
