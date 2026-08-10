@@ -111,7 +111,7 @@ När worker är klar:
 | "Nej, gör om [feedback]" | Issue flyttas till Ready med din kommentar |
 | "Blockerad — [orsak]" | Issue får label `blocked` |
 
-**Done verkställs enbart så här:** du säger uttryckligen att ärendet ska stängas (t.ex. "Done" eller "Godkänn Done") sedan ärendet ligger i Review och du granskat evidence. Coordinator svarar genom att överföra Workflow Status till `Done`. Inga andra vägar sätter Done — varken "Ja/Godkänn" i Review-steget eller någon agent automatiskt.
+**Done verkställs enbart så här:** du säger uttryckligen att ärendet ska flyttas till `Done` (t.ex. "Done" eller "Godkänn Done") sedan ärendet ligger i Review och du granskat evidence. Coordinator svarar genom att överföra Workflow Status till `Done`. "Done" här avser Project-status-övergången — att stänga själva GitHub-issuet är ett **separat, senare** beslut som du fattar explicit, inte en automatisk följd av Done. Inga andra vägar sätter Done — varken "Ja/Godkänn" i Review-steget eller någon agent automatiskt.
 
 **Regel:** Ingen agent får godkänna sitt eget arbete. Alltid du. Done är alltid ditt beslut — aldrig automatiskt.
 
