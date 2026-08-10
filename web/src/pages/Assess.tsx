@@ -28,6 +28,7 @@ interface Entry {
   errors: string[];
   running: boolean;
   revision: number;
+  runSeq: number;
   fixture_id?: string;
 }
 
@@ -39,7 +40,7 @@ const newEntry = (): Entry => ({
     system_capabilities: [], known_standards: [], jurisdiction_hints: ['EU'],
     question_focus: ['Art2', 'Art3', 'Art5', 'Art6'],
   },
-  result: null, errors: [], running: false, revision: 0,
+  result: null, errors: [], running: false, revision: 0, runSeq: 0,
 });
 
 function demoPlaceholder(input: AssessmentInput): AssessmentOutput {
@@ -290,16 +291,20 @@ export default function Assess() {
     if (!target) return;
     const errs = validateInput(target.input);
     const runRevision = target.revision;
+    const runSeq = target.runSeq + 1;
     setEntries(setEntry(entries, id, { errors: errs }));
     if (errs.length > 0) return;
-    setEntries(setEntry(entries, id, { running: true }));
+    setEntries(setEntry(entries, id, { running: true, runSeq }));
     setTimeout(() => {
       setEntries(es => {
         const current = es.find(e => e.id === id);
         if (!current) return es;
-        // Any assessment-relevant input change (revision bump) during the run annuls THIS run:
-        // never apply a stale result. Only toggle `running` (never touch `result` or a newer state).
-        if (current.revision !== runRevision) return setEntry(es, id, { running: false });
+        // A stale run = input changed since THIS run started (revision bump) OR a newer run
+        // has claimed the entry (runSeq advanced). Stale runs never apply a result, and only
+        // clear `running` when still the latest run — a newer in-flight run is never touched.
+        if (current.revision !== runRevision || current.runSeq !== runSeq) {
+          return current.runSeq === runSeq ? setEntry(es, id, { running: false }) : es;
+        }
         let result: AssessmentOutput;
         if (current.fixture_id) {
           const fx = assessFixtures.find(f => f.fixture_id === current.fixture_id);
