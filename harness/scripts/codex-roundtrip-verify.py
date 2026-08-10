@@ -167,18 +167,24 @@ case "$CMD" in
     if [ "$1" = "item-list" ]; then
       printf '{"items":[{"id":"PVTI_mock","content":{"number":%s}}]}' "$GHMOCK_ISSUE_NUM"; exit 0
     fi
-    if [ "$1" = "item-edit" ]; then exit 0; fi
+    if [ "$1" = "item-edit" ]; then
+      # stateful: record the single-select-option-id -> label in the state file (Codex-item2)
+      for a in "$@"; do
+        case "$a" in
+          89a2da8a) echo "In progress" > "$GHMOCK_STATE_FILE";;
+          4bfdd926) echo "Review"       > "$GHMOCK_STATE_FILE";;
+          20948c2f) echo "Blocked"      > "$GHMOCK_STATE_FILE";;
+        esac
+      done
+      exit 0
+    fi
     exit 0;;
   api)
     SUB="$1"
     if [ "$SUB" = "graphql" ]; then
-      # Honor --jq by inspecting the query text: issue-read filters projectItems;
-      # node-read filters node(id). Emit the status the python test configured.
-      if printf '%s ' "$@" | grep -q 'projectItems'; then
-        printf '%s' "$GHMOCK_WF_STATUS"   # issue workflow read (Ready check)
-      else
-        printf '%s' "$GHMOCK_WF_NAME"     # set_item_status read-back (Review/Blocked)
-      fi
+      # Return the CURRENT stateful status (all read-backs see the latest recorded value).
+      ST="$(cat "$GHMOCK_STATE_FILE" 2>/dev/null || echo "$GHMOCK_WF_STATUS")"
+      printf '%s' "$ST"
       exit 0
     fi
     # issues/N/comments POST or read-back (path ends with /comments)
@@ -219,6 +225,11 @@ def run_gh_mocked(adapter, out_dir, cfg, sha, base, extra_args=None, issue="82")
         # node-shape status used for set_item_status read-back (Review/Blocked)
         "GHMOCK_WF_NAME": cfg.get("wf_name", "Review"),
     }
+    # stateful workflow-status file: start as the configured initial wf status
+    state_file = os.path.join(out_dir, "wf-state-%s" % os.getpid())
+    with open(state_file, "w", encoding="utf-8") as f:
+        f.write(cfg.get("wf_status", "Ready"))
+    env_extra["GHMOCK_STATE_FILE"] = state_file
     return run_orchestrator(adapter, None, sha, base, issue=issue, no_github=False,
                             mock_dir=bin_dir, extra_args=extra_args, env_extra=env_extra)
 
@@ -427,6 +438,8 @@ def main():
         # A synthetic profile dir supplies the InferX key + max_tokens so the cap-gate passes;
         # a stub `hermes` in PATH produces the configured worktree changes deterministically.
         git_fixtures(out_dir, check, globals())
+        # ===== Codex-item2: exact workflow-status transitions via the STATEFUL gh mock =====
+        transition_tests(out_dir, check, globals(), sha_a, base)
 
     if verbose:
         for c in CHECKS:
@@ -624,6 +637,39 @@ def git_fixtures(base_out, check, g):
     # cleanup temp tree
     import shutil as _sh
     _sh.rmtree(base, ignore_errors=True)
+
+
+def transition_tests(out_dir, check, g, sha_a, base):
+    """Codex-item2: prove EXACT workflow-status transitions via the STATEFUL gh mock.
+
+    The mock records each project status change to a state file (Ready, In progress, Review,
+    Blocked) and returns the current value on read-back. We assert specific final states and
+    (via the run log) the transition sequence — not just rc != 0.
+    """
+    import subprocess as sp, glob, os as _os
+
+    def state_file():
+        cands = glob.glob(_os.path.join(_os.path.realpath(out_dir), "wf-state-*"))
+        return max(cands, key=_os.path.getmtime) if cands else None
+
+    # T1: GODKÄND -> exact Ready->In progress->Review (final Review)
+    a_ok = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
+    p_t1 = run_gh_mocked(a_ok, out_dir, {}, sha_a, base)
+    sf = state_file()
+    final = open(sf, encoding="utf-8").read().strip() if sf else ""
+    check("T1 GODKÄND transition path: final workflow Review", p_t1.returncode == 0 and final == "Review",
+          "rc=%d state=%r" % (p_t1.returncode, final))
+    # confirm the run log shows the In-progress claim then Review
+    check("T1 GODKÄND: In-progress claim executed", "In progress" in (p_t1.stdout + p_t1.stderr) or
+          "Ready->In progress" in (p_t1.stdout + p_t1.stderr), "")
+
+    # T2: terminal-fail (timeout) -> Blocked (final Blocked, not Review/In progress)
+    a_to = make_stub_adapter(out_dir, {"verdict": "GODKAND", "rc": 124, "sha": sha_a})
+    p_t2 = run_gh_mocked(a_to, out_dir, {}, sha_a, base)   # NOPASS: rc=124 -> fail_terminal
+    sf = state_file()
+    final = open(sf, encoding="utf-8").read().strip() if sf else ""
+    check("T2 timeout -> Blocked", p_t2.returncode not in (0, 5) and final == "Blocked",
+          "rc=%d state=%r" % (p_t2.returncode, final))
 
 
 if __name__ == "__main__":

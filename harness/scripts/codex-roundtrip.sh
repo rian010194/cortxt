@@ -364,6 +364,24 @@ block_item(){
   set_item_status "blocked"
 }
 
+# Codex-item3: common terminal-failure path AFTER a claim. Attempts Blocked + read-back;
+# reports the transition outcome separately so no path leaves a failed run as In progress.
+# Returns the run's exit code to use (blocked-transition failure is NOT silently swallowed).
+fail_terminal(){
+  local exitwant="$1" reason="$2"
+  local tx=0
+  if [ -z "$DRYRUN" ]; then
+    if block_item; then
+      log "terminal failure -> Blocked (read-back verified)"
+    else
+      log "TERMINAL TRANSITION ERROR: could not set/verify Blocked after failure (run leaves non-In-progress handling to operator)"
+      tx=1
+    fi
+  fi
+  echo "ROUNDTRIP_END $reason"
+  [ $tx -eq 0 ] && exit "$exitwant" || exit 6
+}
+
 mv_review(){
   [ -n "$NO_GITHUB" ] && { log "NO_GITHUB: skip review transition"; return 0; }
   set_item_status "review"
@@ -475,33 +493,26 @@ while :; do
   CALLS=$((CALLS+1))
   if [ "$CALLS" -gt "$MAX_ADAPTER_CALLS" ]; then
     log "TERMINAL: adapter-call ceiling $MAX_ADAPTER_CALLS hit -> blocked + operator escalation (no self-approval)."
-    if [ -z "$DRYRUN" ] && ! block_item; then log "block transition failed"; fi
-    echo "ROUNDTRIP_END {\"round\":$CALLS,\"status\":\"blocked\",\"verdict\":\"CEILING\"}"
-    exit 4
+    fail_terminal 4 "{\"round\":$CALLS,\"status\":\"blocked\",\"verdict\":\"CEILING\"}"
   fi
   RES="$(run_one_review "$SHA" "$DIFF_BASE_SHA" "$CALLS")"
   STATUS="$(echo "$RES" | python -c "import sys,json;print(json.load(sys.stdin).get('status','failed'))")"
   VERDICT="$(echo "$RES" | python -c "import sys,json;print(json.load(sys.stdin).get('verdict','unknown'))")"
 
-  # Fail-closed terminal statuses (no retry, no fallback)
+  # Fail-closed terminal statuses (no retry, no fallback) — routed via the common Blocked path.
   case "$STATUS" in
     timed_out|failed)
       log "TERMINAL fail-closed: status=$STATUS (call $CALLS). no retry, no model fallback."
-      if [ -z "$DRYRUN" ] && ! block_item; then log "block transition failed"; fi
-      echo "ROUNDTRIP_END $RES"
-      exit 3
+      fail_terminal 3 "$RES"
       ;;
     succeeded) ;;
     blocked) # cap unverifiable -> fail-closed block
       log "TERMINAL fail-closed: status=blocked (call $CALLS). no retry, no model fallback."
-      if [ -z "$DRYRUN" ] && ! block_item; then log "block transition failed"; fi
-      echo "ROUNDTRIP_END $RES"
-      exit 3
+      fail_terminal 3 "$RES"
       ;;
     *) # unknown status -> fail-closed
       log "TERMINAL fail-closed: unknown status=$STATUS (call $CALLS)"
-      echo "ROUNDTRIP_END $RES"
-      exit 3
+      fail_terminal 3 "$RES"
       ;;
   esac
 
@@ -573,9 +584,7 @@ while :; do
     continue
   fi
 
-  # Ingestion failure / model error / unknown verdict -> fail-closed (no retry)
+  # Ingestion failure / model error / unknown verdict -> fail-closed (no retry) via common Blocked path.
   log "TERMINAL fail-closed: verdict='$VERDICT' status=$STATUS — ingestion/model failure, no retry."
-  [ -z "$DRYRUN" ] && { block_item || log "block transition failed"; }
-  echo "ROUNDTRIP_END $RES"
-  exit 3
+  fail_terminal 3 "$RES"
 done
