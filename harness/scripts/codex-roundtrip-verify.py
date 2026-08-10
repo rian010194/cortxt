@@ -11,8 +11,13 @@ against them and asserts:
   Path B  KRÄVER ÄNDRINGAR -> rework -> GODKÄND   (rework dispatched, 2 review rounds)
   Path C  fail-closed timeout (rc 124) -> orchestrator exits 3, status=timed_out
   + additional fail-closed edges: broken envelope, INGESTION MISSLYCKADES,
-    output-token cap exceeded, unknown verdict, no auto-retry (adapter invoked
-    exactly N expected times), honest cost (never fabricated).
+    unknown verdict, no auto-retry (adapter invoked exactly N expected times),
+    honest cost + usage (never fabricated; missing usage = unknown, NOT a block),
+    deterministic review-artifact byte cap (MAX_ARTIFACT_BYTES, multibyte-aware),
+    and exact Ready->In progress->Blocked transitions for every terminal failure class.
+NOTE (operator #82/AC6): there is NO hard 12k-output-token cap for the Codex reviewer;
+usage is reported when present and NEVER blocks. The hard 12k cap applies ONLY to the
+InferX Builder adapter (not verified here — this file is the Codex orchestrator verifier).
 
 Usage:
   python codex-roundtrip-verify.py            # all checks, exit nonzero on failure
@@ -64,6 +69,7 @@ def make_stub_adapter(out_dir, scenario):
     broken = scenario.get("broken", False)
     no_usage = scenario.get("no_usage", False)
     big_artifact = scenario.get("big_artifact", False)
+    multibyte_big = scenario.get("multibyte_big", False)
     invlog = scenario.get("invocation_log", "")
     vmap = {
         "GODKAND": "GODKÄND",
@@ -80,6 +86,12 @@ def make_stub_adapter(out_dir, scenario):
     artifacts = [{"ref": sha, "hash": "abc123", "size": 42}]
     if big_artifact:
         artifacts = [{"ref": sha, "hash": "abc123", "size": 42, "blob": "x" * 300000}]
+    if multibyte_big:
+        # Point-2 regression: many MULTIBYTE chars ('å' = 2 UTF-8 bytes each). We want a blob
+        # whose CHARACTER count stays under a small cap but whose UTF-8 BYTE count exceeds it,
+        # proving the orchestrator compares wc -c (bytes), not bash ${#preview} (chars).
+        # 300 'å' = 600 UTF-8 bytes but only 300 chars; with a cap of 500 that only byte-logic catches.
+        artifacts = [{"ref": sha, "hash": "abc123", "size": 42, "blob": "å" * 300}]
     env = {
         "issue_id": "commit %s" % sha,
         "run_id": "11111111-2222-4333-8444-555555555555",
@@ -105,7 +117,7 @@ def make_stub_adapter(out_dir, scenario):
     body = header + (
         'SHA="${1:-}"\n'
         'echo "REVIEW_ENVELOPE_JSON"\n'
-        "cat <<'ENVEOF'\n" + json.dumps(env) + "\nENVEOF\n"
+        "cat <<'ENVEOF'\n" + json.dumps(env, ensure_ascii=False) + "\nENVEOF\n"
         'echo "CODEX_REVIEW_DONE run_id=1 commit=\\"$SHA\\" verdict=%s cost=unknown"\n' % verdict_str +
         "exit %d\n" % rc
     )
@@ -177,12 +189,28 @@ case "$CMD" in
       printf '{"items":[{"id":"PVTI_mock","content":{"number":%s}}]}' "$GHMOCK_ISSUE_NUM"; exit 0
     fi
     if [ "$1" = "item-edit" ]; then
-      # stateful: record the single-select-option-id -> label in the state file (Codex-item2)
+      # stateful: record the single-select-option-id -> label in the state file (Codex-item2).
+      # Append each successful transition to GHMOCK_TX_LOG (Ready, In progress, Review, Blocked)
+      # so tests can assert the exact sequence, not just the final state. Failure injection:
+      #   GHMOCK_FAIL_REVIEW  -> the Review transition fails (mv_review fail)
+      #   GHMOCK_FAIL_BLOCKED -> the Blocked transition fails (fail_terminal tx path -> exit 6)
       for a in "$@"; do
         case "$a" in
-          89a2da8a) echo "In progress" > "$GHMOCK_STATE_FILE";;
-          4bfdd926) echo "Review"       > "$GHMOCK_STATE_FILE";;
-          20948c2f) echo "Blocked"      > "$GHMOCK_STATE_FILE";;
+          89a2da8a)
+            echo "In progress" > "$GHMOCK_STATE_FILE"
+            printf '%s\n' "In progress" >> "$GHMOCK_TX_LOG";;
+          4bfdd926)
+            if [ "$GHMOCK_FAIL_REVIEW" = "1" ]; then
+              printf '%s\n' "Review(FAIL)" >> "$GHMOCK_TX_LOG"; exit 7
+            fi
+            echo "Review" > "$GHMOCK_STATE_FILE"
+            printf '%s\n' "Review" >> "$GHMOCK_TX_LOG";;
+          20948c2f)
+            if [ "$GHMOCK_FAIL_BLOCKED" = "1" ]; then
+              printf '%s\n' "Blocked(FAIL)" >> "$GHMOCK_TX_LOG"; exit 7
+            fi
+            echo "Blocked" > "$GHMOCK_STATE_FILE"
+            printf '%s\n' "Blocked" >> "$GHMOCK_TX_LOG";;
         esac
       done
       exit 0
@@ -218,7 +246,7 @@ esac
     return bin_dir
 
 
-def run_gh_mocked(adapter, out_dir, cfg, sha, base, extra_args=None, issue="82"):
+def run_gh_mocked(adapter, out_dir, cfg, sha, base, extra_args=None, issue="82", rework_dispatch=None):
     """Run the orchestrator against the deterministic gh mock (NO_GITHUB off)."""
     bin_dir = make_gh_mock(out_dir, cfg)
     env_extra = {
@@ -233,13 +261,21 @@ def run_gh_mocked(adapter, out_dir, cfg, sha, base, extra_args=None, issue="82")
         "GHMOCK_READBACK": cfg.get("readback", "post"),
         # node-shape status used for set_item_status read-back (Review/Blocked)
         "GHMOCK_WF_NAME": cfg.get("wf_name", "Review"),
+        # transition failure-injection + exact-sequence log
+        "GHMOCK_FAIL_REVIEW": cfg.get("fail_review", "0"),
+        "GHMOCK_FAIL_BLOCKED": cfg.get("fail_blocked", "0"),
+        "GHMOCK_TX_LOG": cfg.get("tx_log", os.path.join(out_dir, "tx-log-%d" % os.getpid())),
     }
     # stateful workflow-status file: start as the configured initial wf status
     state_file = os.path.join(out_dir, "wf-state-%s" % os.getpid())
     with open(state_file, "w", encoding="utf-8") as f:
         f.write(cfg.get("wf_status", "Ready"))
     env_extra["GHMOCK_STATE_FILE"] = state_file
-    return run_orchestrator(adapter, None, sha, base, issue=issue, no_github=False,
+    # transitions log starts at the configured initial status (Ready)
+    tx_log = env_extra["GHMOCK_TX_LOG"]
+    with open(tx_log, "w", encoding="utf-8") as f:
+        f.write("Ready\n")
+    return run_orchestrator(adapter, rework_dispatch, sha, base, issue=issue, no_github=False,
                             mock_dir=bin_dir, extra_args=extra_args, env_extra=env_extra)
 
 
@@ -437,6 +473,34 @@ def main():
         check("RR4 big-artifact ingestion: exit 3 (fail-closed)", p_rr4.returncode == 3,
               "rc=%d" % p_rr4.returncode)
         check("RR4 big-artifact: refused for size", "artifact" in p_rr4.stdout.lower(), "")
+
+        # ----- Point-2 regressions: MAX_ARTIFACT_BYTES byte-vs-char + fail-closed validation -----
+        # MB1: MULTIBYTE artifact — 300 'å' chars = 600 UTF-8 bytes but 300 chars. With a cap of 500
+        # only wc -c byte-logic catches it (a bash ${#preview} char-length check would NOT). Must fail-closed.
+        adapter_mb1 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a, "multibyte_big": True})
+        p_mb1 = run_orchestrator(adapter_mb1, None, sha_a, base,
+                                 env_extra={"CODEX_ROUNDTRIP_MAX_ARTIFACT_BYTES": "500"})
+        blob_chars = 300  # chars under the 500 cap
+        blob_bytes = 300 * len("å".encode("utf-8"))  # 300*2 = 600 UTF-8 bytes over the 500 cap
+        check("MB1 multibyte: char count (%d) is UNDER cap but BYTE count (%d) exceeds -> fail-closed"
+              % (blob_chars, blob_bytes),
+              p_mb1.returncode not in (0,) and "artifact" in p_mb1.stdout.lower(),
+              "rc=%d chars=%d bytes=%d" % (p_mb1.returncode, blob_chars, blob_bytes))
+        check("MB1 multibyte: reason reports byte size", "bytes" in (p_mb1.stdout + p_mb1.stderr), "")
+
+        # MB2: MAX_ARTIFACT_BYTES invalid (non-positive-int env) -> fail-closed BEFORE any run.
+        adapter_mb2 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
+        p_mb2 = run_orchestrator(adapter_mb2, None, sha_a, base,
+                                 env_extra={"CODEX_ROUNDTRIP_MAX_ARTIFACT_BYTES": "abc"})
+        check("MB2 bad MAX_ARTIFACT_BYTES: fail-closed pre-run", p_mb2.returncode != 0,
+              "rc=%d" % p_mb2.returncode)
+        check("MB2 bad MAX_ARTIFACT_BYTES: refused before dispatch",
+              "MAX_ARTIFACT_BYTES" in (p_mb2.stdout + p_mb2.stderr), "")
+        # MB3: MAX_ARTIFACT_BYTES zero -> also invalid (must be positive).
+        p_mb3 = run_orchestrator(adapter_mb2, None, sha_a, base,
+                                 env_extra={"CODEX_ROUNDTRIP_MAX_ARTIFACT_BYTES": "0"})
+        check("MB3 zero MAX_ARTIFACT_BYTES: fail-closed pre-run", p_mb3.returncode != 0,
+              "rc=%d" % p_mb3.returncode)
 
         # RR2: PR base BRANCH name vs expected base branch mismatch (#82/Codex-item1) -> fail-closed.
         adapter_rr2 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
@@ -654,17 +718,53 @@ def git_fixtures(base_out, check, g):
 
 
 def transition_tests(out_dir, check, g, sha_a, base):
-    """Codex-item2: prove EXACT workflow-status transitions via the STATEFUL gh mock.
-
-    The mock records each project status change to a state file (Ready, In progress, Review,
-    Blocked) and returns the current value on read-back. We assert specific final states and
-    (via the run log) the transition sequence — not just rc != 0.
+    """Codex-item2 + point-3 regressions: prove EXACT workflow-status transitions via the
+    STATEFUL gh mock AND that every terminal failure class after a successful claim routes
+    through fail_terminal (Ready -> In progress -> Blocked), ends in Blocked, and that a
+    Blocked-transition/read-back failure itself yields a SEPARATE exit code (6) — not just rc.
     """
     import subprocess as sp, glob, os as _os
 
     def state_file():
         cands = glob.glob(_os.path.join(_os.path.realpath(out_dir), "wf-state-*"))
         return max(cands, key=_os.path.getmtime) if cands else None
+
+    def tx_seq():
+        cands = glob.glob(_os.path.join(_os.path.realpath(out_dir), "tx-log-*"))
+        if not cands:
+            return []
+        latest = max(cands, key=_os.path.getmtime)
+        with open(latest, encoding="utf-8") as f:
+            return [ln.strip() for ln in f if ln.strip()]
+
+    def final_state():
+        sf = state_file()
+        return open(sf, encoding="utf-8").read().strip() if sf else ""
+
+    def assert_blocked_sequence(name, p, exp_rc, tx_tail=("In progress", "Blocked"),
+                                exp_exit6=False):
+        state = final_state()
+        seq = tx_seq()
+        if exp_exit6:
+            # The Blocked transition ITSELF failed -> distinct exit 6. Here the semantics differ:
+            # the run must NOT report success, the tx log must show the In-progress claim and a
+            # FAILED Blocked attempt (Blocked(FAIL)), and the state must NOT have moved to Blocked
+            # (it stays In progress because the block transition could not be verified). This is
+            # exactly why the exit code is separated (6) — the operator must intervene.
+            check("%s: distinct exit 6 when Blocked transition/read-back itself fails" % name,
+                  p.returncode == 6, "rc=%d" % p.returncode)
+            check("%s: run NOT Blocked (block transition failed -> state In progress)" % name,
+                  state == "In progress", "state=%r" % state)
+            check("%s: In-progress claimed then Blocked(FAIL) attempt recorded" % name,
+                  seq[:1] == ["Ready"] and "In progress" in seq and "Blocked(FAIL)" in seq,
+                  "seq=%r" % seq)
+        else:
+            check("%s: exit %d" % (name, exp_rc), p.returncode == exp_rc,
+                  "rc=%d want=%d" % (p.returncode, exp_rc))
+            check("%s: final workflow Blocked" % name, state == "Blocked", "state=%r" % state)
+            check("%s: tx begins Ready, has In progress then Blocked" % name,
+                  seq[:1] == ["Ready"] and "In progress" in seq and seq[-1] == "Blocked",
+                  "seq=%r" % seq)
 
     # T1: GODKÄND -> exact Ready->In progress->Review (final Review)
     a_ok = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
@@ -684,6 +784,56 @@ def transition_tests(out_dir, check, g, sha_a, base):
     final = open(sf, encoding="utf-8").read().strip() if sf else ""
     check("T2 timeout -> Blocked", p_t2.returncode not in (0, 5) and final == "Blocked",
           "rc=%d state=%r" % (p_t2.returncode, final))
+
+    # T3: GODKÄND evidence POST/read-back failure -> fail_terminal (Ready->In progress->Blocked), rc 5
+    a_t3 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
+    p_t3 = run_gh_mocked(a_t3, out_dir, {"readback": "empty"}, sha_a, base)
+    assert_blocked_sequence("T3 GODKÄND evidence read-back fail -> Blocked", p_t3, 5)
+
+    # T4: GODKÄND Review transition/read-back failure -> fail_terminal (Blocked), rc 5
+    a_t4 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a})
+    p_t4 = run_gh_mocked(a_t4, out_dir, {"fail_review": "1"}, sha_a, base)
+    assert_blocked_sequence("T4 GODKÄND Review transition fail -> Blocked", p_t4, 5)
+
+    # T5: Blocked transition/read-back ITSELF fails -> SEPARATE exit code 6 (not rc 3/5)
+    a_t5 = make_stub_adapter(out_dir, {"verdict": "GODKAND", "rc": 124, "sha": sha_a})
+    p_t5 = run_gh_mocked(a_t5, out_dir, {"fail_blocked": "1"}, sha_a, base)
+    assert_blocked_sequence("T5 Blocked-transition fail -> distinct exit 6", p_t5, 6, exp_exit6=True)
+
+    # T6: KRÄVER evidence POST/read-back failure -> fail_terminal (Blocked), rc 5
+    a_t6 = make_stub_adapter(out_dir, {"verdict": "KRAVER", "sha": sha_a})
+    rework_ok6 = os.path.join(out_dir, "rework6.sh")
+    with open(rework_ok6, "w", encoding="utf-8") as f:
+        f.write("#!/usr/bin/env bash\nset -euo pipefail\n"
+                'printf "BUILDER_DISPATCH_DONE issue=x round=%s head=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee01 model=Q model_cost_status=unknown\\n" "${2:-0}"\n'
+                'echo "RC=0"\n')
+    os.chmod(rework_ok6, 0o755)
+    p_t6 = run_gh_mocked(a_t6, out_dir, {"readback": "empty"}, sha_a, base, rework_dispatch=rework_ok6)
+    assert_blocked_sequence("T6 KRÄVER evidence read-back fail -> Blocked", p_t6, 5)
+
+    # T7: KRÄVER but Builder dispatch missing/not-executable -> fail_terminal (Blocked), rc 3
+    a_t7 = make_stub_adapter(out_dir, {"verdict": "KRAVER", "sha": sha_a})
+    missing = os.path.join(out_dir, "does-not-exist.sh")
+    p_t7 = run_gh_mocked(a_t7, out_dir, {}, sha_a, base, rework_dispatch=missing)
+    assert_blocked_sequence("T7 missing Builder dispatch -> Blocked", p_t7, 3)
+
+    # T8: KRÄVER but Builder dispatch yields no valid 40-hex PR-head -> fail_terminal (Blocked), rc 3
+    a_t8 = make_stub_adapter(out_dir, {"verdict": "KRAVER", "sha": sha_a})
+    rework_noh = os.path.join(out_dir, "rework-noh.sh")
+    with open(rework_noh, "w", encoding="utf-8") as f:
+        f.write("#!/usr/bin/env bash\nset -euo pipefail\n"
+                'echo "BUILDER_DISPATCH_FAILED issue=82 round=1 (no head delivered)"\n'
+                'echo "RC=0"\n')
+    os.chmod(rework_noh, 0o755)
+    p_t8 = run_gh_mocked(a_t8, out_dir, {}, sha_a, base, rework_dispatch=rework_noh)
+    assert_blocked_sequence("T8 builder delivered no valid head -> Blocked", p_t8, 3)
+
+    # T9: ADAPTER terminal status (rc 124) ALSO leaves exact Ready->In progress->Blocked sequence.
+    # T2 already asserted final state; here assert the explicit sequence for the timeout class.
+    seq_t2 = tx_seq()
+    check("T9 timeout tx sequence = Ready, In progress, Blocked",
+          seq_t2[:1] == ["Ready"] and "In progress" in seq_t2 and seq_t2[-1] == "Blocked",
+          "seq=%r" % seq_t2)
 
 
 if __name__ == "__main__":
