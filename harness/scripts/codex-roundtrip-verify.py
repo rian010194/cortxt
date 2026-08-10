@@ -819,9 +819,14 @@ def transition_tests(out_dir, check, g, sha_a, base):
         "missing_key":    {'artifacts': '[{}]', "accept": False},
         # AC5-empty_list: empty artifacts list is allowed by the contract -> GODKÄND -> Review.
         "empty_list":     {'artifacts': '[]', "accept": True},
-        # '%'-containing value: previously crashed the %-formatter with TypeError; must now
-        # format cleanly (AC1) and, having a valid hash, be accepted -> Review.
-        "pct_in_value":   {'artifacts': '[{"ref":"r%","hash":"50%%done","size":1}]', "accept": True},
+        # '%'-containing value: formatted cleanly (AC1) and, having a valid hash, accepted -> Review.
+        # (#89 Codex-P2 fixed: '%' in a VALUE is NOT doubled — the %-formatter does not escape
+        # arguments, so the hash round-trips verbatim as '50%done').
+        "pct_in_value":   {'artifacts': '[{"ref":"r%","hash":"50%done","size":1}]', "accept": True},
+        # (#89 Codex-P1) MULTIPLE artifacts where one is missing its required hash -> FAIL-CLOSED:
+        # the sibling's valid hash must NOT let the empty-hash artifact be accepted as verified.
+        "multi_one_missing": {'artifacts': '[{"ref":"r1","hash":"goodhash","size":1},{"ref":"r2","hash":"","size":2}]',
+                              "accept": False},
     }
     for cname, cspec in artifact_cases_89.items():
         a_art = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a, "artifact": cspec["artifacts"]})
