@@ -24,18 +24,20 @@
    ↓
 [Coordinator] Skapar GitHub-issue + budget + väljer modell
    ↓
-[Coordinator] Sätter Ready och dispatchar rätt worker
+[Du] Granskar och godkänner scope; sätter Ready (eller godkänner att coordinator sätter Ready)
+   ↓
+[Dispatcher] Manuell dispatch (eller godkänd automatisk dispatcher) till rätt worker
    ↓
 [Worker] Kör → rapporterar evidence till GitHub
    ↓
-[Coordinator] Meddelar dig: "Klart. Godkänn?"
+[Coordinator] Meddelar dig: "Klart. Granska?"
    ↓
-[Du] Svara ja/nej/återsänd
+[Du] Granskar evidence; svara godkänn/ändringar/blockerad
    ↓
-[Coordinator] Uppdaterar GitHub-status
+[Coordinator] Flyttar till Review; Done endast av dig
 ```
 
-**Du öppnar aldrig GitHub.** Du pratar bara med coordinator.
+**Du öppnar aldrig GitHub.** Du pratar bara med coordinator. Dispatch och Done är alltid dina beslut.
 
 ---
 
@@ -70,20 +72,19 @@ Agenten ska nu automatiskt:
 2. **Skapa** GitHub-issue med scope, acceptance criteria, budget
 3. **Välja** modell enligt cost-first routing:
 
-| Uppgiftstyp | Modell | Kostnad |
+|| Uppgiftstyp | Modell | Kostnad |
 |---|---|---|
-| Planering, research | **nemotron-3-ultra** | FREE |
-| Research med kod | **kimi-k2.5** | $0.38/M |
-| Implementation | **kimi-k2.6** | $0.55/M |
-| Säkerhetsgranskning | **codex** | $1.75/M |
+|| Planering, research | **nemotron-3-ultra** | FREE |
+|| Research med kod | **kimi-k2.5** | $0.38/M |
+|| Implementation | **kimi-k2.6** | $0.55/M |
+|| Säkerhetsgranskning | **codex** | $1.75/M |
 
-4. **Sätta** label `ready`
-5. **Dispatcha** till rätt worker
+4. **Föreslå** Ready-status
 
-**Innan dispatch ska coordinator alltid fråga dig:**
-> *"Issue #N skapad. Budget: 15 min, $0.00 (nemotron free). Skicka till researcher?"*
+**Innan dispatch ska du alltid godkänna:**
+> *"Issue #N skapad. Budget: 15 min, $0.00 (nemotron free). Godkänn scope och sätt Ready för dispatch?"*
 
-Svara **ja** eller justera budget/modell.
+Svara **ja** eller justera budget/modell. Dispatch sker först efter ditt godkännande.
 
 ---
 
@@ -105,11 +106,11 @@ När worker är klar:
 
 | Du säger | Händer |
 |---|---|
-| "Ja" / "Godkänn" | Issue stängs som Done |
+| "Ja" / "Godkänn" | Issue flyttas till Review; Done är ditt separata beslut |
 | "Nej, gör om [feedback]" | Issue flyttas till Ready med din kommentar |
 | "Blockerad — [orsak]" | Issue får label `blocked` |
 
-**Regel:** Ingen agent får godkänna sitt eget arbete. Alltid du.
+**Regel:** Ingen agent får godkänna sitt eget arbete. Alltid du. Done är alltid ditt beslut — aldrig automatiskt.
 
 ---
 
