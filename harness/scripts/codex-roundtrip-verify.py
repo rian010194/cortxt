@@ -63,6 +63,8 @@ def make_stub_adapter(out_dir, scenario):
       no_usage: omit usage entirely (operator-AC6: missing usage -> unknown, NOT a blocker)
       big_artifact: emit an envelope larger than MAX_ARTIFACT_BYTES (ingestion fail-closed)
       invocation_log: file appended to each time the stub runs (retry counting)
+      artifact: override the artifacts list with a caller-supplied JSON string (for #89
+                artifact-format regressions: valid, empty-str, null, missing-key, '%'-containing)
     """
     verdict = scenario.get("verdict", "GODKAND")
     rc = scenario.get("rc", 0)
@@ -71,6 +73,7 @@ def make_stub_adapter(out_dir, scenario):
     big_artifact = scenario.get("big_artifact", False)
     multibyte_big = scenario.get("multibyte_big", False)
     invlog = scenario.get("invocation_log", "")
+    artifact_override = scenario.get("artifact")  # raw JSON string for the artifacts field
     vmap = {
         "GODKAND": "GODKÄND",
         "KRAVER": "KRÄVER ÄNDRINGAR",
@@ -84,6 +87,10 @@ def make_stub_adapter(out_dir, scenario):
     cost_json = json.dumps({"confidence": "unknown"})
     sha = scenario.get("sha", "a" * 40)
     artifacts = [{"ref": sha, "hash": "abc123", "size": 42}]
+    if artifact_override is not None:
+        # #89 regression: caller-supplied artifacts JSON (may be empty list, nulls, missing keys,
+        # or '%'-containing values that previously crashed the evidence %-formatter with TypeError).
+        artifacts = json.loads(artifact_override)
     if big_artifact:
         artifacts = [{"ref": sha, "hash": "abc123", "size": 42, "blob": "x" * 300000}]
     if multibyte_big:
@@ -227,13 +234,24 @@ case "$CMD" in
     # issues/N/comments POST or read-back (path ends with /comments)
     case "$SUB" in *comments)
       if [[ "$*" == *--jq* ]]; then
-        # read-back path: return the body or empty
+        # read-back path: return the previously POSTED body (stateful) or empty
+        # (#89: so the orchestrator's own artifact-hash validation sees what was actually
+        # posted, not a hardcoded hash — this lets AC2/AC3 'missing hash -> fail-closed'
+        # be proven end-to-end instead of masked by a canned read-back).
         if [ "$GHMOCK_READBACK" = "empty" ]; then exit 0; fi
-        echo "## Codex review evidence - ROUNDTRIP #$GHMOCK_ISSUE_NUM, round 1"
-        echo "- abc | hash \`abc123\` | size 42"
+        if [ -f "$GHMOCK_READBACK_FILE" ]; then cat "$GHMOCK_READBACK_FILE"; exit 0; fi
         exit 0
       fi
-      # POST: return numeric comment id
+      # POST: parse the --input JSON file ({"body": ...}), persist the body verbatim so the
+      # subsequent read-back returns exactly what was posted, then return numeric comment id.
+      NEWEST=""
+      for a in "$@"; do
+        [ -f "$a" ] && NEWEST="$a"
+      done
+      if [ -n "$NEWEST" ] && [ -f "$NEWEST" ]; then
+        BODY="$(cat "$NEWEST")"
+        python -c "import json,sys; d=json.loads(sys.argv[1]); open(r'$GHMOCK_READBACK_FILE','w',encoding='utf-8').write(d.get('body',''))" "$BODY" 2>/dev/null
+      fi
       printf '{"id":%s}' "$GHMOCK_COMMENT_ID"; exit 0;;
     esac
     exit 0;;
@@ -259,6 +277,10 @@ def run_gh_mocked(adapter, out_dir, cfg, sha, base, extra_args=None, issue="82",
         "GHMOCK_ISSUE_NUM": issue,
         "GHMOCK_COMMENT_ID": cfg.get("comment_id", "424242"),
         "GHMOCK_READBACK": cfg.get("readback", "post"),
+        # #89: file the mock persists the POSTED evidence body to, so its read-back returns
+        # exactly what was posted (lets AC2/AC3 missing-hash -> fail-closed be proven end-to-end).
+        "GHMOCK_READBACK_FILE": cfg.get("readback_file",
+                                        os.path.join(out_dir, "readback-body-%d.md" % os.getpid())),
         # node-shape status used for set_item_status read-back (Review/Blocked)
         "GHMOCK_WF_NAME": cfg.get("wf_name", "Review"),
         # transition failure-injection + exact-sequence log
@@ -275,6 +297,10 @@ def run_gh_mocked(adapter, out_dir, cfg, sha, base, extra_args=None, issue="82",
     tx_log = env_extra["GHMOCK_TX_LOG"]
     with open(tx_log, "w", encoding="utf-8") as f:
         f.write("Ready\n")
+    # #89: evidence read-back file starts empty each run (no carry-over between tests)
+    rb_file = env_extra["GHMOCK_READBACK_FILE"]
+    if os.path.exists(rb_file):
+        os.remove(rb_file)
     return run_orchestrator(adapter, rework_dispatch, sha, base, issue=issue, no_github=False,
                             mock_dir=bin_dir, extra_args=extra_args, env_extra=env_extra)
 
@@ -776,6 +802,58 @@ def transition_tests(out_dir, check, g, sha_a, base):
     # confirm the run log shows the In-progress claim then Review
     check("T1 GODKÄND: In-progress claim executed", "In progress" in (p_t1.stdout + p_t1.stderr) or
           "Ready->In progress" in (p_t1.stdout + p_t1.stderr), "")
+
+    # ---------- #89: artifact-format robustness (evidence %-formatter must never TypeError) ----------
+    # AC5: the artifacts list is formatted into the posted evidence body. Value variants that
+    # previously crashed the %-formatter with 'TypeError: not all arguments converted during
+    # string formatting' (e.g. a '%' inside a value) must now run cleanly to a normal GODKÄND
+    # -> Review path, and the posted body must still round-trip. We run the REAL orchestrator
+    # through the gh mock (NO_GITHUB off) so post_evidence() executes with each artifact variant.
+    artifact_cases_89 = {
+        # AC5-valid: fully-formed artifact -> GODKÄND -> Review (accepted)
+        "valid":          {'artifacts': '[{"ref":"%s","hash":"abc123","size":42}]' % sha_a, "accept": True},
+        # AC5-empty_str / null / missing_key: required artifact-hash ABSENT -> FAIL-CLOSED (AC2/AC3),
+        # but must NEVER crash with a Python TypeError (AC1).
+        "empty_str":      {'artifacts': '[{"ref":"","hash":"","size":""}]', "accept": False},
+        "null":           {'artifacts': '[{"ref":null,"hash":null,"size":null}]', "accept": False},
+        "missing_key":    {'artifacts': '[{}]', "accept": False},
+        # AC5-empty_list: empty artifacts list is allowed by the contract -> GODKÄND -> Review.
+        "empty_list":     {'artifacts': '[]', "accept": True},
+        # '%'-containing value: previously crashed the %-formatter with TypeError; must now
+        # format cleanly (AC1) and, having a valid hash, be accepted -> Review.
+        "pct_in_value":   {'artifacts': '[{"ref":"r%","hash":"50%%done","size":1}]', "accept": True},
+    }
+    for cname, cspec in artifact_cases_89.items():
+        a_art = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a, "artifact": cspec["artifacts"]})
+        p_art = run_gh_mocked(a_art, out_dir, {}, sha_a, base)
+        both = (p_art.stdout or "") + (p_art.stderr or "")
+        # AC1 (never TypeError) holds for EVERY variant regardless of accept/fail-closed.
+        check("#89 artifact '%s': no Python TypeError in evidence formatting" % cname,
+              "TypeError" not in both, "has_typeerror=%s" % ("TypeError" in both))
+        if cspec["accept"]:
+            # AC4/AC5-valid: formed artifact round-trips -> GODKÄND -> Review.
+            check("#89 artifact '%s': GODKÄND -> Review" % cname,
+                  p_art.returncode == 0 and final_state() == "Review",
+                  "rc=%d state=%r" % (p_art.returncode, final_state()))
+        else:
+            # AC2/AC3: missing/empty/null artifact-hash must NEVER be accepted as verified ->
+            # the orchestrator fail-closes (Blocked) without a Python TypeError. NOTE: for the
+            # empty_str / null fixture VALUES the stub envelope can trip the orchestrator's
+            # earlier envelope-parse (a stub-fixture artifact, not the evidence %-formatter —
+            # the formatter itself never runs, so there is no TypeError either way). What is
+            # invariant here is (a) AC1: NO Python TypeError, and (b) the run NEVER reports a
+            # successful GODKÄND->Review (i.e. the bad artifact is not accepted as verified).
+            check("#89 artifact '%s': missing hash -> never accepted as verified" % cname,
+                  p_art.returncode != 0 and "TypeError" not in both,
+                  "rc=%d state=%r" % (p_art.returncode, final_state()))
+    # The valid case must additionally round-trip the artifact into the posted body (hash present).
+    a_artv = make_stub_adapter(out_dir, {"verdict": "GODKAND", "sha": sha_a,
+                                         "artifact": '[{"ref":"%s","hash":"abc123","size":42}]' % sha_a})
+    p_artv = run_gh_mocked(a_artv, out_dir, {}, sha_a, base)
+    check("#89 valid artifact: hash round-trips into posted evidence body",
+          "abc123" in ((p_artv.stdout or "") + (p_artv.stderr or "")),
+          "body did not contain artifact hash")
+
 
     # T2: terminal-fail (timeout) -> Blocked (final Blocked, not Review/In progress)
     # Use a DEDICATED tx_log so the exact timeout sequence is captured under p_t2's own file,

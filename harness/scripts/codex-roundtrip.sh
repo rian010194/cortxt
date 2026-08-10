@@ -414,11 +414,16 @@ v=d.get('output_tokens')
 print(v if isinstance(v,int) else 'unknown')
 ")"
   # Preserve artifacts ref/hash/size from the envelope through the posted evidence (#82/#8).
+  # #89 fix: artifact formatting is %-TYPEERROR-SAFE — every value is str()'d and any '%' is
+  # escaped, non-dict artifacts are skipped, and malformed/empty input yields '(none)'
+  # deterministically so the read-back validation below runs instead of crashing mid-python.
   artifacts_line="$(echo "$result" | python -c "
 import sys,json
 d=json.load(sys.stdin)
 arts=d.get('artifacts',[])
-print('\n'.join([('- `%s` | hash `%s` | size %s' % (a.get('ref',''), a.get('hash',''), a.get('size',''))) for a in arts]) if arts else '(none)')
+def _s(v): return str(v).replace('%','%%') if v is not None else ''
+lines=['- \`%s\` | hash \`%s\` | size %s' % (_s(a.get('ref')), _s(a.get('hash')), _s(a.get('size'))) for a in arts if isinstance(a,dict)]
+print('\n'.join(lines) if lines else '(none)')
 ")"
   local body_file
   body_file="$(mktemp)"
@@ -480,7 +485,7 @@ PY
   if [ "$(echo "$result" | python -c "import sys,json;print(len(json.load(sys.stdin).get('artifacts',[])))")" -eq 0 ]; then
     artifact_ok=1
     log "note: no artifacts in envelope (capability still recorded)"
-  elif printf '%s' "$readback" | grep -q "hash \`" ; then
+  elif printf '%s' "$readback" | grep -qE 'hash `[^`]+`' ; then
     artifact_ok=1
   fi
   if printf '%s' "$readback" | grep -q "ROUNDTRIP #$ISSUE, round $round" && [ "$artifact_ok" -eq 1 ]; then
