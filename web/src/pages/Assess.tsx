@@ -27,6 +27,9 @@ interface Entry {
   result: AssessmentOutput | null;
   errors: string[];
   running: boolean;
+  revision: number;
+  runSeq: number;
+  fixture_id?: string;
 }
 
 const newEntry = (): Entry => ({
@@ -37,7 +40,7 @@ const newEntry = (): Entry => ({
     system_capabilities: [], known_standards: [], jurisdiction_hints: ['EU'],
     question_focus: ['Art2', 'Art3', 'Art5', 'Art6'],
   },
-  result: null, errors: [], running: false,
+  result: null, errors: [], running: false, revision: 0, runSeq: 0,
 });
 
 function demoPlaceholder(input: AssessmentInput): AssessmentOutput {
@@ -105,7 +108,7 @@ function CapabilityPicker({ input, onCaps }: { input: AssessmentInput; onCaps: (
 // ---- single system card ----
 function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Entry) => void; onRun: () => void }) {
   const { input } = entry;
-  const set = (patch: Partial<AssessmentInput>) => onChange({ ...entry, input: { ...input, ...patch } });
+  const set = (patch: Partial<AssessmentInput>) => onChange({ ...entry, input: { ...input, ...patch }, result: null, revision: entry.revision + 1 });
   const setDesc = (patch: Partial<AssessmentInput['system_description']>) =>
     set({ system_description: { ...input.system_description, ...patch } });
   const r = entry.result;
@@ -278,7 +281,7 @@ export default function Assess() {
   const addFixture = (id: string) => {
     const fx = assessFixtures.find(f => f.fixture_id === id);
     if (!fx) return;
-    const e: Entry = { ...newEntry(), id: crypto.randomUUID(), input: fx.input, result: fx.expected_output };
+    const e: Entry = { ...newEntry(), id: crypto.randomUUID(), input: fx.input, result: fx.expected_output, fixture_id: fx.fixture_id };
     setEntries(es => [...es, e]);
   };
   const remove = (id: string) => setEntries(es => es.filter(e => e.id !== id && e.id !== '__delete__'));
@@ -287,12 +290,33 @@ export default function Assess() {
     const target = entries.find(e => e.id === id);
     if (!target) return;
     const errs = validateInput(target.input);
+    const runRevision = target.revision;
+    const runSeq = target.runSeq + 1;
     setEntries(setEntry(entries, id, { errors: errs }));
     if (errs.length > 0) return;
-    setEntries(setEntry(entries, id, { running: true }));
+    setEntries(setEntry(entries, id, { running: true, runSeq }));
     setTimeout(() => {
-      const fx = assessFixtures.find(f => f.input.case_id === target.input.case_id);
-      setEntries(es => setEntry(es, id, { running: false, result: fx ? fx.expected_output : demoPlaceholder(target.input) }));
+      setEntries(es => {
+        const current = es.find(e => e.id === id);
+        if (!current) return es;
+        // A stale run = input changed since THIS run started (revision bump) OR a newer run
+        // has claimed the entry (runSeq advanced). Stale runs never apply a result, and only
+        // clear `running` when still the latest run — a newer in-flight run is never touched.
+        if (current.revision !== runRevision || current.runSeq !== runSeq) {
+          return current.runSeq === runSeq ? setEntry(es, id, { running: false }) : es;
+        }
+        let result: AssessmentOutput;
+        if (current.fixture_id) {
+          const fx = assessFixtures.find(f => f.fixture_id === current.fixture_id);
+          result = fx && JSON.stringify(fx.input) === JSON.stringify(current.input)
+            ? fx.expected_output
+            : demoPlaceholder(current.input);
+        } else {
+          // No fixture_id → free input: case_id alone must never yield a fixture reference.
+          result = demoPlaceholder(current.input);
+        }
+        return setEntry(es, id, { running: false, result });
+      });
     }, 400);
   };
 
