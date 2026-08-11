@@ -13,18 +13,22 @@ the captured pre-image for GitHub mutations.
 
 ## Live pre-image
 
-- 76 issues: 49 open, 27 closed; 72 Project 4 items.
+- 79 issues: 51 open, 28 closed; 75 Project 4 items. The delta is #95–#97
+  created under #22 and #23 closed `not_planned` after the initial pre-image.
 - Project 4 fields: 14, including generic `Status` and `Workflow Status`.
 - Project 4 views: one table named `View 1`, empty filter.
 - Labels: 21. Milestones: `Vertical 01 v0.1`, open, 0 open/7 closed issues.
-- Open PRs: draft #83 and draft #85. PR #93 is merged at `b8564c2`.
-- Remote branches: 22. Integration base: `agent/separate-harness-verticals`
+- Open PRs: drafts #83, #85, and #94 plus review PR #98. PR #93 is
+  merged at `b8564c2`.
+- Remote branches: 24, including the cleanup branch and active
+  `agent/ui-001-builder-run1`. Integration base: `agent/separate-harness-verticals`
   at `d9cd333` after the post-#93 live fix.
-- Checkout pre-image: eight untracked user documents; all remain unstaged.
+- Checkout pre-image: eleven untracked user documents after Revision 3–6 were
+  produced; all remain unstaged. `.codex-tmp/` is local cache and now ignored.
 - Protected #92 lineage is reachable from integration base; scripts
   `codex-artifact-roundtrip.sh` and `codex-artifact-roundtrip-verify.py` are unchanged.
 
-## Open issues
+## Issues in reconciliation scope
 
 Each row includes current state, evidence, disposition, canonical destination,
 dependencies, impact, risk, rollback, gate, and verification.
@@ -40,8 +44,8 @@ dependencies, impact, risk, rollback, gate, and verification.
 | #17 | Open n8n/VPS decision | SUPERSEDE | #63 | Future dispatcher option, not baseline | Medium | Reopen + restore hierarchy | BATCH | Body and operating model |
 | #18 | Open recovery/idempotency | KEEP | #18 | Depends on dispatcher contract | Low | N/A | NO | Scope review |
 | #19 | Open production-data security gate | KEEP | #19 | Blocks real cases | High | N/A | NO | Scope review |
-| #22 | Open operator cockpit | KEEP | #22 | Active planning explicitly protected | High | N/A | NO | Issue/working-tree diff |
-| #23 | Open; title says consolidated under #22 | CLOSE_NOT_PLANNED | #22 | Preserve feature detail in #22 | Low | Reopen | BATCH | Cross-link read-back |
+| #22 | Open operator-cockpit epic; rescope read back | KEEP | #22 | Parent of #95–#97; Workflow Review | High | N/A | NO | Native hierarchy/read-back |
+| #23 | Closed `not_planned`; consolidated under #22 | KEEP | #22 | Approved mutation completed with cross-link | Low | Reopen | NO | Closure/comment read-back |
 | #35 | Open; parallel dispatch verified in operating model | CLOSE_NOT_PLANNED | current operating model | Delivered historical validation | Low | Reopen | BATCH | Evidence paragraph |
 | #37 | Open vertical v0.2 parent | KEEP | #37 | Parent of #38-#40 | Low | N/A | NO | Native hierarchy |
 | #38 | Open; implementation evidence but prior review finding | REVIEW_REQUIRED | #37 | Do not close without final evidence | Medium | N/A | NO | Comments/commits |
@@ -57,7 +61,7 @@ dependencies, impact, risk, rollback, gate, and verification.
 | #50 | Open; PR #76 merged | CLOSE_NOT_PLANNED | PR #76 | Delivered, operator closure required | Low | Reopen | BATCH | Tests + PR |
 | #51 | Open; PR #78 merged/reviewed | CLOSE_NOT_PLANNED | PR #78 | Delivered | Low | Reopen | BATCH | Tests + PR |
 | #52 | Open portability/tooling | KEEP | #52 | Repository tools move is partial evidence | Medium | N/A | NO | AC review |
-| #54 | Open Assess display bug | KEEP | #54 | Absorb uncovered #43 findings | Medium | Restore body | BATCH | UI tests |
+| #54 | Open; AC-2/AC-3 extended and implemented in PR #98 | KEEP | #54/#95 | Await independent PR review | Medium | Restore body | NO | Body/PR tests |
 | #55 | Open Pi workspace security | KEEP | #55 | Config remains unsafe experiment evidence | High | N/A | NO | Security AC |
 | #56 | Open; draft PR #85 | KEEP | #56/#85 | Active work protected | High | N/A | NO | PR diff |
 | #57 | Open contract constraints | KEEP | #57 | Contracts relocation only | High | N/A | NO | Schema tests |
@@ -78,8 +82,11 @@ dependencies, impact, risk, rollback, gate, and verification.
 | #72 | Open, Todo; pilot not delivered | REVIEW_REQUIRED | #63 | Depends #65/#66 | Medium | Restore status | BATCH | Evidence/AC |
 | #73 | Open vendor review | REVIEW_REQUIRED | #63 or archive | No execution evidence | Medium | Reopen/restore | BATCH | Operator decision |
 | #74 | Open synthetic vendor pilot | REVIEW_REQUIRED | #63 | Depends policy/vendor decision | Medium | Restore status | BATCH | AC review |
-| #91 | Open, Todo; cleanup umbrella | KEEP | #91 | Move to Review only after evidence | High | Restore status | NO | Comment read-back |
-| #92 | Open, Workflow Review; PR #93 merged | KEEP | #92 | Protected active review chain | High | N/A | NO | Hash/ancestry/tests |
+| #91 | Open, Workflow Review; cleanup umbrella | KEEP | #91 | PR #94 evidence posted/read back | High | Restore status | NO | Comment/Project read-back |
+| #92 | Open, Workflow Review; evidence comment read back | KEEP | #92 | PR #93 + `d9cd333`; no Done/closure | High | N/A | NO | Envelope/hash/read-back |
+| #95 | Open, Workflow Review; Builder Run 1 succeeded | KEEP | #22 child | PR #98; immutable rescope and two run envelopes | High | N/A | NO | Native parent/run evidence/tests |
+| #96 | Open UI-002; sole parent #22; Workflow Blocked | BLOCKED | #22 child | Blocked by #95; normalized after missing status | Medium | Restore empty value | NO | Native parent/body/status read-back |
+| #97 | Open UI-003; sole parent #22; Workflow Inbox | KEEP | #22 child | Deploy/publication gate; no Ready approval | High | Restore empty value | NO | Native parent/body/status read-back |
 
 ## Project 4
 
@@ -89,7 +96,8 @@ dependencies, impact, risk, rollback, gate, and verification.
 | Field `Workflow Status` | Six required options | KEEP | Sole operational status | All views filter this field | Low | N/A | NO | Field read-back |
 | Field `Status` | Todo/In Progress/Done | SUPERSEDE | Hidden/ignored | Cannot be API-deleted safely | Medium | Re-show field | BATCH | View configuration |
 | Other 12 fields | Built-in metadata | KEEP | Project 4 | No duplicate semantics found | Low | N/A | NO | Field list |
-| 72 items | Four issues absent from live Project query may vary | REVIEW_REQUIRED | One item per issue | Add missing, remove no content | Medium | Remove added item | NO | Issue/project join |
+| 75 items | #95–#97 added; all current open issues have linked items | KEEP | One item per issue | Continue issue/project join audit | Medium | Remove only erroneous additions | NO | Issue/project join |
+| #22 Project item title | Cached old title after issue rescope | REVIEW_REQUIRED | Current issue title | Workflow is Review; do not recreate item blindly | Medium | N/A | NO | API/UI refresh read-back |
 
 Target filters: `Inbox = Workflow Status:Inbox`; `Active = Ready OR In progress OR Review`;
 `Blocked = Blocked`; `Archive = Done`. Generic `Status` is ignored in every view.
@@ -115,9 +123,13 @@ Target filters: `Inbox = Workflow Status:Inbox`; `Active = Ready OR In progress 
 |---|---|---|---|---|---|---|---|---|
 | PR #83 | Open draft; superseded by merged #84 | CLOSE_NOT_PLANNED | #84 | No unique desired scope after diff verification | Medium | Reopen | BATCH | Patch/reachability |
 | PR #85 | Open draft for #56 | KEEP | #85 | Active worktree and unique commits | High | N/A | NO | `git cherry` + PR diff |
+| PR #94 | Open draft cleanup PR | KEEP | #91 | This reconciliation; no merge/Done | High | N/A | NO | PR diff/checks |
+| PR #98 | Open, mergeable; Builder Run 1 for #95 | KEEP | #95 | 11 scoped web files; 8/8 tests/build/lint evidence | High | N/A | NO | PR patch/checks/review |
 | `main` | Stable root branch | KEEP | `main` | Behind integration base by design | High | N/A | NO | Branch protection |
 | `agent/separate-harness-verticals` | Current integration base (`d9cd333`) | KEEP | same | Cleanup base | High | N/A | NO | SHA/read-back |
 | `agent/fix-56-day1-ops` | Active PR #85 | KEEP | same | Unique active commits | High | N/A | NO | PR head |
+| `agent/ui-001-builder-run1` | Active PR #98 at `a1add64` | KEEP | same | Protect until PR #98 review/merge decision | High | N/A | NO | PR head/reachability |
+| `cleanup/backlog-recon-001-2026-08-11` | Active PR #94 | KEEP | same | Cleanup exchange surface | High | N/A | NO | PR head |
 | `agent/roundtrip-82-codex-orchestrator` | Head of superseded #83 | DELETE_AFTER_VERIFICATION | merged #84 clean branch | Verify unique commits irrelevant | Medium | Recreate ref at pre-image SHA | BATCH | Reachability/cherry |
 | `agent/roundtrip-artifact-92` | PR #93 merged; protected by prompt | ARCHIVE | retain until #92 closed | Do not delete in this batch | High | N/A | NO | SHA ancestry |
 | `agent/add-agent-task-issue-form`,`agent/version-pi-builder-poc` | Merged legacy branches | DELETE_AFTER_VERIFICATION | merge commits #2/#4 | Reachability required | Low | Recreate refs | BATCH | `merge-base --is-ancestor` |
@@ -147,8 +159,24 @@ branches automatically” only after the operator approves policy change.
 | Three old mutation matrices | Untracked competing drafts | DELETE_AFTER_VERIFICATION | this matrix | User-owned, never staged | Medium | File remains local until approval | BATCH | content comparison |
 | Untracked routing decision packet | Historical/proposed evidence | REVIEW_REQUIRED | proposed ADR or archive | User-owned, never staged | High | File remains local | BATCH | operator decision |
 | Two untracked operator-cockpit plans | Active #22 work | KEEP | current local paths | Explicitly protected | High | N/A | NO | status/diff |
-| Untracked `CODEX_REVIEW_PACKET_REVISION_3.md` | Review handoff evidence | REVIEW_REQUIRED | archive after chain completion | Explicitly not staged | High | File remains local | BATCH | #22/#92 chain |
-| Ignored `.hermes/`,`.trace/`,`.kanban/`,`.codex-tmp/`, dependencies/build output | Runtime/generated data | KEEP | ignored local state | Never publish content | High | N/A | NO | ignore + staged-file scan |
+| Untracked `CODEX_REVIEW_PACKET_REVISION_3.md` through `REVISION_6.md` | Review handoff evidence | REVIEW_REQUIRED | archive after #22 chain completion | Explicitly not staged | High | Files remain local | BATCH | #22/#92 chain |
+| Ignored `.hermes/`,`.trace/`,`.kanban/`,`.codex-tmp/`, dependencies/build output | Runtime/generated data | KEEP | ignored local state | Never publish content; `.codex-tmp/` newly normalized | High | Git revert ignore rule | NO | ignore + staged-file scan |
+
+## Reconciliation delta after Builder Run 1
+
+- Cancelled run `builder-run1-b3d8de4e135c` is retained as fail-closed evidence;
+  no files changed in that attempt.
+- Successful run `builder-run1-67c37d088b5a` produced PR #98 at `a1add64`
+  with exactly 11 files, three new deterministic tests, 8/8 tests passing,
+  successful build, and lint with two pre-existing warnings.
+- PR #98 and its branch are active review artifacts and are excluded from every
+  cleanup deletion proposal. Its web diff is not absorbed into PR #94.
+- #92 remains open in Workflow Review with the artifact ingress evidence read
+  back. Generic Project `Status` remains separate and is not treated as workflow.
+- #96 and #97 initially had no Workflow Status. Cleanup normalization set #96
+  to Blocked and #97 to Inbox and read both values back. Their generic Status
+  remains Todo. Project 4 still returned #22's old cached title while the issue
+  API returned the new epic title; this metadata inconsistency remains reported.
 
 Every tracked document is covered by the directory rows above or by the
 “remaining active docs” row; the exact tracked-doc manifest is verified by the
