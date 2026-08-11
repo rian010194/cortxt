@@ -58,16 +58,10 @@ ACTUAL_SHA=""
 RUN_ID="$(python -c 'import uuid; print(uuid.uuid4())')"
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 TMP_DIR="$(mktemp -d)"
-# Native Windows python cannot open MSYS /tmp or /c/... paths -> convert once
-# at creation so every path derived from $TMP_DIR (envelope, body, read-back)
-# is a native Windows path for python. cygpath -w is idempotent for already
-# Windows paths, so later conversions stay valid. Mirror codex-roundtrip.sh.
-if command -v cygpath >/dev/null 2>&1 && [[ "$TMP_DIR" != [A-Za-z]:* ]]; then
-  TMP_DIR="$(cygpath -w "$TMP_DIR" 2>/dev/null || printf '%s' "$TMP_DIR")"
-fi
-# Register cleanup and the EXIT trap IMMEDIATELY after TMP_DIR creation, before
-# the snapshot copy, so die/exit on byte-cap, hash or any later failure never
-# leaves the private temp snapshot behind (Codex round-2 P1).
+# Register cleanup and the EXIT trap IMMEDIATELY after mktemp -d, on the ORIGINAL
+# (MSYS) path, BEFORE any path conversion or snapshot copy. This guarantees that
+# a failure on ANY later line (cygpath, byte-cap, hash, claim, post) can never
+# leave the temp directory behind (Codex round-3 P1).
 cleanup(){ rm -rf "$TMP_DIR"; }
 on_exit(){
   local rc=$?
@@ -78,6 +72,13 @@ on_exit(){
   cleanup
 }
 trap on_exit EXIT
+# Native Windows python cannot open MSYS /tmp or /c/... paths -> derive a
+# separate Windows path (kept distinct from the original $TMP_DIR used for bash
+# commands and cleanup). Only paths handed to native python use TMP_DIR_WIN.
+TMP_DIR_WIN="$TMP_DIR"
+if command -v cygpath >/dev/null 2>&1 && [[ "$TMP_DIR_WIN" != [A-Za-z]:* ]]; then
+  TMP_DIR_WIN="$(cygpath -w "$TMP_DIR_WIN" 2>/dev/null || printf '%s' "$TMP_DIR_WIN")"
+fi
 # Private snapshot: copy the artifact once, then derive size, hash and the
 # prompt body from this same snapshot so verification and ingestion are atomic.
 # This closes the TOCTOU the reviewer flagged: the bytes Codex sees are exactly
@@ -165,7 +166,7 @@ VERDICT="$(grep -oE 'VERDICT: (GODKÄND|KRÄVER ÄNDRINGAR|INGESTION MISSLYCKADE
 case "$VERDICT" in GODKÄND|"KRÄVER ÄNDRINGAR") :;; *) die "invalid or failed review verdict";; esac
 
 FINISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-ENVELOPE="$TMP_DIR/envelope.json"
+ENVELOPE="$TMP_DIR_WIN/envelope.json"
 python - "$ENVELOPE" "$REPO#$ISSUE" "$RUN_ID" "$STARTED_AT" "$FINISHED_AT" "$ARTIFACT" "$ACTUAL_SHA" "$SIZE" "$VERDICT" <<'PY'
 import json,sys
 out,issue,run_id,started,finished,ref,sha,size,verdict=sys.argv[1:]
@@ -179,15 +180,15 @@ PY
 ENVELOPE_SHA="$(sha256sum < "$ENVELOPE" | cut -d' ' -f1)"
 
 if [ -z "$NO_GITHUB" ]; then
-  BODY="$TMP_DIR/comment.md"
+  BODY="$TMP_DIR_WIN/comment.md"
   { printf '<!-- codex-artifact-review-envelope -->\nArtifact review `%s`\n\nEnvelope SHA-256: `%s`\n\n```json\n' "$RUN_ID" "$ENVELOPE_SHA"; cat "$ENVELOPE"; printf '\n```\n'; } > "$BODY"
-  PAYLOAD="$TMP_DIR/payload.json"
+  PAYLOAD="$TMP_DIR_WIN/payload.json"
   python -c 'import json,sys; print(json.dumps({"body":open(sys.argv[1],encoding="utf-8").read()},ensure_ascii=False))' "$BODY" > "$PAYLOAD"
   RESPONSE="$(gh api --method POST "repos/$REPO/issues/$ISSUE/comments" --input "$PAYLOAD")" || die "GitHub evidence post failed"
   COMMENT_ID="$(printf '%s' "$RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
   [[ "$COMMENT_ID" =~ ^[0-9]+$ ]] || die "GitHub comment id invalid"
-  gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq .body > "$TMP_DIR/readback.md" || die "GitHub evidence read-back failed"
-  python - "$TMP_DIR/readback.md" "$ENVELOPE_SHA" <<'PY'
+  gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq .body > "$TMP_DIR_WIN/readback.md" || die "GitHub evidence read-back failed"
+  python - "$TMP_DIR_WIN/readback.md" "$ENVELOPE_SHA" <<'PY'
 import hashlib,re,sys
 text=open(sys.argv[1],encoding="utf-8").read()
 m=re.search(r"```json\n(.*?)\n```",text,re.S)
