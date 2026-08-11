@@ -1,15 +1,20 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import Assess from '../../pages/Assess';
 
-// #54 AC-2/AC-3: fixture v01-syn-unc-001 => uncertain risk-class badge is
-// warning-amber (not green) AND applicability badge (needs_more_info) is
-// warning-amber with AlertTriangle (never green).
-describe('Assess badges — #54', () => {
+// #54 + P2-rework: applicability-badge is fully confidence-aware.
+// uncertain / needs_more_info => warning-amber + AlertTriangle regardless of
+// the boolean applicability result; safe positive => red, safe negative => green.
+const FIXTURES: Record<string, { label: string; riskLabel: string; appliesText: string }> = {
+  unc: { label: 'Knapphändig beskrivning (osäkerhet)', riskLabel: 'Osäker', appliesText: 'Tillämpas inte' },
+  bnd: { label: 'Crowd-räkning utan identifiering (gränsfall)', riskLabel: 'Osäker', appliesText: 'AI-förordningen tillämpas' },
+  pos: { label: 'Högrisk medicinsk diagnos (positiv)', riskLabel: 'Hög risk', appliesText: 'AI-förordningen tillämpas' },
+  neg: { label: 'Traditionell bokföringsprogramvara (negativ)', riskLabel: 'Minimal risk', appliesText: 'Tillämpas inte' },
+};
+
+describe('Assess applicability badges — fully confidence-aware (#54 + P2)', () => {
   beforeAll(() => {
-    // jsdom supports crypto.randomUUID in modern versions; ensure it exists.
     if (!globalThis.crypto?.randomUUID) {
-      // minimal fallback for older jsdom
       Object.defineProperty(globalThis, 'crypto', {
         value: { ...(globalThis.crypto ?? {}), randomUUID: () => '00000000-0000-4000-8000-000000000000' },
         configurable: true,
@@ -17,25 +22,53 @@ describe('Assess badges — #54', () => {
     }
   });
 
-  it('renders amber badges for risk-class uncertain and applicability needs_more_info', async () => {
+  function addFixture(label: string) {
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(label.slice(0, 12)) }));
+  }
+
+  it('negative + needs_more_info renders amber with AlertTriangle, never green/red', () => {
     render(<Assess />);
-    // Add the synthetic fixture (result is set synchronously by addFixture).
-    fireEvent.click(screen.getByRole('button', { name: /Knapphändig beskrivning/ }));
+    addFixture(FIXTURES.unc.label);
+    // applicability badge showing "Tillämpas inte"
+    const appBadge = Array.from(screen.getAllByText('Tillämpas inte'))
+      .map(n => n.closest('span'))
+      .find(s => s && s.className.includes('badge')) as HTMLElement;
+    expect(appBadge.className).toContain('badge-amber');
+    expect(appBadge.className).not.toContain('badge-green');
+    expect(appBadge.className).not.toContain('badge-red');
+    // AlertTriangle icon present (a lucide svg inside the badge)
+    const tri = appBadge.querySelector('svg');
+    expect(tri).toBeTruthy();
+    // risk-class "Osäker" is amber too
+    const risk = screen.getAllByText('Osäker').map(n => n.closest('span')) as HTMLElement[];
+    expect(risk.some(n => n?.className?.includes('badge-amber'))).toBe(true);
+    expect(risk.some(n => n?.className?.includes('badge-green'))).toBe(false);
+  });
 
-    await waitFor(() => {
-      // Risk-class badge shows "Osäker" and is amber (not green). There may be
-      // several nodes with "Osäker" (portfolio stat + badge); check the badge one.
-      const osakerNodes = screen.getAllByText('Osäker');
-      expect(osakerNodes.length).toBeGreaterThan(0);
-      const amber = osakerNodes.some(n => n.className && n.className.includes('badge-amber'));
-      expect(amber).toBe(true);
-      const green = osakerNodes.some(n => n.className && n.className.includes('badge-green'));
-      expect(green).toBe(false);
+  it('positive + uncertain renders amber with AlertTriangle, never green/red', () => {
+    render(<Assess />);
+    addFixture(FIXTURES.bnd.label);
+    const appBadge = Array.from(screen.getAllByText('AI-förordningen tillämpas'))
+      .map(n => n.closest('span'))
+      .find(s => s && s.className.includes('badge')) as HTMLElement;
+    expect(appBadge.className).toContain('badge-amber');
+    expect(appBadge.className).not.toContain('badge-green');
+    expect(appBadge.className).not.toContain('badge-red');
+    expect(appBadge.querySelector('svg')).toBeTruthy();
+  });
 
-      // Applicability badge shows "Tillämpas inte" and is amber (not green).
-      const appBadge = screen.getByText('Tillämpas inte');
-      expect(appBadge.className).toContain('badge-amber');
-      expect(appBadge.className).not.toContain('badge-green');
-    });
+  it('safe positive (probable) stays red and safe negative (certain) stays green', () => {
+    render(<Assess />);
+    // safe positive
+    addFixture(FIXTURES.pos.label);
+    let app = Array.from(screen.getAllByText('AI-förordningen tillämpas'))
+      .map(n => n.closest('span')).find(s => s && s.className.includes('badge')) as HTMLElement;
+    expect(app.className).toContain('badge-red');
+    expect(app.className).not.toContain('badge-amber');
+    // safe negative
+    addFixture(FIXTURES.neg.label);
+    app = Array.from(screen.getAllByText('Tillämpas inte'))
+      .map(n => n.closest('span')).find(s => s && s.className.includes('badge') && s.className.includes('badge-green')) as HTMLElement;
+    expect(app.className).toContain('badge-green');
   });
 });
