@@ -8,12 +8,12 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Översikt' },
   { to: '/flow', icon: GitBranch, label: 'Flöde' },
   { to: '/agents', icon: Users, label: 'Agenter' },
-  { to: '/skills', icon: Wrench, label: 'Skills' },
+  { to: '/skills', icon: Wrench, label: 'Capabilities' },
   { to: '/kanban', icon: KanbanSquare, label: 'Kanban' },
   { to: '/dispatch', icon: Send, label: 'Dispatch' },
   { to: '/verticals', icon: Boxes, label: 'Verticals' },
   { to: '/assess', icon: Scale, label: 'AI Act Bedömning' },
-  { to: '/telemetry', icon: Activity, label: 'Telemetry' },
+  { to: '/telemetry', icon: Activity, label: 'Economics' },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -45,11 +45,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="p-4 border-t border-slate-800 text-xs text-slate-500">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Coordinator: kimi-k2.6
+        <div className="p-4 border-t border-slate-800 text-xs">
+          <div className="p-2 rounded-md bg-amber-900/20 border border-amber-800/40 text-amber-200 mb-2">
+            Preview / static data
           </div>
+          <div className="text-slate-400">Senast uppdaterad: {new Date().toISOString().slice(0, 10)}</div>
           <div>Profile: coordinator</div>
           <div className="mt-2 text-slate-600">v0.1.0 prototype</div>
         </div>
