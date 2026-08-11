@@ -65,6 +65,19 @@ TMP_DIR="$(mktemp -d)"
 if command -v cygpath >/dev/null 2>&1 && [[ "$TMP_DIR" != [A-Za-z]:* ]]; then
   TMP_DIR="$(cygpath -w "$TMP_DIR" 2>/dev/null || printf '%s' "$TMP_DIR")"
 fi
+# Register cleanup and the EXIT trap IMMEDIATELY after TMP_DIR creation, before
+# the snapshot copy, so die/exit on byte-cap, hash or any later failure never
+# leaves the private temp snapshot behind (Codex round-2 P1).
+cleanup(){ rm -rf "$TMP_DIR"; }
+on_exit(){
+  local rc=$?
+  if [ $rc -ne 0 ] && [ "${CLAIMED:-0}" -eq 1 ] && [ "${TERMINAL:-0}" -eq 0 ]; then
+    log "terminal failure after claim; moving issue to Blocked"
+    set_state "$OPT_BLOCKED" "Blocked" || log "ERROR: Blocked transition/read-back failed"
+  fi
+  cleanup
+}
+trap on_exit EXIT
 # Private snapshot: copy the artifact once, then derive size, hash and the
 # prompt body from this same snapshot so verification and ingestion are atomic.
 # This closes the TOCTOU the reviewer flagged: the bytes Codex sees are exactly
@@ -78,7 +91,6 @@ ACTUAL_SHA="${ACTUAL_SHA,,}"
 [ "$ACTUAL_SHA" = "${EXPECTED_SHA,,}" ] || die "artifact hash mismatch: expected $EXPECTED_SHA actual $ACTUAL_SHA"
 OUT_DIR="$REPO_DIR/.hermes/codex/artifact-reviews/$RUN_ID"
 mkdir -p "$OUT_DIR"
-cleanup(){ rm -rf "$TMP_DIR"; }
 
 project_state(){
   [ -n "$NO_GITHUB" ] && { printf 'OPEN\tTESTITEM\t%s\n' "${CODEX_ARTIFACT_TEST_STATE:-Ready}"; return; }
@@ -105,16 +117,6 @@ set_state(){
   got="$(project_state | cut -f3)"
   [ "$got" = "$expected" ]
 }
-
-on_exit(){
-  local rc=$?
-  if [ $rc -ne 0 ] && [ "$CLAIMED" -eq 1 ] && [ "$TERMINAL" -eq 0 ]; then
-    log "terminal failure after claim; moving issue to Blocked"
-    set_state "$OPT_BLOCKED" "Blocked" || log "ERROR: Blocked transition/read-back failed"
-  fi
-  cleanup
-}
-trap on_exit EXIT
 
 ROW="$(project_state)" || die "cannot read issue/Project 4 state"
 [ "$(printf '%s' "$ROW" | cut -f1)" = "OPEN" ] || die "issue is not OPEN"
