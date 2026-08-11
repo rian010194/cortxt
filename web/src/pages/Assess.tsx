@@ -215,9 +215,13 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
           <div className="p-3 rounded-lg bg-slate-800/50 flex items-center justify-between">
             <span className="text-xs text-slate-500">Tillämplighet</span>
             <div className="flex items-center gap-2">
-              <span className={`badge text-xs ${r.applicability.ai_act_applies ? 'badge-red' : (r.applicability.confidence === 'uncertain' || r.applicability.confidence === 'needs_more_info' ? 'badge-amber' : 'badge-green')}`}>
+              <span className={`badge text-xs ${
+                r.applicability.confidence === 'uncertain' || r.applicability.confidence === 'needs_more_info'
+                  ? 'badge-amber'
+                  : (r.applicability.ai_act_applies ? 'badge-red' : 'badge-green')
+              }`}>
                 {r.applicability.ai_act_applies ? 'AI-förordningen tillämpas' : 'Tillämpas inte'}
-                {!r.applicability.ai_act_applies && (r.applicability.confidence === 'uncertain' || r.applicability.confidence === 'needs_more_info') && (
+                {(r.applicability.confidence === 'uncertain' || r.applicability.confidence === 'needs_more_info') && (
                   <AlertTriangle className="w-3 h-3 inline ml-1" />
                 )}
               </span>
