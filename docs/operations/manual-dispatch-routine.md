@@ -1,5 +1,9 @@
 # Manual Dispatch Routine
 
+Status: active operational
+Authority: runtime operations
+Last verified: 2026-08-11
+
 ## Purpose
 
 Until the general automated dispatcher exists, this is the repeatable routine for moving an approved GitHub issue into a Hermes or Pi runtime run, and returning the result to GitHub.

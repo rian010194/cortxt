@@ -204,6 +204,6 @@ Kill background processes and ask for clarification before continuing.
 
 ## Related
 
-- [Dispatch contract](../../../docs/architecture/dispatch-contract.md)
-- [Current operating model](../../../docs/agents/current-operating-model.md)
+- [Dispatch contract](../../docs/architecture/dispatch-contract.md)
+- [Current operating model](../../docs/agents/current-operating-model.md)
 - Cost telemetry: check free quota before every dispatch

@@ -6,12 +6,12 @@ import os
 import json
 from pathlib import Path
 
-# Add parent directory to path
+# Add the adapter directory to the import path.
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "adapters"))
 
-from schemas.trace_db import init_db, get_session_factory, TraceEvent
-from scripts.trace_indexer import index_jsonl, reindex_all
+from trace_db import init_db, get_session_factory, TraceEvent
+from trace_indexer import index_jsonl, reindex_all
 
 
 def test_indexer_creates_tables_and_inserts():

@@ -1,5 +1,9 @@
 # Dispatch Runbook — next real Vertical 01 run
 
+Status: active operational
+Authority: Hermes runtime operations
+Last verified: 2026-08-11
+
 Consolidated 2026-08-05. Replaces the earlier "Buzz Blockers → Issues → Fix"
 three-stream plan, which chased two blockers that are now resolved or by-design.
 

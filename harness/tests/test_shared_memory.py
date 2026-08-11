@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic regression tests for #50 (scripts/shared_memory.py).
+"""Deterministic regression tests for #50 (harness/adapters/shared_memory.py).
 
 Verifies the three Codex-U2 findings are fixed:
   1. set() on an EXISTING key returns True and bumps version (was: always False
@@ -8,13 +8,13 @@ Verifies the three Codex-U2 findings are fixed:
   3. Locks are run-scoped (a lock in one run does not leak/block another).
   4. compare_and_swap + version semantics still correct.
 
-Run directly:  python scripts/test_shared_memory.py   (0 = pass)
+Run directly: python harness/tests/test_shared_memory.py (0 = pass)
 """
 import importlib.util, sys, tempfile, os
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-MOD = REPO / "scripts" / "shared_memory.py"
+REPO = Path(__file__).resolve().parents[2]
+MOD = REPO / "harness" / "adapters" / "shared_memory.py"
 spec = importlib.util.spec_from_file_location("shared_memory", MOD)
 sm = importlib.util.module_from_spec(spec); spec.loader.exec_module(sm)
 

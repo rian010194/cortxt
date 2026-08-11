@@ -1,5 +1,9 @@
 # Dispatch contract
 
+Status: active normative
+Authority: control-plane contract
+Last verified: 2026-08-11
+
 ## Purpose
 
 This contract keeps GitHub task state independent from the worker runtime. A

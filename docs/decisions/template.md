@@ -1,5 +1,9 @@
 # ADR-XXX: <Title>
 
+Status: template
+Authority: architecture decision process
+Last verified: 2026-08-11
+
 **Status:** Proposed | Accepted | Superseded | Deprecated  
 **Date:** YYYY-MM-DD  
 **Deciders:** <names>  

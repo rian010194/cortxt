@@ -1,5 +1,9 @@
 # GitHub Projects Kanban — Setup Guide
 
+Status: active operational
+Authority: repository operations
+Last verified: 2026-08-11
+
 ## Purpose
 
 One canonical Kanban board for the AI Workspace control plane. GitHub Issues/Projects remain the only durable task registry. Hermes Kanban and Buzz are runtime surfaces only.

@@ -70,5 +70,5 @@ later marker names appear inside workflow instructions and would otherwise
 trigger downstream workflows prematurely.
 
 See
-`docs/wayfinder/handoffs/2026-08-02-buzz-workflow-session.md` for the complete
+`docs/archive/handoffs/2026-08-02-buzz-workflow-session.md` for the complete
 evidence, environment distinction, security note, and resume order.

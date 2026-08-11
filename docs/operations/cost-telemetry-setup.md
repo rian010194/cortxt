@@ -1,5 +1,9 @@
 # Cost Telemetry Setup
 
+Status: active operational
+Authority: runtime operations
+Last verified: 2026-08-11
+
 ## Purpose
 
 Track and report model usage costs for every Hermes Kanban run. Prevent `unknown` cost from being treated as zero.

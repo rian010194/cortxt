@@ -1,5 +1,9 @@
 # Day 1 Operations — Så här kör du ett jobb
 
+Status: active operational
+Authority: operator operations
+Last verified: 2026-08-11
+
 > Status: verifierad väg 2026-08-04  
 > Med `operator-receptionist` skill laddad: agenten sköter GitHub, du pratar bara.
 

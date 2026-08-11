@@ -1,5 +1,9 @@
 # Kanban → GitHub Mirror
 
+Status: active operational
+Authority: repository operations
+Last verified: 2026-08-11
+
 ## Purpose
 
 Post completed Kanban task results as comments on the corresponding GitHub

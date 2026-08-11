@@ -1,5 +1,9 @@
 # Gateway Dispatch Test Results
 
+Status: active reference
+Authority: runtime verification evidence
+Last verified: 2026-08-11
+
 ## Date
 2026-08-03
 

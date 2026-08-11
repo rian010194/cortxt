@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Skill Manifest Validator
-Validates skill.yaml against schemas/skill-manifest.schema.json
+Validates skill.yaml against contracts/skill-manifest.schema.json
 """
 
 import json
@@ -10,7 +10,7 @@ import yaml
 from pathlib import Path
 from jsonschema import validate, ValidationError
 
-SCHEMA_PATH = Path(__file__).parent.parent / "schemas" / "skill-manifest.schema.json"
+SCHEMA_PATH = Path(__file__).parent.parent / "contracts" / "skill-manifest.schema.json"
 
 def load_schema():
     with open(SCHEMA_PATH, 'r', encoding='utf-8') as f:

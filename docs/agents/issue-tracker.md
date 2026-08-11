@@ -1,5 +1,9 @@
 # Issue tracker: GitHub
 
+Status: active normative
+Authority: repository governance
+Last verified: 2026-08-11
+
 Issues and planning artifacts for this repository live in GitHub Issues and Project `AI Workspace Delivery`. Use the repository remote to resolve `rian010194/ai-workspace-control-plane` and use `gh` for tracker operations.
 
 ## Conventions

@@ -1,5 +1,9 @@
 # Current operating model
 
+Status: active normative
+Authority: repository operating model
+Last verified: 2026-08-11
+
 Status: active operational baseline  
 Last reconciled: 2026-08-02
 
@@ -123,7 +127,7 @@ that GitHub issue identity, runtime limits, budget, evidence, or approval may be
 skipped.
 
 The partial Buzz workflow evidence and exact recovery sequence are recorded in
-`docs/wayfinder/handoffs/2026-08-02-buzz-workflow-session.md`.
+`docs/archive/handoffs/2026-08-02-buzz-workflow-session.md`.
 
 ## Guardrails against common misreadings
 

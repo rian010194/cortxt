@@ -1,5 +1,9 @@
 # Agent Architecture — AI Workspace Control Plane
 
+Status: active reference
+Authority: architecture documentation
+Last verified: 2026-08-11
+
 **Status:** Draft v0.2 (Iteration 2 — post-audit)  
 **Owner:** Rikard  
 **Last updated:** 2026-08-03  
@@ -816,7 +820,7 @@ graph TD
 
 ## 11. Decision Log (ADR Format — NY, löser #9)
 
-### ADR Template (`docs/adr/template.md`)
+### ADR Template (`docs/decisions/template.md`)
 ```markdown
 # ADR-XXX: <Title>
 
@@ -916,7 +920,7 @@ graph TD
 - `docs/architecture/dispatch-contract.md` — dispatch/result kontrakt
 - `docs/architecture/runtime-and-evaluation-harness.md` — runtime gränser
 - `docs/architecture/vertical-package-contract.md` — vertical packages
-- `docs/wayfinder/handoffs/shared-context.md` — destination & decisions
+- `docs/archive/handoffs/shared-context.md` — historical destination and decisions
 - `docs/architecture/audit-iteration-1.md` — Iteration 1 audit resultat
 - Video-anteckning: "How I manage 250+ Agents for an Agentic Hedge Fund"
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from datetime import datetime
-from schemas.trace_db import (
+from trace_db import (
     TraceEvent, init_db, get_session_factory, extract_issue_number, session_scope
 )
 

@@ -1,5 +1,9 @@
 # Runtime and evaluation harness
 
+Status: active normative
+Authority: runtime architecture
+Last verified: 2026-08-11
+
 ## Purpose
 
 The harness is the domain-neutral execution boundary between an approved task

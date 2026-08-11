@@ -1,5 +1,9 @@
 # Skill-to-Profile Mapping — AI Workspace Control Plane
 
+Status: active reference
+Authority: skill/profile inventory
+Last verified: 2026-08-11
+
 **Generated:** 2026-08-03  
 **Source:** 101 installed Hermes skills at `/c/Users/rikar/AppData/Local/hermes/skills/`  
 **Profiles:** 12 agent profiles from `AGENT_ARCHITECTURE.md`
@@ -225,7 +229,7 @@ These skills are installed and functional but don't have a clear home in the cur
 
 ## Next Steps
 
-1. **Create skill.yaml manifests** for all 101 skills matching `schemas/skill-manifest.schema.json`
+1. **Create skill.yaml manifests** for all 101 skills matching `contracts/skill-manifest.schema.json`
 2. **Generate interfaces** via `swarm-interface-generation` swarm pattern (3 workers)
 3. **Validate** with `validate_skill_manifest.py --strict`
 4. **Assign unassigned skills** to profiles as architecture evolves

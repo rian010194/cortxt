@@ -1,5 +1,9 @@
 # Cortxt Style Guide
 
+Status: active reference
+Authority: documentation governance
+Last verified: 2026-08-11
+
 **Version:** 0.1  
 **Status:** Draft  
 **Language:** Swedish (primär), English (sekundär)  

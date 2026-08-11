@@ -1,5 +1,9 @@
 # Hermes Kanban — Execution Ledger Guide
 
+Status: active operational
+Authority: runtime operations
+Last verified: 2026-08-11
+
 ## Purpose
 
 Hermes Kanban is **not** a backlog. It is an execution ledger for multi-agent runs that must correlate to a GitHub Issue.

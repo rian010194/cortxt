@@ -1,5 +1,9 @@
 # Hermes Kanban Swarm Mode
 
+Status: active operational
+Authority: runtime operations
+Last verified: 2026-08-11
+
 ## Purpose
 
 Swarm mode creates a complete multi-agent graph automatically:

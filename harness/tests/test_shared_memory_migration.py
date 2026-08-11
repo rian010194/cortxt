@@ -17,8 +17,8 @@ Run directly:  python scripts/test_shared_memory_migration.py   (0 = pass)
 import importlib.util, sqlite3, sys, tempfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-MOD = REPO / "scripts" / "shared_memory.py"
+REPO = Path(__file__).resolve().parents[2]
+MOD = REPO / "harness" / "adapters" / "shared_memory.py"
 spec = importlib.util.spec_from_file_location("shared_memory", MOD)
 sm = importlib.util.module_from_spec(spec); spec.loader.exec_module(sm)
 

@@ -1,5 +1,9 @@
 # ADR-013: Skill Composition Model
 
+Status: proposed
+Authority: architecture decision process
+Last verified: 2026-08-11
+
 **Status:** Proposed  
 **Date:** 2026-08-03  
 **Deciders:** Rikard  

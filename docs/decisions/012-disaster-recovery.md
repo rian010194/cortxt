@@ -1,5 +1,9 @@
 # ADR-012: Disaster Recovery for Profiles, Skills, and Memory
 
+Status: proposed
+Authority: architecture decision process
+Last verified: 2026-08-11
+
 **Status:** Proposed  
 **Date:** 2026-08-03  
 **Deciders:** Rikard  

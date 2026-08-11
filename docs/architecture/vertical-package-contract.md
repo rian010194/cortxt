@@ -1,5 +1,9 @@
 # Vertical package contract
 
+Status: active normative
+Authority: vertical architecture
+Last verified: 2026-08-11
+
 ## Purpose
 
 A vertical package declares domain behavior that a generic harness can load.
