@@ -105,7 +105,7 @@ query {
       }
     } } }
   }
-}" --jq '.data.repository.issue as $i | $i.projectItems.nodes[] | select(.project.number==4) | [$i.state,id,.fieldValueByName.name] | @tsv'
+}" --jq '.data.repository.issue as $i | $i.projectItems.nodes[] | select(.project.number==4) | [$i.state,.id,.fieldValueByName.name] | @tsv'
 }
 
 set_state(){
