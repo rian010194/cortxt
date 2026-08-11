@@ -49,10 +49,11 @@ RESOLVED="$(python -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$AR
 ROOT_RESOLVED="$(python -c 'import os; print(os.path.realpath("."))')"
 python -c 'import os,sys; root,path=sys.argv[1:]; sys.exit(0 if os.path.commonpath([root,path]) == root else 1)' "$ROOT_RESOLVED" "$RESOLVED" \
   || die "artifact resolves outside repository"
-SIZE="$(wc -c < "$ARTIFACT" | tr -d ' ')"
-[ "$SIZE" -le "$MAX_BYTES" ] || die "artifact exceeds byte cap ($SIZE > $MAX_BYTES)"
-ACTUAL_SHA="$(sha256sum "$ARTIFACT" | cut -d' ' -f1)"
-[ "${ACTUAL_SHA,,}" = "${EXPECTED_SHA,,}" ] || die "artifact hash mismatch: expected $EXPECTED_SHA actual $ACTUAL_SHA"
+SIZE=0
+ACTUAL_SHA=""
+# Size and hash are computed from a private snapshot (see below), so the bytes
+# Codex reviews are exactly the bytes whose hash was verified (atomic, no
+# TOCTOU between hash check and prompt ingestion).
 
 RUN_ID="$(python -c 'import uuid; print(uuid.uuid4())')"
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -64,6 +65,17 @@ TMP_DIR="$(mktemp -d)"
 if command -v cygpath >/dev/null 2>&1 && [[ "$TMP_DIR" != [A-Za-z]:* ]]; then
   TMP_DIR="$(cygpath -w "$TMP_DIR" 2>/dev/null || printf '%s' "$TMP_DIR")"
 fi
+# Private snapshot: copy the artifact once, then derive size, hash and the
+# prompt body from this same snapshot so verification and ingestion are atomic.
+# This closes the TOCTOU the reviewer flagged: the bytes Codex sees are exactly
+# the bytes whose SHA-256 was checked.
+SNAPSHOT="$TMP_DIR/artifact.snapshot"
+cp "$ARTIFACT" "$SNAPSHOT"
+SIZE="$(wc -c < "$SNAPSHOT" | tr -d ' ')"
+[ "$SIZE" -le "$MAX_BYTES" ] || die "artifact exceeds byte cap ($SIZE > $MAX_BYTES)"
+ACTUAL_SHA="$(sha256sum < "$SNAPSHOT" | cut -d' ' -f1)"
+ACTUAL_SHA="${ACTUAL_SHA,,}"
+[ "$ACTUAL_SHA" = "${EXPECTED_SHA,,}" ] || die "artifact hash mismatch: expected $EXPECTED_SHA actual $ACTUAL_SHA"
 OUT_DIR="$REPO_DIR/.hermes/codex/artifact-reviews/$RUN_ID"
 mkdir -p "$OUT_DIR"
 cleanup(){ rm -rf "$TMP_DIR"; }
@@ -125,7 +137,7 @@ FINDINGS: only actionable P0/P1/P2 findings with evidence, impact and smallest c
 KOSTNAD: measured amount or unknown; never fabricate zero.
 
 --- ARTIFACT START ---
-$(cat "$ARTIFACT")
+$(cat "$SNAPSHOT")
 --- ARTIFACT END ---
 EOF
 
@@ -162,7 +174,7 @@ data={"schema_version":"codex-artifact-review/v1","issue_id":issue,"run_id":run_
 "evidence":["artifact_sha256="+sha],"review":{"verdict":verdict}}
 with open(out,"w",encoding="utf-8",newline="\n") as f: json.dump(data,f,ensure_ascii=False,sort_keys=True,separators=(",",":"))
 PY
-ENVELOPE_SHA="$(sha256sum "$ENVELOPE" | cut -d' ' -f1)"
+ENVELOPE_SHA="$(sha256sum < "$ENVELOPE" | cut -d' ' -f1)"
 
 if [ -z "$NO_GITHUB" ]; then
   BODY="$TMP_DIR/comment.md"
