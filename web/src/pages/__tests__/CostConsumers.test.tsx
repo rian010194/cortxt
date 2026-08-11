@@ -15,25 +15,29 @@ describe('CostConsumers — null → "—" rendering', () => {
     expect(estimateRunCost('monitor', 5000, 2000).amount).toBeNull();
   });
 
-  it('Dispatch renders "—" for a real unknown cost, with no NaN / false $0.00 / low-ceiling warning', async () => {
+  it('Dispatch estimate shows "—" for a real unknown cost, with no NaN / false $0.00 / low-ceiling warning', async () => {
     render(<MemoryRouter><Dispatch /></MemoryRouter>);
     // The worker_role select is the first combobox in the Dispatch form.
     const selects = screen.getAllByRole('combobox');
     expect(selects.length).toBeGreaterThan(0);
-    // Request tab shows the live estimate; switch worker_role to the unknown
-    // profile value 'monitor' to force a null estimate in the rendered UI.
-    const roleSelect = selects[0];
-    // Only switch if 'monitor' is a valid option (it is per dispatchSchema).
-    fireEvent.change(roleSelect, { target: { value: 'monitor' } });
+    // Switch worker_role to the unknown profile value 'monitor' (a valid option,
+    // but not a known profile) to force a null estimate in the rendered UI.
+    fireEvent.change(selects[0], { target: { value: 'monitor' } });
 
     await waitFor(() => {
-      // The estimate line renders "—" (as part of "— <currency>") when amount null.
-      expect(screen.getAllByText(/—/).length).toBeGreaterThan(0);
-      // Never NaN, never a false $0.00, never a misleading low-ceiling warning.
-      expect(screen.queryByText('NaN')).toBeNull();
-      expect(screen.queryByText('$0.00')).toBeNull();
+      // Locate the ESTIMATE line explicitly (not any "—" anywhere on the page):
+      // the row labelled "Est. för 5k in + 2k out:" must contain "—".
+      const label = screen.getByText(/Est\. för 5k in \+ 2k out:/);
+      const row = label.closest('div');
+      expect(row).toBeTruthy();
+      const rowText = (row as HTMLElement).textContent;
+      expect(rowText).toContain('—');
+      // The estimate value renders "—" (not a numeral), so NaN / "$0.00" never
+      // appear and the low-ceiling warning (bounded by est.amount) is absent.
+      expect(rowText).not.toMatch(/NaN/);
+      expect(rowText).not.toMatch(/\$0\.00/);
     });
-    // Low-ceiling warning text must not appear when the estimate is unknown.
+    // Low-ceiling warning must not appear when the estimate is unknown.
     expect(screen.queryByText(/Low ceiling/i)).toBeNull();
   });
 
