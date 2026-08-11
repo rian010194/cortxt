@@ -57,6 +57,13 @@ ACTUAL_SHA="$(sha256sum "$ARTIFACT" | cut -d' ' -f1)"
 RUN_ID="$(python -c 'import uuid; print(uuid.uuid4())')"
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 TMP_DIR="$(mktemp -d)"
+# Native Windows python cannot open MSYS /tmp or /c/... paths -> convert once
+# at creation so every path derived from $TMP_DIR (envelope, body, read-back)
+# is a native Windows path for python. cygpath -w is idempotent for already
+# Windows paths, so later conversions stay valid. Mirror codex-roundtrip.sh.
+if command -v cygpath >/dev/null 2>&1 && [[ "$TMP_DIR" != [A-Za-z]:* ]]; then
+  TMP_DIR="$(cygpath -w "$TMP_DIR" 2>/dev/null || printf '%s' "$TMP_DIR")"
+fi
 OUT_DIR="$REPO_DIR/.hermes/codex/artifact-reviews/$RUN_ID"
 mkdir -p "$OUT_DIR"
 cleanup(){ rm -rf "$TMP_DIR"; }
