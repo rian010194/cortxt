@@ -235,11 +235,11 @@ export default function Telemetry() {
               </div>
               <div className="p-4 rounded-lg bg-emerald-900/20 border border-emerald-700/40">
                 <div className="text-xs text-emerald-400 mb-1">Total cost</div>
-                <div className="text-2xl font-bold text-emerald-300">${calcResult.amount.toFixed(4)}</div>
+                <div className="text-2xl font-bold text-emerald-300">{calcResult.amount === null ? '—' : calcResult.amount.toFixed(4)}</div>
                 <div className="text-xs text-emerald-500/70">{calcResult.currency}</div>
               </div>
             </div>
-            {calcResult.amount > 5 && (
+            {calcResult.amount !== null && calcResult.amount > 5 && (
               <div className="p-3 rounded-lg bg-amber-900/20 border border-amber-700/40 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                 <span className="text-sm text-amber-300">

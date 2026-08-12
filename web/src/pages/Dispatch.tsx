@@ -144,6 +144,7 @@ export default function Dispatch() {
               {(() => {
                 const profile = profiles.find(p => p.id === formData.worker_role);
                 const est = estimateRunCost(formData.worker_role, 5000, 2000);
+                const estAmount = est.amount === null ? null : est.amount;
                 return (
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between text-slate-400">
@@ -152,15 +153,15 @@ export default function Dispatch() {
                     </div>
                     <div className="flex justify-between text-slate-400">
                       <span>Est. för 5k in + 2k out:</span>
-                      <span className="text-emerald-300 font-mono">${est.amount.toFixed(4)} {est.currency}</span>
+                      <span className="text-emerald-300 font-mono">{estAmount === null ? '—' : `$${estAmount.toFixed(4)}`} {est.currency}</span>
                     </div>
                     <div className="flex justify-between text-slate-400">
                       <span>Max cost ceiling:</span>
-                      <span className={`font-mono ${formData.max_cost_usd < est.amount * 10 ? 'text-amber-300' : 'text-white'}`}>
+                      <span className={`font-mono ${estAmount !== null && formData.max_cost_usd < estAmount * 10 ? 'text-amber-300' : 'text-white'}`}>
                         ${formData.max_cost_usd.toFixed(2)}
                       </span>
                     </div>
-                    {formData.max_cost_usd < est.amount * 10 && (
+                    {estAmount !== null && formData.max_cost_usd < estAmount * 10 && (
                       <div className="flex items-center gap-2 text-amber-300 text-xs">
                         <AlertTriangle className="w-3 h-3" />
                         Low ceiling — ~10x est. körningar innan gräns.
