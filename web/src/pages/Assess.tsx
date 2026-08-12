@@ -11,7 +11,7 @@ import {
 
 const riskStyles: Record<string, string> = {
   prohibited: 'badge-red', high_risk: 'badge-red', limited_risk: 'badge-amber',
-  minimal_risk: 'badge-green', uncertain: 'badge-blue',
+  minimal_risk: 'badge-green', uncertain: 'badge-amber',
 };
 const riskLabel: Record<string, string> = {
   prohibited: 'Förbjuden', high_risk: 'Hög risk', limited_risk: 'Begränsad risk',
@@ -122,7 +122,7 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
             {input.system_description.name || 'Nytt system'}
           </h3>
           {r && (
-            <span className={`badge text-xs ${r.classification.system_risk_class === 'prohibited' || r.classification.system_risk_class === 'high_risk' ? 'badge-red' : 'badge-green'}`}>
+            <span className={`badge text-xs ${riskStyles[r.classification.system_risk_class]}`}>
               {riskLabel[r.classification.system_risk_class]}
             </span>
           )}
@@ -215,8 +215,15 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
           <div className="p-3 rounded-lg bg-slate-800/50 flex items-center justify-between">
             <span className="text-xs text-slate-500">Tillämplighet</span>
             <div className="flex items-center gap-2">
-              <span className={`badge text-xs ${r.applicability.ai_act_applies ? 'badge-red' : 'badge-green'}`}>
+              <span className={`badge text-xs ${
+                r.applicability.confidence === 'uncertain' || r.applicability.confidence === 'needs_more_info'
+                  ? 'badge-amber'
+                  : (r.applicability.ai_act_applies ? 'badge-red' : 'badge-green')
+              }`}>
                 {r.applicability.ai_act_applies ? 'AI-förordningen tillämpas' : 'Tillämpas inte'}
+                {(r.applicability.confidence === 'uncertain' || r.applicability.confidence === 'needs_more_info') && (
+                  <AlertTriangle className="w-3 h-3 inline ml-1" />
+                )}
               </span>
               <span className="text-xs text-slate-400">Konfidens: <span className="text-white">{confLabel[r.applicability.confidence]}</span></span>
             </div>

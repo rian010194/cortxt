@@ -439,10 +439,10 @@ graph TD
     style S fill:#14b8a6,stroke:#2dd4bf,color:#fff
 `;
 
-export function calculateCost(modelId: string, inputTokens: number, outputTokens: number): { amount: number; currency: string; breakdown: { input: number; output: number } } {
+export function calculateCost(modelId: string, inputTokens: number, outputTokens: number): { amount: number | null; currency: string; breakdown: { input: number; output: number } } {
   const profile = profiles.find(p => p.model === modelId);
   if (!profile || profile.costPer1MInput === undefined || profile.costPer1MOutput === undefined) {
-    return { amount: 0, currency: 'USD', breakdown: { input: 0, output: 0 } };
+    return { amount: null, currency: 'USD', breakdown: { input: 0, output: 0 } };
   }
   const inputCost = (inputTokens / 1_000_000) * profile.costPer1MInput;
   const outputCost = (outputTokens / 1_000_000) * profile.costPer1MOutput;
@@ -453,10 +453,10 @@ export function calculateCost(modelId: string, inputTokens: number, outputTokens
   };
 }
 
-export function estimateRunCost(workerRole: string, estimatedInputTokens: number, estimatedOutputTokens: number): { amount: number; currency: string; profile: string } {
+export function estimateRunCost(workerRole: string, estimatedInputTokens: number, estimatedOutputTokens: number): { amount: number | null; currency: string; profile: string } {
   const profile = profiles.find(p => p.id === workerRole);
   if (!profile || profile.costPer1MInput === undefined) {
-    return { amount: 0, currency: 'USD', profile: workerRole };
+    return { amount: null, currency: 'USD', profile: workerRole };
   }
   const inputCost = (estimatedInputTokens / 1_000_000) * profile.costPer1MInput;
   const outputCost = (estimatedOutputTokens / 1_000_000) * profile.costPer1MOutput!;
