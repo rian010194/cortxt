@@ -10,20 +10,31 @@ import Verticals from './pages/Verticals';
 import Assess from './pages/Assess';
 import Telemetry from './pages/Telemetry';
 
+type RouteDef = {
+  path: string;
+  Component: React.FC;
+};
+
+export const ROUTES: RouteDef[] = [
+  { path: '/', Component: Overview },
+  { path: '/flow', Component: Flow },
+  { path: '/agents', Component: Agents },
+  { path: '/skills', Component: Skills },
+  { path: '/kanban', Component: Kanban },
+  { path: '/dispatch', Component: Dispatch },
+  { path: '/verticals', Component: Verticals },
+  { path: '/assess', Component: Assess },
+  { path: '/telemetry', Component: Telemetry },
+];
+
 function App() {
   return (
     <BrowserRouter>
       <Layout>
         <Routes>
-          <Route path="/" element={<Overview />} />
-          <Route path="/flow" element={<Flow />} />
-          <Route path="/agents" element={<Agents />} />
-          <Route path="/skills" element={<Skills />} />
-          <Route path="/kanban" element={<Kanban />} />
-          <Route path="/dispatch" element={<Dispatch />} />
-          <Route path="/verticals" element={<Verticals />} />
-          <Route path="/assess" element={<Assess />} />
-          <Route path="/telemetry" element={<Telemetry />} />
+          {ROUTES.map((route) => (
+            <Route key={route.path} path={route.path} element={<route.Component />} />
+          ))}
         </Routes>
       </Layout>
     </BrowserRouter>

@@ -2,6 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Focus tokens - kontrast >= 3:1 mot bakgrund */
+  --focus-color: #60a5fa; /* brand-400 */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  
+  /* Breakpoints (används i CSS och Tailwind) */
+  --breakpoint-mobile: 768px;
+  --breakpoint-desktop: 769px;
+  
+  /* Spacing tokens */
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  
+  /* Min target size för touch (44px) */
+  --min-target: 44px;
+}
+
 @layer base {
   body {
     @apply bg-slate-950 text-slate-200 antialiased;
@@ -38,7 +58,8 @@
     @apply bg-purple-900/50 text-purple-300 border border-purple-700/50;
   }
   .nav-link {
-    @apply flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors;
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors;
+    min-height: calc(var(--min-target) + 8px);
   }
   .nav-link:hover {
     @apply bg-slate-800 text-white;
@@ -48,5 +69,82 @@
   }
   .inp {
     @apply w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-500;
+    min-height: calc(var(--min-target) + 4px);
   }
+}
+
+/* Focus visible ring - ej transparent, kontrast >= 3:1 */
+.focus-visible-ring {
+  outline: var(--focus-ring-width) solid var(--focus-color);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) rgba(96, 165, 250, 0.4);
+}
+
+/* Skip link styles */
+.skip-link {
+  position: absolute;
+  top: -999px;
+  left: -999px;
+  z-index: 999;
+}
+.skip-link:focus {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  @apply bg-brand-600 text-white px-4 py-2 rounded-lg shadow-lg no-underline;
+  outline: var(--focus-ring-width) solid var(--focus-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Mobile menu / hamburger button styles */
+.hamburger-btn {
+  width: calc(var(--min-target) + 12px);
+  height: calc(var(--min-target) + 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+}
+.hamburger-btn:hover {
+  @apply bg-slate-800;
+}
+.hamburger-btn:focus-visible {
+  @apply focus-visible-ring;
+}
+
+/* Backdrop styles */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  transition: opacity 0.2s ease;
+}
+.backdrop.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Responsive utilities */
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .mobile-only {
+    display: none !important;
+  }
+}
+
+/* Focus state for interactive elements */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  @apply focus-visible-ring;
 }

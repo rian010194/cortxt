@@ -45,9 +45,9 @@ export default function Flow() {
                       <Icon className={`w-6 h-6 ${step.verified ? 'text-emerald-400' : 'text-amber-400'}`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-1">
+                      <div className="flex flex-wrap items-center gap-3 mb-1">
                         <h3 className="text-lg font-semibold text-white">{step.title}</h3>
-                        <span className="text-sm text-slate-500">{step.subtitle}</span>
+                        <span className="text-sm text-slate-400">{step.subtitle}</span>
                         {step.verified ? (
                           <span className="badge badge-green">
                             <CheckCircle2 className="w-3 h-3 mr-1" /> Verifierad
@@ -88,7 +88,7 @@ export default function Flow() {
 
                 {!isLast && (
                   <div className="flex justify-center py-3 md:hidden">
-                    <ArrowDown className="w-5 h-5 text-slate-600" />
+                    <ArrowDown className="w-5 h-5 text-slate-400" />
                   </div>
                 )}
               </div>

@@ -31,7 +31,7 @@ export default function Skills() {
       {/* Filters */}
       <div className="flex flex-col lg:flex-row gap-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
             placeholder="Sök skills, profiler..."
@@ -41,7 +41,7 @@ export default function Skills() {
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Filter className="w-4 h-4 text-slate-500" />
+          <Filter className="w-4 h-4 text-slate-400" />
           {categories.map(cat => (
             <button
               key={cat}
@@ -75,7 +75,7 @@ export default function Skills() {
 
       {/* Table */}
       <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} aria-label="Capabilities-tabell">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-800/80 text-slate-400 text-xs uppercase">
               <tr>
@@ -127,7 +127,7 @@ export default function Skills() {
             </tbody>
           </table>
         </div>
-        <div className="px-5 py-3 border-t border-slate-700/50 text-xs text-slate-500">
+        <div className="px-5 py-3 border-t border-slate-700/50 text-xs text-slate-400">
           Visar {filtered.length} av {skills.length} skills
         </div>
       </div>

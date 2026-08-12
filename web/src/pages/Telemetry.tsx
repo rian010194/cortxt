@@ -114,7 +114,7 @@ export default function Telemetry() {
                     style={{ width: `${Math.min(pct, 100)}%` }}
                   />
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-slate-400">
                   {isCritical ? (
                     <span className="text-rose-400 flex items-center gap-1">
                       <AlertTriangle className="w-3 h-3" /> Nästan slut — fallback aktiveras
@@ -160,7 +160,7 @@ export default function Telemetry() {
                         {p?.name || pid}
                         {isFree && <span className="ml-1 text-emerald-400">(∞)</span>}
                       </span>
-                      {i < chain.length - 1 && <ArrowRight className="w-3 h-3 text-slate-600" />}
+                      {i < chain.length - 1 && <ArrowRight className="w-3 h-3 text-slate-400" />}
                     </div>
                   );
                 })}
@@ -182,10 +182,11 @@ export default function Telemetry() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-xs text-slate-500 mb-1.5">Profil</label>
+              <label className="block text-xs text-slate-400 mb-1.5">Profil</label>
               <select
                 value={calcProfile}
                 onChange={e => setCalcProfile(e.target.value)}
+                aria-label="Profil"
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-brand-500"
               >
                 {profiles.map(p => (
@@ -194,20 +195,22 @@ export default function Telemetry() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-slate-500 mb-1.5">Input tokens</label>
+              <label className="block text-xs text-slate-400 mb-1.5">Input tokens</label>
               <input
                 type="number"
                 value={calcInput}
                 onChange={e => setCalcInput(Number(e.target.value))}
+                aria-label="Input tokens"
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-brand-500 font-mono"
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-500 mb-1.5">Output tokens</label>
+              <label className="block text-xs text-slate-400 mb-1.5">Output tokens</label>
               <input
                 type="number"
                 value={calcOutput}
                 onChange={e => setCalcOutput(Number(e.target.value))}
+                aria-label="Output tokens"
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-brand-500 font-mono"
               />
             </div>
@@ -216,27 +219,27 @@ export default function Telemetry() {
           <div className="lg:col-span-2">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                <div className="text-xs text-slate-500 mb-1">Input cost</div>
+                <div className="text-xs text-slate-400 mb-1">Input cost</div>
                 <div className="text-lg font-bold text-white">
                   ${((calcInput / 1_000_000) * (calcProfileData?.costPer1MInput ?? 0)).toFixed(4)}
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-slate-400">
                   ${calcProfileData?.costPer1MInput ?? 0}/1M tokens
                 </div>
               </div>
               <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                <div className="text-xs text-slate-500 mb-1">Output cost</div>
+                <div className="text-xs text-slate-400 mb-1">Output cost</div>
                 <div className="text-lg font-bold text-white">
                   ${((calcOutput / 1_000_000) * (calcProfileData?.costPer1MOutput ?? 0)).toFixed(4)}
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-slate-400">
                   ${calcProfileData?.costPer1MOutput ?? 0}/1M tokens
                 </div>
               </div>
               <div className="p-4 rounded-lg bg-emerald-900/20 border border-emerald-700/40">
                 <div className="text-xs text-emerald-400 mb-1">Total cost</div>
                 <div className="text-2xl font-bold text-emerald-300">{calcResult.amount === null ? '—' : calcResult.amount.toFixed(4)}</div>
-                <div className="text-xs text-emerald-500/70">{calcResult.currency}</div>
+                <div className="text-xs text-emerald-500">{calcResult.currency}</div>
               </div>
             </div>
             {calcResult.amount !== null && calcResult.amount > 5 && (
@@ -345,7 +348,7 @@ export default function Telemetry() {
           <Cpu className="w-5 h-5 text-brand-400" />
           <h2 className="text-xl font-semibold text-white">Model Routing & Pricing</h2>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} aria-label="Model routing och pricing tabell">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-800/80 text-slate-400 text-xs uppercase">
               <tr>

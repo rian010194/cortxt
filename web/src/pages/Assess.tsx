@@ -73,7 +73,7 @@ function CapabilityPicker({ input, onCaps }: { input: AssessmentInput; onCaps: (
     <div className="space-y-2">
       {groups.map(g => (
         <div key={g}>
-          <div className="text-xs text-slate-500 mb-1">{g}</div>
+          <div className="text-xs text-slate-400 mb-1">{g}</div>
           <div className="flex flex-wrap gap-1.5">
             {capabilityPresets.filter(p => p.group === g).map(p => {
               const on = input.system_capabilities.includes(p.label);
@@ -128,7 +128,7 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
           )}
         </div>
         <button type="button" onClick={() => onChange({ ...entry, id: '__delete__' })}
-          className="p-2 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-900/20 transition-colors"
+          className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-900/20 transition-colors"
           title="Ta bort system">
           <Trash2 className="w-4 h-4" />
         </button>
@@ -137,11 +137,11 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-slate-400 mb-1.5">case_id <span className="text-rose-400">*</span></label>
-          <input value={input.case_id} onChange={e => set({ case_id: e.target.value })} className="inp font-mono" />
+          <input value={input.case_id} onChange={e => set({ case_id: e.target.value })} className="inp font-mono" aria-label="Case ID" />
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-400 mb-1.5">operator_type <span className="text-rose-400">*</span></label>
-          <select value={input.system_description.operator_type} onChange={e => setDesc({ operator_type: e.target.value as any })} className="inp">
+          <select value={input.system_description.operator_type} onChange={e => setDesc({ operator_type: e.target.value as any })} className="inp" aria-label="Operator type">
             {['provider', 'deployer', 'importer', 'distributor'].map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
@@ -149,15 +149,15 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
 
       <div>
         <label className="block text-xs font-medium text-slate-400 mb-1.5">Systemnamn <span className="text-rose-400">*</span></label>
-        <input value={input.system_description.name} onChange={e => setDesc({ name: e.target.value })} className="inp" />
+        <input value={input.system_description.name} onChange={e => setDesc({ name: e.target.value })} className="inp" aria-label="Systemnamn" />
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-400 mb-1.5">Syfte <span className="text-rose-400">*</span></label>
-        <textarea value={input.system_description.purpose} onChange={e => setDesc({ purpose: e.target.value })} rows={2} className="inp" placeholder="Beskriv systemets syfte (max 2000 tecken)" />
+        <textarea value={input.system_description.purpose} onChange={e => setDesc({ purpose: e.target.value })} rows={2} className="inp" placeholder="Beskriv systemets syfte (max 2000 tecken)" aria-label="Syfte" />
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-400 mb-1.5">Avsedd marknad</label>
-        <input value={input.system_description.intended_market} onChange={e => setDesc({ intended_market: e.target.value })} className="inp" placeholder="t.ex. EU sjukhus och kliniker" />
+        <input value={input.system_description.intended_market} onChange={e => setDesc({ intended_market: e.target.value })} className="inp" placeholder="t.ex. EU sjukhus och kliniker" aria-label="Avsedd marknad" />
       </div>
 
       <div>
@@ -170,7 +170,7 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
             const presets = input.system_capabilities.filter(c => capabilityPresets.some(p => p.label === c));
             set({ system_capabilities: [...presets, ...custom] });
           }}
-          rows={2} className="inp font-mono mt-2" placeholder="eller lägg till egna kapaciteter (en per rad)"
+          rows={2} className="inp font-mono mt-2" placeholder="eller lägg till egna kapaciteter (en per rad)" aria-label="Egna systemkapaciteter"
         />
       </div>
 
@@ -181,13 +181,13 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
             return (
               <button key={a} type="button"
                 onClick={() => set({ question_focus: on ? input.question_focus.filter(x => x !== a) : [...input.question_focus, a as any] })}
-                className={`px-2 py-1 rounded text-xs font-mono border transition-colors ${on ? 'bg-brand-900/40 text-brand-300 border-brand-700/40' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
+                className={`px-2 py-1 rounded text-xs font-mono border transition-colors ${on ? 'bg-brand-900/40 text-brand-300 border-brand-700/40' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
                 {a}
               </button>
             );
           })}
         </div>
-        <span className="text-xs text-slate-500">question_focus</span>
+        <span className="text-xs text-slate-400">question_focus</span>
       </div>
 
       {entry.errors.length > 0 && (
@@ -213,7 +213,7 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
           </div>
 
           <div className="p-3 rounded-lg bg-slate-800/50 flex items-center justify-between">
-            <span className="text-xs text-slate-500">Tillämplighet</span>
+            <span className="text-xs text-slate-400">Tillämplighet</span>
             <div className="flex items-center gap-2">
               <span className={`badge text-xs ${
                 r.applicability.confidence === 'uncertain' || r.applicability.confidence === 'needs_more_info'
@@ -230,7 +230,7 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
           </div>
 
           <div className="p-3 rounded-lg bg-slate-800/50 flex items-center justify-between">
-            <span className="text-xs text-slate-500">Riskklassificering</span>
+            <span className="text-xs text-slate-400">Riskklassificering</span>
             <span className={`badge text-xs ${riskStyles[r.classification.system_risk_class]}`}>
               {riskLabel[r.classification.system_risk_class]}{r.classification.basis_annex ? ` · ${r.classification.basis_annex}` : ''}
             </span>
@@ -238,14 +238,14 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
 
           {r.decision_brief.text && (
             <div className="p-3 rounded-lg bg-slate-800/50">
-              <div className="flex items-center gap-2 text-xs text-slate-500 mb-1.5"><BookOpen className="w-4 h-4" /> Beslutsunderlag ({r.decision_brief.language})</div>
+              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1.5"><BookOpen className="w-4 h-4" /> Beslutsunderlag ({r.decision_brief.language})</div>
               <p className="text-sm text-slate-200 leading-relaxed">{r.decision_brief.text}</p>
             </div>
           )}
 
           {r.obligations_assessed.length > 0 && (
             <div className="p-3 rounded-lg bg-slate-800/50">
-              <div className="flex items-center gap-2 text-xs text-slate-500 mb-1.5"><FileText className="w-4 h-4" /> Skyldigheter</div>
+              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1.5"><FileText className="w-4 h-4" /> Skyldigheter</div>
               <div className="space-y-1.5">
                 {r.obligations_assessed.map((o, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm">
@@ -371,7 +371,7 @@ export default function Assess() {
           <button type="button" onClick={addEmpty} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition-colors">
             <Plus className="w-4 h-4" /> Lägg till system
           </button>
-          <span className="text-xs text-slate-500 self-center mx-1">eller fyll från fixture:</span>
+          <span className="text-xs text-slate-400 self-center mx-1">eller fyll från fixture:</span>
           {assessFixtures.map(fx => (
             <button key={fx.fixture_id} type="button" onClick={() => addFixture(fx.fixture_id)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-xs hover:border-brand-600 hover:text-white transition-colors">
@@ -390,7 +390,7 @@ export default function Assess() {
         />
       ))}
 
-      <div className="flex items-center gap-2 text-xs text-slate-500">
+      <div className="flex items-center gap-2 text-xs text-slate-400">
         <ArrowRight className="w-3 h-3" />
         Nästa steg i produktionsflödet: skicka som Ready-issue → dispatch → Review → din approval (Done).
       </div>
@@ -401,7 +401,7 @@ export default function Assess() {
 function Stat({ label, value, total, color }: { label: string; value: number; total?: number; color?: string }) {
   return (
     <div className="p-3 rounded-lg bg-slate-800/50">
-      <div className={`text-2xl font-bold ${color || 'text-white'}`}>{value}{total !== undefined ? <span className="text-slate-500 text-base">/{total}</span> : null}</div>
+      <div className={`text-2xl font-bold ${color || 'text-white'}`}>{value}{total !== undefined ? <span className="text-slate-400 text-base">/{total}</span> : null}</div>
       <div className="text-xs text-slate-400 mt-0.5">{label}</div>
     </div>
   );

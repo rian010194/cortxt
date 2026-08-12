@@ -6,15 +6,15 @@ import {
 } from 'lucide-react';
 
 const archNodes = [
-  { id: 'buzz', label: 'Buzz', sub: 'Operator Dialog', color: 'bg-purple-600', border: 'border-purple-400' },
-  { id: 'github', label: 'GitHub', sub: 'Source of Truth', color: 'bg-blue-600', border: 'border-blue-400' },
-  { id: 'dispatch', label: 'Dispatch', sub: 'Claim & Run ID', color: 'bg-amber-600', border: 'border-amber-400' },
-  { id: 'hermes', label: 'Hermes', sub: 'Coordinator / Researcher', color: 'bg-emerald-600', border: 'border-emerald-400' },
-  { id: 'pi', label: 'Pi Builder', sub: 'Bounded Writes', color: 'bg-cyan-600', border: 'border-cyan-400' },
-  { id: 'kanban', label: 'Kanban', sub: 'cortxt-cp', color: 'bg-indigo-600', border: 'border-indigo-400' },
-  { id: 'result', label: 'Result', sub: 'Envelope', color: 'bg-pink-600', border: 'border-pink-400' },
-  { id: 'codex', label: 'Codex', sub: 'Read-only Review', color: 'bg-rose-600', border: 'border-rose-400' },
-  { id: 'approval', label: 'Operator', sub: 'Approval', color: 'bg-lime-600', border: 'border-lime-400' },
+  { id: 'buzz', label: 'Buzz', sub: 'Operator Dialog', color: 'bg-purple-700', border: 'border-purple-400' },
+  { id: 'github', label: 'GitHub', sub: 'Source of Truth', color: 'bg-blue-700', border: 'border-blue-400' },
+  { id: 'dispatch', label: 'Dispatch', sub: 'Claim & Run ID', color: 'bg-amber-700', border: 'border-amber-400' },
+  { id: 'hermes', label: 'Hermes', sub: 'Coordinator / Researcher', color: 'bg-emerald-700', border: 'border-emerald-400' },
+  { id: 'pi', label: 'Pi Builder', sub: 'Bounded Writes', color: 'bg-cyan-700', border: 'border-cyan-400' },
+  { id: 'kanban', label: 'Kanban', sub: 'cortxt-cp', color: 'bg-indigo-700', border: 'border-indigo-400' },
+  { id: 'result', label: 'Result', sub: 'Envelope', color: 'bg-pink-700', border: 'border-pink-400' },
+  { id: 'codex', label: 'Codex', sub: 'Read-only Review', color: 'bg-rose-700', border: 'border-rose-400' },
+  { id: 'approval', label: 'Operator', sub: 'Approval', color: 'bg-lime-700', border: 'border-lime-400' },
 ];
 
 export default function Overview() {
@@ -81,7 +81,7 @@ export default function Overview() {
           <GitBranch className="w-5 h-5 text-brand-400" />
           <h2 className="text-xl font-semibold text-white">Arkitekturöversikt</h2>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} aria-label="Arkitekturöversikt diagram">
           <div className="min-w-[800px] p-4">
             <div className="flex flex-wrap justify-center gap-4 mb-4">
               {archNodes.slice(0, 3).map(node => (
@@ -93,12 +93,12 @@ export default function Overview() {
                   }`}
                 >
                   <div className="text-white font-bold text-sm">{node.label}</div>
-                  <div className="text-white/80 text-xs">{node.sub}</div>
+                  <div className="text-white text-xs">{node.sub}</div>
                 </button>
               ))}
             </div>
             <div className="flex justify-center mb-4">
-              <ArrowRight className="w-5 h-5 text-slate-500 rotate-90" />
+              <ArrowRight className="w-5 h-5 text-slate-400 rotate-90" />
             </div>
             <div className="flex flex-wrap justify-center gap-4 mb-4">
               {archNodes.slice(3, 6).map(node => (
@@ -110,12 +110,12 @@ export default function Overview() {
                   }`}
                 >
                   <div className="text-white font-bold text-sm">{node.label}</div>
-                  <div className="text-white/80 text-xs">{node.sub}</div>
+                  <div className="text-white text-xs">{node.sub}</div>
                 </button>
               ))}
             </div>
             <div className="flex justify-center mb-4">
-              <ArrowRight className="w-5 h-5 text-slate-500 rotate-90" />
+              <ArrowRight className="w-5 h-5 text-slate-400 rotate-90" />
             </div>
             <div className="flex flex-wrap justify-center gap-4 mb-4">
               {archNodes.slice(6, 9).map(node => (
@@ -127,16 +127,16 @@ export default function Overview() {
                   }`}
                 >
                   <div className="text-white font-bold text-sm">{node.label}</div>
-                  <div className="text-white/80 text-xs">{node.sub}</div>
+                  <div className="text-white text-xs">{node.sub}</div>
                 </button>
               ))}
             </div>
             <div className="flex justify-center">
-              <ArrowRight className="w-5 h-5 text-slate-500 rotate-90" />
+              <ArrowRight className="w-5 h-5 text-slate-400 rotate-90" />
             </div>
             <div className="flex justify-center mt-4">
               <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-700 text-center">
-                <div className="text-xs text-slate-500">Feedback loop</div>
+                <div className="text-xs text-slate-400">Feedback loop</div>
                 <div className="text-sm text-slate-300">Approval → GitHub Done</div>
               </div>
             </div>

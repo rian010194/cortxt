@@ -41,9 +41,9 @@ export default function Verticals() {
                   <div className="text-white font-medium text-sm mb-1">{wf.name}</div>
                   <div className="text-xs text-slate-400 mb-2">{wf.description}</div>
                   <div className="flex gap-2 text-xs">
-                    <span className="text-slate-500">in: <span className="text-brand-400 font-mono">{wf.input}</span></span>
-                    <span className="text-slate-600">→</span>
-                    <span className="text-slate-500">out: <span className="text-emerald-400 font-mono">{wf.output}</span></span>
+                    <span className="text-slate-400">in: <span className="text-brand-400 font-mono">{wf.input}</span></span>
+                    <span className="text-slate-400">→</span>
+                    <span className="text-slate-400">out: <span className="text-emerald-400 font-mono">{wf.output}</span></span>
                   </div>
                 </div>
               ))}
@@ -59,7 +59,7 @@ export default function Verticals() {
             <div className="space-y-2">
               {vertical01.schemas.map(schema => (
                 <div key={schema} className="flex items-center gap-2 p-2 rounded-lg bg-slate-800/50 text-sm">
-                  <FileText className="w-4 h-4 text-slate-500 shrink-0" />
+                  <FileText className="w-4 h-4 text-slate-400 shrink-0" />
                   <span className="text-slate-300 font-mono text-xs">{schema}</span>
                 </div>
               ))}
@@ -96,7 +96,7 @@ export default function Verticals() {
               </span>
             ))}
           </div>
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-slate-400">
             Requirements (v0.1): {vertical01.requirements.join(', ')}
             <span className="mx-2">|</span>
             Deferred (v0.2): {vertical01.deferred.join(', ')}
@@ -139,7 +139,7 @@ export default function Verticals() {
           <Boxes className="w-5 h-5 text-brand-400" />
           <h2 className="text-xl font-semibold text-white">Intended Package Shape</h2>
         </div>
-        <pre className="bg-slate-900 rounded-lg p-4 overflow-x-auto text-xs text-slate-300 font-mono leading-relaxed">
+        <pre tabIndex={0} aria-label="Intended package shape" className="bg-slate-900 rounded-lg p-4 overflow-x-auto text-xs text-slate-300 font-mono leading-relaxed">
 {`verticals/<vertical-id>/
 |-- vertical.yaml
 |-- README.md

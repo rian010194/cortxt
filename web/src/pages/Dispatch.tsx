@@ -98,6 +98,7 @@ export default function Dispatch() {
                   <select
                     value={formData[field.name] || ''}
                     onChange={e => updateField(field.name, e.target.value)}
+                    aria-label={field.name}
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-brand-500"
                   >
                     {field.values?.map(v => (
@@ -109,6 +110,7 @@ export default function Dispatch() {
                     value={Array.isArray(formData[field.name]) ? formData[field.name].join('\n') : ''}
                     onChange={e => updateField(field.name, e.target.value.split('\n').filter(Boolean))}
                     rows={3}
+                    aria-label={field.name}
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono"
                   />
                 ) : field.type === 'integer' || field.type === 'number' ? (
@@ -116,6 +118,7 @@ export default function Dispatch() {
                     type="number"
                     value={formData[field.name] || ''}
                     onChange={e => updateField(field.name, field.type === 'integer' ? parseInt(e.target.value) : parseFloat(e.target.value))}
+                    aria-label={field.name}
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-brand-500 font-mono"
                   />
                 ) : (
@@ -123,14 +126,15 @@ export default function Dispatch() {
                     type="text"
                     value={formData[field.name] || ''}
                     onChange={e => updateField(field.name, e.target.value)}
+                    aria-label={field.name}
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-brand-500 font-mono"
                   />
                 )}
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-slate-600">{field.type}</span>
-                  {field.pattern && <span className="text-xs text-slate-600">pattern: {field.pattern}</span>}
-                  {field.min !== undefined && <span className="text-xs text-slate-600">min: {field.min}</span>}
-                  {field.max !== undefined && <span className="text-xs text-slate-600">max: {field.max}</span>}
+                  <span className="text-xs text-slate-400">{field.type}</span>
+                  {field.pattern && <span className="text-xs text-slate-400">pattern: {field.pattern}</span>}
+                  {field.min !== undefined && <span className="text-xs text-slate-400">min: {field.min}</span>}
+                  {field.max !== undefined && <span className="text-xs text-slate-400">max: {field.max}</span>}
                 </div>
               </div>
             ))}
@@ -199,7 +203,7 @@ export default function Dispatch() {
                             {isFree && rl && <span className="ml-1">({rl.used}/{rl.limit})</span>}
                             {isExhausted && <span className="ml-1 text-rose-400">✗</span>}
                           </span>
-                          {i < chain.length - 1 && <ArrowRight className="w-3 h-3 text-slate-600" />}
+                          {i < chain.length - 1 && <ArrowRight className="w-3 h-3 text-slate-400" />}
                         </div>
                       );
                     })}
@@ -214,7 +218,7 @@ export default function Dispatch() {
               <FileJson className="w-5 h-5 text-emerald-400" />
               <h2 className="text-xl font-semibold text-white">Genererad JSON</h2>
             </div>
-            <pre className="bg-slate-900 rounded-lg p-4 overflow-x-auto text-xs text-emerald-300 font-mono leading-relaxed">
+            <pre tabIndex={0} aria-label="Genererad JSON" className="bg-slate-900 rounded-lg p-4 overflow-x-auto text-xs text-emerald-300 font-mono leading-relaxed">
               {JSON.stringify(formData, null, 2)}
             </pre>
           </div>
@@ -234,61 +238,61 @@ export default function Dispatch() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 rounded-lg bg-slate-800/50">
-                <div className="text-xs text-slate-500 mb-1">issue_id</div>
+                <div className="text-xs text-slate-400 mb-1">issue_id</div>
                 <div className="text-sm text-white font-mono">{resultData.issue_id}</div>
               </div>
               <div className="p-3 rounded-lg bg-slate-800/50">
-                <div className="text-xs text-slate-500 mb-1">run_id</div>
+                <div className="text-xs text-slate-400 mb-1">run_id</div>
                 <div className="text-sm text-brand-300 font-mono">{resultData.run_id}</div>
               </div>
               <div className="p-3 rounded-lg bg-slate-800/50">
-                <div className="text-xs text-slate-500 mb-1">runtime</div>
+                <div className="text-xs text-slate-400 mb-1">runtime</div>
                 <div className="text-sm text-white">{resultData.runtime}</div>
               </div>
               <div className="p-3 rounded-lg bg-slate-800/50">
-                <div className="text-xs text-slate-500 mb-1">model</div>
+                <div className="text-xs text-slate-400 mb-1">model</div>
                 <div className="text-sm text-white">{resultData.model}</div>
               </div>
             </div>
 
             <div className="p-3 rounded-lg bg-slate-800/50">
-              <div className="text-xs text-slate-500 mb-2">Status transitions</div>
+              <div className="text-xs text-slate-400 mb-2">Status transitions</div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="badge badge-blue text-xs">Ready</span>
-                <ArrowRight className="w-3 h-3 text-slate-500" />
+                <ArrowRight className="w-3 h-3 text-slate-400" />
                 <span className="badge badge-amber text-xs">In progress</span>
-                <ArrowRight className="w-3 h-3 text-slate-500" />
+                <ArrowRight className="w-3 h-3 text-slate-400" />
                 <span className="badge badge-purple text-xs">Review</span>
-                <ArrowRight className="w-3 h-3 text-slate-500" />
+                <ArrowRight className="w-3 h-3 text-slate-400" />
                 <span className="badge badge-green text-xs">Done</span>
               </div>
             </div>
 
             <div className="p-3 rounded-lg bg-slate-800/50">
-              <div className="text-xs text-slate-500 mb-2">Usage</div>
+              <div className="text-xs text-slate-400 mb-2">Usage</div>
               <div className="grid grid-cols-4 gap-2 text-center">
                 <div>
                   <div className="text-lg font-bold text-white">{resultData.usage.input_tokens}</div>
-                  <div className="text-xs text-slate-500">input</div>
+                  <div className="text-xs text-slate-400">input</div>
                 </div>
                 <div>
                   <div className="text-lg font-bold text-white">{resultData.usage.output_tokens}</div>
-                  <div className="text-xs text-slate-500">output</div>
+                  <div className="text-xs text-slate-400">output</div>
                 </div>
                 <div>
                   <div className="text-lg font-bold text-white">{resultData.usage.cache_tokens}</div>
-                  <div className="text-xs text-slate-500">cache</div>
+                  <div className="text-xs text-slate-400">cache</div>
                 </div>
                 <div>
                   <div className="text-lg font-bold text-white">{resultData.usage.reasoning_tokens}</div>
-                  <div className="text-xs text-slate-500">reasoning</div>
+                  <div className="text-xs text-slate-400">reasoning</div>
                 </div>
               </div>
             </div>
 
             <div className="p-3 rounded-lg bg-emerald-900/20 border border-emerald-800/40">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-slate-500">Cost</span>
+                <span className="text-xs text-slate-400">Cost</span>
                 <span className={`badge text-xs ${resultData.cost.confidence === 'actual' ? 'badge-green' : 'badge-amber'}`}>
                   {resultData.cost.confidence}
                 </span>
@@ -297,7 +301,7 @@ export default function Dispatch() {
             </div>
 
             <div className="p-3 rounded-lg bg-slate-800/50">
-              <div className="text-xs text-slate-500 mb-2">Evidence</div>
+              <div className="text-xs text-slate-400 mb-2">Evidence</div>
               <ul className="space-y-1">
                 {resultData.evidence.map((e, i) => (
                   <li key={i} className="text-sm text-slate-300 flex items-start gap-2">
@@ -314,7 +318,7 @@ export default function Dispatch() {
               <FileJson className="w-5 h-5 text-emerald-400" />
               <h2 className="text-xl font-semibold text-white">Raw JSON</h2>
             </div>
-            <pre className="bg-slate-900 rounded-lg p-4 overflow-x-auto text-xs text-emerald-300 font-mono leading-relaxed">
+            <pre tabIndex={0} aria-label="Raw JSON" className="bg-slate-900 rounded-lg p-4 overflow-x-auto text-xs text-emerald-300 font-mono leading-relaxed">
               {JSON.stringify(resultData, null, 2)}
             </pre>
 
