@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright output
+playwright-report/
+test-results/
+blob-report/
