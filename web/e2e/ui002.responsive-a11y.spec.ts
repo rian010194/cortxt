@@ -33,7 +33,6 @@ async function checkFocusRingContrast(page, el) {
   return page.evaluate(({ selector }) => {
     const el = document.querySelector(selector);
     if (!el) return { pass: false, reason: 'element not found' };
-    el.focus();
     const isFV = document.activeElement === el && (el as any).matches(':focus-visible');
     if (!isFV) return { pass: false, reason: 'not :focus-visible via keyboard focus' };
     const cs = getComputedStyle(el);
@@ -94,6 +93,34 @@ async function checkFocusRingContrast(page, el) {
   }, { selector: el });
 }
 
+async function focusWithKeyboard(page, locator) {
+  await locator.evaluate((element) => element.setAttribute('data-focus-test-target', 'true'));
+  for (let step = 0; step < 80; step += 1) {
+    await page.keyboard.press('Tab');
+    const reached = await page.evaluate(
+      () => document.activeElement?.getAttribute('data-focus-test-target') === 'true',
+    );
+    if (reached) return;
+  }
+  throw new Error('keyboard traversal did not reach focus candidate');
+}
+
+async function verifyVisibleFocusCandidates(page, selector, requireInitiallyVisible = true) {
+  const candidates = page.locator(selector);
+  const count = await candidates.count();
+  let tested = 0;
+  for (let index = 0; index < count; index += 1) {
+    const candidate = candidates.nth(index);
+    if (requireInitiallyVisible && !(await candidate.isVisible())) continue;
+    await focusWithKeyboard(page, candidate);
+    const res = await checkFocusRingContrast(page, '[data-focus-test-target="true"]');
+    expect(res.pass, `${selector}[${index}] focus-ring contrast: ${JSON.stringify(res)}`).toBe(true);
+    await candidate.evaluate((element) => element.removeAttribute('data-focus-test-target'));
+    tested += 1;
+  }
+  return tested;
+}
+
 test.describe('UI-002 Shell — Responsive & Accessibility', () => {
   for (const viewport of VIEWPORTS) {
     test.describe(`Viewport: ${viewport.name} (${viewport.width}x${viewport.height})`, () => {
@@ -104,9 +131,11 @@ test.describe('UI-002 Shell — Responsive & Accessibility', () => {
           await page.goto(`${BASE}${route.path}`);
           await page.waitForSelector('#main-content', { timeout: 8000 });
 
-          // Evidence screenshot (one per viewport; routes overwrite, keeps 3 unique files)
-          const evidencePath = `visual-evidence/${RUN_ID}-${viewport.name}.png`;
-          await page.screenshot({ path: evidencePath, fullPage: true });
+          // One deterministic evidence image per viewport, captured on Overview only.
+          if (route.path === '/') {
+            const evidencePath = `visual-evidence/${RUN_ID}-${viewport.name}.png`;
+            await page.screenshot({ path: evidencePath, fullPage: true });
+          }
 
           // AC1: real horizontal overflow assertion (document root)
           await expect
@@ -127,27 +156,20 @@ test.describe('UI-002 Shell — Responsive & Accessibility', () => {
           expect(marker).toBe(expectedMarker);
 
           // AC9/AC22: focus-ring contrast on shell-owned interactive elements (if present)
-          const candidateSelectors = [
-            '[data-focus-ro="menu-toggle-btn"]',
-            '[data-focus-ro="nav-link"]',
-            '[data-focus-ro="mobile-nav-link"]',
-            '[data-focus-ro="skip-link"]',
-          ];
-          const tested = [];
-          for (const sel of candidateSelectors) {
-            const n = await page.locator(sel).count();
-            if (n > 0) {
-              const res = await checkFocusRingContrast(page, sel);
-              tested.push({ sel, ratio: res.ratio, pass: res.pass, type: res.type, reason: res.reason });
-            }
+          let focusCandidatesTested = 0;
+          focusCandidatesTested += await verifyVisibleFocusCandidates(page, '[data-focus-ro="skip-link"]', false);
+          if (viewport.width >= 768) {
+            focusCandidatesTested += await verifyVisibleFocusCandidates(page, '[data-focus-ro="nav-link"]');
+          } else {
+            focusCandidatesTested += await verifyVisibleFocusCandidates(page, '[data-focus-ro="menu-toggle-btn"]');
+            const toggleForFocus = page.locator('[data-focus-ro="menu-toggle-btn"]');
+            await toggleForFocus.click();
+            await page.waitForSelector('[role="dialog"]');
+            focusCandidatesTested += await verifyVisibleFocusCandidates(page, '[data-focus-ro="mobile-nav-link"]');
+            await page.keyboard.press('Escape');
+            await expect(toggleForFocus).toHaveAttribute('aria-expanded', 'false');
           }
-          // At least one shell candidate must have a passing ring on each route (desktop=nav-link, mobile=menu-toggle)
-          const applicable = tested.filter(t => t !== undefined);
-          const anyPass = applicable.some(t => t.pass);
-          // Fail only if NO applicable candidate passed (a candidate that is absent is skipped)
-          if (applicable.length > 0) {
-            expect(anyPass, `no focus candidate passed on ${route.name} (${applicable.map(t=>`${t.sel}:${t.ratio ?? t.reason}`).join(',')})`).toBe(true);
-          }
+          expect(focusCandidatesTested, `focus coverage on ${route.name}/${viewport.name}`).toBeGreaterThan(0);
 
           // Axe (promise-based); require 0 critical/serious; document minor
           const results = await new AxeBuilder({ page })

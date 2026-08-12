@@ -7,11 +7,11 @@
   --focus-color: #60a5fa; /* brand-400 */
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
-  
+
   /* Breakpoints (används i CSS och Tailwind) */
   --breakpoint-mobile: 768px;
   --breakpoint-desktop: 769px;
-  
+
   /* Spacing tokens */
   --spacing-sm: 0.5rem;
   --spacing-md: 1rem;
@@ -92,7 +92,7 @@
   top: 1rem;
   left: 1rem;
   @apply bg-brand-600 text-white px-4 py-2 rounded-lg shadow-lg no-underline;
-  outline: var(--focus-ring-width) solid var(--focus-color);
+  outline: var(--focus-ring-width) solid #ffffff;
   outline-offset: var(--focus-ring-offset);
 }
 
@@ -147,4 +147,16 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   @apply focus-visible-ring;
+}
+
+a.skip-link:focus-visible {
+  outline: var(--focus-ring-width) solid #ffffff !important;
+  outline-offset: var(--focus-ring-offset);
+}
+
+[data-focus-ro="menu-toggle-btn"]:focus-visible,
+[data-focus-ro="nav-link"]:focus-visible,
+[data-focus-ro="mobile-nav-link"]:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-color) !important;
+  outline-offset: var(--focus-ring-offset);
 }

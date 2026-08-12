@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import AppShell from '../AppShell';
 
@@ -112,11 +112,11 @@ describe('AppShell — navigation', () => {
     const hamburger = screen.getByRole('button', { name: /öppna meny/i });
     fireEvent.click(hamburger);
 
-    // Navigate to different route - use getAllByText since there are multiple matches
-    const allAgentsLinks = screen.getAllByText('Agenter');
-    if (allAgentsLinks.length > 0) {
-      fireEvent.click(allAgentsLinks[0]);
-    }
+    // Navigate through the active mobile dialog, not the hidden desktop link.
+    const dialog = screen.getByRole('dialog');
+    const agentsLink = within(dialog).getByRole('link', { name: 'Agenter' });
+    agentsLink.addEventListener('click', (event) => event.preventDefault(), { once: true });
+    fireEvent.click(agentsLink);
 
     // Menu should close after navigation
     expect((hamburger as HTMLElement).getAttribute('aria-expanded')).toBe('false');
