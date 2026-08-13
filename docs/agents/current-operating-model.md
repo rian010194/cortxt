@@ -1,7 +1,7 @@
 # Current operating model
 
 Status: active operational baseline  
-Last reconciled: 2026-08-02
+Last reconciled: 2026-08-13
 
 ## Why this file exists
 
@@ -9,11 +9,15 @@ Read this file before recommending architecture or choosing a runtime. The
 repository contains experiments and future designs alongside verified paths.
 No single experiment README describes the whole system.
 
-The durable task record and the execution runtime are deliberately separate:
+The durable task record and the execution runtime are deliberately separate.
+GitHub Issues hold durable scope and evidence. A planning surface may supply
+workflow state only when explicitly designated current; Project 4 is frozen
+legacy.
 
 ```text
 Hermes desktop (primary operator surface; Buzz = remote complement)
-  -> GitHub Issue/Project (scope and workflow source of truth)
+  -> GitHub Issue (durable scope and evidence source of truth)
+  -> explicitly current planning state, when designated
   -> manual local dispatch for now
      -> Hermes Coordinator/Researcher
      -> Pi Builder for bounded writes
@@ -33,7 +37,7 @@ complement for monitoring status and approvals, not a per-agent surface.
 | Component | Responsibility | Current constraint |
 |---|---|---|
 | Buzz | Remote/mobile monitoring, scope clarification, status display, and approvals (compliment to the Hermes desktop primary surface) | It is not the durable task registry or the primary work surface. Buzz-native delegation is not approved for unattended work because delegation handles cannot be polled. |
-| GitHub Issues/Projects | Canonical scope, acceptance criteria, workflow status, evidence, review, and approval | An issue must be approved and `Ready` before dispatch. |
+| GitHub Issues and current planning state | Canonical scope, acceptance criteria, evidence, review, and approval; workflow state only from an explicitly current planning surface | Project 4 is frozen legacy. An issue must be approved and `Ready` in the current workflow before dispatch. |
 | Hermes | Agent runtime for Coordinator and Kimi-backed Researcher profiles; profile routing, bounded delegation, Kanban execution ledger, and gateway dispatch for scratch workspaces | Hermes routing and Kanban dispatch work for scratch workspaces. Worktree mode requires correct Windows path setup. The complete Buzz-to-runtime handoff is not automated. |
 | Pi Builder | Short-lived, containerized Kimi runtime for bounded file writes | It remains an experiment pending production hardening and a general dispatcher interface. |
 | Kimi/Moonshot | Heavy research, analysis, implementation, and tests | Cost and tool limits must be explicit; unknown provider cost must never be treated as zero. |

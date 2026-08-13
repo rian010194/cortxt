@@ -1,9 +1,18 @@
 # Domain Documentation — AI Workspace Control Plane
 
-**Version:** 0.2  
-**Status:** Living document  
-**Last updated:** 2026-08-03  
-**Owner:** Rikard
+Status: legacy; unverified architecture inventory
+Authority: historical only
+Last verified: 2026-08-13 (classified obsolete)
+
+> Do not use the component counts, model assignments, receptionist topology,
+> cost tiers, or workflow diagram below as current operating authority. They
+> describe an earlier target state. Use
+> [the current operating model](current-operating-model.md),
+> [the dispatch contract](../architecture/dispatch-contract.md), and the
+> repository's accepted ADRs for current decisions.
+
+Historical metadata: version 0.2; formerly marked "Living document"; last
+updated 2026-08-03; owner Rikard.
 
 ---
 
@@ -380,4 +389,5 @@ interface_files:
 
 ---
 
-*Detta dokument uppdateras kontinuerligt. Se `docs/wayfinder/handoffs/` för session-historik.*
+*Historical note from the former living document: session history was recorded
+under `docs/wayfinder/handoffs/`; this note is not a current maintenance claim.*
