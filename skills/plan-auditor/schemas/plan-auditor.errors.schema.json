@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "plan-auditor Error Codes",
+  "type": "string",
+  "enum": [
+    "RATE_LIMITED",
+    "UPSTREAM_ERROR",
+    "TIMEOUT",
+    "AUTH_EXPIRED",
+    "VALIDATION_ERROR",
+    "PERMISSION_DENIED",
+    "NOT_FOUND",
+    "AUDITOR_POOL_EMPTY",
+    "CONFLICT_OF_INTEREST",
+    "PLAN_NOT_FOUND"
+  ]
+}

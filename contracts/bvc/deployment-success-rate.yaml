@@ -1,0 +1,41 @@
+contract:
+  name: "deployment-success-rate"
+  version: "1.0.0"
+  description: "Recent deployments succeed above threshold"
+  expectation: "Last 10 production deployments > 90% success rate"
+  measurement:
+    source: "github"
+    query: "repos/owner/repo/deployments?environment=production&per_page=10"
+    unit: "ratio"
+    sample_window: "10d"
+    evaluation_interval: "1h"
+  thresholds:
+    warn: 0.95
+    fail: 0.90
+    critical: 0.80
+  labels:
+    service: "deployment"
+    team: "platform"
+    severity: "high"
+    runbook: "https://wiki.cortxt.io/runbooks/deployment-success"
+  alerting:
+    on: "fail"
+    channels: ["buzz", "github"]
+    cooldown: "30m"
+    escalation:
+      - after: "1h"
+        channel: "buzz"
+        message: "ESCALATION: Deployment success rate < 90% for 1h"
+  remediation:
+    runbook: "https://wiki.cortxt.io/runbooks/deployment-success"
+    auto_mitigation: false
+  validity:
+    starts_at: "2026-08-01T00:00:00Z"
+    expires_at: null
+    environments: ["production"]
+metadata:
+  created_by: "platform-team"
+  created_at: "2026-08-03T00:00:00Z"
+  approved_by: "rikard"
+  approved_at: "2026-08-03T00:00:00Z"
+  changelog: ["Initial version"]

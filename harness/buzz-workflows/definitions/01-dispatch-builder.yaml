@@ -1,0 +1,24 @@
+name: vertical_01_dispatch_builder
+description: Route an approved and complete build request to Builder.
+enabled: false
+trigger:
+  on: message_posted
+  filter: 'str_starts_with(trigger_text, "[BUILD_READY]")'
+steps:
+  - id: dispatch_builder
+    name: Dispatch approved build request
+    timeout_secs: 30
+    action: send_message
+    text: |
+      @Builder A bounded Vertical 01 implementation request is ready.
+      Verify that the triggering message contains issue_id, workflow, scope,
+      acceptance_criteria, runtime and cost limits, artifact_policy, and
+      approval_ref before doing any work. If any field is absent, respond with
+      [DISPATCH_BLOCKED].
+
+      Request:
+      Trigger message ID: {{trigger.message_id}}
+      {{trigger.text}}
+
+      On success, publish [BUILD_COMPLETE] with the issue_id, run_id, artifact
+      references, diff reference, validation command, output, and exit status.

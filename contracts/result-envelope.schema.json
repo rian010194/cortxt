@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ResultEnvelope",
+  "type": "object",
+  "required": ["issue_id", "run_id", "status", "runtime", "worker_role", 
+               "started_at", "finished_at", "model", "usage", "cost", 
+               "artifacts", "evidence"],
+  "properties": {
+    "issue_id": {"type": "string"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "status": {"enum": ["succeeded", "failed", "timed_out", "budget_exceeded", "blocked", "cancelled"]},
+    "runtime": {"type": "string"},
+    "worker_role": {"type": "string"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "finished_at": {"type": "string", "format": "date-time"},
+    "model": {"type": "string"},
+    "usage": {
+      "type": "object",
+      "properties": {
+        "input_tokens": {"type": "integer"},
+        "output_tokens": {"type": "integer"},
+        "cache_tokens": {"type": "integer"},
+        "reasoning_tokens": {"type": "integer"}
+      }
+    },
+    "cost": {"type": "object", "properties": {"amount": {"type": "number"}, "confidence": {"enum": ["actual", "estimated", "unknown"]}}},
+    "artifacts": {
+      "type": "array",
+      "items": {"type": "object", "properties": {"ref": {"type": "string"}, "hash": {"type": "string"}, "size": {"type": "integer"}}}
+    },
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "error": {"type": "object", "properties": {"category": {"type": "string"}, "recovery_suggestion": {"type": "string"}}}
+  }
+}

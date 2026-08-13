@@ -1,0 +1,35 @@
+workflow_id: classify
+workflow_name: AI Act Classification
+description: >
+  Determine whether the described system falls within the material scope of the EU AI Act
+  (Articles 2-3, Annex I) and classify its risk level (Article 5, Article 6 / Annex III).
+version: 0.1.0
+stages:
+  - stage_id: input_validation
+    name: Input Validation
+    description: Harness validates input against ai-act-assessment-input.schema.json
+    schema_uri: ./schemas/ai-act-assessment-input.schema.json
+    approval_required: false
+
+  - stage_id: classification
+    name: Classification
+    description: >
+      Model reads instructions/system-prompt-classify.md and produces a classification
+      result conforming to ai-act-assessment-output.schema.json.
+    instruction_id: system-prompt-classify
+    output_schema_uri: ./schemas/ai-act-assessment-output.schema.json
+    approval_required: false
+
+  - stage_id: classification_review
+    name: Classification Review
+    description: >
+      Deterministic structural assertions (schema validation, required fields, enum checks)
+      and optional human approval gate. For synthetic v0.1 runs the human gate is optional.
+    approval_required: false
+    deterministic_checks:
+      - schema_validation
+      - required_field_presence
+      - enum_value_checks
+      - prohibited_empty_obligations
+
+timeout_seconds: 300

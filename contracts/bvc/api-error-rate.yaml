@@ -1,0 +1,43 @@
+contract:
+  name: "api-error-rate"
+  version: "1.0.0"
+  description: "API 5xx error rate below threshold"
+  expectation: "5xx error rate < 0.1% for all API endpoints over 5m window"
+  measurement:
+    source: "prometheus"
+    query: |
+      sum(rate(http_requests_total{status=~"5.."}[5m])) 
+      / sum(rate(http_requests_total[5m]))
+    unit: "ratio"
+    sample_window: "5m"
+    evaluation_interval: "1m"
+  thresholds:
+    warn: 0.0005
+    fail: 0.001
+    critical: 0.005
+  labels:
+    service: "api"
+    team: "platform"
+    severity: "high"
+    runbook: "https://wiki.cortxt.io/runbooks/api-error-rate"
+  alerting:
+    on: "fail"
+    channels: ["buzz", "github"]
+    cooldown: "10m"
+    escalation:
+      - after: "15m"
+        channel: "buzz"
+        message: "ESCALATION: API error rate > 0.1% for 15min"
+  remediation:
+    runbook: "https://wiki.cortxt.io/runbooks/api-error-rate"
+    auto_mitigation: false
+  validity:
+    starts_at: "2026-08-01T00:00:00Z"
+    expires_at: null
+    environments: ["production", "staging"]
+metadata:
+  created_by: "platform-team"
+  created_at: "2026-08-03T00:00:00Z"
+  approved_by: "rikard"
+  approved_at: "2026-08-03T00:00:00Z"
+  changelog: ["Initial version"]
