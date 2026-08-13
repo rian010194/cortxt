@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from ledger import LedgerError, append, canonical_json, create, load, read_json_file
+from ledger import LedgerError, append, canonical_json, create, load, read_json_file, utc_now
 
 
 class JourneyError(Exception):
@@ -95,11 +95,25 @@ def resume(output_name: str) -> dict[str, Any]:
     _write_json(resumed, {"from_sequence": 2, "status": "running", "synthetic": True})
     _write_json(result, scenario["synthetic_result"])
     result_hash = hashlib.sha256(result.read_bytes()).hexdigest()
-    _write_json(terminal, {"artifacts": [{"path": result.name, "sha256": result_hash}],
-                           "cost": {"actual_usd": scenario["actual_cost_usd"], "status": "exact"},
-                           "status": "succeeded", "synthetic": True})
     run_id = manifest["run_id"]
-    append(str(store), run_id, 2, "run.resumed", str(resumed))
+    ledger = append(str(store), run_id, 2, "run.resumed", str(resumed))
+    terminal_payload = {
+        "artifacts": [{"path": result.name, "sha256": result_hash}],
+        "cost": {"amount_usd": scenario["actual_cost_usd"], "status": "exact"},
+        "error": None,
+        "evidence": [{"kind": "synthetic_fixture", "ref": "fixture://foundation-101/t1"}],
+        "finished_at": utc_now(),
+        "issue_id": "rian010194/ai-workspace-control-plane#101",
+        "model": "offline/deterministic-synthetic-adapter",
+        "run_id": run_id,
+        "runtime": "cortxt-local-state/1",
+        "started_at": ledger["events"][1]["timestamp"],
+        "status": "succeeded",
+        "usage": {"cache_tokens": 0, "input_tokens": 0, "output_tokens": 0,
+                  "reasoning_tokens": 0, "status": "exact"},
+        "worker_role": "synthetic-validator",
+    }
+    _write_json(terminal, terminal_payload)
     ledger = append(str(store), run_id, 3, "run.result", str(terminal))
     manifest.update({"terminal": True, "last_sequence": 4,
                      "result_sha256": result_hash,
@@ -120,16 +134,40 @@ def verify(output_name: str) -> dict[str, Any]:
         raise JourneyError("journey lifecycle is incomplete or out of order")
     created = ledger["events"][0]["payload"]
     terminal = ledger["events"][-1]["payload"]
+    terminal_fields = {"artifacts", "cost", "error", "evidence", "finished_at", "issue_id",
+                       "model", "run_id", "runtime", "started_at", "status", "usage",
+                       "worker_role"}
+    if not isinstance(terminal, dict) or set(terminal) != terminal_fields:
+        raise JourneyError("terminal result envelope has an invalid schema")
+    if terminal["issue_id"] != "rian010194/ai-workspace-control-plane#101" or terminal["run_id"] != manifest["run_id"]:
+        raise JourneyError("terminal result correlation does not match")
+    if terminal["status"] != "succeeded" or terminal["error"] is not None:
+        raise JourneyError("terminal result is not a successful completion")
+    if not all(isinstance(terminal[field], str) and terminal[field]
+               for field in ("runtime", "worker_role", "started_at", "finished_at", "model")):
+        raise JourneyError("terminal result identity is incomplete")
+    expected_usage = {"cache_tokens": 0, "input_tokens": 0, "output_tokens": 0,
+                      "reasoning_tokens": 0, "status": "exact"}
+    if terminal["usage"] != expected_usage or terminal["cost"].get("status") != "exact":
+        raise JourneyError("offline usage or cost is not exact")
+    if not isinstance(terminal["evidence"], list) or not terminal["evidence"]:
+        raise JourneyError("terminal evidence is missing")
     if created["policy_decision"].get("allowed") is not True:
         raise JourneyError("authoritative policy decision was not allowed")
-    if Decimal(terminal["cost"]["actual_usd"]) > Decimal(created["budget"]["max_cost_usd"]):
+    if Decimal(terminal["cost"]["amount_usd"]) > Decimal(created["budget"]["max_cost_usd"]):
         raise JourneyError("terminal cost exceeds the approved budget")
+    if not isinstance(terminal["artifacts"], list) or len(terminal["artifacts"]) != 1:
+        raise JourneyError("terminal artifact set is invalid")
     artifact = terminal["artifacts"][0]
+    if not isinstance(artifact, dict) or set(artifact) != {"path", "sha256"} or Path(artifact["path"]).name != artifact["path"]:
+        raise JourneyError("terminal artifact reference is unsafe or invalid")
     result_path = output / artifact["path"]
     if not result_path.is_file() or hashlib.sha256(result_path.read_bytes()).hexdigest() != artifact["sha256"]:
         raise JourneyError("result evidence hash does not match")
     if ledger["events"][-1]["hash"] != manifest.get("ledger_head_sha256"):
         raise JourneyError("manifest does not identify the ledger head")
+    if artifact["sha256"] != manifest.get("result_sha256"):
+        raise JourneyError("manifest does not identify the result evidence")
     return {"budget_verified": True, "evidence_verified": True,
             "event_types": event_types, "integrity_verified": True,
             "run_id": manifest["run_id"], "status": terminal["status"], "synthetic": True}

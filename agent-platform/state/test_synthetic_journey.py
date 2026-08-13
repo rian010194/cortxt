@@ -50,6 +50,20 @@ class SyntheticJourneyTests(unittest.TestCase):
             self.assertEqual(rejected.returncode, 1)
             self.assertIn("evidence hash does not match", rejected.stderr)
 
+    def test_manifest_result_correlation_tampering_fails_verification(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "evidence"
+            self.assertEqual(self.run_cli("start", "--scenario", SCENARIO,
+                                         "--output", output).returncode, 0)
+            self.assertEqual(self.run_cli("resume", "--output", output).returncode, 0)
+            manifest_path = output / "journey-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["result_sha256"] = "0" * 64
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            rejected = self.run_cli("verify", "--output", output)
+            self.assertEqual(rejected.returncode, 1)
+            self.assertIn("manifest does not identify the result evidence", rejected.stderr)
+
     def test_over_budget_scenario_fails_before_run_creation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
