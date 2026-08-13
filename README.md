@@ -1,25 +1,59 @@
-# AI Workspace control plane
+# Cortxt
 
-Private control plane, harness experiments, and vertical-package testbed for
-the AI Workspace.
+> **Foundation phase.** The repository name `ai-workspace-control-plane` and
+> much of its backlog describe an earlier system. They are retained for history,
+> but they do not define Cortxt's current roadmap.
 
-## Repository boundaries
+Cortxt is a provider-neutral platform for creating, steering, resuming, and
+verifying long-running intelligent work under human mandate. Users own the
+work's state, memory, tools, evidence, and evolution; models and inference
+providers remain replaceable resources behind Cortxt-owned contracts.
 
-- `control plane` owns task state, routing, approvals, and operator-visible
-  status. GitHub Issues and Projects currently provide this layer.
-- [`harness/`](harness/README.md) defines how approved work is isolated,
-  executed, observed, and evaluated.
-- [`verticals/`](verticals/README.md) contains domain packages that declare
-  what work should be done, without owning runtime infrastructure.
-- [`experiments/`](experiments/) contains runtime candidates that have not yet
-  been promoted into the harness.
-- [`contracts/`](contracts/README.md) is reserved for versioned interface
-  schemas once real execution data has stabilized their fields.
+Rikard is the first real user. The current product wedge is long-running
+research and analysis governed by data-class and provider policy. This phase is
+validating that direction with synthetic inputs before committing to a larger
+platform build.
 
-Architecture:
+## Current status
 
-- [Runtime and evaluation harness](docs/architecture/runtime-and-evaluation-harness.md)
-- [Vertical package contract](docs/architecture/vertical-package-contract.md)
+- GitHub Issues remain durable records for approved scope, evidence, review,
+  and decisions.
+- GitHub Project 4 and the older control-plane backlog are frozen legacy.
+- Worker dispatch is suspended until the operator explicitly designates a
+  current workflow-state carrier and its mapping to the dispatch vocabulary.
+- The Operator Cockpit, Buzz/Hermes automation, Pi runtime, vertical packages,
+  and broader Agent Platform remain historical implementations, experiments,
+  or proposals unless an accepted ADR says otherwise.
+- Real customer inputs and run outputs must remain outside Git history in an
+  explicitly approved, isolated workspace.
 
-Real customer inputs and run outputs must remain outside Git history in an
-explicitly approved, isolated run workspace.
+The current product decisions are:
+
+- [ADR-014: Cortxt product vision and first user](docs/adr/014-cortxt-f0-vision-and-first-user.md)
+- [ADR-015: first wedge and product surface](docs/adr/015-cortxt-f1-first-wedge-and-product-surface.md)
+- [ADR-016: Agent Platform boundary and InferencePort](docs/adr/016-agent-platform-bounded-context-and-inference-port.md)
+
+## Repository map
+
+| Path | Role today |
+| --- | --- |
+| `agent-platform/` | Proposed future Cortxt-owned platform boundary; not yet part of this branch or an accepted full implementation plan. |
+| `adapters/` | Proposed future provider and runtime adapters behind Cortxt-owned ports; not yet part of this branch. |
+| [`harness/`](harness/README.md) | Provenance and evaluation work from the earlier control-plane baseline. |
+| [`verticals/`](verticals/README.md) | Historical domain packages and synthetic validation material. |
+| [`experiments/`](experiments/) | Runtime candidates that have not been promoted into the current product baseline. |
+| [`web/`](web/README.md) | Read-only Operator Cockpit prototype; paused as a product surface. |
+| [`contracts/`](contracts/README.md) | Existing interface schemas and contract experiments. |
+| [`docs/`](docs/) | Architecture, decisions, operations, evidence, and historical records. |
+
+## Start here
+
+Read these before proposing architecture or execution:
+
+1. [`AGENTS.md`](AGENTS.md)
+2. [Current operating model](docs/agents/current-operating-model.md)
+3. [Dispatch contract](docs/architecture/dispatch-contract.md)
+4. [Accepted ADRs](docs/adr/)
+
+Historical files may explain how the repository arrived here. They do not
+override the current operating model or accepted ADRs.
