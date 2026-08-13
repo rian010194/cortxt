@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from .kernel import Strategy, select_strategy
 from .recursive import RLMConfig, RLMEngine, StopReason
 from .geometric import Explorer, ProblemSpace, ReasoningNode
-from .geometric.metrics import GraphMetrics
 
 
 @dataclass
@@ -76,16 +75,19 @@ class ReasoningPipeline:
         res.strategy_used = "recursive->geometric"
         res.strategies_switched = True
 
-        rec_value = self._run_single(problem["recursive"]).value
-        res.add(f"phase1 recursive value={rec_value}")
+        rec = self._run_single(problem["recursive"])
+        res.log.extend(rec.log)           # CP4.1 fix: carry recursive-phase state/log
+        res.add(f"phase1 recursive value={rec.value} conf={rec.confidence}")
 
         geo_value, geo_conf = self._run_geometric(problem["geometric"], expected)
         res.add(f"phase2 geometric value={geo_value} conf={geo_conf}")
 
         # Integration: the final value fuses the recursive aggregate and the
-        # geometric exploration; confidence folds both in.
-        res.value = _combine(rec_value, geo_value)
-        res.confidence = _verified_confidence(rec_value, geo_value, expected, geo_conf)
+        # geometric exploration; confidence folds BOTH phases in (CP4.1 fix).
+        res.value = _combine(rec.value, geo_value)
+        res.confidence = _verified_confidence(
+            rec.value, geo_value, expected, geo_conf, recursive_conf=rec.confidence
+        )
         return res
 
     # ------------------------------------------------------------------ #
@@ -108,11 +110,16 @@ class ReasoningPipeline:
         # value = path length to goal (or -1 if not found); confidence grows with
         # evidence coverage along the found path and success.
         if result.found_goal:
-            evidence = sum(
-                (space.node(n).evidence if space.node(n) else 0.0) for n in result.path
-            ) / max(1, len(result.path))
+            # CP4.1 fix (P1): contradiction must lower confidence. Use a net
+            # evidence per node: evidence * (1 - contradiction), so a highly
+            # contradictory path scores lower even with dense evidence.
+            net = [
+                ((space.node(n).evidence if space.node(n) else 0.0)
+                 * (1.0 - (space.node(n).contradiction if space.node(n) else 0.0)))
+                for n in result.path
+            ]
             value = len(result.path)
-            confidence = 0.5 + 0.5 * evidence
+            confidence = 0.5 + 0.5 * (sum(net) / max(1, len(net)))
         else:
             value = -1
             confidence = 0.0
@@ -126,9 +133,11 @@ def _combine(a, b):
     return (a, b)
 
 
-def _verified_confidence(rec_value, geo_value, expected, geo_conf) -> float:
+def _verified_confidence(rec_value, geo_value, expected, geo_conf, recursive_conf=0.5) -> float:
+    """Final confidence folds the recursive phase confidence, the geometric
+    confidence (already contradiction-penalized), and the expected-match signal."""
     if expected is None:
-        return round(0.5 + 0.5 * geo_conf, 3)
+        return round(0.5 + 0.5 * ((recursive_conf + geo_conf) / 2.0), 3)
     total = _combine(rec_value, geo_value)
     match = 1.0 if total == expected else 0.0
-    return round((0.6 * match + 0.4 * geo_conf), 3)
+    return round((0.5 * match + 0.25 * recursive_conf + 0.25 * geo_conf), 3)

@@ -79,3 +79,29 @@ def test_orchestrator_non_terminal_on_ambiguous():
     orch = ReasoningOrchestrator(SumStub())
     out = orch.run([1, 2, 3], expected=999)  # direct, wrong expected -> low confidence
     assert out.terminal is False
+
+
+def test_geometric_contradiction_lowers_pipeline_confidence():
+    """CP4.1 P1 regression: a high-contradiction route must lower confidence vs a
+    clean route with equal evidence (pipeline folds contradiction into geometric)."""
+    pipe = ReasoningPipeline(SumStub())
+    clean = pipe.run({
+        "recursive": [[1], [1]],
+        "geometric": {
+            "start": "A", "goal": "Z",
+            "nodes": {"A": {"evidence": 0.9}, "R": {"evidence": 0.9},
+                      "Z": {"evidence": 0.9}},
+            "edges": [("A", "R"), ("R", "Z")],
+        },
+    })
+    contradict = pipe.run({
+        "recursive": [[1], [1]],
+        "geometric": {
+            "start": "A", "goal": "Z",
+            "nodes": {"A": {"evidence": 0.9},
+                      "R": {"evidence": 0.9, "contradiction": 0.9},
+                      "Z": {"evidence": 0.9}},
+            "edges": [("A", "R"), ("R", "Z")],
+        },
+    })
+    assert contradict.confidence < clean.confidence

@@ -35,10 +35,10 @@ class ReasoningOrchestrator:
 
     def run(self, problem: object, expected: object = None) -> OrchestrationResult:
         out = OrchestrationResult()
-        strat = select_strategy(problem) if not isinstance(problem, dict) or not (
-            {"recursive", "geometric"}.issubset(problem)
-        ) else Strategy.RECURSIVE  # hybrid is entered via pipeline anyway
-        out.add(f"init strategy={strat.value or 'hybrid'}")
+        is_hybrid = isinstance(problem, dict) and {"recursive", "geometric"}.issubset(problem)
+        # CP4.1 fix (P2): log the true entry strategy ("hybrid") for hybrid problems.
+        strat = select_strategy(problem) if not is_hybrid else Strategy.RECURSIVE
+        out.add(f"init strategy={'hybrid' if is_hybrid else (strat.value or 'unknown')}")
 
         # human-escalation trigger: an explicit marker demands operator material decision
         if isinstance(problem, dict) and problem.get("escalate"):
