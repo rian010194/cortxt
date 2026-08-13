@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "execution-request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "data_class", "idempotency", "max_attempts_total", "per_attempt_timeout_ms", "routes"],
+  "properties": {
+    "task_id": {"type": "string", "minLength": 1},
+    "data_class": {"enum": ["L0", "L1", "L2", "L3"]},
+    "idempotency": {"enum": ["read_only", "idempotent", "non_idempotent"]},
+    "max_attempts_total": {"type": "integer", "minimum": 1, "maximum": 5},
+    "per_attempt_timeout_ms": {"type": "integer", "minimum": 100, "maximum": 600000},
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["route_id", "provider", "model", "policy_eligible"],
+        "properties": {
+          "route_id": {"type": "string", "minLength": 1},
+          "provider": {"type": "string", "minLength": 1},
+          "model": {"type": "string", "minLength": 1},
+          "policy_eligible": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

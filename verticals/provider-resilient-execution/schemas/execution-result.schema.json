@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "execution-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "status", "attempts", "terminal_reason"],
+  "properties": {
+    "task_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["succeeded", "failed", "blocked"]},
+    "selected_route_id": {"type": ["string", "null"]},
+    "terminal_reason": {"type": "string", "minLength": 1},
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attempt", "route_id", "outcome", "latency_ms", "cost_status"],
+        "properties": {
+          "attempt": {"type": "integer", "minimum": 1},
+          "route_id": {"type": "string", "minLength": 1},
+          "outcome": {"enum": ["succeeded", "invalid_model_id", "rate_limited", "provider_unavailable", "timeout_before_effect", "return_channel_stalled", "policy_denied", "non_idempotent_effect_unknown"]},
+          "latency_ms": {"type": "integer", "minimum": 0},
+          "cost_status": {"enum": ["actual", "estimated", "unknown"]}
+        }
+      }
+    }
+  }
+}
