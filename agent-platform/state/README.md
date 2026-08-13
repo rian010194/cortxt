@@ -48,3 +48,29 @@ Run the offline end-to-end suite from this directory:
 ```text
 python -m unittest -v test_state_cli.py
 ```
+
+## Reproducible T1 synthetic journey
+
+The committed `fixtures/t1-synthetic-journey.json` drives the complete T1
+lifecycle without a provider call or customer data. Generated evidence belongs
+in an untracked output directory (the example uses `build/`, which is ignored):
+
+```text
+python synthetic_journey.py start --scenario fixtures/t1-synthetic-journey.json --output build/t1-evidence
+python synthetic_journey.py resume --output build/t1-evidence
+python synthetic_journey.py verify --output build/t1-evidence
+```
+
+The three commands are intentionally separate processes. `start` records an
+allowed authoritative policy decision, creates the run, and stops at a
+recoverable synthetic interruption. `resume` records resumption plus a
+terminal synthetic result. `verify` reloads the ledger and checks the complete
+event order, hash-chain integrity, result evidence hash, and exact actual cost
+against the approved budget. Repeating `resume`, tampering with the result, or
+declaring an over-budget scenario fails closed.
+
+Run both ledger and journey tests offline with:
+
+```text
+python -m unittest -v test_state_cli.py test_synthetic_journey.py
+```

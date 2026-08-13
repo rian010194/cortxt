@@ -26,6 +26,7 @@ web/dist/
 web/.next/
 web/out/
 web/public/build/
+agent-platform/state/build/
 *.tsbuildinfo
 
 # ---- OS / editor junk ----
