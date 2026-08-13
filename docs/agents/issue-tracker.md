@@ -11,13 +11,25 @@ work from it without a separate operator decision. Use the repository remote to
 resolve `rian010194/ai-workspace-control-plane` and use `gh` for tracker
 operations.
 
+## Current workflow-state availability
+
+No planning-state carrier is currently designated. Project 4 is frozen and
+GitHub Issue state alone does not encode `Inbox`, `Ready`, `In progress`,
+`Review`, `Blocked`, and `Done`. Worker dispatch is therefore suspended until
+the operator explicitly designates a replacement carrier and its state mapping.
+
+The state names below define the required lifecycle contract; they do not prove
+that a current carrier exists.
+
 ## Conventions
 
 - Create an issue with a descriptive title and structured Markdown body.
 - Read the issue, labels, assignees, dependencies, comments, and any explicitly
   designated current planning state before acting.
-- Use the existing workflow states: `Inbox`, `Ready`, `In progress`, `Review`, `Blocked`, and `Done`.
-- Treat `Ready` as an execution approval only when scope, acceptance criteria, worker role, time limit, cost limit, and human approval are present.
+- Use these workflow states after a current carrier is designated: `Inbox`,
+  `Ready`, `In progress`, `Review`, `Blocked`, and `Done`.
+- Treat authoritative `Ready` as execution approval only when scope, acceptance
+  criteria, worker role, time limit, cost limit, and human approval are present.
 - Record runtime identity and evidence using the repository's `docs/architecture/dispatch-contract.md`.
 - Pull requests are not a request or triage surface.
 
