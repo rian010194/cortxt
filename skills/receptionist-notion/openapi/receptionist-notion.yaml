@@ -1,0 +1,139 @@
+openapi: 3.1.0
+info:
+  title: receptionist-notion API
+  version: 0.1.0
+  description: "Notion workspace receptionist \u2014 pages, databases, blocks, comments,\
+    \ users, search"
+servers:
+- url: local://
+  description: Local skill invocation
+paths:
+  /call:
+    post:
+      summary: Invoke receptionist-notion skill
+      operationId: callSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/receptionistnotionRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/receptionistnotionResponse'
+components:
+  schemas:
+    receptionistnotionRequest:
+      type: object
+      required:
+      - action
+      - resource
+      - params
+      - context
+      properties:
+        action:
+          type: string
+        resource:
+          type: string
+        params:
+          type: object
+        context:
+          type: object
+          required:
+          - run_id
+          - agent_id
+          - trace_id
+          - priority
+          properties:
+            run_id:
+              type: string
+            agent_id:
+              type: string
+            trace_id:
+              type: string
+            priority:
+              type: string
+              enum:
+              - normal
+              - high
+              - low
+            timeout_ms:
+              type: integer
+    receptionistnotionResponse:
+      type: object
+      required:
+      - success
+      - data
+      - metadata
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          nullable: true
+        metadata:
+          type: object
+          required:
+          - request_id
+          - timestamp
+          - duration_ms
+          - rate_limit_remaining
+          - rate_limit_reset
+          - cache_hit
+          properties:
+            request_id:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+            duration_ms:
+              type: integer
+            rate_limit_remaining:
+              type: integer
+            rate_limit_reset:
+              type: string
+              format: date-time
+            cache_hit:
+              type: boolean
+            pagination:
+              type: object
+              properties:
+                page:
+                  type: integer
+                page_size:
+                  type: integer
+                total_pages:
+                  type: integer
+                total_items:
+                  type: integer
+        links:
+          type: object
+          additionalProperties:
+            type: string
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/receptionistnotionError'
+    receptionistnotionError:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        recovery_hint:
+          type: string
+          enum:
+          - refresh_token
+          - backoff_retry
+          - check_permissions
+          - contact_admin

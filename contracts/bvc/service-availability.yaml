@@ -1,0 +1,41 @@
+contract:
+  name: "service-availability"
+  version: "1.0.0"
+  description: "Service responds to health checks above threshold"
+  expectation: "Service health endpoint returns 200 OK > 99.9% of the time over 5m window"
+  measurement:
+    source: "prometheus"
+    query: 'avg_over_time(up{job=~".+"}[5m])'
+    unit: "ratio"
+    sample_window: "5m"
+    evaluation_interval: "1m"
+  thresholds:
+    warn: 0.9995
+    fail: 0.999
+    critical: 0.995
+  labels:
+    service: "platform"
+    team: "platform"
+    severity: "critical"
+    runbook: "https://wiki.cortxt.io/runbooks/service-availability"
+  alerting:
+    on: "fail"
+    channels: ["buzz", "github"]
+    cooldown: "15m"
+    escalation:
+      - after: "30m"
+        channel: "buzz"
+        message: "ESCALATION: Service availability < 99.9% for 30min"
+  remediation:
+    runbook: "https://wiki.cortxt.io/runbooks/service-availability"
+    auto_mitigation: false
+  validity:
+    starts_at: "2026-08-01T00:00:00Z"
+    expires_at: null
+    environments: ["production", "staging"]
+metadata:
+  created_by: "platform-team"
+  created_at: "2026-08-03T00:00:00Z"
+  approved_by: "rikard"
+  approved_at: "2026-08-03T00:00:00Z"
+  changelog: ["Initial version"]

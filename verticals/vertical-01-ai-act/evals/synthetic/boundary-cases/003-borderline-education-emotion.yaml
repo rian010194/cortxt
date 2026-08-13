@@ -1,0 +1,59 @@
+fixture_id: v01-syn-bnd-003
+fixture_type: boundary
+input:
+  case_id: SYNTH-BND-003
+  system_description:
+    name: EduMood Analytics
+    purpose: Analyse student engagement and emotional states during online coursework to adapt lesson difficulty and pacing. Includes emotion-recognition sub-component for webcam streams.
+    intended_market: EU primary and secondary schools
+    operator_type: deployer
+  system_capabilities:
+  - learning analytics
+  - difficulty adaptation
+  - emotion recognition via webcam
+  - engagement scoring
+  known_standards: []
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+  - Art5
+  - Art6
+expected_output:
+  case_id: SYNTH-BND-003
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: true
+    confidence: probable
+    basis_articles:
+    - Art2
+    - Art3
+    - Art5
+  classification:
+    system_risk_class: prohibited
+    basis_annex: null
+  obligations_assessed: []
+  decision_brief:
+    language: sv
+    text: Systemet EduMood Analytics innehåller känsligenkänning i utbildningsmiljö, vilket är förbjudet enligt Artikel 5(1)(f). Trots att huvudsyftet är pedagogiskt anpassning, är den förbjudna komponenten dominerande.
+  uncertainties:
+  - topic: Whether the emotion-recognition component is severable from the educational adaptation
+    reason: If the emotion recognition is technically separable, the remaining system might be high-risk under Annex III (education) rather than prohibited.
+    suggested_research: Verify whether the presence of a prohibited sub-component in a larger system always triggers prohibition for the whole system.
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: prohibited
+- path: /obligations_assessed
+  operator: equals
+  expected_value: []
+- path: /applicability/ai_act_applies
+  operator: equals
+  expected_value: true
+model_assisted_assertions:
+- rubric: The decision brief should clearly state in Swedish that the system is prohibited because of emotion recognition in an education context (utbildningsmiljö).
+  required_model_capabilities:
+  - structured-output
+human_review_required: true

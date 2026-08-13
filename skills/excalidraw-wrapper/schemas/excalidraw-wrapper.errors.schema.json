@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "excalidraw-wrapper Error Codes",
+  "type": "string",
+  "enum": [
+    "RATE_LIMITED",
+    "UPSTREAM_ERROR",
+    "TIMEOUT",
+    "VALIDATION_ERROR",
+    "PERMISSION_DENIED",
+    "NOT_FOUND",
+    "EXCALIDRAW_RENDER_FAILED",
+    "TEMPLATE_NOT_FOUND"
+  ]
+}

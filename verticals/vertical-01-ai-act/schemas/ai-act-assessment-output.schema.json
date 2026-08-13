@@ -1,0 +1,204 @@
+{
+  "$id": "https://github.com/rian010194/ai-workspace-control-plane/schemas/ai-act-assessment-output.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Domain output for AI Act applicability and obligations assessment. v0.1.0. Does not include runtime-injected fields (run_id, timestamps, cost, usage, model).",
+  "version": "0.1.0",
+  "type": "object",
+  "required": [
+    "case_id",
+    "assessed_version",
+    "applicability",
+    "classification",
+    "obligations_assessed",
+    "decision_brief",
+    "uncertainties",
+    "schema_validation_passed"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "pattern": "^(SYNTH-|EXT-).+$",
+      "description": "Exact echo of input case_id."
+    },
+    "assessed_version": {
+      "type": "string",
+      "description": "Package version that produced this output."
+    },
+    "applicability": {
+      "type": "object",
+      "required": [
+        "ai_act_applies",
+        "confidence",
+        "basis_articles"
+      ],
+      "properties": {
+        "ai_act_applies": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "certain",
+            "probable",
+            "uncertain",
+            "needs_more_info"
+          ]
+        },
+        "basis_articles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "classification": {
+      "type": "object",
+      "required": [
+        "system_risk_class",
+        "basis_annex"
+      ],
+      "properties": {
+        "system_risk_class": {
+          "type": "string",
+          "enum": [
+            "prohibited",
+            "high_risk",
+            "limited_risk",
+            "minimal_risk",
+            "uncertain"
+          ]
+        },
+        "basis_annex": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Annex I, III, or null if not applicable."
+        }
+      }
+    },
+    "obligations_assessed": {
+      "type": "array",
+      "description": "If system_risk_class is prohibited, this array must be empty.",
+      "items": {
+        "type": "object",
+        "required": [
+          "article",
+          "applies",
+          "summary",
+          "evidence_refs",
+          "primary_source_verified"
+        ],
+        "properties": {
+          "article": {
+            "type": "string"
+          },
+          "applies": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "If primary_source_verified is false, must include Needs primary-source research."
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "primary_source_verified": {
+            "type": "boolean"
+          }
+        },
+        "if": {
+          "properties": {
+            "primary_source_verified": {
+              "const": false
+            }
+          },
+          "required": [
+            "primary_source_verified"
+          ]
+        },
+        "then": {
+          "properties": {
+            "summary": {
+              "pattern": "Needs primary-source research"
+            }
+          },
+          "required": [
+            "summary"
+          ]
+        }
+      }
+    },
+    "decision_brief": {
+      "type": "object",
+      "required": [
+        "language",
+        "text"
+      ],
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": [
+            "sv"
+          ],
+          "description": "Swedish for v0.1."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "uncertainties": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "topic",
+          "reason",
+          "suggested_research"
+        ],
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "suggested_research": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "schema_validation_passed": {
+      "description": "True when the producing agent confirms this object validates against the output schema.",
+      "const": true
+    }
+  },
+  "if": {
+    "properties": {
+      "classification": {
+        "properties": {
+          "system_risk_class": {
+            "const": "prohibited"
+          }
+        }
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "obligations_assessed": {
+        "type": "array",
+        "maxItems": 0
+      }
+    }
+  }
+}

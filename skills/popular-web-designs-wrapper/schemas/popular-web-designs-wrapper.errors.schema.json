@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "popular-web-designs-wrapper Error Codes",
+  "type": "string",
+  "enum": [
+    "RATE_LIMITED",
+    "UPSTREAM_ERROR",
+    "TIMEOUT",
+    "VALIDATION_ERROR",
+    "PERMISSION_DENIED",
+    "NOT_FOUND",
+    "DESIGN_SYSTEM_NOT_FOUND",
+    "CACHE_EXPIRED"
+  ]
+}

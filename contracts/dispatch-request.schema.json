@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DispatchRequest",
+  "type": "object",
+  "required": ["issue_id", "workflow", "worker_role", "scope", "acceptance_criteria", 
+               "max_runtime_seconds", "max_cost_usd", "max_parallel_workers", 
+               "delegation_depth", "artifact_policy", "approval_ref"],
+  "properties": {
+    "issue_id": {"type": "string", "pattern": "^[^/]+/[^/]+#\\d+$"},
+    "workflow": {"type": "string"},
+    "worker_role": {"enum": ["researcher", "builder", "planner", "reviewer", "monitor"]},
+    "scope": {"type": "string", "minLength": 10},
+    "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "max_runtime_seconds": {"type": "integer", "minimum": 60, "maximum": 86400},
+    "max_cost_usd": {"type": "number", "minimum": 0, "maximum": 1000},
+    "max_parallel_workers": {"type": "integer", "minimum": 1, "maximum": 2},
+    "delegation_depth": {"type": "integer", "minimum": 0, "maximum": 1},
+    "artifact_policy": {"enum": ["workspace_only", "github_artifacts", "external_refs"]},
+    "approval_ref": {"type": "string", "format": "uri"}
+  }
+}

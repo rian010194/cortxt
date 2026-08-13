@@ -1,0 +1,57 @@
+fixture_id: v01-syn-neg-003
+fixture_type: negative
+input:
+  case_id: SYNTH-NEG-003
+  system_description:
+    name: NPC-Buddy
+    purpose: Scripted non-player character behaviour in a fantasy video game, using predefined dialogue trees and state machines without machine learning.
+    intended_market: Global video game market
+    operator_type: provider
+  system_capabilities:
+  - pre-scripted dialogue
+  - state-machine behaviour
+  - quest-trigger logic
+  known_standards: []
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+  - Art5
+  - Art6
+expected_output:
+  case_id: SYNTH-NEG-003
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: false
+    confidence: probable
+    basis_articles:
+    - Art2
+    - Art3
+  classification:
+    system_risk_class: minimal_risk
+    basis_annex: null
+  obligations_assessed: []
+  decision_brief:
+    language: sv
+    text: Systemet NPC-Buddy använder enbart förskriptade beteenden och tillståndsmaskiner utan maskininlärning. Det omfattas inte av AI-förordningen.
+  uncertainties:
+  - topic: Whether scripted state machines qualify as AI under Article 3(1)
+    reason: The definition of AI system includes systems based on machine-learning, logic- and knowledge-based, or statistical approaches. State machines may fall outside all three.
+    suggested_research: Confirm EUR-Lex guidance on state-machine-based NPCs and the Article 3(1) definition.
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /applicability/ai_act_applies
+  operator: equals
+  expected_value: false
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: minimal_risk
+- path: /obligations_assessed
+  operator: equals
+  expected_value: []
+model_assisted_assertions:
+- rubric: The decision brief should explain in Swedish that the system uses scripted behaviour (förskriptade beteenden) without machine learning.
+  required_model_capabilities:
+  - structured-output
+human_review_required: false

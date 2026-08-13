@@ -1,0 +1,30 @@
+workflow_id: assess-obligations
+workflow_name: AI Act Obligations Mapping
+description: >
+  Identify applicable obligations for a classified system based on Articles 9-12
+  (with Annex IV supporting Article 11). Articles 14-15 are deferred to v0.2.
+version: 0.1.0
+stages:
+  - stage_id: obligations_mapping
+    name: Obligations Mapping
+    description: >
+      Model reads instructions/system-prompt-obligations.md and maps obligations
+      for the already-classified system. Input is the output of the classify workflow.
+    instruction_id: system-prompt-obligations
+    input_schema_uri: ./schemas/ai-act-assessment-output.schema.json
+    output_schema_uri: ./schemas/ai-act-assessment-output.schema.json
+    approval_required: false
+
+  - stage_id: obligations_review
+    name: Obligations Review
+    description: >
+      Deterministic structural validation must pass before synthesis.
+      Checks include schema validation, obligation consistency, and
+      primary-source-research markers for unverified constraints.
+    approval_required: false
+    deterministic_checks:
+      - schema_validation
+      - obligation_consistency
+      - primary_source_markers_present
+
+timeout_seconds: 300

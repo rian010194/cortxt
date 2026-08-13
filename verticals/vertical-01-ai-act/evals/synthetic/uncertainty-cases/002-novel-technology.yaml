@@ -1,0 +1,64 @@
+fixture_id: v01-syn-unc-002
+fixture_type: uncertainty
+input:
+  case_id: SYNTH-UNC-002
+  system_description:
+    name: GenSynBio Alpha
+    purpose: Generate novel protein structures using a hybrid generative-AI and quantum-chemistry model for synthetic biology research. Capable of predicting biological pathways not observed in nature.
+    intended_market: EU research institutions and biotech startups
+    operator_type: provider
+  system_capabilities:
+  - generative protein design
+  - quantum-chemistry simulation
+  - novel pathway prediction
+  - synthetic biology planning
+  known_standards: []
+  jurisdiction_hints:
+  - EU
+  question_focus:
+  - Art2
+  - Art3
+  - Art5
+  - Art6
+expected_output:
+  case_id: SYNTH-UNC-002
+  assessed_version: 0.1.0
+  applicability:
+    ai_act_applies: true
+    confidence: uncertain
+    basis_articles:
+    - Art2
+    - Art3
+  classification:
+    system_risk_class: uncertain
+    basis_annex: null
+  obligations_assessed: []
+  decision_brief:
+    language: sv
+    text: Systemet GenSynBio Alpha använder ny teknik (hybrid generativ AI och kvantkemi) som inte entydigt matchar nuvarande riskkategorier. Klassificeringen är osäker. Primärkällsverifiering krävs.
+  uncertainties:
+  - topic: Novel technology outside Annex III enumerated categories
+    reason: The system combines generative AI with synthetic biology in a way not explicitly covered by Annex III high-risk use cases.
+    suggested_research: Check European Commission guidance on emerging biotech AI systems and whether they fall under any Annex III category or require separate assessment.
+  - topic: GPAI model boundary
+    reason: The generative component may qualify as a general-purpose AI model, which is out of scope for v0.1 vertical assessment.
+    suggested_research: Determine whether the system is a GPAI model under Articles 52-55, which is deferred to v0.2 or harness-level handling.
+  schema_validation_passed: true
+deterministic_assertions:
+- path: /applicability/confidence
+  operator: equals
+  expected_value: uncertain
+- path: /classification/system_risk_class
+  operator: equals
+  expected_value: uncertain
+- path: /uncertainties
+  operator: exists
+  expected_value: null
+- path: /obligations_assessed
+  operator: equals
+  expected_value: []
+model_assisted_assertions:
+- rubric: The decision brief should mention in Swedish that the technology is novel (ny teknik) and that classification is uncertain (osäker).
+  required_model_capabilities:
+  - structured-output
+human_review_required: false

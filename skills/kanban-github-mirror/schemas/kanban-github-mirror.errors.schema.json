@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "kanban-github-mirror Error Codes",
+  "type": "string",
+  "enum": [
+    "RATE_LIMITED",
+    "UPSTREAM_ERROR",
+    "TIMEOUT",
+    "AUTH_EXPIRED",
+    "VALIDATION_ERROR",
+    "PERMISSION_DENIED",
+    "NOT_FOUND",
+    "KGM_BOARD_NOT_FOUND",
+    "KGM_PROJECT_NOT_FOUND",
+    "KGM_COLUMN_MAPPING_MISSING",
+    "KGM_RATE_LIMITED",
+    "KGM_CONFLICT",
+    "KGM_AUTH_FAILED"
+  ]
+}
