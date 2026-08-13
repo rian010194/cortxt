@@ -56,6 +56,10 @@ class MaxDepthError(BudgetExhausted):
     pass
 
 
+class ContradictionError(BudgetExhausted):
+    """Raised on a material contradiction so it halts sibling branches."""
+
+
 class RLMEngine:
     """Deterministic bounded recursive solver.
 
@@ -85,6 +89,8 @@ class RLMEngine:
         run = RLMRun()
         try:
             self._solve(root, run, depth=0, expected=expected, base_cost=base_cost_per_call)
+        except ContradictionError:
+            run.stop_reason = StopReason.CONTRADICTION
         except BudgetExhausted:
             run.stop_reason = StopReason.BUDGET_EXHAUSTED
         run.value = getattr(root, "_computed", None)
@@ -108,6 +114,8 @@ class RLMEngine:
             raise BudgetExhausted("cost")
         if run.total_children >= self._config.max_total_children:
             raise BudgetExhausted("total_children")
+        if run.output_length >= self._config.max_output_size:
+            raise BudgetExhausted("output_size")
 
         remaining_children = max(0, self._config.max_total_children - run.total_children)
         children = decompose_state(state, self._config.max_branches_per_node,
@@ -120,6 +128,7 @@ class RLMEngine:
             run.context_reads += 1
             run.cost += base_cost
             state._computed = self._inference.invoke(state.content)  # type: ignore[attr-defined]
+            run.output_length += len(str(state._computed))
             run.add(f"leaf {state.id} -> {state._computed}")
             return
 
@@ -128,10 +137,14 @@ class RLMEngine:
             run.context_reads += 1  # reading a child result counts as a context read
 
         value = integrate_results(state)
+        run.output_length += len(str(value))
         run.add(f"integrate {state.id} -> {value}")
 
         # challenger (deterministic)
         res: ChallengeResult = challenge(state, expected)
         if res.contradiction and self._config.explicit_stop_policy:
-            run.stop_reason = StopReason.CONTRADICTION
             run.add(f"challenge contradiction on {state.id}: {res.message}")
+            raise ContradictionError(res.message)
+        if expected is not None and res.ok:
+            run.stop_reason = StopReason.ACCEPTED
+            run.add(f"accepted on {state.id} (expected {expected})")

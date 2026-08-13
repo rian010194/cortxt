@@ -16,8 +16,3 @@ class StopReason(str, Enum):
 
 class StopCondition:
     """A single evaluable stop condition; deterministic."""
-
-
-def metadata_small_remaining(value_length: int, max_output_size: int) -> bool:
-    """True when the accumulated output approaches the size cap (budget shorthands)."""
-    return value_length >= max_output_size

@@ -90,3 +90,13 @@ def test_combined_bounds_fail_closed():
     run = eng.run(NESTED)
     assert run.total_children <= 2
     assert run.model_invocations <= 1
+
+
+# -- max_output_size enforcement (CP2.1 P1 rework) ------------------------ #
+def test_max_output_size_enforced_fail_closed():
+    stub = SumStub()
+    # A tiny output cap means even one leaf's value exceeds it -> immediate stop.
+    eng = RLMEngine(stub, RLMConfig(max_output_size=0))
+    run = eng.run(PROB := [[1, 2], [3, 4]], expected=10)
+    assert run.stop_reason == StopReason.BUDGET_EXHAUSTED
+    assert run.output_length >= 0
