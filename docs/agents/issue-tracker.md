@@ -1,11 +1,21 @@
 # Issue tracker: GitHub
 
-Issues and planning artifacts for this repository live in GitHub Issues and Project `AI Workspace Delivery`. Use the repository remote to resolve `rian010194/ai-workspace-control-plane` and use `gh` for tracker operations.
+Status: active normative
+Authority: repository governance
+Last verified: 2026-08-13
+
+GitHub Issues remain the durable task records for this repository. Project 4,
+now named `Legacy AI Workspace Delivery — frozen`, is a frozen legacy planning
+layer and is not Cortxt's active roadmap. Do not add, reclassify, or dispatch
+work from it without a separate operator decision. Use the repository remote to
+resolve `rian010194/ai-workspace-control-plane` and use `gh` for tracker
+operations.
 
 ## Conventions
 
 - Create an issue with a descriptive title and structured Markdown body.
-- Read the issue, labels, assignees, dependencies, and comments before acting.
+- Read the issue, labels, assignees, dependencies, comments, and any explicitly
+  designated current planning state before acting.
 - Use the existing workflow states: `Inbox`, `Ready`, `In progress`, `Review`, `Blocked`, and `Done`.
 - Treat `Ready` as an execution approval only when scope, acceptance criteria, worker role, time limit, cost limit, and human approval are present.
 - Record runtime identity and evidence using the repository's `docs/architecture/dispatch-contract.md`.

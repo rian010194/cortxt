@@ -7,8 +7,9 @@ manual operator, a native delegation tool, Hermes Kanban, or a future n8n
 dispatcher may execute the work, but all paths must expose the same observable
 identity and lifecycle.
 
-GitHub Issues/Projects are the source of truth. Runtime task lists are execution
-ledgers only.
+GitHub Issues are the durable source of truth. Workflow state may come from an
+explicitly designated current planning surface; Project 4 is frozen legacy.
+Runtime task lists are execution ledgers only.
 
 ## Dispatch request
 

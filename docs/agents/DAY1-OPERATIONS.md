@@ -1,6 +1,16 @@
 # Day 1 Operations — Så här kör du ett jobb
 
-> Status: verifierad väg 2026-08-04  
+Status: legacy; obsolete operational snapshot
+Authority: historical only
+Last verified: 2026-08-13 (classified obsolete)
+
+> Do not use this file to dispatch current work. Its automated coordinator,
+> mirror-cron, model, cost, heartbeat, and shutdown claims are not supported by
+> the current verified baseline. Use
+> [the current operating model](current-operating-model.md) and
+> [the manual dispatch routine](../operations/manual-dispatch-routine.md).
+
+> Historical claim recorded 2026-08-04; no longer current.
 > Med `operator-receptionist` skill laddad: agenten sköter GitHub, du pratar bara.
 
 ---
