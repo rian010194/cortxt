@@ -10,7 +10,7 @@ Use the offline CLI with a JSON file or stdin:
 
 ```text
 python provider_policy_cli.py fixtures/l0-inferx-like.json
-type request.json | python provider_policy_cli.py -
+python provider_policy_cli.py - < request.json
 ```
 
 The CLI writes one compact JSON object. Exit `0` means allowed, `2` means the
