@@ -58,6 +58,8 @@ def _solve_geometric(state: ProblemState, expected=None) -> OperatorResult:
     # by sorting the problem into independent value-groups then folding them,
     # which produces a different (constraint-aware) traversal than direct.
     contents = state.content
+    if not isinstance(contents, dict):
+        raise TypeError("geometric strategy requires dict content with 'branches'/'values'")  # P2 guard
     branches = contents.get("branches", contents.get("values", contents))
     inspect(state)
     total = 0
@@ -70,11 +72,20 @@ def _solve_geometric(state: ProblemState, expected=None) -> OperatorResult:
 def _flatten_scalars(obj):
     out = []
     stack = [obj]
+    seen = set()  # guard against cyclic Python objects (P1)
     while stack:
         cur = stack.pop()
         if isinstance(cur, list):
+            i = id(cur)
+            if i in seen:
+                continue
+            seen.add(i)
             stack.extend(reversed(cur))
         elif isinstance(cur, dict):
+            i = id(cur)
+            if i in seen:
+                continue
+            seen.add(i)
             # descend into dict values (constraint maps still carry numbers)
             stack.extend(reversed(list(cur.values())))
         else:

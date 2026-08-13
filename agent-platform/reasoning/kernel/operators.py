@@ -28,9 +28,14 @@ class OperatorResult:
 def _flatten(obj):
     out = []
     stack = [obj]
+    seen = set()  # guard against cyclic Python objects (P1)
     while stack:
         cur = stack.pop()
         if isinstance(cur, list):
+            i = id(cur)
+            if i in seen:
+                continue
+            seen.add(i)
             stack.extend(reversed(cur))
         else:
             out.append(cur)

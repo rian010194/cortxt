@@ -40,7 +40,7 @@ class TestIntegrate:
         parent.add_child(c1); parent.add_child(c2)
         res = integrate(parent)
         assert res.value == 10
-        assert parent.confidence is not None or parent._computed == 10  # noqa: SLF001
+        assert parent._computed == 10  # noqa: SLF001  (fixed: was a vacuous assertion)
 
 
 class TestVerify:
