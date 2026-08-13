@@ -9,7 +9,8 @@ identity and lifecycle.
 
 GitHub Issues are the durable source of truth. Workflow state may come from an
 explicitly designated current planning surface; Project 4 is frozen legacy.
-Runtime task lists are execution ledgers only.
+No replacement planning-state carrier is currently designated, so worker
+dispatch is suspended. Runtime task lists are execution ledgers only.
 
 ## Dispatch request
 
@@ -34,7 +35,8 @@ the request or copied into GitHub comments.
 
 ## Claim and run identity
 
-Before model execution, the dispatcher must atomically establish:
+After a current planning-state carrier has been designated, and before model
+execution, the dispatcher must atomically establish:
 
 - one active claim per `issue_id` and workflow attempt;
 - a unique `run_id` generated outside the model;
@@ -75,6 +77,10 @@ The result may link to protected artifacts but must not place secrets, private
 documents, prompts, raw reasoning, or unrestricted logs in GitHub.
 
 ## State transitions
+
+These transitions are contractual but currently unavailable because no
+planning-state carrier is designated. They become executable only after the
+operator designates a carrier and mapping.
 
 - A valid claim moves the GitHub item from `Ready` to `In progress`.
 - A complete result with required evidence moves it to `Review`.

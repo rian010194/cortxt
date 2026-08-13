@@ -12,13 +12,14 @@ No single experiment README describes the whole system.
 The durable task record and the execution runtime are deliberately separate.
 GitHub Issues hold durable scope and evidence. A planning surface may supply
 workflow state only when explicitly designated current; Project 4 is frozen
-legacy.
+legacy. No replacement is currently designated, so worker dispatch is
+suspended.
 
 ```text
 Hermes desktop (primary operator surface; Buzz = remote complement)
   -> GitHub Issue (durable scope and evidence source of truth)
-  -> explicitly current planning state, when designated
-  -> manual local dispatch for now
+  -> explicitly current planning state (none currently designated)
+  -> worker dispatch suspended until designation
      -> Hermes Coordinator/Researcher
      -> Pi Builder for bounded writes
   -> GitHub evidence or pull request
@@ -26,7 +27,9 @@ Hermes desktop (primary operator surface; Buzz = remote complement)
   -> operator approval
 ```
 
-This is the current usable path, not a claim that every arrow is automated.
+This is the intended current path. Its worker-dispatch segment is unavailable
+until a planning-state carrier is designated; local non-dispatch work remains
+possible within its own authorization boundaries.
 
 Rikard works primarily in Hermes desktop (single coordinator session that routes
 to Researcher/Builder as runtime workers). Buzz remains the remote/mobile
@@ -37,7 +40,7 @@ complement for monitoring status and approvals, not a per-agent surface.
 | Component | Responsibility | Current constraint |
 |---|---|---|
 | Buzz | Remote/mobile monitoring, scope clarification, status display, and approvals (compliment to the Hermes desktop primary surface) | It is not the durable task registry or the primary work surface. Buzz-native delegation is not approved for unattended work because delegation handles cannot be polled. |
-| GitHub Issues and current planning state | Canonical scope, acceptance criteria, evidence, review, and approval; workflow state only from an explicitly current planning surface | Project 4 is frozen legacy. An issue must be approved and `Ready` in the current workflow before dispatch. |
+| GitHub Issues and current planning state | Canonical scope, acceptance criteria, evidence, review, and approval; workflow state only from an explicitly current planning surface | Project 4 is frozen legacy and no replacement is designated. Worker dispatch is suspended until a carrier exists; afterward an issue must be approved and authoritatively `Ready`. |
 | Hermes | Agent runtime for Coordinator and Kimi-backed Researcher profiles; profile routing, bounded delegation, Kanban execution ledger, and gateway dispatch for scratch workspaces | Hermes routing and Kanban dispatch work for scratch workspaces. Worktree mode requires correct Windows path setup. The complete Buzz-to-runtime handoff is not automated. |
 | Pi Builder | Short-lived, containerized Kimi runtime for bounded file writes | It remains an experiment pending production hardening and a general dispatcher interface. |
 | Kimi/Moonshot | Heavy research, analysis, implementation, and tests | Cost and tool limits must be explicit; unknown provider cost must never be treated as zero. |
