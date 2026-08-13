@@ -1,37 +1,33 @@
 # Reasoning
 
-Status: scaffold; `kernel/` (DM1) and `recursive/` (DM2) implemented
+Status: scaffold; kernel/ (DM1), recursive/ (DM2), geometric/ (DM3), pipeline (DM4) implemented
 
-This package will contain the Cortxt-owned Reasoning Kernel.
+This package is the Cortxt-owned Reasoning Kernel (target architecture §10–§12).
 
 ```text
 reasoning/
-|-- kernel/       strategy selection and step admission   [DM1: implemented]
-|-- recursive/    bounded RLM decomposition and integration [DM2: implemented]
-|-- geometric/    graph/embedding-based exploration and attractor detection [planned DM3]
-`-- operators/    typed Problem State transformations       [DM1: kernel/operators.py]
+|-- kernel/       strategy selection + step admission (direct/recursive/geometric) [DM1]
+|-- recursive/    bounded RLM decomposition and integration (hard limits)         [DM2]
+|-- geometric/    graph/embedding exploration + attractor detection + escape      [DM3]
+|-- pipeline.py   integrated ReasoningPipeline (kernel+RLM+geometric)             [DM4]
+|-- orchestrator.py  lifecycle: init -> run -> verify -> finalize; human_esc.     [DM4]
+`-- tests/        kernel, recursive, geometric, integration, verification,
+                  no-external-deps
 ```
 
 Reasoning proposes transformations. Authoritative state transitions, child
 creation, tool effects, and budget consumption are validated by their owning
-components.
+components. Core packages do not import Hermes/Pi/InferX/provider (guarded by
+`tests/reasoning/test_no_external_deps.py`).
 
-## DM1 — Kernel + operator skeleton (done 2026-08-14)
-`kernel/`: ProblemState, Strategy selector (direct/recursive/geometric),
-deterministic operators (inspect/decompose/integrate/verify), Engine loop.
-12 tests, coverage 90%, 0 model calls. Checkpoint 1.1: Kimi GODKÄND.
+## DM4 — Integrated pipeline (done 2026-08-14)
+- `ReasoningPipeline.run(problem)`: selects strategy (kernel), dispatches to
+  the RLM engine (recursive) or Geometric explorer, folds results and updates
+  confidence via a verify step. Hybrid problems (`{recursive, geometric}`)
+  switch strategy mid-flight.
+- `ReasoningOrchestrator.run(problem, expected)`: lifecycle over the pipeline,
+  honours a `human_escalation` marker, classifies the job terminal vs not.
+- 0 model calls (inference port is injected/stubbed).
 
-## DM2 — RLM Engine (done 2026-08-14)
-`recursive/` implements the bounded recursive decomposition loop
-(target architecture §11):
-- `bounds.py` — `RLMConfig` with all hard limits (max_depth, max_branches_per_node,
-  max_total_children, max_model_invocations, max_context_reads, max_runtime_seconds,
-  max_cost, max_output_size, explicit_stop_policy), validated fail-closed.
-- `rlm_engine.py` — `RLMEngine` + `InferencePort` (Protocol; never called directly —
-  tests inject a pure stub). Prunes fan-out to per-node + global child budget.
-- `decomposer.py` / `integrator.py` / `challenger.py` / `stop_conditions.py`.
-
-Tests: bounds (each + combined), RLM fixture, stop conditions, integrator.
-29 tests, coverage 92%, 0 model calls. Next: Checkpoint 2.1 (Kimi review).
-
-Next: DM3 (Geometric Reasoning Engine) then DM4 (integrated pipeline).
+Tests: 57 passed, coverage 93% for `reasoning/`, 0 model calls. Next: CP4.1
+(Kimi review) then a PR; main-merge stays an operator gate.
