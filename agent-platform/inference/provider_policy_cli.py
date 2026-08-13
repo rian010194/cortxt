@@ -44,7 +44,7 @@ def run(path: str | None) -> int:
     try:
         request = _read_request(path)
         data_class, evidence = _parse_request(request)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         payload, exit_code = _error("invalid_json"), 3
     except (OSError, UnicodeError):
         payload, exit_code = _error("input_read_error"), 3

@@ -18,6 +18,7 @@ def invoke(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess[
         capture_output=True,
         check=False,
         cwd=HERE,
+        timeout=10,
     )
 
 
@@ -50,6 +51,12 @@ class ProviderPolicyCliTests(unittest.TestCase):
 
     def test_invalid_json_has_no_traceback(self):
         result = invoke(stdin="{")
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(json.loads(result.stdout), {"error": "invalid_json"})
+        self.assertEqual(result.stderr, "")
+
+    def test_deeply_nested_json_has_no_traceback(self):
+        result = invoke(stdin="[" * 2000 + "]" * 2000)
         self.assertEqual(result.returncode, 3)
         self.assertEqual(json.loads(result.stdout), {"error": "invalid_json"})
         self.assertEqual(result.stderr, "")
