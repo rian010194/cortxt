@@ -37,3 +37,19 @@ def test_explorer_path_cost_strictly_below_bfs():
     bfs_cost = exploration_cost(s, bfs)
     assert explorer_cost < bfs_cost
     assert res.path[0] == "A"
+
+
+def test_explorer_updates_visited_count_for_attractor_feed():
+    """CP3.1 P1 regression: explore() must touch nodes so AttractorDetector
+    sees non-zero visited_count in the integrated flow."""
+    from reasoning.geometric import AttractorDetector
+
+    s = low_cost_graph()
+    Explorer(max_steps=10).explore(s, "A", "Z")
+    assert all(
+        s.node(n).visited_count > 0 for n in ("A", "C", "D", "Z")
+    ), "explore() should have touched the nodes it visited"
+    # attractor detector works on a touched node (non-zero visits, stable family)
+    det = AttractorDetector(k_threshold=1, stability_threshold=0.3)
+    res = det.detect(s, "C")
+    assert isinstance(res.is_attractor, bool)

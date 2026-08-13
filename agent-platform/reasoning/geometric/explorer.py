@@ -28,18 +28,17 @@ class Explorer:
         visited: set[str] = set()
         current = start
         path: list[str] = []
-        goal_shortest = space.shortest_path(start, goal)
-        goal_edges = max(0, len(goal_shortest) - 1)
+        escaped = False
 
         for _ in range(self._max_steps):
+            node = space.node(current)
+            if node is None:
+                break
+            node.touch()            # CP3.1 fix: visited_count must update (attractor feed)
             path.append(current)
             visited.add(current)
             if current == goal:
-                return ExplorationResult(path, True)
-            if len(path) - 1 > goal_edges * 2 and goal_shortest:
-                # we've strayed too far; do not claim a superior - only goal is
-                # reaching it within bound; keep exploring guides
-                pass
+                return ExplorationResult(path, True, escaped)
 
             nbrs = space.successors(current)
             if not nbrs:
@@ -48,14 +47,15 @@ class Explorer:
             candidates = unvisited_nbrs if unvisited_nbrs else nbrs
             next_node = max(
                 candidates,
-                key=lambda n: GraphMetrics.guidance(
-                    space, n, goal, visited,
-                    space.node(n).visited_count if space.node(n) else 0,
-                ),
+                key=lambda n: GraphMetrics.guidance(space, n, goal, visited),
             )
+            # If the best candidate was already explored, we are turning back into
+            # a visited region -> treat it as an attractor escape signal.
+            if next_node in visited and not escaped:
+                escaped = True
             current = next_node
 
-        return ExplorationResult(path, False)
+        return ExplorationResult(path, False, escaped)
 
 
 def bfs_path(space: ProblemSpace, start: str, goal: str) -> list[str]:

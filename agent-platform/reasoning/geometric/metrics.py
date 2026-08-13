@@ -55,8 +55,14 @@ class GraphMetrics:
 
     @staticmethod
     def stability(space: ProblemSpace, nid: str, revisit_count: int) -> float:
-        """Stability rises with repeated re-visitation of the same family."""
-        return min(1.0, revisit_count / 3.0)
+        """Confidence-scaled stability; single source for the metric (=== attractor).
+
+        Matches AttractorDetector._stability so there is one definition of what a
+        stable re-visit is (CP3.1 fix: unify the two formulas).
+        """
+        node = space.node(nid)
+        confidence = node.confidence if node else 0.5
+        return min(1.0, (revisit_count / 3.0) * confidence)
 
     @staticmethod
     def revisit_ratio(space: ProblemSpace, nid: str) -> float:
@@ -81,18 +87,21 @@ class GraphMetrics:
 
     @staticmethod
     def information_gain(space: ProblemSpace, nid: str, before: float, after: float) -> float:
-        """Information gain is modeled as |confidence change| on an update."""
-        return abs(after - before)
+        """Information gain = |confidence change|, clamped to [0,1] (CP3.1 fix)."""
+        return min(1.0, abs(after - before))
 
     # -- aggregate guidance (used by Explorer) ---------------------------- #
     @staticmethod
-    def guidance(space: ProblemSpace, nid: str, goal: str, visited: set[str],
-                 revisit_count: int) -> float:
+    def guidance(space: ProblemSpace, nid: str, goal: str, visited: set[str]) -> float:
         """Weighted exploration score: goal-direction + evidence + novelty,
-        penalized by contradiction. Higher = more attractive next step."""
+        penalized by contradiction and by stability (avoid re-visiting an
+        attractor). Higher = more attractive next step. (CP3.1 fix: stability used,
+        unused revisit_count param removed.)"""
+        st = GraphMetrics.stability(space, nid, space.node(nid).visited_count if space.node(nid) else 0)
         return (
             0.4 * GraphMetrics.graph_distance_to_goal(space, nid, goal)
             + 0.3 * GraphMetrics.evidence_coverage(space, nid)
             + 0.2 * GraphMetrics.novelty(space, nid, visited)
             - 0.1 * GraphMetrics.contradiction_degree(space, nid)
+            - 0.1 * st
         )
