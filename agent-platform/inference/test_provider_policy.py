@@ -28,6 +28,14 @@ class ProviderPolicyTests(unittest.TestCase):
         self.assertEqual(evaluate_provider("L0", None).reasons, ("missing_provider_evidence",))
         self.assertEqual(evaluate_provider("L0", ProviderEvidence(" ", True)).reasons,
                          ("missing_provider_evidence",))
+        self.assertEqual(evaluate_provider("L0", ProviderEvidence(None, True)).reasons,
+                         ("missing_provider_evidence",))
+    def test_truthy_unknown_values_fail_closed(self):
+        evidence = ProviderEvidence("provider-a", "false", "unknown", "yes")
+        self.assertEqual(evaluate_provider("L0", evidence).reasons, ("missing_approved",))
+        self.assertEqual(evaluate_provider("L1", evidence).reasons,
+                         ("missing_approved", "missing_zero_data_retention",
+                          "missing_encryption"))
 
 if __name__ == "__main__":
     unittest.main()

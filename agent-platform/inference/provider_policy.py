@@ -37,17 +37,18 @@ _REQUIREMENTS = {
 
 def evaluate_provider(data_class: str, evidence: ProviderEvidence | None) -> PolicyDecision:
     """Return a fail-closed, machine-readable provider eligibility decision."""
-    provider_id = evidence.provider_id if evidence else "unknown"
+    raw_provider_id = evidence.provider_id if evidence else None
+    provider_id = raw_provider_id if isinstance(raw_provider_id, str) else "unknown"
     try:
         level = DataClass(data_class)
     except (TypeError, ValueError):
         return PolicyDecision(False, str(data_class), provider_id, ("unknown_data_class",))
-    if evidence is None or not evidence.provider_id.strip():
+    if evidence is None or not isinstance(raw_provider_id, str) or not raw_provider_id.strip():
         return PolicyDecision(False, level.value, provider_id, ("missing_provider_evidence",))
     if level is DataClass.L3:
         return PolicyDecision(False, level.value, provider_id, ("l3_policy_not_defined",))
     missing = tuple(f"missing_{field}" for field in _REQUIREMENTS[level]
-                    if not getattr(evidence, field))
+                    if getattr(evidence, field) is not True)
     if level is DataClass.L2 and evidence.independent_assurance is not AssuranceStatus.COMPLETED:
         missing += ("independent_assurance_not_completed",)
     if missing:
