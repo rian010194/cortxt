@@ -1,0 +1,17 @@
+{
+  "actual_cost_usd": "0",
+  "data_class": "L0",
+  "max_cost_usd": "0",
+  "provider_evidence": {
+    "approved": true,
+    "provider_id": "synthetic-offline-adapter"
+  },
+  "scenario_id": "foundation-101-t1-synthetic",
+  "synthetic_result": {
+    "finding": "synthetic-control-observed",
+    "source_refs": [
+      "fixture://foundation-101/t1"
+    ]
+  },
+  "workflow": "foundation.t1/v1"
+}
