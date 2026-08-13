@@ -1,10 +1,9 @@
 """Reasoning package for the Cortxt agent platform.
 
-DM2 status: kernel/ (DM1) and recursive/ (RLM engine, DM2) are implemented.
-geometric/ (DM3) and the integrated pipeline (DM4) arrive in later milestones
-per the checkpoint plan.
+DM3 status: kernel/ (DM1), recursive/ (RLM, DM2), geometric/ (DM3) implemented.
+The integrated pipeline (DM4) arrives last per the checkpoint plan.
 """
 
-from . import kernel, recursive
+from . import geometric, kernel, recursive
 
-__all__ = ["kernel", "recursive"]
+__all__ = ["kernel", "recursive", "geometric"]
