@@ -1,0 +1,14 @@
+{
+  "data_class": "L2",
+  "provider_evidence": {
+    "provider_id": "synthetic-complete",
+    "approved": true,
+    "zero_data_retention": true,
+    "encryption": true,
+    "dpa": true,
+    "subprocessors_published": true,
+    "hosting_region_published": true,
+    "incident_process_published": true,
+    "independent_assurance": "completed"
+  }
+}

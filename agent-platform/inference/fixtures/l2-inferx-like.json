@@ -1,0 +1,8 @@
+{
+  "data_class": "L2",
+  "provider_evidence": {
+    "provider_id": "synthetic-inferx",
+    "approved": true,
+    "independent_assurance": "in_progress"
+  }
+}
