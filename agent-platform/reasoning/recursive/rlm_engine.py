@@ -130,6 +130,10 @@ class RLMEngine:
             state._computed = self._inference.invoke(state.content)  # type: ignore[attr-defined]
             run.output_length += len(str(state._computed))
             run.add(f"leaf {state.id} -> {state._computed}")
+            # A trivial (flat) leaf that matches the expectation resolves as accepted.
+            if expected is not None and state._computed == expected:  # type: ignore[attr-defined]
+                run.stop_reason = StopReason.ACCEPTED
+                run.add(f"accepted on {state.id} (expected {expected})")
             return
 
         for child in children:

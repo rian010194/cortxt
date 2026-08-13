@@ -61,3 +61,13 @@ def test_contradiction_halts_sibling_execution():
     eng = RLMEngine(stub, RLMConfig(max_model_invocations=64, max_total_children=64, max_depth=8))
     run = eng.run(PROB, expected=999)  # actual 15 -> contradiction
     assert run.stop_reason == StopReason.CONTRADICTION
+
+
+def test_flat_leaf_match_resolves_accepted():
+    """Reviewer-noted polish: a trivial flat (leaf) problem matching expected must
+    resolve as ACCEPTED, not ALL_INTEGRATED."""
+    stub = SumStub()
+    eng = RLMEngine(stub, RLMConfig())
+    run = eng.run([1, 2, 3, 4, 5], expected=15)  # flat => single leaf
+    assert run.value == 15
+    assert run.stop_reason == StopReason.ACCEPTED

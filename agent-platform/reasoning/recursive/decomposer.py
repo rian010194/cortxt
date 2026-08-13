@@ -23,7 +23,10 @@ def decompose_state(
     if isinstance(content, dict) and "branches" in content:
         branches = content["branches"]
     elif isinstance(content, list):
-        branches = content
+        # A list decomposes only when it is genuinely nested (elements that are
+        # themselves structural). A flat list of scalars is a single leaf, not N
+        # child branches — otherwise child-count caps silently truncate data.
+        branches = content if any(isinstance(x, (list, dict)) for x in content) else []
     else:
         return []
 
