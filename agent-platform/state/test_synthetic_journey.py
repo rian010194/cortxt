@@ -64,6 +64,28 @@ class SyntheticJourneyTests(unittest.TestCase):
             self.assertEqual(rejected.returncode, 1)
             self.assertIn("manifest does not identify the result evidence", rejected.stderr)
 
+    def test_malformed_nested_terminal_envelope_fails_deterministically(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "evidence"
+            self.assertEqual(self.run_cli("start", "--scenario", SCENARIO,
+                                         "--output", output).returncode, 0)
+            self.assertEqual(self.run_cli("resume", "--output", output).returncode, 0)
+            manifest = json.loads((output / "journey-manifest.json").read_text(encoding="utf-8"))
+            ledger_path = output / "state" / manifest["run_id"] / "ledger.json"
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+            ledger["events"][-1]["payload"]["cost"] = []
+            import ledger as ledger_module
+            event = ledger["events"][-1]
+            unsigned = {key: value for key, value in event.items() if key != "hash"}
+            event["hash"] = __import__("hashlib").sha256(ledger_module.canonical_json(unsigned)).hexdigest()
+            manifest["ledger_head_sha256"] = event["hash"]
+            ledger_path.write_text(json.dumps(ledger), encoding="utf-8")
+            (output / "journey-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            rejected = self.run_cli("verify", "--output", output)
+            self.assertEqual(rejected.returncode, 1)
+            self.assertIn("terminal cost has an invalid schema", rejected.stderr)
+            self.assertNotIn("Traceback", rejected.stderr)
+
     def test_over_budget_scenario_fails_before_run_creation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

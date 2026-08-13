@@ -148,18 +148,33 @@ def verify(output_name: str) -> dict[str, Any]:
         raise JourneyError("terminal result identity is incomplete")
     expected_usage = {"cache_tokens": 0, "input_tokens": 0, "output_tokens": 0,
                       "reasoning_tokens": 0, "status": "exact"}
-    if terminal["usage"] != expected_usage or terminal["cost"].get("status") != "exact":
+    cost = terminal["cost"]
+    if (not isinstance(cost, dict) or set(cost) != {"amount_usd", "status"}
+            or not isinstance(cost["amount_usd"], str) or cost["status"] != "exact"):
+        raise JourneyError("terminal cost has an invalid schema")
+    if terminal["usage"] != expected_usage:
         raise JourneyError("offline usage or cost is not exact")
-    if not isinstance(terminal["evidence"], list) or not terminal["evidence"]:
+    if (not isinstance(terminal["evidence"], list) or not terminal["evidence"]
+            or not all(isinstance(item, dict) and set(item) == {"kind", "ref"}
+                       and all(isinstance(item[key], str) and item[key] for key in item)
+                       for item in terminal["evidence"])):
         raise JourneyError("terminal evidence is missing")
     if created["policy_decision"].get("allowed") is not True:
         raise JourneyError("authoritative policy decision was not allowed")
-    if Decimal(terminal["cost"]["amount_usd"]) > Decimal(created["budget"]["max_cost_usd"]):
+    try:
+        actual_cost = Decimal(cost["amount_usd"])
+    except InvalidOperation:
+        raise JourneyError("terminal cost is not a decimal string")
+    if not actual_cost.is_finite() or actual_cost < 0 or actual_cost > Decimal(created["budget"]["max_cost_usd"]):
         raise JourneyError("terminal cost exceeds the approved budget")
     if not isinstance(terminal["artifacts"], list) or len(terminal["artifacts"]) != 1:
         raise JourneyError("terminal artifact set is invalid")
     artifact = terminal["artifacts"][0]
-    if not isinstance(artifact, dict) or set(artifact) != {"path", "sha256"} or Path(artifact["path"]).name != artifact["path"]:
+    if (not isinstance(artifact, dict) or set(artifact) != {"path", "sha256"}
+            or not all(isinstance(artifact[key], str) for key in artifact)
+            or Path(artifact["path"]).name != artifact["path"]
+            or len(artifact["sha256"]) != 64
+            or any(character not in "0123456789abcdef" for character in artifact["sha256"])):
         raise JourneyError("terminal artifact reference is unsafe or invalid")
     result_path = output / artifact["path"]
     if not result_path.is_file() or hashlib.sha256(result_path.read_bytes()).hexdigest() != artifact["sha256"]:
