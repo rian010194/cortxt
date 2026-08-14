@@ -28,7 +28,7 @@ LABEL_IN_PROGRESS = "workflow:in-progress"
 LABEL_REVIEW = "workflow:review"
 LABEL_BLOCKED = "workflow:blocked"
 
-FAILING_STATUSES = ("failed", "timed_out", "budget_exceeded", "blocked", "cancelled")
+FAILING_STATUSES = ("failed", "timed_out", "budget_exceeded", "blocked")
 
 
 class GitHubError(RuntimeError):
@@ -183,10 +183,15 @@ class Dispatcher:
         return d
 
     def sweep_expired(self) -> list[str]:
-        """Move expired in_progress claims to timed_out; release the label. Returns swept run_ids."""
+        """Move expired in_progress claims (top-level or child) to timed_out.
+
+        Only a top-level run's expiry moves the issue's label (see complete());
+        a child run's expiry is recorded in the registry but leaves the label
+        alone, since the parent still owns the issue's workflow state.
+        """
         swept = []
         for run in list(self.registry._runs.values()):
-            if run.status == "in_progress" and run.parent_run_id is None and run.is_expired():
+            if run.status == "in_progress" and run.is_expired():
                 self.complete(
                     run.run_id,
                     "timed_out",
@@ -196,14 +201,25 @@ class Dispatcher:
         return swept
 
     def complete(self, run_id: str, status: str, result_envelope: dict) -> Run:
-        """Record a terminal result and, for a top-level run, move the issue's label."""
+        """Record a terminal result and, for a top-level run, move the issue's label.
+
+        `cancelled` is an operator-initiated abort, not a failure: it returns
+        the issue to workflow:ready so it can be redispatched with a fresh
+        run_id, rather than workflow:blocked (reserved for structured,
+        non-recoverable results per dispatch-contract.md).
+        """
         run = self.registry.get(run_id)
         if run is None:
             raise RuntimeError(f"unknown run_id {run_id}")
         self.registry.update(run_id, status=status, finished_at=time.time(), result=result_envelope)
         if run.parent_run_id is None:
             repo, num = run.issue_id.split("#")
-            target = LABEL_BLOCKED if status in FAILING_STATUSES else LABEL_REVIEW
+            if status == "cancelled":
+                target = LABEL_READY
+            elif status in FAILING_STATUSES:
+                target = LABEL_BLOCKED
+            else:
+                target = LABEL_REVIEW
             self.gh.swap_label(repo, num, LABEL_IN_PROGRESS, target)
             self.gh.comment(repo, num, self._result_comment(run_id, status, result_envelope))
         return self.registry.get(run_id)
