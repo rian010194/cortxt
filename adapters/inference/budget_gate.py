@@ -101,7 +101,17 @@ class BudgetGate:
             raise BudgetExhausted(
                 f"real-inference budget exhausted (<=0 of {self._max_calls} calls remain); blocking before HTTP"
             )
-        # Record an attempt row UP FRONT so the ceiling advances even if the call fails (P2):
-        # a raised/failed attempt still consumes budget, preventing silent budget bypass via retries.
+        # Record an attempt row UP FRONT so the ceiling advances even if the call fails (CP1.1 P2):
+        # a raised/failed attempt still consumes budget, preventing silent bypass via retries.
         self.record(cost_status="attempt_started", latency_ms=0)
-        return invoke(*args, **kwargs)
+        started = time.monotonic()
+        try:
+            return invoke(*args, **kwargs)
+        except BaseException:  # record the failed outcome + latency, then re-raise (CP2.1 P2)
+            self.record(
+                cost_status="failed",
+                latency_ms=int((time.monotonic() - started) * 1000),
+                route_id="l0-default",
+                selected_route_id="l0-default",
+            )
+            raise
