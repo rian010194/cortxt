@@ -29,9 +29,12 @@ class SkillRegistry:
     def get(self, name: str, version: str | None = None) -> SkillManifest | None:
         if version is not None:
             return self._skills.get(f"{name}@{version}")
-        # senaste versionen av ett namn (sista inlagda)
+        # Utan version: returnera HÖGSTA semver-versionen av namnet (CP1.1 P3),
+        # fallback på SISTA inlagda vid jämn semver.
         matches = [m for k, m in self._skills.items() if k.startswith(f"{name}@")]
-        return matches[-1] if matches else None
+        if not matches:
+            return None
+        return max(matches, key=lambda m: _version_key(m.version))
 
     def all(self) -> list[SkillManifest]:
         return list(self._skills.values())
@@ -63,3 +66,9 @@ class SkillRegistry:
         for item in data.get("skills", []):
             reg.add(SkillManifest.from_dict(item))
         return reg
+
+
+def _version_key(v: str) -> tuple[int, ...]:
+    """Parse 'a.b.c' (eller lax) → tuple av ints för semver-jämförelse; fallback (0,)."""
+    parts = [p for p in str(v).split(".") if p.isdigit()]
+    return tuple(int(p) for p in parts) or (0,)

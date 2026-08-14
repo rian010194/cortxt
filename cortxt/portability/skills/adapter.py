@@ -24,6 +24,17 @@ from .manifest import SkillManifest
 _LINKED_DIRS = ("references", "templates", "scripts", "assets")
 
 
+def _json_safe(value):
+    """Rekursivt normalisera YAML-utdata till JSON-serialiserbara typer (CP1.1 P2)."""
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)  # övriga (datetime, set, osv.) -> str
+
+
 class PortabilityValidationError(ValueError):
     """Raised när en skill inte kan valideras till ett neutralt manifest."""
 
@@ -44,9 +55,10 @@ class HermesSkillAdapter:
             raise PortabilityValidationError("manifest requires a non-empty 'name' in frontmatter")
         name = str(name)
         version = str(meta.get("version") or "0.0.0")
-        category = str(meta.get("category") or meta.get("tags") or "")
-        if isinstance(category, list):
+        category = meta.get("category") or meta.get("tags") or ""
+        if isinstance(category, list):  # normalize lists BEFORE str() (CP1.1 P1)
             category = ",".join(str(t) for t in category)
+        category = str(category)
         linked = self._collect_linked(refs=meta.get("linked_files", []), root=root)
         return SkillManifest(
             name=name,
@@ -54,7 +66,9 @@ class HermesSkillAdapter:
             category=category,
             content_md=body.strip(),
             linked_files_refs=linked,
-            metadata={"source": str(root), "frontmatter": meta},
+            # Sanitize frontmatter to JSON-safe types for export, and do NOT bake the
+            # absolute path into hash-affected metadata (CP1.1 P2 — idempotensbrott).
+            metadata={"frontmatter": _json_safe(meta)},
         )
 
     @staticmethod

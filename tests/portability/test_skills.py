@@ -82,3 +82,29 @@ def test_manifest_requires_name():
 
     with pytest.raises(ValueError):
         SkillManifest.from_dict({"version": "1.0", "category": "x", "content_md": "c"})
+
+
+def test_category_list_normalized_before_str(tmp_path):
+    """CP1.1 P1: category/tags as list must become 'a,b', not the list repr."""
+    skill = tmp_path / "listcat"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text(
+        "---\nname: listcat\nversion: 1.0\ncategory:\n  - dev\n  - ops\n---\nbody\n",
+        encoding="utf-8",
+    )
+    adapter = HermesSkillAdapter()
+    m = adapter.read(skill)
+    assert m.category == "dev,ops"
+    assert m.category != "['dev', 'ops']"
+
+
+def test_manifest_from_dict_none_metadata_safe():
+    """CP1.1 P2: explicit null metadata/linked_files_refs breaks not."""
+    from cortxt.portability.skills.manifest import SkillManifest
+
+    m = SkillManifest.from_dict(
+        {"name": "x", "version": "1.0", "category": "c", "content_md": "b",
+         "metadata": None, "linked_files_refs": None}
+    )
+    assert m.metadata == {}
+    assert m.linked_files_refs == []

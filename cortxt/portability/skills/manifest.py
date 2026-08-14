@@ -38,6 +38,6 @@ class SkillManifest:
             version=version,
             category=category,
             content_md=content_md,
-            linked_files_refs=[str(r) for r in data.get("linked_files_refs", [])],
-            metadata=dict(data.get("metadata", {})),
+            linked_files_refs=[str(r) for r in data.get("linked_files_refs") or []],
+            metadata=dict(data.get("metadata") or {}),  # None-safe (CP1.1 P2)
         )
