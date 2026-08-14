@@ -23,8 +23,11 @@ def test_success_consumes_budget(monkeypatch, tmp_path):
 
 
 def test_failed_call_still_counts_attempt(monkeypatch, tmp_path):
-    """P2-fix: a raised/failed call still consumes budget (records attempt row)."""
-    gate = BudgetGate(max_calls=1, db_path=tmp_path / "t.db")
+    """CP1.1 P2 + CP2.1 P2: a raised/failed call still consumes budget and logs a failure row."""
+    import sqlite3
+
+    db = tmp_path / "t.db"
+    gate = BudgetGate(max_calls=1, db_path=db)
 
     def boom():
         raise RuntimeError("provider down")
@@ -35,6 +38,13 @@ def test_failed_call_still_counts_attempt(monkeypatch, tmp_path):
     assert gate.remaining == 0
     with pytest.raises(BudgetExhausted):
         gate(lambda: 1)
+    # The failure is observable: an attempt_started row + a failed row (CP2.1 P2).
+    with sqlite3.connect(db) as conn:
+        statuses = [
+            r[0]
+            for r in conn.execute("SELECT cost_status FROM fas2a_inference_spend").fetchall()
+        ]
+    assert "attempt_started" in statuses and "failed" in statuses
 
 
 def test_db_records_attempt_rows(monkeypatch, tmp_path):
