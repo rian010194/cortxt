@@ -1,0 +1,29 @@
+{
+  "_comment": "L0 SYNTHETIC fixture för Fas 2A real-inference vertikal integration (ADR-016: endast dataklass L0 / offentlig-syntetisk). Innehåller INGA personuppgifter, inga företagshemligheter, inga riktiga dokumentembeddings. Värdena är uppenbart syntetiska: Fibonaccisekvenser, enhetsvektorer, små heltal. Ursprung: genererad för denna fixture.",
+  "scenarios": [
+    {
+      "scenario_id": "l0_fib_sum_5",
+      "strategy": "recursive",
+      "content": [[1, 1, 2], [3, 5, 8]],
+      "expected": 20,
+      "annotation": "Summa av de första 6 Fibonaccitalen (1,1,2,3,5,8=20). Ren syntetisk heltalsberäkning."
+    },
+    {
+      "scenario_id": "l0_pair_sum",
+      "strategy": "direct",
+      "content": [4, 6, 10, -1, 1],
+      "expected": 20,
+      "annotation": "Platt lista av små heltal; summa 20. Ingen data."
+    },
+    {
+      "scenario_id": "l0_unit_vector_metric",
+      "strategy": "geometric",
+      "content": {
+        "values": [2, 0, 0, -1, 1],
+        "constraints": ["non_negative", "unit_sphere_hint"]
+      },
+      "expected": 2,
+      "annotation": "Syntetisk enhetsvektor/heltalsmönster; summa av relevanta komponenter = 2."
+    }
+  ]
+}

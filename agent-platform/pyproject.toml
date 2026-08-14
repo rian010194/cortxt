@@ -15,4 +15,7 @@ include = ["reasoning*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = [".", ".."]
+markers = [
+    "real_inference: opt-in test that makes real (L0) model calls; excluded by default",
+]
