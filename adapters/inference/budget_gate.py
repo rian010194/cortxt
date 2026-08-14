@@ -62,9 +62,17 @@ class BudgetGate:
         return max(0, self._max_calls - self._count_spend())
 
     def _count_spend(self) -> int:
+        """Count TRUE call-units (attempt_started rows), not all rows.
+
+        A single call logs 1 attempt_started row (+ an outcome row success/failed).
+        Counting only attempt_started ensures one call = one budget unit (CP3.1 P1),
+        so a failed call cannot consume budget twice.
+        """
         try:
             with sqlite3.connect(self._db) as conn:
-                row = conn.execute("SELECT COUNT(*) FROM fas2a_inference_spend").fetchone()
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM fas2a_inference_spend WHERE cost_status='attempt_started'"
+                ).fetchone()
             return int(row[0]) if row else 0
         except Exception:  # fail-closed: cannot read spend -> refuse further calls
             return self._max_calls
@@ -106,7 +114,7 @@ class BudgetGate:
         self.record(cost_status="attempt_started", latency_ms=0)
         started = time.monotonic()
         try:
-            return invoke(*args, **kwargs)
+            result = invoke(*args, **kwargs)
         except BaseException:  # record the failed outcome + latency, then re-raise (CP2.1 P2)
             self.record(
                 cost_status="failed",
@@ -115,3 +123,12 @@ class BudgetGate:
                 selected_route_id="l0-default",
             )
             raise
+        # Success outcome row with latency, so a completed call is distinguishable from an
+        # abandoned attempt (CP3.1 P2).
+        self.record(
+            cost_status="success",
+            latency_ms=int((time.monotonic() - started) * 1000),
+            route_id="l0-default",
+            selected_route_id="l0-default",
+        )
+        return result
