@@ -1,9 +1,14 @@
 # ADR-012: Disaster Recovery for Profiles, Skills, and Memory
 
-**Status:** Proposed  
+**Status:** Proposed — **SUPERSEDED (2026-08-14, ADR-017)**  
 **Date:** 2026-08-03  
 **Deciders:** Rikard  
 **Technical Story:** Addresses W-10 (No disaster recovery/backup)
+
+> **LEGACY-NOTIS (2026-08-14):** Denna ADR predaterar F0/F1 och gav backup/restore av `~/.hermes/` men
+> inte export för inter-operabilitet/portabilitet. Inom F0-ägarhypotesen (ADR-014) och den
+> providerneutrala arkitekturen förskjuts portabilitetsfrågan mot Cortxt-ägda portar/tillstånd
+> (ADR-016/017). Innehållet är historisk referens, inte giltig aktuell auktoritet.
 
 ## Context
 No backup/export mechanism exists for:

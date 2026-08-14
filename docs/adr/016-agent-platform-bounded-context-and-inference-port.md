@@ -1,9 +1,17 @@
 # ADR-016: Agent Platform bounded context, InferencePort and provider-assurance principle
 
-**Status:** Proposed  \
+**Status:** Accepted  \
 **Date:** 2026-08-13  \
 **Deciders:** Rikard (operatör)  \
 **Technical Story:** CORTXT F0/F1 beslutspaket godkänd 2026-08-13; övergång av målarkitekturen mot ADR-process (Del K beslut 8)
+
+> **STATUS-AMENDMENT (2026-08-14):** ADR-016 är **Accepted** — motiverat av F0/F1-godkännandet och
+> Codex oberoende review GODKÄND (2026-08-13), redan noterat i dess Validation, och på basis av att
+> dess kärnbeslut (bounded context, InferencePort, provider-assurance dataklass→gate) är normativt.
+> **Partiellt upphävt för reasoning/ per ADR-017:** vertikala slicet DM1–4 (PR #113, commit `09f1d8a`)
+> bevisar behovet, så `agent-platform/reasoning/` är nu tracked/Accepted (ADR-017). `adapters/` och
+> övriga `agent-platform/`-paket förblir Proposal/Untracked tills egna vertical slices. Övriga beslut i
+> denna ADR står fast.
 
 ## Context
 
@@ -51,7 +59,7 @@ Den nuvarande målarkitekturen (`docs/architecture/cortxt-agent-platform-target-
 - [x] F0/F1 godkänt; Codex oberoende review GODKÄND (runda 2, 2026-08-13).
 - [ ] InferencePort-adapter med ≥2 godkända endpoints (Exitkriterium Fas 1) verifierad.
 - [ ] Provider-assurance-policyn (dataklass→gate) versionslåst och granskad.
-- [ ] `agent-platform/` och `adapters/` scaffold motiveras av ett vertikalt slice innan stabila interfaces.
+- [x] `agent-platform/` och `adapters/` scaffold motiveras av ett vertikalt slice innan stabila interfaces. **AMENDMENT (2026-08-14, ADR-017):** vertikala slicet reasoning-kärnan DM1–4 är i `main` via PR #113 (commit `09f1d8a`); `agent-platform/reasoning/` är därmed **tracked/Accepted** per ADR-017. `adapters/` och övriga `agent-platform/`-paket förblir untracked/Proposal tills egna vertical slices. Originalbeslutet raderas inte — det upphävs partiellt genom ADR-017.
 - [ ] Dokumentation (docs/authority-map) uppdaterad så ADR:erna är normativa.
 
 ## Expiry/Review Trigger

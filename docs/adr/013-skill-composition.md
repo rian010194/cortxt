@@ -1,9 +1,14 @@
 # ADR-013: Skill Composition Model
 
-**Status:** Proposed  
+**Status:** Proposed — **SUPERSEDED (2026-08-14, ADR-017)**  
 **Date:** 2026-08-03  
 **Deciders:** Rikard  
 **Technical Story:** Addresses W-04 (No skill composition model)
+
+> **LEGACY-NOTIS (2026-08-14):** Denna ADR predaterar F0/F1 och beskrev en statisk skill-composition/pack-modell
+> bunden till Hermes-profiler. I F0-eran ägs skills/kunskap av Cortxt-ägda portar/tillstånd (ADR-014/016/017);
+> kompositions- och portabilitetsfrågan förskjuts mot den providerneutrala arkitekturen. Innehållet är
+> historisk referens, inte giltig aktuell auktoritet.
 
 ## Context
 Skills are currently a flat list loaded per profile. Issues:
