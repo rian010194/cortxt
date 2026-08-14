@@ -1,0 +1,84 @@
+"""P3-DM1: neutralt SkillManifest + Hermes-adapter + registry — deterministiska tester (0 model-anrop)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from cortxt.portability.skills import (
+    HermesSkillAdapter,
+    PortabilityValidationError,
+    SkillRegistry,
+)
+
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "skills"
+
+
+def _loaded_skills():
+    adapter = HermesSkillAdapter()
+    reg = SkillRegistry()
+    for skill_dir in sorted(FIXTURES.iterdir()):
+        if skill_dir.is_dir() and (skill_dir / "SKILL.md").is_file():
+            reg.add(adapter.read(skill_dir))
+    return reg
+
+
+def test_hermes_roundtrip():
+    """AC: adapter läser Hermes-fixtur → neutralt manifest → export → import → fält==."""
+    adapter = HermesSkillAdapter()
+    reg = SkillRegistry()
+    for d in sorted(FIXTURES.iterdir()):
+        if d.is_dir() and (d / "SKILL.md").is_file():
+            reg.add(adapter.read(d))
+
+    export = reg.export_json()
+    restored = SkillRegistry.from_export_json(export)
+    assert len(restored) == len(reg)
+    # fält-för-fält
+    assert restored.get("demo-receptionist", "0.1.0") is not None
+    assert restored.get("demo-receptionist") == reg.get("demo-receptionist")
+    assert restored.get("demo-researcher") == reg.get("demo-researcher")
+
+
+def test_registry_idempotent_load():
+    """AC: samma skill laddad två gånger → identiska hash-sumror."""
+    reg1 = _loaded_skills()
+    reg2 = _loaded_skills()
+    assert reg1.manifest_hashes() == reg2.manifest_hashes()
+    assert len(reg1.manifest_hashes()) == len(reg1)
+
+
+def test_linked_files_collected():
+    """Adapter insamlar linked_files (references/ + templates/) deterministiskt."""
+    reg = _loaded_skills()
+    rec = reg.get("demo-receptionist")
+    assert rec is not None
+    assert "references/api.md" in rec.linked_files_refs
+    res = reg.get("demo-researcher")
+    assert res is not None
+    assert "templates/brief.md" in res.linked_files_refs
+
+
+def test_validation_rejects_missing_name(tmp_path):
+    """AC: saknad name ger PortabilityValidationError."""
+    skill = tmp_path / "broken"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("---\nversion: 1.0\n---\nbody\n", encoding="utf-8")
+    adapter = HermesSkillAdapter()
+    with pytest.raises(PortabilityValidationError):
+        adapter.read(skill)
+
+
+def test_validation_rejects_no_skill_md(tmp_path):
+    (tmp_path / "skill").mkdir()
+    adapter = HermesSkillAdapter()
+    with pytest.raises(PortabilityValidationError):
+        adapter.read(tmp_path / "skill")
+
+
+def test_manifest_requires_name():
+    from cortxt.portability.skills.manifest import SkillManifest
+
+    with pytest.raises(ValueError):
+        SkillManifest.from_dict({"version": "1.0", "category": "x", "content_md": "c"})
