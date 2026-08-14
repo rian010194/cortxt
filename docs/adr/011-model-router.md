@@ -1,9 +1,14 @@
 # ADR-011: Model Router for Coordinator Fallback
 
-**Status:** Proposed  
-**Date:** 2026-08-03  
-**Deciders:** Rikard  
+**Status:** Proposed — **SUPERSEDED (2026-08-14, ADR-017)**  \
+**Date:** 2026-08-03  \
+**Deciders:** Rikard  \
 **Technical Story:** Addresses W-01 (Coordinator model lock-in)
+
+> **LEGACY-NOTIS (2026-08-14):** Denna ADR predaterar F0/F1 (ADR-014/015/016/017) och beskrev en statisk
+> fallback-kedja för modellval. Den ersätts av den dynamiska, providerneutrala modell-/inferensarkitekturen
+> (ADR-016 InferencePort + provider-assurance dataklass→gate) och ADR-017 (reasoning).
+> Innehållet är historisk referens, inte giltig aktuell auktoritet.
 
 ## Context
 The `coordinator` profile is hardcoded to Nemotron-3-ultra via OpenRouter (free tier). This creates:
