@@ -1,4 +1,4 @@
-# Cortxt
+﻿# Cortxt
 
 > **Foundation phase.** The repository name `ai-workspace-control-plane` and
 > much of its backlog describe an earlier system. They are retained for history,
@@ -19,8 +19,7 @@ platform build.
 - GitHub Issues remain durable records for approved scope, evidence, review,
   and decisions.
 - GitHub Project 4 and the older control-plane backlog are frozen legacy.
-- Worker dispatch is suspended until the operator explicitly designates a
-  current workflow-state carrier and its mapping to the dispatch vocabulary.
+- Worker dispatch's workflow-state carrier is GitHub Issue labels `workflow:inbox`/`ready`/`in-progress`/`review`/`blocked`/`done` (ADR-018). Dispatch execution itself remains gated by the dispatcher work tracked in issue #122.
 - The Operator Cockpit, Buzz/Hermes automation, Pi runtime, vertical packages,
   and broader Agent Platform remain historical implementations, experiments,
   or proposals unless an accepted ADR says otherwise.
@@ -32,6 +31,7 @@ The current product decisions are:
 - [ADR-014: Cortxt product vision and first user](docs/adr/014-cortxt-f0-vision-and-first-user.md)
 - [ADR-015: first wedge and product surface](docs/adr/015-cortxt-f1-first-wedge-and-product-surface.md)
 - [ADR-016: Agent Platform boundary and InferencePort](docs/adr/016-agent-platform-bounded-context-and-inference-port.md)
+- [ADR-018: Workflow-state carrier (GitHub Issue labels)](docs/adr/018-workflow-state-carrier.md)
 
 ## Repository map
 

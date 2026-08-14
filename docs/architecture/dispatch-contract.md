@@ -1,4 +1,4 @@
-# Dispatch contract
+﻿# Dispatch contract
 
 ## Purpose
 
@@ -7,10 +7,9 @@ manual operator, a native delegation tool, Hermes Kanban, or a future n8n
 dispatcher may execute the work, but all paths must expose the same observable
 identity and lifecycle.
 
-GitHub Issues are the durable source of truth. Workflow state may come from an
-explicitly designated current planning surface; Project 4 is frozen legacy.
-No replacement planning-state carrier is currently designated, so worker
-dispatch is suspended. Runtime task lists are execution ledgers only.
+GitHub Issues are the durable source of truth. Workflow state is carried by
+GitHub Issue labels `workflow:inbox`/`ready`/`in-progress`/`review`/`blocked`/`done`
+(ADR-018); Project 4 is frozen legacy. Runtime task lists are execution ledgers only.
 
 ## Dispatch request
 
@@ -35,8 +34,7 @@ the request or copied into GitHub comments.
 
 ## Claim and run identity
 
-After a current planning-state carrier has been designated, and before model
-execution, the dispatcher must atomically establish:
+Before model execution, the dispatcher must atomically establish:
 
 - one active claim per `issue_id` and workflow attempt;
 - a unique `run_id` generated outside the model;
@@ -78,9 +76,9 @@ documents, prompts, raw reasoning, or unrestricted logs in GitHub.
 
 ## State transitions
 
-These transitions are contractual but currently unavailable because no
-planning-state carrier is designated. They become executable only after the
-operator designates a carrier and mapping.
+These transitions are contractual and now executable via the designated
+`workflow:*` label carrier (ADR-018), pending the dispatcher implementation
+tracked in issue #122.
 
 - A valid claim moves the GitHub item from `Ready` to `In progress`.
 - A complete result with required evidence moves it to `Review`.
