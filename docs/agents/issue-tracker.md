@@ -1,11 +1,11 @@
-# Issue tracker: GitHub
+﻿# Issue tracker: GitHub
 
 Status: active normative
 Authority: repository governance
 Last verified: 2026-08-13
 
 GitHub Issues remain the durable task records for this repository. Project 4,
-now named `Legacy AI Workspace Delivery — frozen`, is a frozen legacy planning
+now named `Legacy AI Workspace Delivery â€” frozen`, is a frozen legacy planning
 layer and is not Cortxt's active roadmap. Do not add, reclassify, or dispatch
 work from it without a separate operator decision. Use the repository remote to
 resolve `rian010194/ai-workspace-control-plane` and use `gh` for tracker
@@ -13,21 +13,21 @@ operations.
 
 ## Current workflow-state availability
 
-No planning-state carrier is currently designated. Project 4 is frozen and
-GitHub Issue state alone does not encode `Inbox`, `Ready`, `In progress`,
-`Review`, `Blocked`, and `Done`. Worker dispatch is therefore suspended until
-the operator explicitly designates a replacement carrier and its state mapping.
+The workflow-state carrier is GitHub Issue labels (ADR-018):
+`workflow:inbox`, `workflow:ready`, `workflow:in-progress`, `workflow:review`,
+`workflow:blocked`, `workflow:done`. Project 4 is frozen and no longer used.
+An issue carries exactly one `workflow:*` label at a time.
 
-The state names below define the required lifecycle contract; they do not prove
-that a current carrier exists.
+The state names below define the required lifecycle contract, now backed by the
+label carrier above.
 
 ## Conventions
 
 - Create an issue with a descriptive title and structured Markdown body.
 - Read the issue, labels, assignees, dependencies, comments, and any explicitly
   designated current planning state before acting.
-- Use these workflow states after a current carrier is designated: `Inbox`,
-  `Ready`, `In progress`, `Review`, `Blocked`, and `Done`.
+- Use these workflow states via the `workflow:*` labels: `Inbox`, `Ready`,
+  `In progress`, `Review`, `Blocked`, and `Done`.
 - Treat authoritative `Ready` as execution approval only when scope, acceptance
   criteria, worker role, time limit, cost limit, and human approval are present.
 - Record runtime identity and evidence using the repository's `docs/architecture/dispatch-contract.md`.
