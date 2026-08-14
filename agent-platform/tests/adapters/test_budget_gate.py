@@ -55,5 +55,14 @@ def test_db_records_attempt_rows(monkeypatch, tmp_path):
     gate(lambda: 1)
     gate(lambda: 2)
     with sqlite3.connect(db) as conn:
-        n = conn.execute("SELECT COUNT(*) FROM fas2a_inference_spend").fetchone()[0]
-    assert n == 2
+        total = conn.execute("SELECT COUNT(*) FROM fas2a_inference_spend").fetchone()[0]
+        units = conn.execute(
+            "SELECT COUNT(*) FROM fas2a_inference_spend WHERE cost_status='attempt_started'"
+        ).fetchone()[0]
+        successes = conn.execute(
+            "SELECT COUNT(*) FROM fas2a_inference_spend WHERE cost_status='success'"
+        ).fetchone()[0]
+    # 2 calls = 2 call-units (attempt_started) + 2 success outcome rows (CP3.1 P2), 4 rows total.
+    assert units == 2
+    assert successes == 2
+    assert total == 4
