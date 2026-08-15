@@ -85,12 +85,28 @@ class HermesSkillAdapter:
         if not block.strip():
             return {}
         if not _HAS_YAML:
-            # Minimal YAML-liknande fallback (key: value), endast för env utan PyYAML
+            # Minimal YAML-liknande fallback (key: value + enkla '- item'-listor
+            # under en bar 'key:'-rad), endast för env utan PyYAML.
             out: dict = {}
+            last_key: str | None = None
             for line in block.splitlines():
-                if ":" in line and not line.lstrip().startswith("#"):
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    continue
+                if stripped.startswith("- ") and last_key is not None:
+                    item = stripped[2:].strip().strip("'\"")
+                    existing = out.get(last_key)
+                    if isinstance(existing, list):
+                        existing.append(item)
+                    else:
+                        out[last_key] = [item]
+                    continue
+                if ":" in line:
                     k, _, v = line.partition(":")
-                    out[k.strip()] = v.strip().strip("'\"")
+                    key = k.strip()
+                    value = v.strip().strip("'\"")
+                    out[key] = value
+                    last_key = key if value == "" else None
             return out
         try:
             data = yaml.safe_load(block) or {}
