@@ -307,8 +307,8 @@ interface_files:
 
 | Parameter | Värde | Källkälla |
 |-----------|-------|-----------|
-| `max_parallel_workers` | 2 | Dispatch contract |
-| `delegation_depth` | 1 | Dispatch contract |
+| `max_parallel_workers` | No fixed ceiling (per dispatch; operator decision 2026-08-15) | Dispatch contract |
+| `delegation_depth` | No fixed ceiling (per dispatch; operator decision 2026-08-15) | Dispatch contract |
 | `max_runtime_seconds` | Per dispatch (max 86400) | Dispatch contract |
 | `max_cost_usd` | Per dispatch (max 1000) | Dispatch contract |
 | Kanban dispatch interval | 30s | Profile config |
