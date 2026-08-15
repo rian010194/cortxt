@@ -63,6 +63,7 @@ from typing import Optional
 MAX_PARALLEL_WORKERS = 2
 DELEGATION_DEPTH = 1
 GH_SYNC_CLAIM_LEASE_SECONDS = 30  # generous headroom over a real swap_label+comment round trip
+GH_CLI_TIMEOUT_SECONDS = 20  # strictly less than the lease above, so a gh call can never outlive its own claim
 
 LABEL_READY = "workflow:ready"
 LABEL_IN_PROGRESS = "workflow:in-progress"
@@ -84,7 +85,10 @@ class GitHubOps:
     """
 
     def _gh(self, *args: str) -> str:
-        result = subprocess.run(["gh", *args], capture_output=True, text=True)
+        try:
+            result = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=GH_CLI_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            raise GitHubError(f"gh {' '.join(args)} timed out after {GH_CLI_TIMEOUT_SECONDS}s") from exc
         if result.returncode != 0:
             raise GitHubError(result.stderr.strip())
         return result.stdout
@@ -236,12 +240,13 @@ class Dispatcher:
             self.registry.update(run_id, heartbeat_at=time.time())
 
     def query(self, run_id: str) -> Optional[dict]:
-        run = self.registry.get(run_id)
-        if run is None:
-            return None
-        d = asdict(run)
-        d["elapsed_seconds"] = time.time() - run.claimed_at
-        return d
+        with self._lock:
+            run = self.registry.get(run_id)
+            if run is None:
+                return None
+            d = asdict(run)
+            d["elapsed_seconds"] = time.time() - run.claimed_at
+            return d
 
     def sweep_expired(self) -> list[str]:
         """Move expired in_progress claims (top-level or child) to timed_out.
