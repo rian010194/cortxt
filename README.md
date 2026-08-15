@@ -11,8 +11,9 @@
 
 Cortxt is a provider-neutral platform for creating, steering, resuming, and
 verifying long-running intelligent work under human mandate. Users own the
-work's state, memory, tools, evidence, and evolution; models and inference
-providers remain replaceable resources behind Cortxt-owned contracts.
+work's state, memory, tools, evidence, and evolution; models, inference
+providers, and external agent engines remain replaceable resources behind
+Cortxt-owned contracts.
 
 Rikard is the first real user. The current product wedge is long-running
 research and analysis governed by data-class and provider policy. This phase is
