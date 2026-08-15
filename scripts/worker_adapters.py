@@ -54,7 +54,7 @@ class HermesAdapter:
     """Invokes a Hermes profile as a one-shot, non-interactive subprocess.
 
     Matches the pattern already verified end-to-end in
-    archive/harness/scripts/dispatch-manual.sh: `hermes -p <profile> -z <prompt>`.
+    the (unpublished) local manual-dispatch script: `hermes -p <profile> -z <prompt>`.
 
     Cost and usage are reported as `unknown` unless actually measured. This
     is deliberate, not a placeholder to fill in later: #58/#71 recorded that

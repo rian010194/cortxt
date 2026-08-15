@@ -45,11 +45,14 @@ The current product decisions are:
 | --- | --- |
 | `agent-platform/` | Proposed future Cortxt-owned platform boundary; not yet part of this branch or an accepted full implementation plan. `agent-platform/reasoning/` is the exception — Accepted/tracked per ADR-017. |
 | `adapters/` | Proposed future provider and runtime adapters behind Cortxt-owned ports; not yet part of this branch. Exercised by `agent-platform/tests/adapters/` in CI, so it stays in place even though untracked. |
-| [`verticals/`](verticals/README.md) | Historical domain packages and synthetic validation material. |
-| [`web/`](web/README.md) | Read-only Operator Cockpit prototype; paused as a product surface. |
+| [`verticals/`](verticals/README.md) | Domain packages loaded by the harness — live, not historical (e.g. `provider-resilient-execution`, `vertical-01-ai-act`). |
+| [`web/`](web/README.md) | Operator Cockpit prototype. Its own README says "current implementation"; ADR-015 says the web surface is paused legacy. That conflict is unresolved — don't treat either claim as settled. |
 | [`contracts/`](contracts/README.md) | Existing interface schemas and contract experiments. |
 | [`docs/`](docs/) | Architecture and decisions for the current baseline (ADRs, operating model, dispatch contract). |
-| [`archive/`](archive/README.md) | Historical control-plane runtime work, abandoned experiments, and frozen session handoffs — no code coupling to the current baseline. |
+
+Historical material (earlier control-plane runtime work, abandoned
+experiments, frozen session handoffs, and the pre-Cortxt agent-architecture
+plan) is kept locally outside this repository and is not published here.
 
 ## Start here
 
