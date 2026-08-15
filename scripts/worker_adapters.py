@@ -63,13 +63,17 @@ class HermesAdapter:
     `unknown` satisfies dispatch-contract.md ("never silently assume zero");
     a guessed number would not.
 
-    `evidence` is deliberately NOT the worker's raw stdout. AGENTS.md and
-    dispatch-contract.md both forbid putting "raw reasoning" or "unrestricted
-    logs" in GitHub, and the worker's stdout here is literally a Hermes
-    model's response transcript. Raw output is written to a local,
-    gitignored run log (RUN_LOG_DIR) instead; `evidence` is a short,
-    bounded, structured summary, and `artifacts` carries the local log path
-    (a content-free reference) rather than the content itself.
+    No field in the returned envelope carries the worker's raw stdout/stderr
+    -- not `evidence`, and not `error.recovery` either (an earlier version of
+    this adapter fixed the former and left the latter leaking up to 500 raw
+    stderr characters into the same GitHub-posted envelope; both are now
+    covered). AGENTS.md and dispatch-contract.md both forbid putting "raw
+    reasoning" or "unrestricted logs" in GitHub, and the worker's stdout/
+    stderr here is literally a Hermes model's response transcript. Raw
+    output is written to a local, gitignored run log (RUN_LOG_DIR) instead;
+    every envelope field is a short, bounded, structured summary, and
+    `artifacts` carries the local log path (a content-free reference)
+    rather than the content itself.
     """
 
     profile: str
@@ -144,11 +148,16 @@ class HermesAdapter:
 
         status = "succeeded" if proc.returncode == 0 else "failed"
         log_path = self._write_run_log(run, stdout=proc.stdout, stderr=proc.stderr)
+        log_note = f"see local run log {log_path}" if log_path else "local run log could not be written"
         error = None
         if status != "succeeded":
             error = {
                 "category": "worker_nonzero_exit",
-                "recovery": _tail(proc.stderr, 500) or f"hermes exited {proc.returncode}; check the run log",
+                # Never the raw stderr tail here: it's the same "model
+                # reasoning in GitHub" problem `evidence` was fixed for,
+                # just moved to a different envelope field. The recovery
+                # hint points at the local log instead.
+                "recovery": f"hermes exited {proc.returncode}; {log_note}",
             }
         return {
             "_status": status,
@@ -158,7 +167,7 @@ class HermesAdapter:
             "usage": "unknown (not captured by this adapter)",
             "cost": "unknown (not measured)",
             "artifacts": [log_path] if log_path else [],
-            "evidence": f"worker exited {proc.returncode}; {len(proc.stdout or '')} chars of stdout logged locally (not posted to GitHub)",
+            "evidence": f"worker exited {proc.returncode}; {len(proc.stdout or '')} chars of stdout captured, {log_note}",
             "error": error,
             "_elapsed_seconds": time.time() - started,
         }
@@ -178,10 +187,6 @@ class HermesAdapter:
             return str(log_path)
         except OSError:
             return None
-
-
-def _tail(text: "str | None", max_chars: int) -> str:
-    return (text or "")[-max_chars:]
 
 
 class UnknownRuntimeError(RuntimeError):
