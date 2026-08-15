@@ -50,8 +50,9 @@ The following have been demonstrated and must not be described as merely
 theoretical:
 
 - Hermes routed explicit tasks to the correct Researcher and Builder profiles.
-- Hermes Coordinator decomposition ran two Researcher workers concurrently and
-  respected the live concurrency limit of two and delegation depth of one.
+- Hermes Coordinator decomposition ran two Researcher workers concurrently
+  with one level of delegation (the ceilings in force at the time; no fixed
+  ceiling on either dimension since #136).
 - A manual GitHub -> Hermes Researcher -> GitHub workflow completed.
 - Hermes Kanban board `cortxt-cp` created with gateway dispatch proven (scratch
   workspace, 36s `ready â†’ running â†’ done`).
