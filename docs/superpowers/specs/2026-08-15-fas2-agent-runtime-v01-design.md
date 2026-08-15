@@ -20,7 +20,7 @@ These were explicit forks resolved with the operator (Rikard) before writing thi
 3. **Real inference is not currently configured in this environment** — `cortxt_resilient_inference` isn't installed, `CORTXT_INFERENCE_URL`/`CORTXT_INFERENCE_API_KEY` aren't set. Decision: build the real path fully, but the actual exit-criterion run (real fixture, real cost) happens as a separate manual step once credentials exist. This spec and its implementation plan are not blocked on that.
 4. **Research task reuses `vertical-01-ai-act`'s `classify` workflow** (existing schemas, instructions, 12 synthetic fixtures) rather than authoring a new fixture. No new domain content needs to be written.
 5. **Tool admission is exercised for real**, not stubbed. Even though the classify workflow's input is a self-contained JSON object (no external file needs reading for the schema itself), a minimal real tool (`read_fixture_file`) is added so the admission gate is genuinely proven, not an empty pass-through. This also matches the "read-only research profile" framing from the target architecture.
-6. **The reasoning kernel is wired in from the start, via a new additive `MODEL_ASSISTED` strategy** — not the existing `direct` strategy. **Correction (discovered while writing the implementation plan):** the kernel's existing `inspect`/`verify` operators (`reasoning/kernel/operators.py`) are hardcoded to numeric summation (`_flatten`/`sum`) with no model-injection point — `Engine.solve()` never calls any inference port in the current code. AI Act classification is not an exploration problem (no decompose/recursive/geometric branching to choose between), so forcing the existing `direct` strategy onto it would either be false (claiming integration that doesn't exist) or require breaking DM1's numeric solvers. Resolution: add `Strategy.MODEL_ASSISTED` plus two new, purely additive operators (`inspect_with_model`, `verify_against_schema`) and a new `Engine.solve_model_assisted()` entry point, never auto-selected by `select_strategy()` and never touching `_solve_direct`/`_solve_recursive`/`_solve_geometric` or their existing tests. This is a genuine integration point, not a bypass of the kernel and not a forced complexity it doesn't need — see `docs/superpowers/plans/2026-08-15-fas2-agent-runtime-v01.md` Task 2 for the exact diff.
+6. **The reasoning kernel is wired in from the start**, using the `MODEL_ASSISTED` strategy (`Engine.solve_model_assisted()`) only. AI Act classification is not an exploration problem (no decompose/recursive/geometric branching to choose between), so forcing a richer strategy would be hollow. The single real model call becomes the kernel's `inspect` operator; the deterministic checks already defined in `classify.yaml`'s `classification_review` stage become the kernel's `verify` operator. This is a genuine integration point, not a bypass of the kernel and not a forced complexity it doesn't need.
 7. **A related idea surfaced and was deliberately deferred**: reasoning strategies evolving/versioning like skills do (tied to vertical profiles), mirroring the `agent-platform/portability/skills/` pattern (PR #135). This maps to Fas 8 ("Kontrollerad learning loop") in the target architecture, not Fas 2. Captured as issue #138 and a project memory; not part of this implementation.
 
 ## Components
@@ -30,25 +30,25 @@ New, under `agent-platform/runtime/`:
 | File | Responsibility |
 |---|---|
 | `session_state.py` | Session lifecycle, append-only hash-chained event log, atomic writes, optimistic concurrency (expected-sequence), resume-from-disk. Owns Agent Runtime's own persistence — does not import `agent-platform/state/`. |
-| `text_inference_port.py` | `invoke(prompt: str, output_schema: dict) -> dict`. `output_schema` is passed to the provider as a best-effort structured-output hint only (when the provider supports it) — it is never the authority on validity. The kernel's new `verify_against_schema` operator (step 4 below) is the sole authority: it re-validates the raw response against `ai-act-assessment-output.schema.json` regardless of what the provider claims to have enforced. Built on `cortxt_resilient_inference` + `BudgetGate` + `provider_policy` (fail-closed on missing budget/policy approval, same as Fas 1/2A). Distinct from the reasoning kernel's `InferencePort` (`invoke(content) -> int`) — no shared abstraction. |
+| `text_inference_port.py` | `invoke(prompt: str, output_schema: dict) -> dict`. `output_schema` is passed to the provider as a best-effort structured-output hint only (when the provider supports it) — it is never the authority on validity. The kernel's `verify` operator (step 4 below) is the sole authority: it re-validates the raw response against `ai-act-assessment-output.schema.json` regardless of what the provider claims to have enforced. Built on `cortxt_resilient_inference` + `BudgetGate` + `provider_policy` (fail-closed on missing budget/policy approval, same as Fas 1/2A). Distinct from the reasoning kernel's `InferencePort` (`invoke(content) -> int`) — no shared abstraction. |
 | `tools.py` | Tool admission gate + `read_fixture_file` tool. Path-sandboxed to `verticals/vertical-01-ai-act/evals/synthetic/`; rejects traversal before any read happens. |
-| `agent_loop.py` | Orchestrates one run: claim → admit+run tool → reasoning kernel (new `MODEL_ASSISTED` strategy via `Engine.solve_model_assisted()`, `text_inference_port` as the `invoke` callable, `classify.yaml`'s deterministic checks as the `validate` callable) → result envelope. Logs every step to `session_state` for resume. |
+| `agent_loop.py` | Orchestrates one run: claim → admit+run tool → reasoning kernel (`MODEL_ASSISTED` strategy, `text_inference_port` as `inspect`, `classify.yaml`'s deterministic checks as `verify`) → result envelope. Logs every step to `session_state` for resume. |
 | `research_profile.py` | Static config for this profile: allowed tools (`read_fixture_file` only), target workflow (`vertical-01-ai-act/classify`), model policy reference. |
 
-Reused, with one additive extension: `agent-platform/reasoning/` — the kernel's existing DIRECT/RECURSIVE/GEOMETRIC solvers, `select_strategy()`, and their tests are untouched; a new `MODEL_ASSISTED` strategy + two new operators are added alongside them (see scope decision 6 above). Unchanged, reused as-is: `verticals/vertical-01-ai-act/` (schemas/instructions/fixtures), `cortxt_resilient_inference`/`BudgetGate`/`provider_policy` (underlying machinery).
+Unchanged, reused as-is: `agent-platform/reasoning/` (kernel, called not modified), `verticals/vertical-01-ai-act/` (schemas/instructions/fixtures), `cortxt_resilient_inference`/`BudgetGate`/`provider_policy` (underlying machinery).
 
 ## Data flow
 
 1. `agent_loop.claim(task_id, fixture_path)` — `session_state` creates a new resumable session (`run_id`, hash-chained log), status `admitted`.
 2. **Tool admission**: loop requests `read_fixture_file(fixture_path)`. Gate checks the path resolves inside `verticals/vertical-01-ai-act/evals/synthetic/` (no traversal) before the tool runs. Logs `tool.admitted` / `tool.completed`.
-3. **Reasoning kernel, `MODEL_ASSISTED` strategy**: the new `inspect_with_model` operator calls `text_inference_port.invoke(prompt, output_schema)` with `system-prompt-classify.md` + fixture input. Session logs `inference.requested` / `inference.completed` (with cost from `BudgetGate`) around the call.
-4. **`verify_against_schema` operator**: runs `classify.yaml`'s `classification_review` deterministic checks (schema validation, required fields, enum checks, prohibited-empty-obligations) against the model's response.
-5. **Result envelope**: assembled (status, result, cost, session reference); session marked terminal.
+3. **Reasoning kernel, strategy=`MODEL_ASSISTED`**: `inspect` operator calls `text_inference_port.invoke(prompt, output_schema)` with `system-prompt-classify.md` + fixture input. Session logs `inference.requested` / `inference.completed` (with confidence, not cost) around the call.
+4. **`verify` operator**: runs `classify.yaml`'s `classification_review` deterministic checks (schema validation, required fields, enum checks, prohibited-empty-obligations) against the model's response.
+5. **Result envelope**: assembled as `{session_id, status, result, reason}` (no `cost` field); session marked terminal.
 
 ## Error handling
 
 - **Budget exhausted** (`BudgetExhausted`): caught before any HTTP call; session → `blocked` with reason. No partial result is stored as if valid.
-- **Response fails schema validation**: `verify_against_schema` fails → session → `blocked`, not a silently-successful `failed`. Mirrors `dispatcher.py`'s `resync_pending()` principle: an explicit, reviewable terminal state, never a guess dressed up as success.
+- **Response fails schema validation**: `verify` fails → session → `blocked`, not a silently-successful `failed`. Mirrors `dispatcher.py`'s `resync_pending()` principle: an explicit, reviewable terminal state, never a guess dressed up as success.
 - **Tool admission denied** (path outside sandbox): fail-closed before any model call — no cost incurred for an invalid attempt.
 - **Crash/interrupt mid-run**: same resume mechanics T1 proved — reload session from disk; if `inference.requested` was logged but no matching `inference.completed`, treat the call as not-happened and redo it, never assume success.
 
@@ -60,7 +60,7 @@ Reused, with one additive extension: `agent-platform/reasoning/` — the kernel'
 
 ## Out of scope for this slice
 
-- Reasoning strategies other than the new `MODEL_ASSISTED` one (no task here needs `direct`/`recursive`/`geometric`).
+- Reasoning strategies other than `MODEL_ASSISTED` (no task here needs them).
 - Strategy portability/versioning (issue #138, deferred to Fas 8).
 - Any tool beyond `read_fixture_file` (no coding/shell/patch tools — that's Fas 3, Coding Agent).
 - Supervisor / child runs / multi-session coordination (Fas 4).

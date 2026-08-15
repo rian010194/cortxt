@@ -71,5 +71,12 @@ def test_load_detects_tampered_event():
 def test_load_unknown_session_not_found():
     store = _store(Path(tempfile.mkdtemp()))
     with pytest.raises(s.SessionError) as exc:
-        s.load(store, "session_doesnotexist")
+        s.load(store, "session_" + "0" * 32)
     assert exc.value.category == "not_found"
+
+
+def test_load_rejects_malformed_session_id_without_touching_disk():
+    store = _store(Path(tempfile.mkdtemp()))
+    with pytest.raises(s.SessionError) as exc:
+        s.load(store, "../../../etc/passwd")
+    assert exc.value.category == "invalid_input"

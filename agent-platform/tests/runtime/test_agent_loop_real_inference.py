@@ -20,15 +20,16 @@ from runtime.tools import ToolGate
 
 VERTICAL = Path(__file__).resolve().parents[3] / "verticals" / "vertical-01-ai-act"
 FIXTURE_YAML = VERTICAL / "evals" / "synthetic" / "positive-cases" / "001-high-risk-medical-diagnostic.yaml"
-OUTPUT_SCHEMA = json.loads(
-    (VERTICAL / "schemas" / "ai-act-assessment-output.schema.json").read_text(encoding="utf-8")
-)
-SYSTEM_PROMPT = (VERTICAL / "instructions" / "system-prompt-classify.md").read_text(encoding="utf-8")
+OUTPUT_SCHEMA_PATH = VERTICAL / "schemas" / "ai-act-assessment-output.schema.json"
+SYSTEM_PROMPT_PATH = VERTICAL / "instructions" / "system-prompt-classify.md"
 
 
 @pytest.mark.real_inference
 def test_ai_act_fixture_solved_without_hermes(tmp_path):
     fixture_case = yaml.safe_load(FIXTURE_YAML.read_text(encoding="utf-8"))["input"]
+    output_schema = json.loads(OUTPUT_SCHEMA_PATH.read_text(encoding="utf-8"))
+    system_prompt = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+
     fixture_dir = tmp_path / "fixtures"
     fixture_dir.mkdir()
     fixture_path = fixture_dir / "case.json"
@@ -43,7 +44,7 @@ def test_ai_act_fixture_solved_without_hermes(tmp_path):
         data_class="L0",
     )
     loop = AgentLoop(store=tmp_path / "sessions", tool_gate=gate, port=port,
-                      output_schema=OUTPUT_SCHEMA, system_prompt=SYSTEM_PROMPT)
+                      output_schema=output_schema, system_prompt=system_prompt)
 
     envelope = loop.run(task_id="fas2-exit-criterion", fixture_path=str(fixture_path))
 

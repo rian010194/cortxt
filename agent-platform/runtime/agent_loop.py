@@ -15,19 +15,21 @@ import jsonschema
 
 from adapters.inference.budget_gate import BudgetExhausted
 from reasoning.kernel import Engine
+from runtime import research_profile
 from runtime import session_state as state
 from runtime.text_inference_port import TextInferenceError
-from runtime.tools import ToolAdmissionError, ToolGate, read_fixture_file
+from runtime.tools import ToolAdmissionError, ToolExecutionError, ToolGate, read_fixture_file
 
 
 class AgentLoop:
     def __init__(self, store: Path, tool_gate: ToolGate, port, output_schema: dict,
-                 system_prompt: str) -> None:
+                 system_prompt: str, profile: dict | None = None) -> None:
         self._store = Path(store)
         self._gate = tool_gate
         self._port = port
         self._schema = output_schema
         self._prompt = system_prompt
+        self._profile = profile if profile is not None else research_profile.RESEARCH_PROFILE
 
     def run(self, task_id: str, fixture_path: str) -> dict:
         session = state.create(self._store, task_id=task_id)
@@ -39,9 +41,12 @@ class AgentLoop:
                          {"status": "blocked", "reason": reason})
             return {"session_id": session_id, "status": "blocked", "result": None, "reason": reason}
 
+        if "read_fixture_file" not in self._profile.get("allowed_tools", []):
+            return _blocked("tool admission denied: read_fixture_file is not in the profile's allowed_tools")
+
         try:
             fixture = read_fixture_file(self._gate, fixture_path)
-        except ToolAdmissionError as error:
+        except (ToolAdmissionError, ToolExecutionError) as error:
             return _blocked(f"tool admission denied: {error}")
 
         seq = state.latest_sequence(state.load(self._store, session_id))
@@ -53,7 +58,8 @@ class AgentLoop:
         seq = state.latest_sequence(session)
 
         def _invoke(content):
-            state.append(self._store, session_id, seq, "inference.requested", {"content": content})
+            current_seq = state.latest_sequence(state.load(self._store, session_id))
+            state.append(self._store, session_id, current_seq, "inference.requested", {"content": content})
             full_prompt = f"{self._prompt}\n\nInput:\n{json.dumps(content)}"
             return self._port.invoke(full_prompt, self._schema)
 
@@ -71,6 +77,8 @@ class AgentLoop:
             return _blocked(f"budget exhausted: {error}")
         except TextInferenceError as error:
             return _blocked(f"inference error: {error}")
+        except jsonschema.SchemaError as error:
+            return _blocked(f"invalid output schema: {error}")
 
         seq = state.latest_sequence(state.load(self._store, session_id))
         state.append(self._store, session_id, seq, "inference.completed",
