@@ -23,9 +23,9 @@ Durable work for this repository is tracked in GitHub Issues. See
 
 ### Domain docs
 
-The historical domain inventory is retained at `docs/agents/domain.md`, but it
-is not current operating authority. Use the operating model and accepted ADRs
-in `docs/adr/` for current boundaries.
+The historical domain inventory is retained at `archive/docs/agents/domain.md`,
+but it is not current operating authority. Use the operating model and
+accepted ADRs in `docs/adr/` for current boundaries.
 
 ## Control-plane boundaries
 
