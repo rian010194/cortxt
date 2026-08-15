@@ -56,7 +56,11 @@ class ProviderPolicyCliTests(unittest.TestCase):
         self.assertEqual(result.stderr, "")
 
     def test_deeply_nested_json_has_no_traceback(self):
-        result = invoke(stdin="[" * 2000 + "]" * 2000)
+        # sys.getrecursionlimit() defaults to 1000; 2000 levels stopped reliably
+        # tripping json.loads's RecursionError on Python 3.12 (see #131), so use
+        # a depth with real headroom over the limit instead of guessing again.
+        depth = sys.getrecursionlimit() * 3
+        result = invoke(stdin="[" * depth + "]" * depth)
         self.assertEqual(result.returncode, 3)
         self.assertEqual(json.loads(result.stdout), {"error": "invalid_json"})
         self.assertEqual(result.stderr, "")
