@@ -26,13 +26,24 @@ file registry mutation, never the blocking GitHub API calls in complete().
 complete() takes the lock just long enough to atomically check-and-claim the
 terminal transition, releases it, then does the (possibly slow) GitHub label
 swap and comment unlocked -- so one run's network latency cannot stall
-heartbeat()/sweep_expired() for other runs. Because only the caller that won
-the atomic transition ever reaches the GitHub calls, this doesn't reopen the
-double-post race the lock exists to prevent. sweep_expired() follows the
-same pattern: it snapshots expired run_ids under the lock, then calls
-complete() for each one individually, outside any lock it itself holds.
+heartbeat()/sweep_expired() for other runs. sweep_expired() follows the same
+pattern: it snapshots expired run_ids under the lock, then calls complete()
+for each one individually, outside any lock it itself holds.
 
-If those unlocked GitHub calls fail partway (network error, etc.), the
+Completing a run's *registry* transition and syncing its *GitHub* label/
+comment are two separate steps for exactly this reason, and complete() is
+not the only caller of the second step -- resync_pending() (below) is a
+second entry point into the same GitHub calls, so complete()'s terminal-
+status guard alone does not prevent a double-post between the two. That
+guard is enforced separately, inside _sync_github() itself, via a claim
+lease on `Run.gh_sync_claimed_at`: whichever caller (complete() or
+resync_pending()) claims an unclaimed-or-stale run first is the only one
+that reaches the GitHub calls; a concurrent second caller sees the fresh
+claim and skips. The lease (not a one-shot flag) means a caller that claims
+and then dies mid-network-call doesn't strand the run unsynced forever --
+resync_pending() can reclaim once the lease goes stale.
+
+If the unlocked GitHub calls fail partway (network error, etc.), the
 registry's internal state is already correctly terminal, but the issue's
 `workflow:*` label may not have moved off `workflow:in-progress` -- a
 GitHub-visible split from the registry's own view. Run.gh_synced records
@@ -51,6 +62,7 @@ from typing import Optional
 
 MAX_PARALLEL_WORKERS = 2
 DELEGATION_DEPTH = 1
+GH_SYNC_CLAIM_LEASE_SECONDS = 30  # generous headroom over a real swap_label+comment round trip
 
 LABEL_READY = "workflow:ready"
 LABEL_IN_PROGRESS = "workflow:in-progress"
@@ -103,6 +115,17 @@ class Run:
     finished_at: Optional[float] = None
     result: Optional[dict] = None
     gh_synced: bool = False  # set True once complete()'s GitHub label/comment step actually succeeds
+    gh_sync_claimed_at: Optional[float] = None  # set while a _sync_github() call owns this run's GitHub step
+
+    def gh_sync_claim_stale(self, now: Optional[float] = None) -> bool:
+        """A claim older than GH_SYNC_CLAIM_LEASE_SECONDS is treated as
+        abandoned (the claiming call presumably crashed or is stuck), so a
+        later resync_pending() may re-claim and retry rather than skip this
+        run forever."""
+        if self.gh_sync_claimed_at is None:
+            return True
+        now = time.time() if now is None else now
+        return now - self.gh_sync_claimed_at > GH_SYNC_CLAIM_LEASE_SECONDS
 
     def is_expired(self, now: Optional[float] = None) -> bool:
         now = time.time() if now is None else now
@@ -281,11 +304,31 @@ class Dispatcher:
             self._sync_github(run_id, run.issue_id, status, result_envelope)
         return self.registry.get(run_id)
 
-    def _sync_github(self, run_id: str, issue_id: str, status: str, result_envelope: dict) -> None:
+    def _sync_github(self, run_id: str, issue_id: str, status: str, result_envelope: dict) -> bool:
         """Post the label swap + result comment for a just-completed top-level
         run. Separated from complete() so resync_pending() can retry just
         this step without re-running the (already-done, must-stay-atomic)
-        registry transition."""
+        registry transition.
+
+        Race-guarded independently of complete()'s own terminal-status check:
+        this is the second entry point into the same GitHub calls (the first
+        being complete() itself), so it needs its own atomic claim rather
+        than relying on a guard that only covers complete() vs. complete().
+        The claim is a lease (`Run.gh_sync_claimed_at`), not a one-shot flag,
+        so a caller that claims and then dies mid-network-call doesn't strand
+        the run unsynced forever -- a later call can reclaim once the lease
+        goes stale. Returns True if this call actually performed the sync,
+        False if it was skipped (already synced, or another call currently
+        holds an unexpired claim).
+        """
+        with self._lock:
+            run = self.registry.get(run_id)
+            if run is None or run.gh_synced:
+                return False
+            if not run.gh_sync_claim_stale():
+                return False  # another call is actively syncing this run right now
+            self.registry.update(run_id, gh_sync_claimed_at=time.time())
+
         repo, num = issue_id.split("#")
         if status == "cancelled":
             target = LABEL_READY
@@ -297,13 +340,19 @@ class Dispatcher:
         self.gh.comment(repo, num, self._result_comment(run_id, status, result_envelope))
         with self._lock:
             self.registry.update(run_id, gh_synced=True)
+        return True
 
     def resync_pending(self) -> list[str]:
         """Retry the GitHub label/comment step for terminal top-level runs
         where it didn't complete (Run.gh_synced is False) -- e.g. because
         complete()'s unlocked GitHub call raised (network error) after the
-        registry was already correctly marked terminal. Returns the run_ids
-        that were successfully synced on this call."""
+        registry was already correctly marked terminal, or because a claim
+        lease expired mid-call. Safe to call concurrently with an in-flight
+        complete()/_sync_github() or with another resync_pending() call:
+        _sync_github()'s own claim lease is what prevents a double sync, not
+        this method's snapshot. Returns the run_ids actually synced by this
+        call (a run skipped because someone else currently holds the claim
+        is not an error -- it isn't stuck, just handled elsewhere)."""
         with self._lock:
             pending = [
                 (run.run_id, run.issue_id, run.status, run.result)
@@ -313,11 +362,11 @@ class Dispatcher:
         synced = []
         for run_id, issue_id, status, result in pending:
             try:
-                self._sync_github(run_id, issue_id, status, result or {})
-                synced.append(run_id)
+                if self._sync_github(run_id, issue_id, status, result or {}):
+                    synced.append(run_id)
             except GitHubError:
-                # Still failing (e.g. GitHub still unreachable) -- leave
-                # gh_synced False and let a later resync_pending() call
+                # Still failing (e.g. GitHub still unreachable) -- the claim
+                # lease will go stale and a later resync_pending() call can
                 # retry; don't let one stuck run block the rest of this pass.
                 continue
         return synced
