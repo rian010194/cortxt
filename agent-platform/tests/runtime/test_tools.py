@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
-from runtime.tools import ToolAdmissionError, ToolGate, read_fixture_file
+from runtime.tools import ToolAdmissionError, ToolExecutionError, ToolGate, read_fixture_file
 
 
 def _fixture_dir(tmp_path):
@@ -52,3 +52,12 @@ def test_read_fixture_file_rejects_admission_before_reading(tmp_path):
     gate = ToolGate(allowed_roots=[fdir])
     with pytest.raises(ToolAdmissionError):
         read_fixture_file(gate, str(outside))
+
+
+def test_read_fixture_file_raises_execution_error_on_malformed_json(tmp_path):
+    fdir = _fixture_dir(tmp_path)
+    bad = fdir / "broken.json"
+    bad.write_text("{not valid json", encoding="utf-8")
+    gate = ToolGate(allowed_roots=[fdir])
+    with pytest.raises(ToolExecutionError):
+        read_fixture_file(gate, str(bad))

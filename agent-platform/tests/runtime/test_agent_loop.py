@@ -108,6 +108,37 @@ def test_run_blocks_on_text_inference_error_without_leaving_partial_success(tmp_
     assert session["events"][-1]["payload"]["status"] == "blocked"
 
 
+def test_run_blocks_when_tool_not_in_profile_allowed_tools(tmp_path):
+    fdir, fpath = _fixture(tmp_path, {"case_id": "SYNTH-1"})
+    gate = ToolGate(allowed_roots=[fdir])
+    port = FakePort(response={"classification": "high_risk"})
+    restrictive_profile = {"profile_id": "no-tools", "allowed_tools": []}
+    loop = AgentLoop(store=tmp_path / "sessions", tool_gate=gate, port=port,
+                      output_schema=OUTPUT_SCHEMA, system_prompt="classify this system",
+                      profile=restrictive_profile)
+    envelope = loop.run(task_id="t1", fixture_path=str(fpath))
+
+    assert envelope["status"] == "blocked"
+    assert "allowed_tools" in envelope["reason"]
+    assert port.calls == []  # blocked before any file read / model call
+
+
+def test_run_blocks_on_malformed_output_schema(tmp_path):
+    fdir, fpath = _fixture(tmp_path, {"case_id": "SYNTH-1"})
+    gate = ToolGate(allowed_roots=[fdir])
+    port = FakePort(response={"classification": "high_risk"})
+    malformed_schema = {"type": "not-a-real-type"}
+    loop = AgentLoop(store=tmp_path / "sessions", tool_gate=gate, port=port,
+                      output_schema=malformed_schema, system_prompt="classify this system")
+    envelope = loop.run(task_id="t1", fixture_path=str(fpath))
+
+    assert envelope["status"] == "blocked"
+    assert "schema" in envelope["reason"].lower()
+    session = load(tmp_path / "sessions", envelope["session_id"])
+    assert session["events"][-1]["event_type"] == "session.terminal"
+    assert session["events"][-1]["payload"]["status"] == "blocked"
+
+
 def test_run_blocks_when_fixture_path_outside_allowed_root(tmp_path):
     fdir, fpath = _fixture(tmp_path, {"case_id": "SYNTH-1"})
     outside = tmp_path / "outside.json"

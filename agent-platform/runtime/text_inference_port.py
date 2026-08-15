@@ -13,14 +13,7 @@ optional backend package is unavailable.
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Any
-
-# Add inference directory to path for provider_policy import
-_INFERENCE_DIR = Path(__file__).resolve().parent.parent / "inference"
-if str(_INFERENCE_DIR) not in sys.path:
-    sys.path.insert(0, str(_INFERENCE_DIR))
 
 try:
     from cortxt_resilient_inference import execute as _resilient_execute

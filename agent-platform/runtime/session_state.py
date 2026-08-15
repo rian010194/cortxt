@@ -41,8 +41,8 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
-def _session_path(store: Path, session_id: str, validate: bool = True) -> Path:
-    if validate and not SESSION_ID_RE.fullmatch(session_id):
+def _session_path(store: Path, session_id: str) -> Path:
+    if not SESSION_ID_RE.fullmatch(session_id):
         raise SessionError("invalid_input", "invalid session_id")
     return store / session_id / "session.json"
 
@@ -110,7 +110,7 @@ def _validate_chain(doc: dict, session_id: str) -> None:
 
 
 def load(store: Path, session_id: str) -> dict:
-    path = _session_path(store, session_id, validate=False)
+    path = _session_path(store, session_id)
     if not path.is_file():
         raise SessionError("not_found", "session was not found")
     try:

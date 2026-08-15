@@ -14,6 +14,12 @@ class ToolAdmissionError(Exception):
     pass
 
 
+class ToolExecutionError(Exception):
+    """Raised when an admitted tool call fails to execute (e.g. read/parse failure),
+    as distinct from ToolAdmissionError which is reserved for the admission gate's
+    own rejection (path outside sandbox, traversal, missing file)."""
+
+
 class ToolGate:
     def __init__(self, allowed_roots: list[Path]) -> None:
         self._roots = [Path(r).resolve() for r in allowed_roots]
@@ -35,4 +41,4 @@ def read_fixture_file(gate: ToolGate, path: str) -> dict:
     try:
         return json.loads(resolved.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeError, OSError) as error:
-        raise ToolAdmissionError(f"read_fixture_file: could not read/parse {resolved}") from error
+        raise ToolExecutionError(f"read_fixture_file: could not read/parse {resolved}") from error
