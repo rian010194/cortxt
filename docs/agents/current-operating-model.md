@@ -5,6 +5,10 @@ Last reconciled: 2026-08-13
 
 ## Why this file exists
 
+For the target state this is building toward, see
+[`goal-operating-model.md`](goal-operating-model.md). This file only
+describes what is verified now.
+
 Read this file before recommending architecture or choosing a runtime. The
 repository contains experiments and future designs alongside verified paths.
 No single experiment README describes the whole system.
