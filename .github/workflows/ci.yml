@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -15,7 +18,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pytest
-      - run: pytest agent-platform/
+      - run: pytest agent-platform/ -m "not real_inference"
 
   web-checks:
     runs-on: ubuntu-latest
