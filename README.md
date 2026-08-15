@@ -37,14 +37,13 @@ The current product decisions are:
 
 | Path | Role today |
 | --- | --- |
-| `agent-platform/` | Proposed future Cortxt-owned platform boundary; not yet part of this branch or an accepted full implementation plan. |
-| `adapters/` | Proposed future provider and runtime adapters behind Cortxt-owned ports; not yet part of this branch. |
-| [`harness/`](harness/README.md) | Provenance and evaluation work from the earlier control-plane baseline. |
+| `agent-platform/` | Proposed future Cortxt-owned platform boundary; not yet part of this branch or an accepted full implementation plan. `agent-platform/reasoning/` is the exception — Accepted/tracked per ADR-017. |
+| `adapters/` | Proposed future provider and runtime adapters behind Cortxt-owned ports; not yet part of this branch. Exercised by `agent-platform/tests/adapters/` in CI, so it stays in place even though untracked. |
 | [`verticals/`](verticals/README.md) | Historical domain packages and synthetic validation material. |
-| [`experiments/`](experiments/) | Runtime candidates that have not been promoted into the current product baseline. |
 | [`web/`](web/README.md) | Read-only Operator Cockpit prototype; paused as a product surface. |
 | [`contracts/`](contracts/README.md) | Existing interface schemas and contract experiments. |
-| [`docs/`](docs/) | Architecture, decisions, operations, evidence, and historical records. |
+| [`docs/`](docs/) | Architecture and decisions for the current baseline (ADRs, operating model, dispatch contract). |
+| [`archive/`](archive/README.md) | Historical control-plane runtime work, abandoned experiments, and frozen session handoffs — no code coupling to the current baseline. |
 
 ## Start here
 
