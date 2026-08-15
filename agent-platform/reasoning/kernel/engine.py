@@ -11,7 +11,15 @@ from __future__ import annotations
 
 from typing import Callable
 
-from .operators import OperatorResult, decompose, inspect, integrate, verify
+from .operators import (
+    OperatorResult,
+    decompose,
+    inspect,
+    inspect_with_model,
+    integrate,
+    verify,
+    verify_against_schema,
+)
 from .problem_state import ProblemState, new_problem
 from .strategy import Strategy, select_strategy
 
@@ -69,6 +77,11 @@ def _solve_geometric(state: ProblemState, expected=None) -> OperatorResult:
     return verify(state, expected)
 
 
+def _solve_model_assisted(state: ProblemState, invoke, validate) -> OperatorResult:
+    inspect_with_model(state, invoke)
+    return verify_against_schema(state, validate)
+
+
 def _flatten_scalars(obj):
     out = []
     stack = [obj]
@@ -98,6 +111,7 @@ _SOLVERS: dict[Strategy, Callable[[ProblemState, object], OperatorResult]] = {
     Strategy.DIRECT: _solve_direct,
     Strategy.RECURSIVE: _solve_recursive,
     Strategy.GEOMETRIC: _solve_geometric,
+    Strategy.MODEL_ASSISTED: _solve_model_assisted,
 }
 
 
@@ -123,6 +137,20 @@ class Engine:
         result = solver(state, self._expected)
         return {
             "strategy": strategy.value,
+            "value": result.value,
+            "confidence": state.confidence,
+            "steps": state.transformation_log,
+        }
+
+    def solve_model_assisted(self, content, invoke, validate) -> Result:
+        """Explicit entry point for MODEL_ASSISTED — never auto-selected by
+        select_strategy(), always invoked directly by a caller that has a
+        real inference callable and a real output validator (e.g. Agent
+        Runtime's agent_loop)."""
+        state = new_problem(content)
+        result = _solve_model_assisted(state, invoke, validate)
+        return {
+            "strategy": Strategy.MODEL_ASSISTED.value,
             "value": result.value,
             "confidence": state.confidence,
             "steps": state.transformation_log,
