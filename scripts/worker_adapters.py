@@ -15,19 +15,27 @@ Design locked in the #122 grilling session (2026-08-15, live with operator):
   independent architecture direction.
 - Invocation runs in a background thread so `heartbeat`/`sweep_expired` stay
   functional during a long-running call (relevant for #101 T1's resume
-  requirement).
+  requirement). Concurrency safety for that thread's `Dispatcher.complete()`
+  call lives in dispatcher.py's `Dispatcher._lock` (RLock).
 
 Not yet decided (flagged, not solved here): whether the adapter interface
 should instead return a future the dispatcher awaits, and which adapter is
 implemented second. First concrete adapter: Hermes Researcher.
 """
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Protocol
 
 from dispatcher import Dispatcher, Run
+
+# Local-only run logs (raw worker stdout/stderr never leaves this machine).
+# .hermes/ is gitignored repo-wide; this reuses that existing convention
+# rather than inventing a new one.
+RUN_LOG_DIR = Path(".hermes") / "dispatch" / "runs"
 
 
 class WorkerAdapter(Protocol):
@@ -36,7 +44,8 @@ class WorkerAdapter(Protocol):
         result_envelope dict plus an internal `_status` key the caller pops
         off and passes to Dispatcher.complete(). Must never raise for an
         ordinary worker failure — a failed/timed_out envelope is a normal
-        return, not an exception."""
+        return, not an exception. `dispatch_async` treats a raise from this
+        method as a backstop case, not the expected path."""
         ...
 
 
@@ -53,12 +62,21 @@ class HermesAdapter:
     specific provider/cost regardless of the model actually used. An honest
     `unknown` satisfies dispatch-contract.md ("never silently assume zero");
     a guessed number would not.
+
+    `evidence` is deliberately NOT the worker's raw stdout. AGENTS.md and
+    dispatch-contract.md both forbid putting "raw reasoning" or "unrestricted
+    logs" in GitHub, and the worker's stdout here is literally a Hermes
+    model's response transcript. Raw output is written to a local,
+    gitignored run log (RUN_LOG_DIR) instead; `evidence` is a short,
+    bounded, structured summary, and `artifacts` carries the local log path
+    (a content-free reference) rather than the content itself.
     """
 
     profile: str
     run_subprocess: Callable[..., "subprocess.CompletedProcess[str]"] = field(
         default=subprocess.run
     )
+    log_dir: Path = field(default=RUN_LOG_DIR)
 
     def invoke(self, run: Run, task_prompt: str, timeout_seconds: int) -> dict:
         started = time.time()
@@ -70,6 +88,7 @@ class HermesAdapter:
                 timeout=timeout_seconds,
             )
         except subprocess.TimeoutExpired as exc:
+            log_path = self._write_run_log(run, stdout=exc.stdout, stderr=exc.stderr)
             return {
                 "_status": "timed_out",
                 "runtime": "hermes",
@@ -77,8 +96,8 @@ class HermesAdapter:
                 "model": "unknown (not captured by this adapter)",
                 "usage": "unknown (subprocess timed out before completion)",
                 "cost": "unknown (not measured)",
-                "artifacts": [],
-                "evidence": _tail(exc.stdout, 2000),
+                "artifacts": [log_path] if log_path else [],
+                "evidence": f"worker timed out after {timeout_seconds}s; no completion",
                 "error": {
                     "category": "timeout",
                     "recovery": "retry with a fresh run_id, or raise lease_seconds if the task is legitimately long",
@@ -94,20 +113,42 @@ class HermesAdapter:
                 "usage": "unknown (worker never started)",
                 "cost": "unknown (not measured)",
                 "artifacts": [],
-                "evidence": "",
+                "evidence": "worker never started: hermes CLI not found on PATH",
                 "error": {
                     "category": "runtime_unavailable",
                     "recovery": f"hermes CLI not found on PATH: {exc}",
                 },
                 "_elapsed_seconds": time.time() - started,
             }
+        except (OSError, UnicodeDecodeError) as exc:
+            # Covers PermissionError (hermes resolves but isn't executable),
+            # other OSError subtypes (fork failure, resource limits in a
+            # sandboxed/containerized runner), and UnicodeDecodeError (worker
+            # stdout/stderr bytes invalid in the locale's default encoding —
+            # real risk with text=True and no explicit errors= policy).
+            return {
+                "_status": "failed",
+                "runtime": "hermes",
+                "worker_role": self.profile,
+                "model": "unknown",
+                "usage": "unknown (worker invocation raised before returning)",
+                "cost": "unknown (not measured)",
+                "artifacts": [],
+                "evidence": f"worker invocation raised {type(exc).__name__} before returning",
+                "error": {
+                    "category": "worker_invocation_error",
+                    "recovery": f"{type(exc).__name__}: {exc}",
+                },
+                "_elapsed_seconds": time.time() - started,
+            }
 
         status = "succeeded" if proc.returncode == 0 else "failed"
+        log_path = self._write_run_log(run, stdout=proc.stdout, stderr=proc.stderr)
         error = None
         if status != "succeeded":
             error = {
                 "category": "worker_nonzero_exit",
-                "recovery": _tail(proc.stderr, 500) or f"hermes exited {proc.returncode}; check hermes logs",
+                "recovery": _tail(proc.stderr, 500) or f"hermes exited {proc.returncode}; check the run log",
             }
         return {
             "_status": status,
@@ -116,11 +157,27 @@ class HermesAdapter:
             "model": "unknown (not captured by this adapter)",
             "usage": "unknown (not captured by this adapter)",
             "cost": "unknown (not measured)",
-            "artifacts": [],
-            "evidence": _tail(proc.stdout, 4000),
+            "artifacts": [log_path] if log_path else [],
+            "evidence": f"worker exited {proc.returncode}; {len(proc.stdout or '')} chars of stdout logged locally (not posted to GitHub)",
             "error": error,
             "_elapsed_seconds": time.time() - started,
         }
+
+    def _write_run_log(self, run: Run, stdout: "str | None", stderr: "str | None") -> "str | None":
+        """Write raw stdout/stderr to a local, gitignored file. Returns the
+        path as a string, or None if writing failed (never raises — a
+        logging failure must not turn a real result into a worker error)."""
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = self.log_dir / f"{run.run_id}.log"
+            log_path.write_text(
+                f"=== stdout ===\n{stdout or ''}\n=== stderr ===\n{stderr or ''}\n",
+                encoding="utf-8",
+                errors="replace",
+            )
+            return str(log_path)
+        except OSError:
+            return None
 
 
 def _tail(text: "str | None", max_chars: int) -> str:
@@ -147,8 +204,16 @@ def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str) -> thread
     dispatcher.complete() with the resulting envelope.
 
     Returns the (already-started) thread so tests can join() it; production
-    callers may let it run detached — heartbeat/sweep_expired do not depend
-    on this thread.
+    callers may let it run detached. dispatcher.complete()/heartbeat()/
+    sweep_expired() are safe to call concurrently from the main thread while
+    this is in flight (Dispatcher._lock, an RLock, serializes them).
+
+    A backstop, not the expected path: if the adapter raises despite its
+    contract, or dispatcher.complete() itself raises, this must not leave
+    the run silently stuck `in_progress` in a swallowed daemon-thread
+    exception. We attempt one best-effort complete() with a synthesized
+    failure envelope; if that also fails, we print to stderr as a last
+    resort so the failure is at least visible in process output.
     """
     adapter = ADAPTER_REGISTRY.get(run.runtime)
     if adapter is None:
@@ -157,10 +222,32 @@ def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str) -> thread
         )
 
     def _run() -> None:
-        envelope = adapter.invoke(run, task_prompt, timeout_seconds=run.lease_seconds)
-        status = envelope.pop("_status")
-        envelope.pop("_elapsed_seconds", None)
-        dispatcher.complete(run.run_id, status, envelope)
+        try:
+            envelope = adapter.invoke(run, task_prompt, timeout_seconds=run.lease_seconds)
+            status = envelope.pop("_status")
+            envelope.pop("_elapsed_seconds", None)
+        except Exception as exc:  # noqa: BLE001 - deliberate backstop, adapters must not raise
+            status = "failed"
+            envelope = {
+                "runtime": run.runtime,
+                "worker_role": run.worker_role,
+                "model": "unknown",
+                "usage": "unknown (adapter raised before returning a result)",
+                "cost": "unknown (not measured)",
+                "artifacts": [],
+                "evidence": f"adapter raised {type(exc).__name__} instead of returning a result envelope",
+                "error": {
+                    "category": "adapter_contract_violation",
+                    "recovery": f"{type(exc).__name__}: {exc}",
+                },
+            }
+        try:
+            dispatcher.complete(run.run_id, status, envelope)
+        except Exception as exc:  # noqa: BLE001 - last resort, run must not vanish silently
+            print(
+                f"[worker_adapters] complete() failed for run {run.run_id}: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
 
     thread = threading.Thread(target=_run, name=f"worker-{run.run_id}", daemon=True)
     thread.start()

@@ -161,6 +161,26 @@ reg2 = d.RunRegistry(regpath)
 check("reloaded registry has the run", reg2.get(run9.run_id) is not None)
 check("reloaded run has same issue_id", reg2.get(run9.run_id).issue_id == "o/r#11")
 
+print("== complete: refuses a second complete() on an already-terminal run (guards the async-completion race) ==")
+disp10, gh10 = new_dispatcher({"o/r#12": ["workflow:ready"]})
+run10 = disp10.claim("o/r#12", "wedge-b", "builder", "hermes", 600)
+disp10.complete(run10.run_id, "succeeded", {"evidence": "first completion"})
+try:
+    disp10.complete(run10.run_id, "failed", {"evidence": "racing second completion"})
+    check("raises on double complete", False)
+except RuntimeError:
+    check("raises on double complete", True)
+check("first result preserved, not overwritten", disp10.query(run10.run_id)["result"] == {"evidence": "first completion"})
+check("only one result comment posted, not two", len(gh10.comments) == 2)  # claim comment + one result comment
+
+print("== Dispatcher._lock is reentrant (RLock): sweep_expired() already calls complete() on the same thread ==")
+disp11, gh11 = new_dispatcher({"o/r#13": ["workflow:ready"]})
+run11 = disp11.claim("o/r#13", "wedge-b", "builder", "hermes", lease_seconds=1)
+disp11.registry.update(run11.run_id, claimed_at=time.time() - 10)  # force expiry
+check("_lock is reentrant (RLock, not plain Lock)", isinstance(disp11._lock, d.threading.RLock().__class__))
+swept11 = disp11.sweep_expired()  # holds self._lock, then calls self.complete() -> re-acquires it
+check("sweep_expired -> complete() succeeded without deadlocking", swept11 == [run11.run_id])
+
 if fail:
     print(f"\n{len(fail)} check(s) failed: {fail}")
     sys.exit(1)
