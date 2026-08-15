@@ -73,7 +73,8 @@ theoretical:
 
 Detailed execution requirements live in
 `docs/architecture/dispatch-contract.md`. Pi evidence and remaining hardening
-gaps live in `archive/experiments/runtime-pi-builder/README.md`.
+gaps are recorded in the local (unpublished) archive of the Pi Builder
+experiment.
 
 ## Known blockers and incomplete links
 
@@ -131,7 +132,7 @@ that GitHub issue identity, runtime limits, budget, evidence, or approval may be
 skipped.
 
 The partial Buzz workflow evidence and exact recovery sequence are recorded in
-`archive/docs/wayfinder/handoffs/2026-08-02-buzz-workflow-session.md`.
+the local (unpublished) session-handoff archive, 2026-08-02.
 
 ## Guardrails against common misreadings
 

@@ -10,6 +10,7 @@
 .hermes/
 .kanban/
 .codex-tmp/
+archive/
 *.trace
 
 # ---- Python ----
