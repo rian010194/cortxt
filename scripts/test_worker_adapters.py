@@ -61,6 +61,10 @@ def new_dispatcher(labels=None):
     return d.Dispatcher(reg, gh), gh
 
 
+def new_log_dir():
+    return Path(tempfile.mkdtemp(prefix="worker-logs-"))
+
+
 def fake_completed(returncode=0, stdout="ok", stderr=""):
     def _run(*args, **kwargs):
         return subprocess.CompletedProcess(args, returncode, stdout=stdout, stderr=stderr)
@@ -73,37 +77,70 @@ def fake_timeout(cmd, timeout, stdout="partial"):
     return _run
 
 
-print("== HermesAdapter.invoke: success -> succeeded envelope, no cost/usage guessed ==")
-adapter = wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(0, stdout="did the thing"))
+def fake_raises(exc):
+    def _run(*args, **kwargs):
+        raise exc
+    return _run
+
+
 run = d.Run(run_id="r1", issue_id="o/r#1", workflow="wedge-b", worker_role="researcher",
             runtime="hermes-researcher", claimed_at=time.time(), lease_seconds=60)
+
+print("== HermesAdapter.invoke: success -> succeeded envelope, no cost/usage guessed, no raw stdout in evidence ==")
+log_dir = new_log_dir()
+adapter = wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(0, stdout="did the thing"), log_dir=log_dir)
 env = adapter.invoke(run, "do the thing", timeout_seconds=60)
 check("status succeeded", env["_status"] == "succeeded")
-check("evidence carries stdout", "did the thing" in env["evidence"])
+check("evidence does NOT carry raw stdout (AGENTS.md: no model reasoning in GitHub)", "did the thing" not in env["evidence"])
+check("evidence is a short bounded summary", len(env["evidence"]) < 200)
 check("cost reported unknown, not zero", "unknown" in env["cost"].lower())
 check("usage reported unknown, not guessed", "unknown" in env["usage"].lower())
 check("error is None on success", env["error"] is None)
+check("artifacts has exactly one local log reference", len(env["artifacts"]) == 1)
+log_file = Path(env["artifacts"][0])
+check("local log file actually written", log_file.exists())
+check("raw stdout lives in the local log, not in the envelope", "did the thing" in log_file.read_text())
+check("local log is under the injected log_dir (never the repo)", log_file.parent == log_dir)
 
-print("== HermesAdapter.invoke: nonzero exit -> failed envelope with stderr in recovery ==")
-adapter2 = wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(1, stdout="", stderr="boom: bad prompt"))
+print("== HermesAdapter.invoke: nonzero exit -> failed envelope with stderr in recovery, stdout still local-only ==")
+adapter2 = wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(1, stdout="", stderr="boom: bad prompt"), log_dir=new_log_dir())
 env2 = adapter2.invoke(run, "do the thing", timeout_seconds=60)
 check("status failed", env2["_status"] == "failed")
 check("error category set", env2["error"]["category"] == "worker_nonzero_exit")
 check("stderr surfaced in recovery", "boom" in env2["error"]["recovery"])
+check("evidence has no raw content", "boom" not in env2["evidence"])
 
 print("== HermesAdapter.invoke: subprocess timeout -> timed_out envelope, not an exception ==")
-adapter3 = wa.HermesAdapter(profile="researcher", run_subprocess=fake_timeout(["hermes"], 60))
+adapter3 = wa.HermesAdapter(profile="researcher", run_subprocess=fake_timeout(["hermes"], 60), log_dir=new_log_dir())
 env3 = adapter3.invoke(run, "do the thing", timeout_seconds=60)
 check("status timed_out", env3["_status"] == "timed_out")
 check("error category timeout", env3["error"]["category"] == "timeout")
 
 print("== HermesAdapter.invoke: hermes not on PATH -> failed envelope, not an exception ==")
-def _missing(*a, **k):
-    raise FileNotFoundError("hermes")
-adapter4 = wa.HermesAdapter(profile="researcher", run_subprocess=_missing)
+adapter4 = wa.HermesAdapter(profile="researcher", run_subprocess=fake_raises(FileNotFoundError("hermes")), log_dir=new_log_dir())
 env4 = adapter4.invoke(run, "do the thing", timeout_seconds=60)
 check("status failed", env4["_status"] == "failed")
 check("error category runtime_unavailable", env4["error"]["category"] == "runtime_unavailable")
+
+print("== HermesAdapter.invoke: PermissionError -> failed envelope, not an exception ==")
+adapter5 = wa.HermesAdapter(profile="researcher", run_subprocess=fake_raises(PermissionError("not executable")), log_dir=new_log_dir())
+env5 = adapter5.invoke(run, "do the thing", timeout_seconds=60)
+check("status failed (PermissionError caught, not raised)", env5["_status"] == "failed")
+check("error category worker_invocation_error", env5["error"]["category"] == "worker_invocation_error")
+
+print("== HermesAdapter.invoke: generic OSError -> failed envelope, not an exception ==")
+adapter6 = wa.HermesAdapter(profile="researcher", run_subprocess=fake_raises(OSError("fork failed")), log_dir=new_log_dir())
+env6 = adapter6.invoke(run, "do the thing", timeout_seconds=60)
+check("status failed (OSError caught, not raised)", env6["_status"] == "failed")
+
+print("== HermesAdapter.invoke: UnicodeDecodeError -> failed envelope, not an exception ==")
+adapter7 = wa.HermesAdapter(
+    profile="researcher",
+    run_subprocess=fake_raises(UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")),
+    log_dir=new_log_dir(),
+)
+env7 = adapter7.invoke(run, "do the thing", timeout_seconds=60)
+check("status failed (UnicodeDecodeError caught, not raised)", env7["_status"] == "failed")
 
 print("== ADAPTER_REGISTRY: hermes-researcher registered by default ==")
 check("hermes-researcher present", "hermes-researcher" in wa.ADAPTER_REGISTRY)
@@ -112,7 +149,7 @@ check("default adapter is a HermesAdapter for profile researcher",
       and wa.ADAPTER_REGISTRY["hermes-researcher"].profile == "researcher")
 
 print("== register_adapter: dynamic selection, no hardcoded runtime ==")
-wa.register_adapter("fake-runtime", wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(0)))
+wa.register_adapter("fake-runtime", wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(0), log_dir=new_log_dir()))
 check("new runtime resolvable after registration", "fake-runtime" in wa.ADAPTER_REGISTRY)
 
 print("== dispatch_async: unknown runtime raises before touching the dispatcher ==")
@@ -127,7 +164,7 @@ check("no complete() side effect on unknown runtime", disp.query(run_unknown.run
 
 print("== dispatch_async: end-to-end succeeded run reaches dispatcher.complete() via background thread ==")
 disp2, gh2 = new_dispatcher({"o/r#3": ["workflow:ready"]})
-wa.register_adapter("test-hermes-ok", wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(0, stdout="worked")))
+wa.register_adapter("test-hermes-ok", wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(0, stdout="worked"), log_dir=new_log_dir()))
 run2 = disp2.claim("o/r#3", "wedge-b", "researcher", "test-hermes-ok", 60)
 thread = wa.dispatch_async(disp2, run2, "do the thing")
 thread.join(timeout=5)
@@ -139,11 +176,40 @@ check("result envelope has no leaked internal keys", "_status" not in q["result"
 
 print("== dispatch_async: end-to-end failed run moves label to workflow:blocked ==")
 disp3, gh3 = new_dispatcher({"o/r#4": ["workflow:ready"]})
-wa.register_adapter("test-hermes-fail", wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(1, stderr="bad")))
+wa.register_adapter("test-hermes-fail", wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(1, stderr="bad"), log_dir=new_log_dir()))
 run3 = disp3.claim("o/r#4", "wedge-b", "researcher", "test-hermes-fail", 60)
 thread3 = wa.dispatch_async(disp3, run3, "do the thing")
 thread3.join(timeout=5)
 check("label moved to workflow:blocked", gh3.labels["o/r#4"] == ["workflow:blocked"])
+
+print("== dispatch_async: adapter that violates its contract and raises is still completed, not left stuck ==")
+class RaisingAdapter:
+    def invoke(self, run, task_prompt, timeout_seconds):
+        raise RuntimeError("adapter bug: forgot to catch something")
+
+disp4, gh4 = new_dispatcher({"o/r#5": ["workflow:ready"]})
+wa.register_adapter("test-raising-adapter", RaisingAdapter())
+run4 = disp4.claim("o/r#5", "wedge-b", "researcher", "test-raising-adapter", 60)
+thread4 = wa.dispatch_async(disp4, run4, "do the thing")
+thread4.join(timeout=5)
+check("thread finished despite adapter raising", not thread4.is_alive())
+q4 = disp4.query(run4.run_id)
+check("run reached a terminal status instead of staying in_progress forever", q4["status"] == "failed")
+check("error category records the contract violation", q4["result"]["error"]["category"] == "adapter_contract_violation")
+check("label moved to workflow:blocked", gh4.labels["o/r#5"] == ["workflow:blocked"])
+
+print("== dispatch_async: two runs completing concurrently do not corrupt the shared registry ==")
+disp5, gh5 = new_dispatcher({"o/r#6": ["workflow:ready"], "o/r#7": ["workflow:ready"]})
+wa.register_adapter("test-concurrent-a", wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(0, stdout="a"), log_dir=new_log_dir()))
+wa.register_adapter("test-concurrent-b", wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(0, stdout="b"), log_dir=new_log_dir()))
+run5a = disp5.claim("o/r#6", "wedge-b", "researcher", "test-concurrent-a", 60)
+run5b = disp5.claim("o/r#7", "wedge-b", "researcher", "test-concurrent-b", 60)
+t5a = wa.dispatch_async(disp5, run5a, "do a")
+t5b = wa.dispatch_async(disp5, run5b, "do b")
+t5a.join(timeout=5)
+t5b.join(timeout=5)
+check("both runs reached succeeded", disp5.query(run5a.run_id)["status"] == "succeeded" and disp5.query(run5b.run_id)["status"] == "succeeded")
+check("both labels moved independently", gh5.labels["o/r#6"] == ["workflow:review"] and gh5.labels["o/r#7"] == ["workflow:review"])
 
 if fail:
     print(f"\n{len(fail)} check(s) failed: {fail}")

@@ -10,6 +10,15 @@ is enforced in-process (a lock + an active-claim count), not via a
 distributed compare-and-swap on GitHub. Two dispatcher processes racing the
 same repo is the concurrent-claim risk flagged in ADR-018 and is out of
 scope for this minimal adapter.
+
+Within one process, `Dispatcher._lock` (an RLock) also guards
+complete()/heartbeat()/sweep_expired(), not just claim(): once a worker can
+complete asynchronously from a background thread (see
+scripts/worker_adapters.py), the main thread may legitimately call
+heartbeat()/sweep_expired() while that thread's complete() is in flight, and
+without this lock both racing writers hit RunRegistry's unsynchronized
+file rewrite. complete() also refuses a second call on an already-terminal
+run_id, so a losing racer fails loudly instead of double-posting a result.
 """
 import json
 import subprocess
@@ -119,7 +128,13 @@ class Dispatcher:
     def __init__(self, registry: RunRegistry, gh: Optional[GitHubOps] = None):
         self.registry = registry
         self.gh = gh or GitHubOps()
-        self._lock = threading.Lock()
+        # RLock, not Lock: sweep_expired() holds the lock while calling
+        # complete() on the same thread, and complete()/heartbeat() must
+        # themselves be lock-protected once a caller other than claim() can
+        # run concurrently (see worker_adapters.dispatch_async — the first
+        # caller that completes a run from a background thread while the
+        # main thread may be heartbeating/sweeping another run).
+        self._lock = threading.RLock()
 
     def claim(self, issue_id: str, workflow: str, worker_role: str, runtime: str, lease_seconds: int) -> Run:
         repo, num = issue_id.split("#")
@@ -172,7 +187,8 @@ class Dispatcher:
         return child
 
     def heartbeat(self, run_id: str) -> None:
-        self.registry.update(run_id, heartbeat_at=time.time())
+        with self._lock:
+            self.registry.update(run_id, heartbeat_at=time.time())
 
     def query(self, run_id: str) -> Optional[dict]:
         run = self.registry.get(run_id)
@@ -190,14 +206,15 @@ class Dispatcher:
         alone, since the parent still owns the issue's workflow state.
         """
         swept = []
-        for run in list(self.registry._runs.values()):
-            if run.status == "in_progress" and run.is_expired():
-                self.complete(
-                    run.run_id,
-                    "timed_out",
-                    {"error": f"lease expired after {run.lease_seconds}s with no completion"},
-                )
-                swept.append(run.run_id)
+        with self._lock:
+            for run in list(self.registry._runs.values()):
+                if run.status == "in_progress" and run.is_expired():
+                    self.complete(
+                        run.run_id,
+                        "timed_out",
+                        {"error": f"lease expired after {run.lease_seconds}s with no completion"},
+                    )
+                    swept.append(run.run_id)
         return swept
 
     def complete(self, run_id: str, status: str, result_envelope: dict) -> Run:
@@ -208,21 +225,27 @@ class Dispatcher:
         run_id, rather than workflow:blocked (reserved for structured,
         non-recoverable results per dispatch-contract.md).
         """
-        run = self.registry.get(run_id)
-        if run is None:
-            raise RuntimeError(f"unknown run_id {run_id}")
-        self.registry.update(run_id, status=status, finished_at=time.time(), result=result_envelope)
-        if run.parent_run_id is None:
-            repo, num = run.issue_id.split("#")
-            if status == "cancelled":
-                target = LABEL_READY
-            elif status in FAILING_STATUSES:
-                target = LABEL_BLOCKED
-            else:
-                target = LABEL_REVIEW
-            self.gh.swap_label(repo, num, LABEL_IN_PROGRESS, target)
-            self.gh.comment(repo, num, self._result_comment(run_id, status, result_envelope))
-        return self.registry.get(run_id)
+        with self._lock:
+            run = self.registry.get(run_id)
+            if run is None:
+                raise RuntimeError(f"unknown run_id {run_id}")
+            if run.status != "in_progress":
+                raise RuntimeError(
+                    f"run {run_id} already terminal (status={run.status!r}); "
+                    "refusing a second complete() to avoid a double label/comment"
+                )
+            self.registry.update(run_id, status=status, finished_at=time.time(), result=result_envelope)
+            if run.parent_run_id is None:
+                repo, num = run.issue_id.split("#")
+                if status == "cancelled":
+                    target = LABEL_READY
+                elif status in FAILING_STATUSES:
+                    target = LABEL_BLOCKED
+                else:
+                    target = LABEL_REVIEW
+                self.gh.swap_label(repo, num, LABEL_IN_PROGRESS, target)
+                self.gh.comment(repo, num, self._result_comment(run_id, status, result_envelope))
+            return self.registry.get(run_id)
 
     @staticmethod
     def _claim_comment(run: Run) -> str:
