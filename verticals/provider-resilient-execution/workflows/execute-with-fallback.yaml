@@ -1,0 +1,20 @@
+workflow_id: execute-with-fallback
+version: 0.1.0
+input_schema: ../schemas/execution-request.schema.json
+output_schema: ../schemas/execution-result.schema.json
+rules:
+  retryable_failures:
+    - rate_limited
+    - provider_unavailable
+    - timeout_before_effect
+    - return_channel_stalled
+  permanent_failures:
+    - invalid_model_id
+    - policy_denied
+    - non_idempotent_effect_unknown
+  invariants:
+    - Never select a route whose policy_eligible value is not literal true.
+    - Never exceed max_attempts_total or per_attempt_timeout_ms.
+    - Never retry after a non-idempotent effect may have occurred.
+    - Record every attempted route, failure class, latency, and cost status.
+    - A terminal failure is an explicit result, never a fabricated success.
