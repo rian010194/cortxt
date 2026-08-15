@@ -162,6 +162,12 @@ check("default adapter is a HermesAdapter for profile researcher",
       isinstance(wa.ADAPTER_REGISTRY["hermes-researcher"], wa.HermesAdapter)
       and wa.ADAPTER_REGISTRY["hermes-researcher"].profile == "researcher")
 
+print("== ADAPTER_REGISTRY: hermes-coordinator registered by default ==")
+check("hermes-coordinator present", "hermes-coordinator" in wa.ADAPTER_REGISTRY)
+check("default adapter is a HermesAdapter for profile coordinator",
+      isinstance(wa.ADAPTER_REGISTRY["hermes-coordinator"], wa.HermesAdapter)
+      and wa.ADAPTER_REGISTRY["hermes-coordinator"].profile == "coordinator")
+
 print("== register_adapter: dynamic selection, no hardcoded runtime ==")
 wa.register_adapter("fake-runtime", wa.HermesAdapter(profile="researcher", run_subprocess=fake_completed(0), log_dir=new_log_dir()))
 check("new runtime resolvable after registration", "fake-runtime" in wa.ADAPTER_REGISTRY)
