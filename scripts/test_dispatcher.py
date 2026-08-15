@@ -9,6 +9,7 @@ gh/network calls happen. Run directly: python scripts/test_dispatcher.py
 import importlib.util
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -36,11 +37,16 @@ class FakeGitHub:
         return self.labels.get(f"{repo}#{issue_num}", [])
 
     def swap_label(self, repo, issue_num, remove, add):
+        # Matches real `gh issue edit --remove-label --add-label` semantics:
+        # both operations are idempotent (removing an absent label, or
+        # adding an already-present one, is a no-op), so a retried
+        # swap_label after a partial failure doesn't duplicate labels.
         key = f"{repo}#{issue_num}"
         cur = self.labels.setdefault(key, [])
         if remove in cur:
             cur.remove(remove)
-        cur.append(add)
+        if add not in cur:
+            cur.append(add)
 
     def comment(self, repo, issue_num, body):
         self.comments.append((f"{repo}#{issue_num}", body))
@@ -180,6 +186,97 @@ disp11.registry.update(run11.run_id, claimed_at=time.time() - 10)  # force expir
 check("_lock is reentrant (RLock, not plain Lock)", isinstance(disp11._lock, d.threading.RLock().__class__))
 swept11 = disp11.sweep_expired()  # holds self._lock, then calls self.complete() -> re-acquires it
 check("sweep_expired -> complete() succeeded without deadlocking", swept11 == [run11.run_id])
+
+print("== spawn_child: mutates the registry under self._lock (was the unguarded gap) ==")
+disp12, gh12 = new_dispatcher({"o/r#14": ["workflow:ready"]})
+parent12 = disp12.claim("o/r#14", "wedge-b", "builder", "hermes", 600)
+orig_add = disp12.registry.add
+
+
+def slow_add(run):
+    time.sleep(0.2)
+    return orig_add(run)
+
+
+disp12.registry.add = slow_add
+spawn_thread = threading.Thread(target=lambda: disp12.spawn_child(parent12.run_id, 1))
+spawn_thread.start()
+time.sleep(0.05)  # let spawn_child enter its (now slow) registry.add() call
+heartbeat_started = time.time()
+disp12.heartbeat(parent12.run_id)  # from a DIFFERENT thread; must block until spawn_child releases the lock
+heartbeat_elapsed = time.time() - heartbeat_started
+spawn_thread.join(timeout=2)
+disp12.registry.add = orig_add
+check(
+    "heartbeat() from another thread waited for spawn_child's registry mutation to finish -> lock is real",
+    heartbeat_elapsed >= 0.1,
+)
+
+print("== complete: GitHub label/comment step runs outside the lock (only the registry transition is locked) ==")
+class SlowGitHub(FakeGitHub):
+    def comment(self, repo, issue_num, body):
+        # If complete() still held self._lock here, a concurrent heartbeat()
+        # on a DIFFERENT run would block until this returns. It must not.
+        time.sleep(0.2)
+        super().comment(repo, issue_num, body)
+
+
+disp13, gh13 = new_dispatcher({"o/r#15": ["workflow:ready"], "o/r#16": ["workflow:ready"]})
+disp13.gh = SlowGitHub(disp13.gh.labels)
+run13a = disp13.claim("o/r#15", "wedge-b", "builder", "hermes", 600)
+run13b = disp13.claim("o/r#16", "wedge-b", "builder", "hermes", 600)
+
+complete_thread = threading.Thread(target=lambda: disp13.complete(run13a.run_id, "succeeded", {"evidence": "ok"}))
+complete_thread.start()
+time.sleep(0.05)  # let complete() get past the locked registry transition, into the slow unlocked GH call
+heartbeat_started = time.time()
+disp13.heartbeat(run13b.run_id)  # must return quickly, not block on run13a's in-flight GitHub call
+heartbeat_elapsed = time.time() - heartbeat_started
+complete_thread.join(timeout=2)
+check("heartbeat() on a different run was not blocked by another run's slow GitHub call", heartbeat_elapsed < 0.15)
+check("the slow complete() still finished successfully", disp13.query(run13a.run_id)["status"] == "succeeded")
+
+print("== complete: Run.gh_synced tracks whether the GitHub step actually succeeded ==")
+disp14, gh14 = new_dispatcher({"o/r#17": ["workflow:ready"]})
+run14 = disp14.claim("o/r#17", "wedge-b", "builder", "hermes", 600)
+disp14.complete(run14.run_id, "succeeded", {"evidence": "ok"})
+check("gh_synced True after an ordinary successful complete()", disp14.query(run14.run_id)["gh_synced"] is True)
+
+print("== resync_pending: recovers a run whose GitHub step failed, without re-running the registry transition ==")
+class FlakyGitHub(FakeGitHub):
+    def __init__(self, labels=None):
+        super().__init__(labels)
+        self.comment_attempts = 0
+
+    def comment(self, repo, issue_num, body):
+        self.comment_attempts += 1
+        if self.comment_attempts == 2:  # 1st call is claim()'s own comment; let that succeed
+            raise d.GitHubError("simulated network failure")
+        super().comment(repo, issue_num, body)
+
+
+disp15, gh15 = new_dispatcher({"o/r#18": ["workflow:ready"]})
+disp15.gh = FlakyGitHub(disp15.gh.labels)
+run15 = disp15.claim("o/r#18", "wedge-b", "builder", "hermes", 600)
+try:
+    disp15.complete(run15.run_id, "succeeded", {"evidence": "ok"})
+    check("complete() propagates the GitHub failure to its caller", False)
+except d.GitHubError:
+    check("complete() propagates the GitHub failure to its caller", True)
+check("registry already correctly terminal despite the GitHub step failing", disp15.query(run15.run_id)["status"] == "succeeded")
+check("gh_synced correctly False after the failed GitHub step", disp15.query(run15.run_id)["gh_synced"] is False)
+# swap_label already succeeded before the simulated comment() failure -- gh_synced=False
+# means "the GitHub step isn't fully done", not "nothing happened yet".
+check("label already moved (swap_label succeeded before comment() failed)", gh15.labels["o/r#18"] == ["workflow:review"])
+synced15 = disp15.resync_pending()
+check("resync_pending retried and succeeded this time", synced15 == [run15.run_id])
+check("gh_synced now True", disp15.query(run15.run_id)["gh_synced"] is True)
+check("label finally moved to workflow:review", gh15.labels["o/r#18"] == ["workflow:review"])
+
+print("== resync_pending: ignores runs that are already synced or still in_progress ==")
+disp16, gh16 = new_dispatcher({"o/r#19": ["workflow:ready"]})
+run16 = disp16.claim("o/r#19", "wedge-b", "builder", "hermes", 600)  # still in_progress, never completed
+check("nothing to resync for an in-progress run", disp16.resync_pending() == [])
 
 if fail:
     print(f"\n{len(fail)} check(s) failed: {fail}")

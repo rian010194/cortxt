@@ -12,13 +12,33 @@ same repo is the concurrent-claim risk flagged in ADR-018 and is out of
 scope for this minimal adapter.
 
 Within one process, `Dispatcher._lock` (an RLock) also guards
-complete()/heartbeat()/sweep_expired(), not just claim(): once a worker can
-complete asynchronously from a background thread (see
+complete()/heartbeat()/sweep_expired()/spawn_child(), not just claim(): once
+a worker can complete asynchronously from a background thread (see
 scripts/worker_adapters.py), the main thread may legitimately call
-heartbeat()/sweep_expired() while that thread's complete() is in flight, and
-without this lock both racing writers hit RunRegistry's unsynchronized
-file rewrite. complete() also refuses a second call on an already-terminal
-run_id, so a losing racer fails loudly instead of double-posting a result.
+heartbeat()/sweep_expired()/spawn_child() while that thread's complete() is
+in flight, and without this lock every one of those writers hits
+RunRegistry's unsynchronized file rewrite. complete() also refuses a second
+call on an already-terminal run_id, so a losing racer fails loudly instead
+of double-posting a result.
+
+The lock's scope is deliberately narrow: it protects only the in-memory/
+file registry mutation, never the blocking GitHub API calls in complete().
+complete() takes the lock just long enough to atomically check-and-claim the
+terminal transition, releases it, then does the (possibly slow) GitHub label
+swap and comment unlocked -- so one run's network latency cannot stall
+heartbeat()/sweep_expired() for other runs. Because only the caller that won
+the atomic transition ever reaches the GitHub calls, this doesn't reopen the
+double-post race the lock exists to prevent. sweep_expired() follows the
+same pattern: it snapshots expired run_ids under the lock, then calls
+complete() for each one individually, outside any lock it itself holds.
+
+If those unlocked GitHub calls fail partway (network error, etc.), the
+registry's internal state is already correctly terminal, but the issue's
+`workflow:*` label may not have moved off `workflow:in-progress` -- a
+GitHub-visible split from the registry's own view. Run.gh_synced records
+whether the label/comment step actually completed; Dispatcher.resync_pending()
+retries just that step for terminal runs where it didn't, giving that split
+an actual recovery path instead of only a stderr print from the caller.
 """
 import json
 import subprocess
@@ -82,6 +102,7 @@ class Run:
     heartbeat_at: float = field(default=0.0)
     finished_at: Optional[float] = None
     result: Optional[dict] = None
+    gh_synced: bool = False  # set True once complete()'s GitHub label/comment step actually succeeds
 
     def is_expired(self, now: Optional[float] = None) -> bool:
         now = time.time() if now is None else now
@@ -167,24 +188,25 @@ class Dispatcher:
 
     def spawn_child(self, parent_run_id: str, n: int) -> Run:
         """delegation_depth=1: exactly one level of children, same issue_id."""
-        parent = self.registry.get(parent_run_id)
-        if parent is None:
-            raise RuntimeError(f"unknown parent run_id {parent_run_id}")
-        if parent.parent_run_id is not None:
-            raise RuntimeError("delegation_depth=1 exceeded: parent is itself a child run")
-        child = Run(
-            run_id=f"{parent_run_id}.{n}",
-            issue_id=parent.issue_id,
-            workflow=parent.workflow,
-            worker_role=parent.worker_role,
-            runtime=parent.runtime,
-            claimed_at=time.time(),
-            lease_seconds=parent.lease_seconds,
-            parent_run_id=parent_run_id,
-            heartbeat_at=time.time(),
-        )
-        self.registry.add(child)
-        return child
+        with self._lock:
+            parent = self.registry.get(parent_run_id)
+            if parent is None:
+                raise RuntimeError(f"unknown parent run_id {parent_run_id}")
+            if parent.parent_run_id is not None:
+                raise RuntimeError("delegation_depth=1 exceeded: parent is itself a child run")
+            child = Run(
+                run_id=f"{parent_run_id}.{n}",
+                issue_id=parent.issue_id,
+                workflow=parent.workflow,
+                worker_role=parent.worker_role,
+                runtime=parent.runtime,
+                claimed_at=time.time(),
+                lease_seconds=parent.lease_seconds,
+                parent_run_id=parent_run_id,
+                heartbeat_at=time.time(),
+            )
+            self.registry.add(child)
+            return child
 
     def heartbeat(self, run_id: str) -> None:
         with self._lock:
@@ -205,16 +227,26 @@ class Dispatcher:
         a child run's expiry is recorded in the registry but leaves the label
         alone, since the parent still owns the issue's workflow state.
         """
-        swept = []
         with self._lock:
-            for run in list(self.registry._runs.values()):
-                if run.status == "in_progress" and run.is_expired():
-                    self.complete(
-                        run.run_id,
-                        "timed_out",
-                        {"error": f"lease expired after {run.lease_seconds}s with no completion"},
-                    )
-                    swept.append(run.run_id)
+            expired = [
+                (run.run_id, run.lease_seconds)
+                for run in self.registry._runs.values()
+                if run.status == "in_progress" and run.is_expired()
+            ]
+        swept = []
+        for run_id, lease_seconds in expired:
+            try:
+                self.complete(
+                    run_id,
+                    "timed_out",
+                    {"error": f"lease expired after {lease_seconds}s with no completion"},
+                )
+                swept.append(run_id)
+            except RuntimeError:
+                # Someone else (e.g. the run's own worker) completed it
+                # between the snapshot above and this call -- not a bug,
+                # just lost the race to a legitimate completion.
+                pass
         return swept
 
     def complete(self, run_id: str, status: str, result_envelope: dict) -> Run:
@@ -224,6 +256,15 @@ class Dispatcher:
         the issue to workflow:ready so it can be redispatched with a fresh
         run_id, rather than workflow:blocked (reserved for structured,
         non-recoverable results per dispatch-contract.md).
+
+        The registry transition (the only part that must be race-free) is
+        atomic under `self._lock`; the GitHub label swap/comment happen
+        afterward, unlocked, so a slow network call here cannot stall other
+        runs' heartbeat()/sweep_expired(). If that unlocked GitHub step
+        fails, the run is still correctly terminal internally
+        (`Run.gh_synced` stays False and the exception propagates) --
+        `resync_pending()` is the recovery path for that split, not a
+        silent retry loop here.
         """
         with self._lock:
             run = self.registry.get(run_id)
@@ -235,17 +276,51 @@ class Dispatcher:
                     "refusing a second complete() to avoid a double label/comment"
                 )
             self.registry.update(run_id, status=status, finished_at=time.time(), result=result_envelope)
-            if run.parent_run_id is None:
-                repo, num = run.issue_id.split("#")
-                if status == "cancelled":
-                    target = LABEL_READY
-                elif status in FAILING_STATUSES:
-                    target = LABEL_BLOCKED
-                else:
-                    target = LABEL_REVIEW
-                self.gh.swap_label(repo, num, LABEL_IN_PROGRESS, target)
-                self.gh.comment(repo, num, self._result_comment(run_id, status, result_envelope))
-            return self.registry.get(run_id)
+
+        if run.parent_run_id is None:
+            self._sync_github(run_id, run.issue_id, status, result_envelope)
+        return self.registry.get(run_id)
+
+    def _sync_github(self, run_id: str, issue_id: str, status: str, result_envelope: dict) -> None:
+        """Post the label swap + result comment for a just-completed top-level
+        run. Separated from complete() so resync_pending() can retry just
+        this step without re-running the (already-done, must-stay-atomic)
+        registry transition."""
+        repo, num = issue_id.split("#")
+        if status == "cancelled":
+            target = LABEL_READY
+        elif status in FAILING_STATUSES:
+            target = LABEL_BLOCKED
+        else:
+            target = LABEL_REVIEW
+        self.gh.swap_label(repo, num, LABEL_IN_PROGRESS, target)
+        self.gh.comment(repo, num, self._result_comment(run_id, status, result_envelope))
+        with self._lock:
+            self.registry.update(run_id, gh_synced=True)
+
+    def resync_pending(self) -> list[str]:
+        """Retry the GitHub label/comment step for terminal top-level runs
+        where it didn't complete (Run.gh_synced is False) -- e.g. because
+        complete()'s unlocked GitHub call raised (network error) after the
+        registry was already correctly marked terminal. Returns the run_ids
+        that were successfully synced on this call."""
+        with self._lock:
+            pending = [
+                (run.run_id, run.issue_id, run.status, run.result)
+                for run in self.registry._runs.values()
+                if run.parent_run_id is None and run.status != "in_progress" and not run.gh_synced
+            ]
+        synced = []
+        for run_id, issue_id, status, result in pending:
+            try:
+                self._sync_github(run_id, issue_id, status, result or {})
+                synced.append(run_id)
+            except GitHubError:
+                # Still failing (e.g. GitHub still unreachable) -- leave
+                # gh_synced False and let a later resync_pending() call
+                # retry; don't let one stuck run block the rest of this pass.
+                continue
+        return synced
 
     @staticmethod
     def _claim_comment(run: Run) -> str:
