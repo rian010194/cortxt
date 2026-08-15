@@ -24,8 +24,8 @@ Every approved dispatch must define:
 | `acceptance_criteria` | Deterministic completion conditions |
 | `max_runtime_seconds` | Hard execution deadline |
 | `max_cost_usd` | Approved cost ceiling or explicit `unknown-not-allowed` |
-| `max_parallel_workers` | Hard concurrency ceiling; initially `2` |
-| `delegation_depth` | Hard ceiling; initially `1` |
+| `max_parallel_workers` | No fixed ceiling (operator decision 2026-08-15); still required per request |
+| `delegation_depth` | No fixed ceiling (operator decision 2026-08-15); still required per request |
 | `artifact_policy` | Allowed output locations and content restrictions |
 | `approval_ref` | Evidence that the issue was approved for dispatch |
 
