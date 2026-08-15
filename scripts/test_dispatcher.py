@@ -268,10 +268,56 @@ check("gh_synced correctly False after the failed GitHub step", disp15.query(run
 # swap_label already succeeded before the simulated comment() failure -- gh_synced=False
 # means "the GitHub step isn't fully done", not "nothing happened yet".
 check("label already moved (swap_label succeeded before comment() failed)", gh15.labels["o/r#18"] == ["workflow:review"])
+check("resync_pending skips a fresh claim (lease not yet stale)", disp15.resync_pending() == [])
+# Simulate the claim lease going stale, as a real deployment would after
+# GH_SYNC_CLAIM_LEASE_SECONDS -- otherwise a same-second retry would
+# correctly skip (see the check just above), by design.
+disp15.registry.update(run15.run_id, gh_sync_claimed_at=time.time() - d.GH_SYNC_CLAIM_LEASE_SECONDS - 1)
 synced15 = disp15.resync_pending()
-check("resync_pending retried and succeeded this time", synced15 == [run15.run_id])
+check("resync_pending retried and succeeded once the claim lease went stale", synced15 == [run15.run_id])
 check("gh_synced now True", disp15.query(run15.run_id)["gh_synced"] is True)
 check("label finally moved to workflow:review", gh15.labels["o/r#18"] == ["workflow:review"])
+
+print("== _sync_github: two concurrent callers racing the same run post exactly one comment, not two ==")
+class SlowCommentGitHub(FakeGitHub):
+    def comment(self, repo, issue_num, body):
+        time.sleep(0.15)  # widen the race window between the claim and the actual post
+        super().comment(repo, issue_num, body)
+
+
+disp17, gh17 = new_dispatcher({"o/r#20": ["workflow:ready"]})
+disp17.gh = SlowCommentGitHub(disp17.gh.labels)
+run17 = disp17.claim("o/r#20", "wedge-b", "builder", "hermes", 600)  # 1 claim comment posted
+# Simulate the exact race window: registry already terminal (as complete()
+# leaves it right after its locked transition), gh_synced still False, no
+# claim taken yet -- the state in which complete() and resync_pending() (or
+# two resync_pending() calls) could previously both reach _sync_github().
+disp17.registry.update(run17.run_id, status="succeeded")
+
+results17 = []
+
+
+def race_sync():
+    results17.append(disp17._sync_github(run17.run_id, run17.issue_id, "succeeded", {"evidence": "race"}))
+
+
+t17a = threading.Thread(target=race_sync)
+t17b = threading.Thread(target=race_sync)
+t17a.start()
+time.sleep(0.02)  # let the first caller take the claim before the second starts
+t17b.start()
+t17a.join(timeout=2)
+t17b.join(timeout=2)
+
+check("exactly one caller actually performed the sync", sorted(results17) == [False, True])
+check("gh_synced now True", disp17.query(run17.run_id)["gh_synced"] is True)
+# disp17.gh (not the gh17 returned by new_dispatcher) is the live object:
+# `disp17.gh = SlowCommentGitHub(...)` reassigned disp17.gh to a new
+# instance after new_dispatcher() constructed gh17, so gh17 is a stale
+# reference from here on.
+result_comments17 = [c for c in disp17.gh.comments if "Run result" in c[1]]
+check("exactly ONE result comment posted, not two", len(result_comments17) == 1)
+check("label moved exactly once (idempotent swap, no duplicate append)", disp17.gh.labels["o/r#20"] == ["workflow:review"])
 
 print("== resync_pending: ignores runs that are already synced or still in_progress ==")
 disp16, gh16 = new_dispatcher({"o/r#19": ["workflow:ready"]})
