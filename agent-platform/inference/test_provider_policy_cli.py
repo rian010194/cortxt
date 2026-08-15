@@ -56,10 +56,18 @@ class ProviderPolicyCliTests(unittest.TestCase):
         self.assertEqual(result.stderr, "")
 
     def test_deeply_nested_json_has_no_traceback(self):
-        # sys.getrecursionlimit() defaults to 1000; 2000 levels stopped reliably
-        # tripping json.loads's RecursionError on Python 3.12 (see #131), so use
-        # a depth with real headroom over the limit instead of guessing again.
-        depth = sys.getrecursionlimit() * 3
+        # A fixed 2000-level guess stopped reliably tripping json.loads's
+        # RecursionError on Python 3.12 (see #131). A 3x-headroom guess over
+        # sys.getrecursionlimit() (3000) also proved insufficient on Linux CI,
+        # even though it reliably triggered on Windows -- the C-level
+        # recursion budget CPython derives per thread scales with the
+        # platform's default thread stack size (~1MB on Windows vs. ~8MB on
+        # Linux), so the same Python recursion-limit counter tolerates much
+        # deeper nesting before the C stack actually runs out. Use a large
+        # fixed depth with wide margin over both platforms' observed
+        # thresholds instead of computing headroom off a limit that isn't the
+        # actual constraint.
+        depth = 100_000
         result = invoke(stdin="[" * depth + "]" * depth)
         self.assertEqual(result.returncode, 3)
         self.assertEqual(json.loads(result.stdout), {"error": "invalid_json"})
