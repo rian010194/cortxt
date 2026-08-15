@@ -8,10 +8,11 @@ version = "0.0.1"
 description = "Cortxt reasoning kernel — DM1 vertical slice (Kernel + operators)"
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = ["pyyaml>=6"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["reasoning*"]
+include = ["reasoning*", "portability*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
