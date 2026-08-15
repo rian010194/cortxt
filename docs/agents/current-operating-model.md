@@ -114,8 +114,8 @@ Use the smallest verified path that matches the approved issue:
 
 - Planning, classification, or synthesis: Hermes Coordinator through the
   approved OpenRouter model.
-- Research: Hermes Researcher with Kimi; use at most two workers only when the
-  subquestions are genuinely independent.
+- Research: Hermes Researcher with Kimi; use additional workers only when the
+  subquestions are genuinely independent (no fixed worker cap, see #136).
 - Bounded implementation: Pi Builder with Kimi in one explicitly approved
   workspace until Buzz/Hermes write approval is fixed.
 - Review: Codex once per completed work unit when risk or the issue workflow
