@@ -195,6 +195,7 @@ class UnknownRuntimeError(RuntimeError):
 
 ADAPTER_REGISTRY: dict[str, WorkerAdapter] = {
     "hermes-researcher": HermesAdapter(profile="researcher"),
+    "hermes-coordinator": HermesAdapter(profile="coordinator"),
 }
 
 
