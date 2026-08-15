@@ -166,7 +166,7 @@ Notify the operator in the current session:
 ### Do
 - Always state model + cost before dispatch
 - Always provide a run_id or issue_id for traceability
-- Prefer `delegate_task` for parallel subtasks (max 2 workers)
+- Prefer `delegate_task` for parallel subtasks (no fixed worker ceiling; operator decision 2026-08-15)
 - Use Swedish for operator-facing messages unless operator prefers English
 - Record session-breaking cost: stop and reassess if a single task exceeds $2
 

@@ -5,7 +5,7 @@ Implements the "Claim and run identity" section of
 docs/architecture/dispatch-contract.md, using the workflow:* label carrier
 designated by docs/adr/018-workflow-state-carrier.md (ADR-018).
 
-Atomicity model: this is a single-process dispatcher. max_parallel_workers=2
+Atomicity model: this is a single-process dispatcher. max_parallel_workers (when configured)
 is enforced in-process (a lock + an active-claim count), not via a
 distributed compare-and-swap on GitHub. Two dispatcher processes racing the
 same repo is the concurrent-claim risk flagged in ADR-018 and is out of
@@ -60,8 +60,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
 
-MAX_PARALLEL_WORKERS = 2
-DELEGATION_DEPTH = 1
+DEFAULT_MAX_PARALLEL_WORKERS = None  # None = no ceiling (operator decision 2026-08-15, see #136)
+DEFAULT_DELEGATION_DEPTH = None  # None = no ceiling (operator decision 2026-08-15, see #136)
 GH_SYNC_CLAIM_LEASE_SECONDS = 30  # generous headroom over a real swap_label+comment round trip
 GH_CLI_TIMEOUT_SECONDS = 20  # strictly less than the lease above, so a gh call can never outlive its own claim
 
@@ -115,6 +115,7 @@ class Run:
     lease_seconds: int
     status: str = "in_progress"
     parent_run_id: Optional[str] = None
+    depth: int = 0
     heartbeat_at: float = field(default=0.0)
     finished_at: Optional[float] = None
     result: Optional[dict] = None
@@ -173,7 +174,13 @@ class RunRegistry:
 
 
 class Dispatcher:
-    def __init__(self, registry: RunRegistry, gh: Optional[GitHubOps] = None):
+    def __init__(
+        self,
+        registry: RunRegistry,
+        gh: Optional[GitHubOps] = None,
+        max_parallel_workers: Optional[int] = DEFAULT_MAX_PARALLEL_WORKERS,
+        delegation_depth: Optional[int] = DEFAULT_DELEGATION_DEPTH,
+    ):
         self.registry = registry
         self.gh = gh or GitHubOps()
         # RLock, not Lock: sweep_expired() holds the lock while calling
@@ -183,6 +190,8 @@ class Dispatcher:
         # caller that completes a run from a background thread while the
         # main thread may be heartbeating/sweeping another run).
         self._lock = threading.RLock()
+        self.max_parallel_workers = max_parallel_workers
+        self.delegation_depth = delegation_depth
 
     def claim(self, issue_id: str, workflow: str, worker_role: str, runtime: str, lease_seconds: int) -> Run:
         repo, num = issue_id.split("#")
@@ -190,8 +199,8 @@ class Dispatcher:
             active = self.registry.active_issue_ids()
             if issue_id in active:
                 raise RuntimeError(f"{issue_id} already has an active claim")
-            if len(active) >= MAX_PARALLEL_WORKERS:
-                raise RuntimeError(f"max_parallel_workers={MAX_PARALLEL_WORKERS} reached")
+            if self.max_parallel_workers is not None and len(active) >= self.max_parallel_workers:
+                raise RuntimeError(f"max_parallel_workers={self.max_parallel_workers} reached")
 
             labels = self.gh.get_labels(repo, num)
             if LABEL_READY not in labels:
@@ -214,13 +223,14 @@ class Dispatcher:
             return run
 
     def spawn_child(self, parent_run_id: str, n: int) -> Run:
-        """delegation_depth=1: exactly one level of children, same issue_id."""
+        """delegation_depth is configurable (default: unbounded, see #136); a
+        child's depth is parent.depth + 1, same issue_id as the root."""
         with self._lock:
             parent = self.registry.get(parent_run_id)
             if parent is None:
                 raise RuntimeError(f"unknown parent run_id {parent_run_id}")
-            if parent.parent_run_id is not None:
-                raise RuntimeError("delegation_depth=1 exceeded: parent is itself a child run")
+            if self.delegation_depth is not None and parent.depth >= self.delegation_depth:
+                raise RuntimeError(f"delegation_depth={self.delegation_depth} exceeded: parent already at max depth")
             child = Run(
                 run_id=f"{parent_run_id}.{n}",
                 issue_id=parent.issue_id,
@@ -230,6 +240,7 @@ class Dispatcher:
                 claimed_at=time.time(),
                 lease_seconds=parent.lease_seconds,
                 parent_run_id=parent_run_id,
+                depth=parent.depth + 1,
                 heartbeat_at=time.time(),
             )
             self.registry.add(child)

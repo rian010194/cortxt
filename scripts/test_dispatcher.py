@@ -85,15 +85,25 @@ try:
 except RuntimeError:
     check("raises on duplicate claim", True)
 
-print("== claim: enforces max_parallel_workers=2 ==")
+print("== claim: unbounded by default, no worker cap (#136) ==")
 disp4, gh4 = new_dispatcher({"o/r#4": ["workflow:ready"], "o/r#5": ["workflow:ready"], "o/r#6": ["workflow:ready"]})
 disp4.claim("o/r#4", "wedge-b", "builder", "hermes", 600)
 disp4.claim("o/r#5", "wedge-b", "builder", "hermes", 600)
+disp4.claim("o/r#6", "wedge-b", "builder", "hermes", 600)
+check("no cap: third concurrent claim succeeds", True)
+
+print("== claim: max_parallel_workers still enforced when explicitly configured ==")
+ws4b = tempfile.mkdtemp(prefix="dispatcher-")
+reg4b = d.RunRegistry(Path(ws4b) / "runs.json")
+gh4b = FakeGitHub({"o/r#4b": ["workflow:ready"], "o/r#5b": ["workflow:ready"], "o/r#6b": ["workflow:ready"]})
+disp4b = d.Dispatcher(reg4b, gh4b, max_parallel_workers=2)
+disp4b.claim("o/r#4b", "wedge-b", "builder", "hermes", 600)
+disp4b.claim("o/r#5b", "wedge-b", "builder", "hermes", 600)
 try:
-    disp4.claim("o/r#6", "wedge-b", "builder", "hermes", 600)
-    check("raises past worker cap", False)
+    disp4b.claim("o/r#6b", "wedge-b", "builder", "hermes", 600)
+    check("raises past configured worker cap", False)
 except RuntimeError:
-    check("raises past worker cap", True)
+    check("raises past configured worker cap", True)
 
 print("== query by run_id: status/timestamps/result reachable ==")
 disp5, gh5 = new_dispatcher({"o/r#7": ["workflow:ready"]})
@@ -123,18 +133,29 @@ run6b = disp6b.claim("o/r#8b", "wedge-b", "builder", "hermes", 600)
 disp6b.complete(run6b.run_id, "cancelled", {"error": "operator abort"})
 check("label moved to workflow:ready (retryable, not blocked)", gh6b.labels["o/r#8b"] == ["workflow:ready"])
 
-print("== spawn_child: delegation_depth=1, same issue_id, own child run_id ==")
+print("== spawn_child: unbounded depth by default, same issue_id, own child run_id (#136) ==")
 disp7, gh7 = new_dispatcher({"o/r#9": ["workflow:ready"]})
 parent = disp7.claim("o/r#9", "wedge-b", "builder", "hermes", 600)
 child = disp7.spawn_child(parent.run_id, 1)
 check("child issue_id matches parent", child.issue_id == parent.issue_id)
 check("child run_id derived from parent", child.run_id == f"{parent.run_id}.1")
 check("child records parent_run_id", child.parent_run_id == parent.run_id)
+check("child depth is parent depth + 1", child.depth == 1)
+grandchild = disp7.spawn_child(child.run_id, 1)
+check("no cap: grandchild (depth 2) succeeds", grandchild.depth == 2)
+
+print("== spawn_child: delegation_depth still enforced when explicitly configured ==")
+ws7b = tempfile.mkdtemp(prefix="dispatcher-")
+reg7b = d.RunRegistry(Path(ws7b) / "runs.json")
+gh7b = FakeGitHub({"o/r#9b": ["workflow:ready"]})
+disp7b = d.Dispatcher(reg7b, gh7b, delegation_depth=1)
+parent7b = disp7b.claim("o/r#9b", "wedge-b", "builder", "hermes", 600)
+child7b = disp7b.spawn_child(parent7b.run_id, 1)
 try:
-    disp7.spawn_child(child.run_id, 1)
-    check("refuses depth > 1", False)
+    disp7b.spawn_child(child7b.run_id, 1)
+    check("refuses depth > configured max", False)
 except RuntimeError:
-    check("refuses depth > 1", True)
+    check("refuses depth > configured max", True)
 
 print("== sweep_expired: expired lease -> timed_out, label -> blocked ==")
 disp8, gh8 = new_dispatcher({"o/r#10": ["workflow:ready"]})
