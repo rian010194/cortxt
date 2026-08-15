@@ -51,8 +51,9 @@ Read these before proposing architecture or execution:
 
 1. [`AGENTS.md`](AGENTS.md)
 2. [Current operating model](docs/agents/current-operating-model.md)
-3. [Dispatch contract](docs/architecture/dispatch-contract.md)
-4. [Accepted ADRs](docs/adr/)
+3. [Goal operating model](docs/agents/goal-operating-model.md)
+4. [Dispatch contract](docs/architecture/dispatch-contract.md)
+5. [Accepted ADRs](docs/adr/)
 
 Historical files may explain how the repository arrived here. They do not
 override the current operating model or accepted ADRs.
