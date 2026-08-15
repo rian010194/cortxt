@@ -118,3 +118,30 @@ def verify(state: ProblemState, expected: object = None) -> OperatorResult:
         state.confidence = 1.0 if all_scalar else 0.0
     state.record("verify", f"verified {computed} with confidence {state.confidence:.2f}")
     return OperatorResult(computed)
+
+
+def inspect_with_model(state: ProblemState, invoke) -> OperatorResult:
+    """Read content by delegating to an external callable instead of flattening scalars.
+
+    ``invoke`` is ``Callable[[Any], Any]``: takes the state's content, returns
+    the model's raw response. Unlike ``inspect()``, this never touches
+    arithmetic — the model performs the "reading" this operator would
+    otherwise flatten deterministically.
+    """
+    response = invoke(state.content)
+    state._computed = response  # type: ignore[attr-defined]
+    state.record("inspect_with_model", "inspected content via an external model call")
+    return OperatorResult(response)
+
+
+def verify_against_schema(state: ProblemState, validate) -> OperatorResult:
+    """Confirm ``state._computed`` satisfies an external validator; confidence 1.0/0.0.
+
+    ``validate`` is ``Callable[[Any], bool]`` (e.g. JSON Schema validation).
+    Unlike ``verify()``, this never falls back to summing ``state.content``.
+    """
+    computed = getattr(state, "_computed", None)
+    ok = bool(validate(computed))
+    state.confidence = 1.0 if ok else 0.0
+    state.record("verify_against_schema", f"validated with confidence {state.confidence:.2f}")
+    return OperatorResult(computed)
