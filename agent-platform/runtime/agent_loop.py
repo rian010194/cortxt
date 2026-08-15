@@ -8,6 +8,7 @@ per the design spec's error-handling section).
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import jsonschema
@@ -15,6 +16,7 @@ import jsonschema
 from adapters.inference.budget_gate import BudgetExhausted
 from reasoning.kernel import Engine
 from runtime import session_state as state
+from runtime.text_inference_port import TextInferenceError
 from runtime.tools import ToolAdmissionError, ToolGate, read_fixture_file
 
 
@@ -52,7 +54,8 @@ class AgentLoop:
 
         def _invoke(content):
             state.append(self._store, session_id, seq, "inference.requested", {"content": content})
-            return self._port.invoke(self._prompt, self._schema)
+            full_prompt = f"{self._prompt}\n\nInput:\n{json.dumps(content)}"
+            return self._port.invoke(full_prompt, self._schema)
 
         def _validate(response) -> bool:
             try:
@@ -66,6 +69,8 @@ class AgentLoop:
             result = engine.solve_model_assisted(content=fixture, invoke=_invoke, validate=_validate)
         except BudgetExhausted as error:
             return _blocked(f"budget exhausted: {error}")
+        except TextInferenceError as error:
+            return _blocked(f"inference error: {error}")
 
         seq = state.latest_sequence(state.load(self._store, session_id))
         state.append(self._store, session_id, seq, "inference.completed",

@@ -11,6 +11,7 @@ import pytest
 from adapters.inference.budget_gate import BudgetExhausted
 from runtime.agent_loop import AgentLoop
 from runtime.session_state import load
+from runtime.text_inference_port import TextInferenceError
 from runtime.tools import ToolGate
 
 OUTPUT_SCHEMA = {
@@ -54,6 +55,7 @@ def test_run_succeeds_end_to_end(tmp_path):
     assert envelope["status"] == "succeeded"
     assert envelope["result"] == {"classification": "high_risk"}
     assert port.calls[0][1] == OUTPUT_SCHEMA
+    assert "SYNTH-1" in port.calls[0][0]  # fixture content was forwarded into the prompt
 
     session = load(tmp_path / "sessions", envelope["session_id"])
     event_types = [e["event_type"] for e in session["events"]]
@@ -86,6 +88,21 @@ def test_run_blocks_on_budget_exhausted_without_leaving_partial_success(tmp_path
 
     assert envelope["status"] == "blocked"
     assert "budget" in envelope["reason"].lower()
+    session = load(tmp_path / "sessions", envelope["session_id"])
+    assert session["events"][-1]["event_type"] == "session.terminal"
+    assert session["events"][-1]["payload"]["status"] == "blocked"
+
+
+def test_run_blocks_on_text_inference_error_without_leaving_partial_success(tmp_path):
+    fdir, fpath = _fixture(tmp_path, {"case_id": "SYNTH-1"})
+    gate = ToolGate(allowed_roots=[fdir])
+    port = FakePort(raise_exc=TextInferenceError("provider policy denied this port"))
+    loop = AgentLoop(store=tmp_path / "sessions", tool_gate=gate, port=port,
+                      output_schema=OUTPUT_SCHEMA, system_prompt="classify this system")
+    envelope = loop.run(task_id="t1", fixture_path=str(fpath))
+
+    assert envelope["status"] == "blocked"
+    assert "inference error" in envelope["reason"].lower()
     session = load(tmp_path / "sessions", envelope["session_id"])
     assert session["events"][-1]["event_type"] == "session.terminal"
     assert session["events"][-1]["payload"]["status"] == "blocked"
