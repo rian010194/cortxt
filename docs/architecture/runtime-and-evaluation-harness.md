@@ -64,9 +64,9 @@ reusable platform code.
 
 ## Promotion path
 
-Runtime candidates begin under `experiments/`. A candidate may move into
-`harness/runtime/` only after its interfaces, isolation, cleanup, observability,
+Runtime candidates begin under `archive/experiments/`. A candidate may move into
+`archive/harness/runtime/` only after its interfaces, isolation, cleanup, observability,
 and failure behavior are stable. The Pi Builder remains an experiment at
-`experiments/runtime-pi-builder/`.
+`archive/experiments/runtime-pi-builder/`.
 
 See also [Vertical package contract](vertical-package-contract.md).
