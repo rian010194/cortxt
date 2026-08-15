@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from cortxt.portability.skills import (
+from portability.skills import (
     HermesSkillAdapter,
     PortabilityValidationError,
     SkillRegistry,
@@ -78,7 +78,7 @@ def test_validation_rejects_no_skill_md(tmp_path):
 
 
 def test_manifest_requires_name():
-    from cortxt.portability.skills.manifest import SkillManifest
+    from portability.skills.manifest import SkillManifest
 
     with pytest.raises(ValueError):
         SkillManifest.from_dict({"version": "1.0", "category": "x", "content_md": "c"})
@@ -100,7 +100,7 @@ def test_category_list_normalized_before_str(tmp_path):
 
 def test_manifest_from_dict_none_metadata_safe():
     """CP1.1 P2: explicit null metadata/linked_files_refs breaks not."""
-    from cortxt.portability.skills.manifest import SkillManifest
+    from portability.skills.manifest import SkillManifest
 
     m = SkillManifest.from_dict(
         {"name": "x", "version": "1.0", "category": "c", "content_md": "b",
