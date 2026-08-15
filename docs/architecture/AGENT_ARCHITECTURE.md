@@ -377,8 +377,8 @@ Varje receptionist håller **system-specifikt cache-minne** (i `~/.hermes/recept
     "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "minItems": 1},
     "max_runtime_seconds": {"type": "integer", "minimum": 60, "maximum": 86400},
     "max_cost_usd": {"type": "number", "minimum": 0, "maximum": 1000},
-    "max_parallel_workers": {"type": "integer", "minimum": 1, "maximum": 2},
-    "delegation_depth": {"type": "integer", "minimum": 0, "maximum": 1},
+    "max_parallel_workers": {"type": "integer", "minimum": 1},
+    "delegation_depth": {"type": "integer", "minimum": 0},
     "artifact_policy": {"enum": ["workspace_only", "github_artifacts", "external_refs"]},
     "approval_ref": {"type": "string", "format": "uri"}
   }

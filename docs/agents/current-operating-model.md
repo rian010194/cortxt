@@ -50,8 +50,9 @@ The following have been demonstrated and must not be described as merely
 theoretical:
 
 - Hermes routed explicit tasks to the correct Researcher and Builder profiles.
-- Hermes Coordinator decomposition ran two Researcher workers concurrently and
-  respected the live concurrency limit of two and delegation depth of one.
+- Hermes Coordinator decomposition ran two Researcher workers concurrently
+  with one level of delegation (the ceilings in force at the time; no fixed
+  ceiling on either dimension since #136).
 - A manual GitHub -> Hermes Researcher -> GitHub workflow completed.
 - Hermes Kanban board `cortxt-cp` created with gateway dispatch proven (scratch
   workspace, 36s `ready â†’ running â†’ done`).
@@ -114,8 +115,8 @@ Use the smallest verified path that matches the approved issue:
 
 - Planning, classification, or synthesis: Hermes Coordinator through the
   approved OpenRouter model.
-- Research: Hermes Researcher with Kimi; use at most two workers only when the
-  subquestions are genuinely independent.
+- Research: Hermes Researcher with Kimi; use additional workers only when the
+  subquestions are genuinely independent (no fixed worker cap, see #136).
 - Bounded implementation: Pi Builder with Kimi in one explicitly approved
   workspace until Buzz/Hermes write approval is fixed.
 - Review: Codex once per completed work unit when risk or the issue workflow
