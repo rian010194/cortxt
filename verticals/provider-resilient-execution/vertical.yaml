@@ -1,0 +1,29 @@
+vertical_id: provider-resilient-execution
+package_version: 0.1.0
+contract_version: 0.1.0
+supported_workflows:
+  - workflow_id: execute-with-fallback
+    input_schema_uri: ./schemas/execution-request.schema.json
+    output_schema_uri: ./schemas/execution-result.schema.json
+    capability_tags:
+      - provider-neutral-inference
+      - policy-gated-routing
+      - bounded-retry
+capability_tags:
+  - provider-neutral-inference
+  - policy-gated-routing
+  - bounded-retry
+eval_suite:
+  fixture_directory: ./evals/synthetic
+  minimum_fixture_count: 6
+artifact_policy:
+  allowed_mime_types:
+    - application/json
+  max_size_bytes: 1048576
+  retention_class: review
+non_goals:
+  - Provider credentials or endpoint implementation
+  - Global dispatcher or workflow-state ownership
+  - Provider-assurance policy ownership
+  - Real customer inputs or production run outputs
+  - Automatic replay of non-idempotent tool actions
