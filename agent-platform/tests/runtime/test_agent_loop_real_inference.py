@@ -8,6 +8,7 @@ docs/superpowers/specs/2026-08-15-fas2-agent-runtime-v01-design.md.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -35,10 +36,14 @@ def test_ai_act_fixture_solved_without_hermes(tmp_path):
     fixture_path = fixture_dir / "case.json"
     fixture_path.write_text(json.dumps(fixture_case), encoding="utf-8")
 
+    model = os.environ.get("CORTXT_INFERENCE_MODEL")
+    if not model:
+        pytest.skip("CORTXT_INFERENCE_MODEL not set")
+
     gate = ToolGate(allowed_roots=[fixture_dir])
     budget_gate = BudgetGate(max_calls=1, db_path=tmp_path / "spend.db")
     port = TextInferencePort(
-        model="synthetic-model",
+        model=model,
         budget_gate=budget_gate,
         provider_evidence={"approved": True, "provider_id": "synthetic-provider"},
         data_class="L0",
