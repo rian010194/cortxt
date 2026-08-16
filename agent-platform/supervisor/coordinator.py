@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from runtime import session_state as state
@@ -27,6 +28,28 @@ class CoordinatorError(Exception):
 
 
 TERMINAL_CHILD_STATUSES = {"succeeded", "blocked", "failed", "cancelled", "lost"}
+
+DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 5.0
+DEFAULT_STALE_MULTIPLIER = 3
+
+
+def _parse_event_timestamp(ts: str) -> datetime:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def _is_heartbeat_stale(doc: dict, heartbeat_interval: float, stale_multiplier: int) -> bool:
+    last_heartbeat_ts = None
+    created_ts = None
+    for event in doc["events"]:
+        if event["event_type"] == "heartbeat.ping":
+            last_heartbeat_ts = event["timestamp"]
+        elif event["event_type"] == "session.created":
+            created_ts = event["timestamp"]
+    reference = last_heartbeat_ts or created_ts
+    if reference is None:
+        return False
+    age = (datetime.now(timezone.utc) - _parse_event_timestamp(reference)).total_seconds()
+    return age > heartbeat_interval * stale_multiplier
 
 
 class Coordinator:
@@ -55,12 +78,19 @@ class Coordinator:
         })
         return child_session_id, child_process
 
-    def _wait_for_terminal(self, session_id: str, poll_interval: float, deadline: float) -> dict:
+    def _wait_for_terminal(self, session_id: str, child: ChildProcess, poll_interval: float,
+                            deadline: float, heartbeat_interval: float = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+                            stale_multiplier: int = DEFAULT_STALE_MULTIPLIER) -> dict:
         while time.monotonic() < deadline:
             doc = state.load(self._store, session_id)
             for event in doc["events"]:
                 if event["event_type"] == "session.terminal":
                     return doc
+            if _is_heartbeat_stale(doc, heartbeat_interval, stale_multiplier):
+                self._spawner.terminate_gracefully(child, timeout=5.0)
+                seq = state.latest_sequence(state.load(self._store, session_id))
+                return state.append(self._store, session_id, seq, "session.terminal",
+                                     {"status": "blocked", "reason": "heartbeat timeout"})
             time.sleep(poll_interval)
         raise CoordinatorError("timeout", f"child session {session_id} never reached a terminal state")
 
@@ -76,8 +106,8 @@ class Coordinator:
 
         deadline = time.monotonic() + timeout
         results = []
-        for session_id, _process in child_processes:
-            doc = self._wait_for_terminal(session_id, poll_interval, deadline)
+        for session_id, process in child_processes:
+            doc = self._wait_for_terminal(session_id, process, poll_interval, deadline)
             terminal = next(e for e in doc["events"] if e["event_type"] == "session.terminal")
             results.append({"session_id": session_id, "status": terminal["payload"]["status"],
                              "reason": terminal["payload"].get("reason")})
@@ -102,9 +132,9 @@ class Coordinator:
         state.append(self._store, root_session_id, seq, "join.waiting", {"waiting_on": "child_1"})
 
         deadline = time.monotonic() + timeout
-        child1_session_id, _ = self._spawn_child(root_session_id, child1_spec["config"],
+        child1_session_id, child1_process = self._spawn_child(root_session_id, child1_spec["config"],
                                                    child1_spec["allocated_budget"])
-        child1_doc = self._wait_for_terminal(child1_session_id, poll_interval, deadline)
+        child1_doc = self._wait_for_terminal(child1_session_id, child1_process, poll_interval, deadline)
         child1_terminal = next(e for e in child1_doc["events"] if e["event_type"] == "session.terminal")
         child1_status = child1_terminal["payload"]["status"]
 
@@ -146,8 +176,8 @@ class Coordinator:
 
         child2_config = dict(child2_spec["config"], fixture_dir=str(handoff_dir))
         try:
-            child2_session_id, _ = self._spawn_child(root_session_id, child2_config, child2_budget)
-            child2_doc = self._wait_for_terminal(child2_session_id, poll_interval, deadline)
+            child2_session_id, child2_process = self._spawn_child(root_session_id, child2_config, child2_budget)
+            child2_doc = self._wait_for_terminal(child2_session_id, child2_process, poll_interval, deadline)
             child2_terminal = next(e for e in child2_doc["events"] if e["event_type"] == "session.terminal")
             child2_status = child2_terminal["payload"]["status"]
             results.append({"session_id": child2_session_id, "status": child2_status,

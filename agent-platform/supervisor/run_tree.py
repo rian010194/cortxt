@@ -18,6 +18,7 @@ class ChildStatus:
     allocated_budget: int
     status: str
     reason: str | None
+    last_heartbeat_at: str | None
 
 
 @dataclass(frozen=True)
@@ -32,18 +33,22 @@ class RunTreeIndex:
 
 def _child_status_from_events(session_doc: dict, allocated_budget: int,
                                pid: int | None, pgid: int | None,
-                               start_time: float | None) -> ChildStatus:
+                               start_time: float | None,
+                               last_heartbeat_at: str | None) -> ChildStatus:
     session_id = session_doc["session_id"]
     status = "running"
     reason = None
     for event in session_doc["events"]:
-        if event["event_type"] == "session.terminal":
+        if event["event_type"] == "heartbeat.ping":
+            last_heartbeat_at = event["timestamp"]
+        elif event["event_type"] == "session.terminal":
             status = event["payload"]["status"]
             reason = event["payload"].get("reason")
         elif event["event_type"] == "session.reattached":
             status = "running"
     return ChildStatus(session_id=session_id, pid=pid, pgid=pgid, start_time=start_time,
-                        allocated_budget=allocated_budget, status=status, reason=reason)
+                        allocated_budget=allocated_budget, status=status, reason=reason,
+                        last_heartbeat_at=last_heartbeat_at)
 
 
 def build_index(root_session_doc: dict, child_session_docs: dict[str, dict],
@@ -68,7 +73,7 @@ def build_index(root_session_doc: dict, child_session_docs: dict[str, dict],
             root_status = event["payload"]["status"]
 
     children = tuple(
-        _child_status_from_events(child_session_docs[sid], budget, pid, pgid, start_time)
+        _child_status_from_events(child_session_docs[sid], budget, pid, pgid, start_time, None)
         for sid, (budget, pid, pgid, start_time) in spawned.items()
         if sid in child_session_docs
     )
