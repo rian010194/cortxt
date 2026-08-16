@@ -145,12 +145,15 @@ class Coordinator:
                     "budget": {"total": total_budget, "allocated": child1_spec["allocated_budget"]}}
 
         child2_config = dict(child2_spec["config"], fixture_dir=str(handoff_dir))
-        child2_session_id, _ = self._spawn_child(root_session_id, child2_config, child2_budget)
-        child2_doc = self._wait_for_terminal(child2_session_id, poll_interval, deadline)
-        child2_terminal = next(e for e in child2_doc["events"] if e["event_type"] == "session.terminal")
-        child2_status = child2_terminal["payload"]["status"]
-        results.append({"session_id": child2_session_id, "status": child2_status,
-                         "reason": child2_terminal["payload"].get("reason")})
+        try:
+            child2_session_id, _ = self._spawn_child(root_session_id, child2_config, child2_budget)
+            child2_doc = self._wait_for_terminal(child2_session_id, poll_interval, deadline)
+            child2_terminal = next(e for e in child2_doc["events"] if e["event_type"] == "session.terminal")
+            child2_status = child2_terminal["payload"]["status"]
+            results.append({"session_id": child2_session_id, "status": child2_status,
+                             "reason": child2_terminal["payload"].get("reason")})
+        finally:
+            shutil.rmtree(handoff_dir, ignore_errors=True)
 
         if child2_status == "succeeded":
             seq = state.latest_sequence(state.load(self._store, root_session_id))
