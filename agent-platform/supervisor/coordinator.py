@@ -5,14 +5,18 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
 from pathlib import Path
 
 from runtime import session_state as state
+from runtime.execution.write_policy import WriteCaps
+from supervisor.budget import next_child_budget, reclaimable_surplus
 from supervisor.process_spawner import ChildProcess, ProcessSpawner
 from supervisor.run_tree import build_index
+from supervisor.workspace_handoff import apply_incoming_changes
 
 
 class CoordinatorError(Exception):
@@ -88,3 +92,73 @@ class Coordinator:
 
         return {"run_id": root_session_id, "status": overall_status, "children": results,
                 "budget": {"total": index.total_budget, "allocated": index.allocated_budget}}
+
+    def run_m2(self, task_id: str, child1_spec: dict, child2_spec: dict, total_budget: int,
+               poll_interval: float = 0.5, timeout: float = 120.0) -> dict:
+        root_session = state.create(self._store, task_id=task_id)
+        root_session_id = root_session["session_id"]
+
+        seq = state.latest_sequence(state.load(self._store, root_session_id))
+        state.append(self._store, root_session_id, seq, "join.waiting", {"waiting_on": "child_1"})
+
+        deadline = time.monotonic() + timeout
+        child1_session_id, _ = self._spawn_child(root_session_id, child1_spec["config"],
+                                                   child1_spec["allocated_budget"])
+        child1_doc = self._wait_for_terminal(child1_session_id, poll_interval, deadline)
+        child1_terminal = next(e for e in child1_doc["events"] if e["event_type"] == "session.terminal")
+        child1_status = child1_terminal["payload"]["status"]
+
+        results = [{"session_id": child1_session_id, "status": child1_status,
+                    "reason": child1_terminal["payload"].get("reason")}]
+
+        if child1_status != "succeeded":
+            seq = state.latest_sequence(state.load(self._store, root_session_id))
+            state.append(self._store, root_session_id, seq, "session.terminal",
+                         {"status": "blocked", "reason": f"child_1 terminated as {child1_status}; join cannot succeed"})
+            return {"run_id": root_session_id, "status": "blocked", "children": results,
+                    "budget": {"total": total_budget, "allocated": child1_spec["allocated_budget"]}}
+
+        result_event = next(e for e in child1_doc["events"] if e["event_type"] == "result.available")
+        file_contents = result_event["payload"]["file_contents"]
+
+        spent = result_event["payload"].get("cost", {}).get("sandbox_executions_used", 0)
+        surplus = reclaimable_surplus(child1_spec["allocated_budget"], spent)
+        child2_budget = next_child_budget(child2_spec["allocated_budget"], surplus)
+        seq = state.latest_sequence(state.load(self._store, root_session_id))
+        state.append(self._store, root_session_id, seq, "budget.reclaimed", {"amount": surplus})
+        seq = state.latest_sequence(state.load(self._store, root_session_id))
+        state.append(self._store, root_session_id, seq, "budget.transferred", {"amount": surplus})
+
+        handoff_dir = Path(tempfile.mkdtemp(prefix="fas4-m2-handoff-"))
+        shutil.copytree(child2_spec["fixture_dir"], handoff_dir, dirs_exist_ok=True)
+        try:
+            apply_incoming_changes(
+                work_root=handoff_dir / "workspace", file_contents=file_contents,
+                caps=WriteCaps(max_files=len(file_contents) or 1, max_bytes_per_file=65536,
+                                max_changed_lines=1000, max_executions=4),
+            )
+        except Exception as error:
+            seq = state.latest_sequence(state.load(self._store, root_session_id))
+            state.append(self._store, root_session_id, seq, "session.terminal",
+                         {"status": "blocked", "reason": f"patch handoff failed: {error}"})
+            return {"run_id": root_session_id, "status": "blocked", "children": results,
+                    "budget": {"total": total_budget, "allocated": child1_spec["allocated_budget"]}}
+
+        child2_config = dict(child2_spec["config"], fixture_dir=str(handoff_dir))
+        child2_session_id, _ = self._spawn_child(root_session_id, child2_config, child2_budget)
+        child2_doc = self._wait_for_terminal(child2_session_id, poll_interval, deadline)
+        child2_terminal = next(e for e in child2_doc["events"] if e["event_type"] == "session.terminal")
+        child2_status = child2_terminal["payload"]["status"]
+        results.append({"session_id": child2_session_id, "status": child2_status,
+                         "reason": child2_terminal["payload"].get("reason")})
+
+        if child2_status == "succeeded":
+            seq = state.latest_sequence(state.load(self._store, root_session_id))
+            state.append(self._store, root_session_id, seq, "join.satisfied", {"child_session_id": child2_session_id})
+
+        overall_status = "succeeded" if child2_status == "succeeded" else "blocked"
+        seq = state.latest_sequence(state.load(self._store, root_session_id))
+        state.append(self._store, root_session_id, seq, "session.terminal", {"status": overall_status})
+
+        return {"run_id": root_session_id, "status": overall_status, "children": results,
+                "budget": {"total": total_budget, "allocated": child1_spec["allocated_budget"] + child2_budget}}

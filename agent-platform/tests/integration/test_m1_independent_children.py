@@ -9,7 +9,7 @@ import pytest
 
 from supervisor.coordinator import Coordinator
 
-VERTICAL = Path(__file__).resolve().parents[2] / "verticals" / "vertical-02-code-fixture"
+VERTICAL = Path(__file__).resolve().parents[3] / "verticals" / "vertical-02-code-fixture"
 FIXTURE_1 = VERTICAL / "evals" / "synthetic" / "001-off-by-one"
 FIXTURE_2 = VERTICAL / "evals" / "synthetic" / "002-independent-strings"
 PATCH_SCHEMA_PATH = VERTICAL / "schemas" / "patch-proposal.schema.json"
