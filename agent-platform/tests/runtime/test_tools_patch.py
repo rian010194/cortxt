@@ -112,6 +112,17 @@ def test_apply_patch_rejects_an_absolute_path_in_changes(tmp_path):
     assert exc.value.reason == "schema"
 
 
+def test_apply_patch_rejects_a_binary_file_with_patch_error_not_unicode_decode_error(tmp_path):
+    _, work = _workspace(tmp_path)
+    gate = WriteGate(allowed_roots=[work])
+    (work / "binary.dat").write_bytes(b"\x80\x81 not valid utf-8\xff")
+    with pytest.raises(PatchError) as exc:
+        apply_patch(gate, work, [{"path": "binary.dat", "new_content": "# text\n"}], WriteCaps())
+    assert exc.value.reason == "workspace_inconsistent"
+    # The file must remain untouched.
+    assert (work / "binary.dat").read_bytes() == b"\x80\x81 not valid utf-8\xff"
+
+
 def test_diff_workspace_is_empty_before_any_change(tmp_path):
     baseline, work = _workspace(tmp_path)
     diff, changed = diff_workspace(baseline, work)
