@@ -10,12 +10,13 @@ ToolExecutionError, read_fixture_file`` continues to work unchanged.
 from __future__ import annotations
 
 from .fixtures import READ_FIXTURE_FILE_MANIFEST, read_fixture_file
-from .gate import ToolAdmissionError, ToolExecutionError, ToolGate
+from .gate import ToolAdmissionError, ToolExecutionError, ToolGate, WriteGate
 
 __all__ = [
     "READ_FIXTURE_FILE_MANIFEST",
     "ToolAdmissionError",
     "ToolExecutionError",
     "ToolGate",
+    "WriteGate",
     "read_fixture_file",
 ]
