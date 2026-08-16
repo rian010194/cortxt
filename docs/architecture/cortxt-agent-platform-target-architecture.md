@@ -1125,7 +1125,9 @@ Följande är förslag tills de godkänts genom repositoryts beslutsprocess:
 1. Cortxt bygger en egen Agent Platform inom det befintliga kontrollplanet.
 2. Cortxt Agent Runtime blir på sikt primärt agent harness.
 3. Cortxt Supervisor ersätter på sikt Hermes koordinerande huvudroll.
-4. Cortxt Coding Agent ersätter på sikt Pi som primär coding harness.
+4. Cortxt Coding Agent är ett permanent tillägg till routingpolicyn för
+   kodningsuppgifter, inte en ersättning för Pi/Hermes/Codex (upphävd och
+   ersatt av ADR-019, 2026-08-16 — se §22.3/§24.2).
 5. RLM och geometric reasoning ägs av Cortxt Agent Core.
 6. Inference är en utbytbar port; egenhostad inference införs stegvis.
 7. Hermes, Pi och Prime Agent används under migrationen som adapters,
