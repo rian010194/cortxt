@@ -133,6 +133,11 @@ class ProcessSpawner:
         if sys.platform == "win32":
             import ctypes
 
+            # Note: GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT) cannot reach processes
+            # spawned with DETACHED_PROCESS (they have no console), so this call is
+            # effectively a no-op for such children. It is kept for forward-compatibility
+            # and to document the intent; the actual termination happens via TerminateProcess
+            # below which works regardless of process group attachment.
             try:
                 ctypes.windll.kernel32.GenerateConsoleCtrlEvent(signal.CTRL_BREAK_EVENT, child.pgid)
             except OSError:
