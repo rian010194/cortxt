@@ -165,3 +165,25 @@ class Coordinator:
 
         return {"run_id": root_session_id, "status": overall_status, "children": results,
                 "budget": {"total": total_budget, "allocated": child1_spec["allocated_budget"] + child2_budget}}
+
+    def cancel_root(self, root_session_id: str, poll_interval: float = 0.5, timeout: float = 30.0) -> dict:
+        root_doc = state.load(self._store, root_session_id)
+        cancelled: list[str] = []
+        for event in root_doc["events"]:
+            if event["event_type"] != "child.spawned":
+                continue
+            child_session_id = event["payload"]["session_id"]
+            child_doc = state.load(self._store, child_session_id)
+            already_terminal = any(e["event_type"] == "session.terminal" for e in child_doc["events"])
+            if already_terminal:
+                continue
+            child = ChildProcess(pid=event["payload"]["pid"], pgid=event["payload"]["pgid"],
+                                  session_id=child_session_id, start_time=event["payload"]["start_time"])
+            self._spawner.terminate_gracefully(child, timeout=timeout)
+            seq = state.latest_sequence(state.load(self._store, child_session_id))
+            state.append(self._store, child_session_id, seq, "session.terminal", {"status": "cancelled"})
+            cancelled.append(child_session_id)
+
+        seq = state.latest_sequence(state.load(self._store, root_session_id))
+        state.append(self._store, root_session_id, seq, "session.terminal", {"status": "cancelled"})
+        return {"cancelled": cancelled}
