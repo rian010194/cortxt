@@ -34,6 +34,16 @@ class ChildProcess:
     start_time: float
 
 
+def _build_pythonpath() -> str:
+    """Build PYTHONPATH for child processes to find runtime/ and adapters/ modules."""
+    agent_platform = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    worktree = os.path.abspath(os.path.join(agent_platform, ".."))
+    paths = [worktree, agent_platform]
+    if "PYTHONPATH" in os.environ:
+        return os.pathsep.join(paths + [os.environ["PYTHONPATH"]])
+    return os.pathsep.join(paths)
+
+
 def _process_start_time(pid: int) -> float | None:
     if sys.platform == "win32":
         import ctypes
@@ -84,15 +94,21 @@ class ProcessSpawner:
     def spawn(self, session_id: str, args: list[str]) -> ChildProcess:
         if sys.platform == "win32":
             creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+            env = os.environ.copy()
+            env["PYTHONPATH"] = _build_pythonpath()
             process = subprocess.Popen(
                 args, creationflags=creationflags, close_fds=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                env=env,
             )
             pgid = process.pid
         else:
+            env = os.environ.copy()
+            env["PYTHONPATH"] = _build_pythonpath()
             process = subprocess.Popen(
                 args, start_new_session=True, close_fds=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                env=env,
             )
             pgid = os.getpgid(process.pid)
 
