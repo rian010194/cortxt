@@ -39,24 +39,34 @@ def _process_start_time(pid: int) -> float | None:
         import ctypes
         import ctypes.wintypes as wintypes
 
+        STILL_ACTIVE = 259
         kernel32 = ctypes.windll.kernel32
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle:
             return None
         try:
-            creation = wintypes.FILETIME()
-            exit_time = wintypes.FILETIME()
-            kernel_time = wintypes.FILETIME()
-            user_time = wintypes.FILETIME()
-            ok = kernel32.GetProcessTimes(
-                handle, ctypes.byref(creation), ctypes.byref(exit_time),
-                ctypes.byref(kernel_time), ctypes.byref(user_time),
-            )
-            if not ok:
-                return None
-            value = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
-            return float(value)
+            # Check if process is still alive by checking exit code
+            exit_code = wintypes.DWORD()
+            if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                if exit_code.value == STILL_ACTIVE:
+                    # Process is still alive, check start time
+                    creation = wintypes.FILETIME()
+                    exit_time = wintypes.FILETIME()
+                    kernel_time = wintypes.FILETIME()
+                    user_time = wintypes.FILETIME()
+                    ok = kernel32.GetProcessTimes(
+                        handle, ctypes.byref(creation), ctypes.byref(exit_time),
+                        ctypes.byref(kernel_time), ctypes.byref(user_time),
+                    )
+                    if not ok:
+                        return None
+                    value = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+                    return float(value)
+                else:
+                    # Process has terminated
+                    return None
+            return None
         finally:
             kernel32.CloseHandle(handle)
     else:
