@@ -45,8 +45,14 @@ def test_rlm_real_inference_matches_expected(scenario, real_inference_port):
     if gate.remaining < 1:
         pytest.skip("FAS2A_INFERENCE_BUDGET_MAX not set or <1 — budget-gate blocks (fail-closed)")
 
-    gated = lambda content: gate(real_inference_port.invoke, content)  # noqa: E731
-    engine = RLMEngine(gated, _config())
+    class _GatedPort:
+        """Adapts BudgetGate + real_inference_port to RLMEngine's InferencePort
+        protocol (RLMEngine calls .invoke(content), not a bare callable)."""
+
+        def invoke(self, content):
+            return gate(real_inference_port.invoke, content)
+
+    engine = RLMEngine(_GatedPort(), _config())
     result = engine.run(scenario["content"])
     # The RLM engine aggregates leaf values; verify the expected sum surfaced.
     assert result.value == scenario["expected"], (
