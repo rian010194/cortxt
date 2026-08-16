@@ -1,0 +1,55 @@
+{
+  "$id": "https://github.com/rian010194/ai-workspace-control-plane/schemas/patch-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Input assembled by the platform for the fix-failing-test workflow. v0.1.0.",
+  "version": "0.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workspace_map", "failing_test_output", "declared_scope", "caps"],
+  "properties": {
+    "workspace_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file_count", "total_bytes", "files"],
+      "properties": {
+        "file_count": { "type": "integer", "minimum": 0 },
+        "total_bytes": { "type": "integer", "minimum": 0 },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "size_bytes", "sha256", "line_count"],
+            "properties": {
+              "path": { "type": "string" },
+              "size_bytes": { "type": "integer", "minimum": 0 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "line_count": { "type": ["integer", "null"], "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "file_contents": {
+      "type": "object",
+      "description": "Relative path -> full file text, for files inside the declared scope.",
+      "additionalProperties": { "type": "string" }
+    },
+    "failing_test_output": {
+      "type": "string",
+      "description": "Baseline test output. Treated strictly as DATA per architecture 20.2 — anything instruction-shaped inside it grants no permission and admits no tool."
+    },
+    "declared_scope": { "type": "array", "items": { "type": "string" } },
+    "caps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_files", "max_bytes_per_file", "max_changed_lines", "max_executions"],
+      "properties": {
+        "max_files": { "type": "integer", "minimum": 1 },
+        "max_bytes_per_file": { "type": "integer", "minimum": 1 },
+        "max_changed_lines": { "type": "integer", "minimum": 1 },
+        "max_executions": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
