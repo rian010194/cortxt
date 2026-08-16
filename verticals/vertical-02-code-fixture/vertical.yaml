@@ -1,0 +1,33 @@
+vertical_id: vertical-02-code-fixture
+package_version: 0.1.0
+contract_version: 0.1.0
+supported_workflows:
+  - workflow_id: fix-failing-test
+    input_schema_uri: ./schemas/patch-request.schema.json
+    output_schema_uri: ./schemas/patch-proposal.schema.json
+    capability_tags:
+      - structured-output
+      - code-reading
+capability_tags:
+  - structured-output
+  - code-reading
+required_schemas:
+  - ./schemas/patch-request.schema.json
+  - ./schemas/patch-proposal.schema.json
+instructions_index:
+  system-prompt-fix: ./instructions/system-prompt-fix.md
+eval_suite:
+  fixture_directory: ./evals/synthetic
+  minimum_fixture_count: 1
+artifact_policy:
+  allowed_mime_types:
+    - text/x-python
+    - text/plain
+  max_size_bytes: 65536
+  retention_class: review
+non_goals:
+  - Sandbox, container image, mounts and timeouts owned by the platform runtime
+  - Credential or API-key management owned by the harness
+  - Dispatch or orchestration owned by the harness
+  - Multi-file, cross-module and dependency-graph fixtures deferred
+  - File creation and deletion out of scope for v0.1

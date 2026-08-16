@@ -1,4 +1,4 @@
-"""Tool admission gate for Agent Runtime's read-only research profile.
+"""Tool admission gate for Agent Runtime.
 
 Every tool call is admitted (path-sandboxed to explicitly allowed roots,
 no traversal) before it runs — a denied admission never reaches disk I/O,
@@ -6,7 +6,6 @@ so no cost or side effect occurs for an invalid attempt.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 
@@ -36,9 +35,25 @@ class ToolGate:
         raise ToolAdmissionError(f"{tool_name}: path outside allowed roots: {resolved}")
 
 
-def read_fixture_file(gate: ToolGate, path: str) -> dict:
-    resolved = gate.admit("read_fixture_file", path)
-    try:
-        return json.loads(resolved.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeError, OSError) as error:
-        raise ToolExecutionError(f"read_fixture_file: could not read/parse {resolved}") from error
+class WriteGate(ToolGate):
+    """Admission gate for local_mutation tools (design spec decision 4, part 2).
+
+    Stricter than ToolGate in three ways, all fail-closed and all checked
+    before any file handle is opened:
+
+    1. the pre-resolution path must NOT be a symlink (``Path.is_symlink()``),
+       so a symlink planted inside the workspace cannot be used as a hop —
+       this is checked independently of (3), not as a restatement of it;
+    2. the resolved path must already exist AND be a regular file — v0.1 has
+       no file creation and no file deletion (design spec decision 4);
+    3. the resolved path must be contained in an allowed root (inherited).
+    """
+
+    def admit(self, tool_name: str, path: str) -> Path:
+        candidate = Path(path)
+        if candidate.is_symlink():
+            raise ToolAdmissionError(f"{tool_name}: path is a symlink: {path}")
+        resolved = super().admit(tool_name, path)
+        if not resolved.is_file():
+            raise ToolAdmissionError(f"{tool_name}: path is not a regular file: {resolved}")
+        return resolved
