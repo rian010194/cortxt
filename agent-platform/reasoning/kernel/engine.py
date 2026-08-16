@@ -14,9 +14,12 @@ from typing import Callable
 from .operators import (
     OperatorResult,
     decompose,
+    falsify_fix,
     inspect,
+    inspect_diff_against_scope,
     inspect_with_model,
     integrate,
+    propose_minimal_patch,
     verify,
     verify_against_schema,
 )
@@ -80,6 +83,15 @@ def _solve_geometric(state: ProblemState, expected=None) -> OperatorResult:
 def _solve_model_assisted(state: ProblemState, invoke, validate) -> OperatorResult:
     inspect_with_model(state, invoke)
     return verify_against_schema(state, validate)
+
+
+def _solve_coding_assisted(state: ProblemState, propose, inspect_scope, verify_fix) -> OperatorResult:
+    propose_minimal_patch(state, propose)
+    scoped = inspect_diff_against_scope(state, inspect_scope)
+    if state.confidence < 1.0:
+        # Short-circuit: an out-of-scope patch must never reach the sandbox.
+        return scoped
+    return falsify_fix(state, verify_fix)
 
 
 def _flatten_scalars(obj):
@@ -151,6 +163,22 @@ class Engine:
         result = _solve_model_assisted(state, invoke, validate)
         return {
             "strategy": Strategy.MODEL_ASSISTED.value,
+            "value": result.value,
+            "confidence": state.confidence,
+            "steps": state.transformation_log,
+        }
+
+    def solve_coding_assisted(self, content, propose, inspect_scope, verify) -> Result:
+        """Explicit entry point for CODING_ASSISTED — never auto-selected by
+        select_strategy(), always invoked directly by a caller that has a real
+        patch-proposing callable, a real scope check over a platform-computed
+        diff, and a real two-sided sandbox verifier (Agent Runtime's
+        coding_loop). All three arrive as callables so reasoning/ gains no
+        imports (ADR-016)."""
+        state = new_problem(content)
+        result = _solve_coding_assisted(state, propose, inspect_scope, verify)
+        return {
+            "strategy": Strategy.CODING_ASSISTED.value,
             "value": result.value,
             "confidence": state.confidence,
             "steps": state.transformation_log,
