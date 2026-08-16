@@ -187,3 +187,52 @@ class Coordinator:
         seq = state.latest_sequence(state.load(self._store, root_session_id))
         state.append(self._store, root_session_id, seq, "session.terminal", {"status": "cancelled"})
         return {"cancelled": cancelled}
+
+    def recover(self) -> list[dict]:
+        summaries: list[dict] = []
+        if not self._store.is_dir():
+            return summaries
+
+        for session_dir in self._store.iterdir():
+            if not session_dir.is_dir():
+                continue
+            session_id = session_dir.name
+            try:
+                doc = state.load(self._store, session_id)
+            except state.SessionError:
+                continue
+
+            is_root = any(e["event_type"] == "child.spawned" for e in doc["events"])
+            if not is_root:
+                continue
+            already_terminal = any(e["event_type"] == "session.terminal" for e in doc["events"])
+            if already_terminal:
+                continue
+
+            any_lost = False
+            for event in doc["events"]:
+                if event["event_type"] != "child.spawned":
+                    continue
+                child_session_id = event["payload"]["session_id"]
+                child_doc = state.load(self._store, child_session_id)
+                if any(e["event_type"] == "session.terminal" for e in child_doc["events"]):
+                    continue
+
+                child = ChildProcess(pid=event["payload"]["pid"], pgid=event["payload"]["pgid"],
+                                      session_id=child_session_id, start_time=event["payload"]["start_time"])
+                if self._spawner.is_alive(child):
+                    seq = state.latest_sequence(state.load(self._store, child_session_id))
+                    state.append(self._store, child_session_id, seq, "session.reattached", {})
+                else:
+                    any_lost = True
+                    seq = state.latest_sequence(state.load(self._store, child_session_id))
+                    state.append(self._store, child_session_id, seq, "session.terminal",
+                                 {"status": "lost", "reason": "child lost during supervisor outage"})
+
+            if any_lost:
+                seq = state.latest_sequence(state.load(self._store, session_id))
+                state.append(self._store, session_id, seq, "session.terminal",
+                             {"status": "blocked", "reason": "child lost during supervisor outage"})
+
+            summaries.append({"root_session_id": session_id, "any_lost": any_lost})
+        return summaries
