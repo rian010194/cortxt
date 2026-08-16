@@ -24,7 +24,7 @@ from runtime.execution.subprocess_sandbox import (
 class FakeRunner:
     """Stands in for subprocess.run — records calls, returns a canned result."""
 
-    def __init__(self, stdout: str = "", stderr: str = "", returncode: int = 0, raise_exc=None):
+    def __init__(self, stdout: str | bytes = "", stderr: str | bytes = "", returncode: int = 0, raise_exc=None):
         self.calls: list[dict] = []
         self._stdout, self._stderr, self._rc, self._raise = stdout, stderr, returncode, raise_exc
 
@@ -32,7 +32,16 @@ class FakeRunner:
         self.calls.append({"argv": argv, **kwargs})
         if self._raise is not None:
             raise self._raise
-        return subprocess.CompletedProcess(argv, self._rc, self._stdout, self._stderr)
+        errors = kwargs.get("errors", "strict")
+        stdout = self._decode(self._stdout, kwargs.get("text"), errors)
+        stderr = self._decode(self._stderr, kwargs.get("text"), errors)
+        return subprocess.CompletedProcess(argv, self._rc, stdout, stderr)
+
+    @staticmethod
+    def _decode(value, text, errors):
+        if not text or not isinstance(value, bytes):
+            return value
+        return value.decode("utf-8", errors)
 
 
 def _workspace(tmp_path: Path) -> Path:
@@ -154,6 +163,20 @@ def test_run_does_not_flag_truncation_for_short_output(tmp_path):
     assert result.truncated is False
     assert result.timed_out is False
     assert result.exit_code == 0
+
+
+def test_run_replaces_invalid_utf8_bytes_instead_of_crashing(tmp_path):
+    """If the container emits non-UTF-8 bytes, errors=\"replace\" must keep the
+    sandbox run intact instead of letting a strict decode raise UnicodeDecodeError."""
+    work = _workspace(tmp_path)
+    runner = FakeRunner(stdout=b"out prefix \xff suffix", stderr=b"err \xfe marker")
+    result = ExecutionSandbox(runner=runner).run("run_pytest", work)
+    assert result.exit_code == 0
+    assert "\ufffd" in result.stdout
+    assert "out prefix" in result.stdout
+    assert "\ufffd" in result.stderr
+    assert "marker" in result.stderr
+    assert runner.calls[0].get("errors") == "replace"
 
 
 def test_run_reports_timed_out_without_raising(tmp_path):
