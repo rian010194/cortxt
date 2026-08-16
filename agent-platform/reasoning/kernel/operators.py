@@ -145,3 +145,48 @@ def verify_against_schema(state: ProblemState, validate) -> OperatorResult:
     state.confidence = 1.0 if ok else 0.0
     state.record("verify_against_schema", f"validated with confidence {state.confidence:.2f}")
     return OperatorResult(computed)
+
+
+def propose_minimal_patch(state: ProblemState, propose) -> OperatorResult:
+    """Ask an external callable for a patch proposal; store it on the state.
+
+    ``propose`` is ``Callable[[Any], Any]``: takes the state's content (the
+    assembled coding context) and returns the platform's patch record. This is
+    the only model-assisted operator in the CODING_ASSISTED strategy — the
+    other two are deterministic checks over what this one produced.
+    """
+    proposal = propose(state.content)
+    state._computed = proposal  # type: ignore[attr-defined]
+    state.record("propose_minimal_patch", "obtained a patch proposal via an external call")
+    return OperatorResult(proposal)
+
+
+def inspect_diff_against_scope(state: ProblemState, inspect_scope) -> OperatorResult:
+    """Check the PLATFORM-COMPUTED diff against the declared scope; 1.0/0.0.
+
+    ``inspect_scope`` is ``Callable[[Any], bool]`` over ``state._computed``.
+    The model does not get to assert what it changed — the caller passes a
+    check over a diff the platform derived itself.
+    """
+    computed = getattr(state, "_computed", None)
+    in_scope = bool(inspect_scope(computed))
+    state.confidence = 1.0 if in_scope else 0.0
+    detail = "diff is within the declared scope" if in_scope else "scope_expansion detected"
+    state.record("inspect_diff_against_scope", detail)
+    return OperatorResult(computed)
+
+
+def falsify_fix(state: ProblemState, verify) -> OperatorResult:
+    """Try to falsify the fix; confidence 1.0 only if falsification failed.
+
+    ``verify`` is ``Callable[[Any], bool]``. The caller's verifier is expected
+    to be two-sided — the suite must pass WITH the patch and fail WITHOUT it —
+    so a patch that "passes" by deleting or neutering the test is caught.
+    Absence of evidence is not evidence of passing: a missing or unparsable
+    sandbox result must make ``verify`` return False, not True.
+    """
+    computed = getattr(state, "_computed", None)
+    survived = bool(verify(computed))
+    state.confidence = 1.0 if survived else 0.0
+    state.record("falsify_fix", f"falsification check gave confidence {state.confidence:.2f}")
+    return OperatorResult(computed)

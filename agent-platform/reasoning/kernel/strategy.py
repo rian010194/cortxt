@@ -16,6 +16,7 @@ class Strategy(str, Enum):
     RECURSIVE = "recursive"
     GEOMETRIC = "geometric"
     MODEL_ASSISTED = "model_assisted"
+    CODING_ASSISTED = "coding_assisted"
     HUMAN_ESCALATION = "human_escalation"
 
 
