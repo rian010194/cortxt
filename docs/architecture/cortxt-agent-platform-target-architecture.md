@@ -831,20 +831,29 @@ legacy path   target path
 | --- | --- |
 | Hermes koordinering | Cortxt Supervisor |
 | Hermes agentprofiler | Cortxt Agent Profiles |
-| Pi coding harness | Cortxt Agent Runtime + Coding Profile |
 | Extern agent-memory | Cortxt Problem State och Memory |
 | Ad hoc agentdekomposition | Cortxt RLM Engine |
 | Modellbunden tool loop | Cortxt Agent Runtime + Tool Gateway |
 
-### 22.3 Övergångsroller
+Pi coding harness stod tidigare i denna tabell som en ersättningsrad. Per
+ADR-019 (2026-08-16) är det inte längre korrekt: Cortxt Agent Runtime +
+Coding Profile är ett **tillägg** till, inte en ersättning för, Pi. Se 22.3.
 
-Hermes, Pi och Prime Agent kan under migrationen användas som:
+### 22.3 Övergångs- och permanenta roller
+
+Hermes koordinerande roll, Prime Agent och andra icke-kodningsmotorer kan
+under migrationen användas som:
 
 - benchmark;
 - fallback;
 - kompatibilitetsadapter;
 - inspirations- eller referensimplementation;
 - experimentväg för att testa hypoteser innan egen implementation är klar.
+
+**Kodningsmotorer (Pi, Hermes, Codex, framtida GitHub Copilot) är undantagna
+från detta migrationsmönster per ADR-019.** De är permanenta routingval i
+Cortxts kodningspolicy, jämte Cortxts egen Coding Agent (Fas 3 och framåt).
+Ersättningskriterierna i 24.2 gäller inte längre kodningsmotorer.
 
 Ingen extern agentruntime ska vara ett dolt beroende i Cortxt Agent Core.
 
@@ -909,6 +918,9 @@ Exit:
 
 - en enkel kodfixture kan lösas och verifieras utan Pi eller Hermes;
 - workspace-, nätverks- och budgettak är maskinellt bevisade.
+
+Detta exit-kriterium bevisar kapacitet, inte en avsikt att göra Pi eller
+Hermes onödiga — de förblir permanenta routingval per ADR-019.
 
 ### Fas 4 — Supervisor v0.1
 
@@ -996,7 +1008,13 @@ Exit:
 - operatörsgrindar och result envelope är kompletta;
 - evalresultat är minst likvärdiga för migrerade task classes.
 
-### 24.2 Pi kan lämna huvudvägen när
+### 24.2 Historisk: Pi som huvudväg (upphävd av ADR-019)
+
+Denna sektion beskrev tidigare villkor för att Pi skulle lämna huvudvägen.
+Per ADR-019 (2026-08-16) ersätts inte Pi — Pi, Hermes och Codex är permanenta
+routingval jämte Cortxts egen Coding Agent. Villkoren nedan står kvar som
+kvalitetsgolv för när Cortxts Coding Agent är ett **giltigt routingval** för
+en uppgiftsklass, inte som ersättningskriterier:
 
 - Coding Agent kan orientera sig i repositoryt;
 - Execution Runtime upprätthåller skriv- och nätverksgränser;
@@ -1077,7 +1095,17 @@ Följande ska avgöras innan respektive implementation:
 1. Implementationsspråk för Supervisor och Agent Runtime.
 2. Processmodell för root och child sessions.
 3. Första persistensformatet för Problem State och trajectories.
-4. Första execution sandbox på Windows och Linux.
+4. ~~Första execution sandbox på Windows och Linux.~~ Delvis löst (verifierat
+   2026-08-16, Kimi K2.7-code-review av Fas 3 mot main: hela `docker_required`-
+   sviten kördes live på Windows med Docker Desktop, alla 8 boundary-tester
+   gröna, inklusive nätverksisolering/DNS/timeout-proberna). Docker-baserad
+   execution sandbox (`agent-platform/runtime/execution/subprocess_sandbox.py`)
+   fungerar på Windows och Linux och är CI-gated (`docker_required`-jobbet i
+   `.github/workflows/ci.yml`) — OS-isoleringsfrågan A4 avsåg är löst. Kvarstår
+   öppet: ingen subprocess-only-fallback finns när Docker saknas (Fas 4:s
+   `sandbox_degraded`-fält förutsätter en sådan väg, men den måste byggas från
+   grunden), och portabla minnes-/CPU-tak för sandboxen är fortfarande out of
+   scope (assumption A10 i Fas 3-specen).
 5. Vilken extern provideradapter som används som bootstrap.
 6. Vilka fixtures som utgör quality floor för Hermes- och Pi-ersättning.
 7. Om Agent Platform initialt ligger i detta repo eller i ett eget package med
@@ -1107,7 +1135,9 @@ Följande är förslag tills de godkänts genom repositoryts beslutsprocess:
 1. Cortxt bygger en egen Agent Platform inom det befintliga kontrollplanet.
 2. Cortxt Agent Runtime blir på sikt primärt agent harness.
 3. Cortxt Supervisor ersätter på sikt Hermes koordinerande huvudroll.
-4. Cortxt Coding Agent ersätter på sikt Pi som primär coding harness.
+4. Cortxt Coding Agent är ett permanent tillägg till routingpolicyn för
+   kodningsuppgifter, inte en ersättning för Pi/Hermes/Codex (upphävd och
+   ersatt av ADR-019, 2026-08-16 — se §22.3/§24.2).
 5. RLM och geometric reasoning ägs av Cortxt Agent Core.
 6. Inference är en utbytbar port; egenhostad inference införs stegvis.
 7. Hermes, Pi och Prime Agent används under migrationen som adapters,
