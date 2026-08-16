@@ -1095,7 +1095,17 @@ Följande ska avgöras innan respektive implementation:
 1. Implementationsspråk för Supervisor och Agent Runtime.
 2. Processmodell för root och child sessions.
 3. Första persistensformatet för Problem State och trajectories.
-4. Första execution sandbox på Windows och Linux.
+4. ~~Första execution sandbox på Windows och Linux.~~ Delvis löst (verifierat
+   2026-08-16, Kimi K2.7-code-review av Fas 3 mot main: hela `docker_required`-
+   sviten kördes live på Windows med Docker Desktop, alla 8 boundary-tester
+   gröna, inklusive nätverksisolering/DNS/timeout-proberna). Docker-baserad
+   execution sandbox (`agent-platform/runtime/execution/subprocess_sandbox.py`)
+   fungerar på Windows och Linux och är CI-gated (`docker_required`-jobbet i
+   `.github/workflows/ci.yml`) — OS-isoleringsfrågan A4 avsåg är löst. Kvarstår
+   öppet: ingen subprocess-only-fallback finns när Docker saknas (Fas 4:s
+   `sandbox_degraded`-fält förutsätter en sådan väg, men den måste byggas från
+   grunden), och portabla minnes-/CPU-tak för sandboxen är fortfarande out of
+   scope (assumption A10 i Fas 3-specen).
 5. Vilken extern provideradapter som används som bootstrap.
 6. Vilka fixtures som utgör quality floor för Hermes- och Pi-ersättning.
 7. Om Agent Platform initialt ligger i detta repo eller i ett eget package med
