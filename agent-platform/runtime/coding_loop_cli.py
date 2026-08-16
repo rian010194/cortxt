@@ -58,18 +58,22 @@ def _session_writer_scope(writer: SessionWriter):
     session_id = writer._session_id
 
     def _patched_create(store, task_id):  # noqa: ARG001 - session pre-created by Supervisor
-        return original["load"](store_path, session_id)
+        with writer._lock:
+            return original["load"](store_path, session_id)
 
     def _patched_load(store, sid):  # noqa: ARG001
-        return original["load"](store_path, session_id)
+        with writer._lock:
+            return original["load"](store_path, session_id)
 
     def _patched_latest_sequence(session_doc):  # noqa: ARG001
-        return original["latest_sequence"](original["load"](store_path, session_id))
+        with writer._lock:
+            return original["latest_sequence"](original["load"](store_path, session_id))
 
     def _patched_append(store, sid, expected_sequence, event_type, payload):  # noqa: ARG001
-        doc = original["load"](store_path, session_id)
-        current = original["latest_sequence"](doc)
-        return original["append"](store_path, session_id, current, event_type, payload)
+        with writer._lock:
+            doc = original["load"](store_path, session_id)
+            current = original["latest_sequence"](doc)
+            return original["append"](store_path, session_id, current, event_type, payload)
 
     state.create = _patched_create
     state.load = _patched_load
