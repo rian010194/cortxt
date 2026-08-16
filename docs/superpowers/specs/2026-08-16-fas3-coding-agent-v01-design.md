@@ -35,6 +35,9 @@ Prove Fas 3's exit criterion from the target-architecture staircase (§23):
 1. **a simple code fixture can be solved and verified without Pi or Hermes**; and
 2. **workspace, network and budget ceilings are machine-proven.**
 
+Detta exit-kriterium bevisar kapacitet, inte en avsikt att göra Pi eller
+Hermes onödiga — de förblir permanenta routingval per ADR-019.
+
 The second half is what makes Fas 3 different from Fas 2. Fas 2's exit criterion
 was a capability claim ("a research fixture can be solved"). Fas 3's is a
 capability claim *plus a containment claim*, and a containment claim is only

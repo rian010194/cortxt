@@ -4,7 +4,7 @@ Auktoritativt index över arkitekturbesluten i detta repo. Status per decision-s
 `docs/style-guide.md` / ADR-mönstret: **Accepted** = normativt inom sitt scope; **Proposal** = reviewbart
 förslag, inte implementeringsauktoritet; **Superseded** = historisk referens, ersatt av nyare beslut.
 
-Uppdaterat: 2026-08-14 (ADR-017, reasoning-kärnan accepterad).
+Uppdaterat: 2026-08-16 (ADR-019, permanent multi-engine routing för kodningsmotorer).
 
 | # | Titel | Status | Notis |
 | --- | --- | --- | --- |
@@ -15,6 +15,8 @@ Uppdaterat: 2026-08-14 (ADR-017, reasoning-kärnan accepterad).
 | 015 | Cortxt First Wedge and Product Surface (F1) | **Accepted** | Wedge B: provider-/dataklassstyrd långvarig analys; repository+CLI |
 | 016 | Agent Platform bounded context, InferencePort och provider-assurance | **Accepted** (amended 2026-08-14 för reasoning/ per ADR-017) | Bounded context + InferencePort + dataklass→gate; reasoning/ nu tracked/Accepted |
 | 017 | Agent Platform — reasoning-kärnan accepterad som tracked arkitektur | **Accepted** (post-review) | Vertikalt slice DM1–4 (PR #113, commit `09f1d8a`) bevisar behovet; `agent-platform/reasoning/` → tracked |
+| 018 | Workflow-state carrier — GitHub Issue labels | **Accepted** | `workflow:*`-labels är tillståndsbärare (ADR-018); Project 4 frusen legacy |
+| 019 | Coding execution — permanent multi-engine routing, not Pi/Hermes replacement | **Accepted** | Pi/Hermes/Codex (+ framtida Copilot) permanenta routingval jämte egen Coding Agent; upphäver §24.2-ersättningskriterier i target-architecture.md |
 
 ## Beslut och auktoritet
 

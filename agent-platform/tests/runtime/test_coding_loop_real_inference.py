@@ -19,7 +19,7 @@ import pytest
 from adapters.inference.budget_gate import BudgetGate
 from runtime.coding.coding_loop import CodingLoop
 from runtime.coding.coding_profile import CODING_PROFILE
-from runtime.execution.subprocess_sandbox import ExecutionSandbox, SANDBOX_IMAGE_TAG, docker_available
+from runtime.execution.subprocess_sandbox import ExecutionSandbox
 from runtime.text_inference_port import TextInferencePort
 
 VERTICAL = Path(__file__).resolve().parents[3] / "verticals" / "vertical-02-code-fixture"
@@ -29,16 +29,11 @@ SYSTEM_PROMPT = (VERTICAL / "instructions" / "system-prompt-fix.md").read_text(e
 
 
 @pytest.mark.real_inference
-def test_off_by_one_fixture_solved_without_pi_or_hermes(tmp_path):
+@pytest.mark.docker_required
+def test_off_by_one_fixture_solved_without_pi_or_hermes(tmp_path, sandbox_image):
     model = os.environ.get("CORTXT_INFERENCE_MODEL")
     if not model:
         pytest.skip("CORTXT_INFERENCE_MODEL not set")
-    if not docker_available():
-        pytest.skip(
-            "Docker daemon is not reachable -- this test is ALSO gated by "
-            "docker_required (Task 8/13); a skip here is not a pass for "
-            "either exit-criterion half"
-        )
 
     budget_gate = BudgetGate(max_calls=1, db_path=tmp_path / "spend.db")
     port = TextInferencePort(
@@ -47,7 +42,7 @@ def test_off_by_one_fixture_solved_without_pi_or_hermes(tmp_path):
         provider_evidence={"approved": True, "provider_id": "synthetic-provider"},
         data_class="L0",
     )
-    sandbox = ExecutionSandbox(image=SANDBOX_IMAGE_TAG, max_executions=4)
+    sandbox = ExecutionSandbox(image=sandbox_image, max_executions=4)
     loop = CodingLoop(
         store=tmp_path / "sessions",
         port=port,

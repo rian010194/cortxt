@@ -163,8 +163,9 @@ class ExecutionSandbox:
         started = time.monotonic()
         try:
             proc = self._runner(
-                argv, capture_output=True, text=True, timeout=self._timeout,
-                check=False, shell=False, env=child_env(), cwd=None,
+                argv, capture_output=True, text=True, errors="replace",
+                timeout=self._timeout, check=False, shell=False,
+                env=child_env(), cwd=None,
             )
             stdout, stderr, exit_code, timed_out = proc.stdout or "", proc.stderr or "", proc.returncode, False
         except subprocess.TimeoutExpired as expired:

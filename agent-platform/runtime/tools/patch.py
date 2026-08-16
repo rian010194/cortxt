@@ -94,7 +94,13 @@ def apply_patch(gate: WriteGate, work_root: Path, changes: list[dict],
         new_content = change["new_content"]
         check_file_size(relative, new_content, caps)
         resolved = gate.admit("apply_patch", str(work_root / relative))
-        old_content = resolved.read_text(encoding="utf-8")
+        try:
+            old_content = resolved.read_text(encoding="utf-8")
+        except UnicodeDecodeError as error:
+            raise PatchError(
+                "workspace_inconsistent",
+                f"existing file is not valid UTF-8: {relative}",
+            ) from error
         total_changed += changed_line_count(old_content, new_content)
         planned.append((resolved, new_content))
     check_changed_lines(total_changed, caps)
