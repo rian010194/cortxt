@@ -88,11 +88,26 @@ def _process_start_time(pid: int) -> float | None:
         finally:
             kernel32.CloseHandle(handle)
     else:
+        # A child that has exited but not yet been reaped is a zombie: its
+        # /proc/pid/stat entry persists (state 'Z') until something calls
+        # wait() on it, which would otherwise make is_alive() report a dead
+        # child as alive forever. Reap opportunistically (best-effort; only
+        # succeeds if this process is the real OS parent and the child has
+        # already exited) ...
+        try:
+            os.waitpid(pid, os.WNOHANG)
+        except (ChildProcessError, OSError):
+            pass
         stat_path = Path(f"/proc/{pid}/stat")
         if not stat_path.is_file():
             return None
         try:
             fields = stat_path.read_text(encoding="utf-8").split(")")[-1].split()
+            # ... and, independent of whether the reap above succeeded,
+            # treat a zombie ('Z') as not alive: fields[0] is process state,
+            # the first field after "comm)".
+            if fields[0] == "Z":
+                return None
             return float(fields[19])  # starttime is field 22, 0-indexed after "comm"
         except (OSError, IndexError, ValueError):
             return None
