@@ -124,8 +124,10 @@ class ProcessSpawner:
                 PROCESS_TERMINATE = 1
                 handle = ctypes.windll.kernel32.OpenProcess(PROCESS_TERMINATE, False, child.pid)
                 if handle:
-                    ctypes.windll.kernel32.TerminateProcess(handle, 1)
-                    ctypes.windll.kernel32.CloseHandle(handle)
+                    try:
+                        ctypes.windll.kernel32.TerminateProcess(handle, 1)
+                    finally:
+                        ctypes.windll.kernel32.CloseHandle(handle)
             except OSError:
                 pass
         else:
