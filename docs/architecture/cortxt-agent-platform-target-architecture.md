@@ -831,20 +831,29 @@ legacy path   target path
 | --- | --- |
 | Hermes koordinering | Cortxt Supervisor |
 | Hermes agentprofiler | Cortxt Agent Profiles |
-| Pi coding harness | Cortxt Agent Runtime + Coding Profile |
 | Extern agent-memory | Cortxt Problem State och Memory |
 | Ad hoc agentdekomposition | Cortxt RLM Engine |
 | Modellbunden tool loop | Cortxt Agent Runtime + Tool Gateway |
 
-### 22.3 Övergångsroller
+Pi coding harness stod tidigare i denna tabell som en ersättningsrad. Per
+ADR-019 (2026-08-16) är det inte längre korrekt: Cortxt Agent Runtime +
+Coding Profile är ett **tillägg** till, inte en ersättning för, Pi. Se 22.3.
 
-Hermes, Pi och Prime Agent kan under migrationen användas som:
+### 22.3 Övergångs- och permanenta roller
+
+Hermes koordinerande roll, Prime Agent och andra icke-kodningsmotorer kan
+under migrationen användas som:
 
 - benchmark;
 - fallback;
 - kompatibilitetsadapter;
 - inspirations- eller referensimplementation;
 - experimentväg för att testa hypoteser innan egen implementation är klar.
+
+**Kodningsmotorer (Pi, Hermes, Codex, framtida GitHub Copilot) är undantagna
+från detta migrationsmönster per ADR-019.** De är permanenta routingval i
+Cortxts kodningspolicy, jämte Cortxts egen Coding Agent (Fas 3 och framåt).
+Ersättningskriterierna i 24.2 gäller inte längre kodningsmotorer.
 
 Ingen extern agentruntime ska vara ett dolt beroende i Cortxt Agent Core.
 
@@ -909,6 +918,9 @@ Exit:
 
 - en enkel kodfixture kan lösas och verifieras utan Pi eller Hermes;
 - workspace-, nätverks- och budgettak är maskinellt bevisade.
+
+Detta exit-kriterium bevisar kapacitet, inte en avsikt att göra Pi eller
+Hermes onödiga — de förblir permanenta routingval per ADR-019.
 
 ### Fas 4 — Supervisor v0.1
 
@@ -996,7 +1008,13 @@ Exit:
 - operatörsgrindar och result envelope är kompletta;
 - evalresultat är minst likvärdiga för migrerade task classes.
 
-### 24.2 Pi kan lämna huvudvägen när
+### 24.2 Historisk: Pi som huvudväg (upphävd av ADR-019)
+
+Denna sektion beskrev tidigare villkor för att Pi skulle lämna huvudvägen.
+Per ADR-019 (2026-08-16) ersätts inte Pi — Pi, Hermes och Codex är permanenta
+routingval jämte Cortxts egen Coding Agent. Villkoren nedan står kvar som
+kvalitetsgolv för när Cortxts Coding Agent är ett **giltigt routingval** för
+en uppgiftsklass, inte som ersättningskriterier:
 
 - Coding Agent kan orientera sig i repositoryt;
 - Execution Runtime upprätthåller skriv- och nätverksgränser;
