@@ -25,6 +25,11 @@ try:
     _RI_AVAILABLE = True
 except Exception:  # pragma: no cover - only when the optional dep is absent
     _RI_AVAILABLE = False
+    # Bound as placeholders (never called for real -- _RI_AVAILABLE guards that)
+    # so tests can monkeypatch.setattr these names even when the optional
+    # package isn't installed, e.g. in default CI.
+    _resilient_execute = None
+    _HttpAdapter = None
 
 
 class TextInferenceError(RuntimeError):
@@ -117,8 +122,9 @@ class TextInferencePort:
         content = content.strip()
         if content.startswith("```"):
             content = content.strip("`")
-            if content.startswith("json"):
-                content = content[4:]
+            first_line, _, rest = content.partition("\n")
+            if first_line.strip().isalpha():
+                content = rest
             content = content.strip()
         try:
             result = json.loads(content)
