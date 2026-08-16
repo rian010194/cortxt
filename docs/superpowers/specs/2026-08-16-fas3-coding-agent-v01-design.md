@@ -1,26 +1,32 @@
 # Fas 3 — Coding Agent v0.1 — design
 
-Status: proposed, awaiting operator review
+Status: approved (operator decisions recorded 2026-08-16 — see "Open assumptions" for A1/A4/A5/A6; A0 already resolved, target-architecture doc merged to main same night)
 Date: 2026-08-16
 Authority: architectural proposal for one bounded vertical slice; does not override `docs/agents/current-operating-model.md`
 Related: `docs/architecture/cortxt-agent-platform-target-architecture.md` §13 (Coding Agent), §15 (Tool Gateway och Execution Runtime), §20 (Säkerhetsmodell), §23 (Fas 3 — Coding Agent v0.1), §32 (Tool Platform); `docs/superpowers/specs/2026-08-15-fas2-agent-runtime-v01-design.md` (the phase this builds directly on); ADR-016/ADR-017 (prove the need via one vertical slice before promoting)
 
-> **Hard dependency: Fas 2 must merge first.** Everything below extends
+> **Dependency: Fas 2 is merged.** Everything below extends
 > `agent-platform/runtime/` — `session_state.py`, `text_inference_port.py`,
-> `tools.py`, `agent_loop.py`, `research_profile.py` — plus the additive
-> `Strategy.MODEL_ASSISTED` extension to `agent-platform/reasoning/kernel/`.
-> As of this writing that code is implemented and code-reviewed but **not yet in
-> `main`** (branches `agent/fas2-agent-runtime-plan` / `agent/fas2-agent-runtime-impl`).
-> No Fas 3 implementation task may start before Fas 2 is merged; this spec was
-> written against the Fas 2 *plan document*'s code listings, not against merged
-> source.
+> `tools/` (moved from `tools.py`, see A1), `agent_loop.py`, `research_profile.py`
+> — plus the additive `Strategy.MODEL_ASSISTED` extension to
+> `agent-platform/reasoning/kernel/`. As of this update, that code is on `main`
+> (#143), including two follow-up fixes discovered by actually running its
+> `real_inference`-marked tests live (#146: `TextInferencePort` never worked
+> against the real backend; #147: a fixture-scope bug hid the RLM/Geometric
+> real-inference path from ever running). This spec was originally written
+> against the Fas 2 *plan document*'s code listings; the Fas 3 implementation
+> plan should read the real merged source, not this spec's descriptions of it,
+> the same lesson #146/#147 taught about Fas 2 itself.
 
 > **Draft status.** Unlike the Fas 2 spec — which came out of an interactive
-> grilling dialogue with the operator — this draft was written from the
-> architecture documents alone. Every place where a real fork was resolved by
-> the author rather than by the operator is tagged
-> **`Assumption, needs operator confirmation:`** inline, and all of them are
-> collected in §"Open assumptions" at the end. Nothing here is final.
+> grilling dialogue with the operator — this draft was first written from the
+> architecture documents alone, then reviewed and decided by the operator
+> (Rikard) on 2026-08-16. Every place tagged
+> **`Assumption, needs operator confirmation:`** has been resolved — see the
+> "Open assumptions" table for each ruling. The reasoning below each decision
+> is left as originally written where the operator's ruling matched the
+> recommendation (A1, A5, A6); decision 3 and decision 7 are rewritten where
+> the ruling changed the recommendation (A4).
 
 ## Purpose
 
@@ -109,25 +115,42 @@ mistake `docs/architecture/vertical-package-contract.md` explicitly warns
 against. The dict-constant form is deliberately shaped so the later YAML
 manifest is a serialization change, not a redesign.
 
-**Assumption, needs operator confirmation (A1):** Fas 3 is allowed to *move*
-Fas 2's `runtime/tools.py` into `runtime/tools/` — i.e. touch just-merged Fas 2
-code — rather than adding a sibling `runtime/coding_tools.py` and leaving Fas 2's
-file frozen. The move is behaviour-preserving and keeps one admission gate for
-the whole runtime, which is why it is recommended; but it does modify code that
-was reviewed under a different phase.
+**Resolved (A1, 2026-08-16):** the operator confirmed Fas 3 may *move* Fas 2's
+`runtime/tools.py` into `runtime/tools/` — i.e. touch just-merged Fas 2 code —
+rather than adding a sibling `runtime/coding_tools.py` and leaving Fas 2's file
+frozen. The move is behaviour-preserving and keeps one admission gate for the
+whole runtime, consistent with §32.1's eventual single Tool Gateway.
 
 **Deferred:** unified-diff *parsing* (see decision 6), file creation and
 deletion, multi-file patches beyond the declared cap, static-analysis/lint tools,
 build tools, git operations of any kind (the run workspace in v0.1 is not a git
 repo — see decision 4).
 
-### 3. Execution sandbox — build new and simpler; do **not** depend on Pi Builder
+### 3. Execution sandbox — build new, subprocess bounds plus a real container boundary; do **not** depend on Pi Builder
+
+**Operator decision (A4, 2026-08-16):** the draft recommended shipping only
+the subprocess-level bounds below and deferring real OS-level isolation to a
+Fas 3.1 follow-up. The operator overruled that: **real OS-level network/process
+isolation is Fas 3 scope, not deferred.** `falsify_fix`'s sandbox run therefore
+executes inside a container (`docker run --network none --rm`, image built
+from a pinned, digest-referenced base — never `latest`), not a bare
+`subprocess.run`. The subprocess-level bounds below are not replaced by this —
+they are the argv/cwd/env/timeout discipline the container is launched
+*through*, matching §15's "defence in depth" framing rather than substituting
+one boundary for the other. This is the implementation plan's job to detail
+precisely (image build, CI Docker availability, digest pinning process); this
+spec fixes the decision and its consequences, not the Dockerfile.
 
 **Decision:** v0.1 uses a bounded, in-process-launched subprocess
-(`runtime/execution/subprocess_sandbox.py`), not Docker, and does not reuse
-`experiments/runtime-pi-builder/`.
+(`runtime/execution/subprocess_sandbox.py`) to construct and validate the
+command, which then runs `--network none` inside a minimal container rather
+than directly on the host. It does not reuse `experiments/runtime-pi-builder/`
+as a topology (see the four reasons below, all still binding), though its
+Squid egress-allowlist pattern and its digest-pinning gap analysis are
+directly relevant background for the implementation plan.
 
-Bounds enforced by the sandbox, all before `subprocess.run` is reached:
+Bounds enforced by the sandbox before the container is ever launched, plus the
+container boundary itself:
 
 - **Command allowlist.** The command is chosen from a static allowlist of argv
   *lists*, never a string. v0.1's allowlist has exactly one entry:
@@ -146,8 +169,16 @@ Bounds enforced by the sandbox, all before `subprocess.run` is reached:
   recorded as a flag in the result, never silently applied.
 - **Deterministic cleanup** — the run workspace is a temp-dir copy, removed on
   every exit path including exceptions (§15's "deterministic cleanup").
+- **Real network isolation (A4).** The command runs inside a container with
+  `--network none` — no network namespace access at all, not an allowlist. The
+  fixture's test suite needs zero network access, so full denial is both the
+  simplest and the strongest option; there is no Squid-style egress-allowlist
+  proxy to build or maintain for v0.1. This replaces the admission-layer-only
+  claim decision 7 originally proposed with an OS-enforced one.
 
-**Why not Pi Builder — four independent reasons, any one of which is sufficient:**
+**Why not Pi Builder's topology — three of the original four reasons still
+apply; the fourth (Docker unavailability) is resolved by the operator decision
+below, not by avoiding Docker:**
 
 1. **It is no longer in the repository.** `experiments/runtime-pi-builder/` was
    moved to `archive/` (commit `2dcc5fa`) and `archive/` was then moved out of
@@ -168,22 +199,30 @@ Bounds enforced by the sandbox, all before `subprocess.run` is reached:
    operativsystemsbehörighet." In Fas 3 the agent runs outside and only a single
    validated *command* crosses into the sandbox. Adapting Pi Builder would mean
    inverting its central design choice, which is not reuse.
-4. **Docker is not available in default CI.** The exit criterion demands
-   machine-proven ceilings. A boundary proof that only runs where Docker Desktop
-   happens to be up is a weaker proof than one that runs on every push.
+4. ~~Docker is not available in default CI.~~ **Resolved by the operator
+   decision, not sidestepped: GitHub Actions' hosted Ubuntu runners have Docker
+   pre-installed and available to every job without extra setup** — this is
+   what makes requiring it in default CI actually safe to do, rather than a
+   proof that only works on a developer's machine with Docker Desktop running.
+   The implementation plan must add/confirm a Docker-capable CI job; this was
+   the substance of the original concern and it still needs verifying in
+   practice, not just asserting here.
 
-**What is explicitly *not* claimed:** a plain subprocess is not an OS-level
-sandbox. It bounds cwd, env, argv, wall-clock and output — it does not bound
-memory, CPU, or raw network syscalls. See decision 7 for exactly how far the
-network claim goes, and what would have to change to strengthen it.
+**What is explicitly *not* claimed:** `--network none` removes network access
+entirely, which is a real OS-enforced boundary — but the container is not a
+full untrusted-code sandbox on every dimension. Memory and CPU ceilings remain
+out of scope for v0.1 (A10) — not portably enforceable in a way this spec
+verifies, and the fixture's workload doesn't need them to falsify the exit
+criterion. If a future fixture needs to run genuinely untrusted or
+resource-hungry code, that is the point at which memory/CPU ceilings
+(`docker run --memory`/`--cpus`) become load-bearing rather than deferred.
 
-**Promotion path (named, not built):** when a fixture needs untrusted
-dependencies, real network policy, or resource ceilings, the sandbox interface
-(`ExecutionSandbox.run(command_id, workspace) -> ExecutionResult`) gets a second
-implementation — a container-backed one that *may* legitimately borrow Pi
-Builder's proven pieces (the Squid egress allowlist topology and its
-allow/deny test pair are genuinely good work). The interface is designed as a
-seam for that, so v0.1 is not a dead end.
+**Pi Builder pieces reused vs. not:** the Squid egress-allowlist topology is
+*not* used — `--network none` is strictly stronger than an allowlist proxy for
+a workload needing zero network access, and building a proxy layer here would
+be solving a harder problem than v0.1 has. Nothing else from Pi Builder is
+reused; the container is a plain, minimal, digest-pinned base image invoked
+directly by `subprocess_sandbox.py`, not the Pi Builder compose topology.
 
 ### 4. Bounded write policy — copy-in workspace, existing-files-only, platform-computed diff
 
@@ -303,19 +342,14 @@ the spec says so rather than letting one word cover all three:
 |---|---|---|
 | **Workspace** | Real attempted escapes (traversal, absolute path outside root, symlink pointing outside) are executed in tests against a real temp file, and the test asserts both that the call raised **and** that the target file's bytes are unchanged. | **Strong.** Enforced in our own code, on every platform, in default CI. |
 | **Budget** | `BudgetGate` (reused unmodified from Fas 1/2) is consulted before any model call; a `max_calls=0` gate makes the run terminate `blocked` with the backend provably never reached (same test shape as Fas 2's `test_invoke_blocked_by_budget_before_any_backend_call`). Sandbox executions are separately capped by a per-run max-execution count. | **Strong for call-count; weak for money** — `BudgetGate` counts calls, not USD (see A3). |
-| **Network** | Enforced *at the admission boundary*: the tool manifest declares `network: none`; the sandbox refuses any command not on the one-entry allowlist; the child env contains no credentials or proxy config. A defence-in-depth probe test runs a script in the sandbox that attempts an outbound TCP connect. | **Weakest of the three.** A plain subprocess is not network-isolated by the OS. Nothing stops a *hypothetical* allowlisted command from opening a socket — the guarantee rests on the allowlist containing exactly one command that we control. |
+| **Network** | **Resolved by operator decision A4 — OS-enforced, not admission-layer.** The command executes inside `docker run --network none`: the container has no network namespace access, not an allowlist a hypothetical future command could bypass. The admission-layer checks (tool manifest declares `network: none`, allowlist, no credentials in env) remain as defence-in-depth, but the binding guarantee is now the container's network namespace, verified by a probe test that attempts an outbound TCP connect from inside the container and asserts it fails at the OS level (connection refused/unreachable), not merely that the app-level code chose not to try. | **Strong**, matching Workspace. Requires a Docker-capable CI job (see decision 3, reason 4) — that dependency is the real cost of this strength, and the implementation plan must confirm it holds before this row can be marked proven rather than merely designed. |
 
-**Assumption, needs operator confirmation (A4):** whether admission-layer network
-denial is sufficient to call the network ceiling "maskinellt bevisat" for Fas 3's
-exit criterion, or whether the operator requires real OS-level isolation
-(container with `--network none`, or the Pi Builder Squid topology) before Fas 3
-can be signed off. This is the single most consequential open question in this
-draft, because it decides whether the Docker-backed sandbox is Fas 3 scope or
-Fas 3.1 scope. The recommendation is: ship the subprocess sandbox, be explicit
-in the exit-criterion evidence that the network claim is admission-layer, and
-open the container-backed implementation as a tracked follow-up — the same way
-Fas 2 shipped without real inference configured and recorded that the actual
-exit-criterion run was a separate manual step.
+**Operator decision (A4, 2026-08-16):** the operator required real OS-level
+isolation from the start rather than the draft's recommended admission-layer-only
+v0.1 with a deferred Fas 3.1 follow-up. This is reflected above and in decision 3.
+Consequence: the Docker-backed sandbox is Fas 3 scope, not Fas 3.1 scope, and
+"Out of scope for this slice" no longer lists it (see below) — it moved into
+the Components/Data flow sections that the implementation plan will detail.
 
 ### 8. Cross-cutting: the code fixture has to be authored — nothing in the repo is code-shaped
 
@@ -364,17 +398,16 @@ only be the *mechanism*, which is what is under test.
 contract, those belong to the platform, and in Fas 3 they belong to
 `runtime/execution/`.
 
-**Assumption, needs operator confirmation (A5):** that the fixture belongs in
-`verticals/` as a vertical package at all. The counter-argument is real: "fix a
-failing test" is not a customer domain the way AI Act classification is; it is a
-platform capability, and it could equally live as
-`agent-platform/tests/fixtures/code/`. It is proposed as a vertical because that
-is where every other fixture in this repo lives and because it gives Fas 4+ a
-place to add harder cases — but this is the author's call, not the operator's.
+**Resolved (A5, 2026-08-16):** the fixture belongs in `verticals/` as a vertical
+package. §13 of the target architecture frames Coding Agent itself as "the
+first complete application of the platform, not the final product boundary" —
+structurally parallel to future verticals (research, architecture work,
+document analysis), not mere infrastructure beneath them. The vertical-package
+contract's machinery (schemas, instructions, evals) is reused rather than
+inventing a second fixture format under `tests/`.
 
-**Assumption, needs operator confirmation (A6):** the vertical id
-`vertical-02-code-fixture`. `vertical-01-ai-act` is the only numbered precedent
-and there may be a reserved plan for `vertical-02`.
+**Resolved (A6, 2026-08-16):** the vertical id `vertical-02-code-fixture` is
+confirmed free and stands as named.
 
 ## Components
 
@@ -392,7 +425,7 @@ New, under `agent-platform/runtime/`:
 | `tools/workspace.py` | `list_workspace`, `read_workspace_file`, `search_workspace` (literal substring, capped result count and line length). |
 | `tools/patch.py` | `apply_patch` (validated, capped, all-or-nothing) and `diff_workspace` (`difflib` unified diff vs. baseline). |
 | `tools/execution.py` | `run_tests` — the only `bounded_execution` tool; thin wrapper over the sandbox. |
-| `execution/subprocess_sandbox.py` | `ExecutionSandbox.run(command_id, workspace) -> ExecutionResult`. Argv allowlist, pinned cwd, scrubbed env, timeout, output cap, no shell. The seam a future container-backed sandbox implements. |
+| `execution/subprocess_sandbox.py` | `ExecutionSandbox.run(command_id, workspace) -> ExecutionResult`. Argv allowlist, pinned cwd, scrubbed env, timeout, output cap, no shell, launches the validated command inside `docker run --network none` against a pinned digest base image (A4). |
 | `execution/write_policy.py` | The quantitative caps and the scope-glob check, as pure functions over a diff — no I/O, so they are trivially testable. |
 
 Modified (additively, following Fas 2's `MODEL_ASSISTED` precedent exactly):
@@ -506,7 +539,9 @@ Mirrors Fas 2's conventions and adds what a containment phase needs.
   `write_policy` pure functions (caps, scope globs); `apply_patch`
   (all-or-nothing, validation order); `diff_workspace` (diff correctness against
   a known baseline); `subprocess_sandbox` (allowlist, env scrubbing, timeout,
-  output cap, cwd pinning); the three new kernel operators (delegation only, no
+  output cap, cwd pinning, and — requires the CI Docker job (A4) — a real
+  network-connect probe from inside the container asserting OS-level refusal,
+  not just that the app chose not to dial out); the three new kernel operators (delegation only, no
   hidden arithmetic — same assertions Fas 2 used for `inspect_with_model` /
   `verify_against_schema`); and a regression guard that Fas 2's DM1 solvers and
   `MODEL_ASSISTED` are unaffected.
@@ -547,12 +582,10 @@ faithful to §15's isolation intent and is the natural next hardening step.
 
 ## Out of scope for this slice
 
-- **Docker/container-backed execution sandbox** — named as the promotion path
-  (decision 3), not built. Pending A4.
-- **Real OS-level network isolation** — v0.1's network ceiling is admission-layer
-  (decision 7). Pending A4.
-- **Resource ceilings other than wall-clock and output size** — no memory or CPU
-  limits; not portably enforceable for a plain subprocess.
+- **Resource ceilings other than wall-clock, output size, and network** — no
+  memory or CPU limits (A10 — network moved from "out of scope" into Fas 3
+  scope per A4; memory/CPU did not, since the fixture's workload doesn't need
+  them to falsify the exit criterion).
 - **The other seven §13.2 coding operators** — deferred with rationale
   (decision 5); needs a tracking issue, like Fas 2's #138.
 - **Symbol index, dependency map, repository-instruction ingestion** (decision 1).
@@ -572,17 +605,20 @@ faithful to §15's isolation intent and is the natural next hardening step.
 ## Open assumptions — the operator-review checklist
 
 Every judgment call this draft made without the operator, in one place.
+A0/A1/A4/A5/A6 were decided by the operator (Rikard) on 2026-08-16 — see
+Ruling. A2/A3/A7/A8/A9/A10 remain open; they were not part of that review
+round and should be picked up before or during the implementation plan.
 
-| # | Assumption | Why it matters |
-|---|---|---|
-| A0 | **`docs/architecture/cortxt-agent-platform-target-architecture.md` is not on `main`.** It exists only in commit `8dd1048` on branch `agent/reasoning-kernel-dm1`, and `archive/` (which held `experiments/runtime-pi-builder/`) has been moved out of the repository. This spec's §-references are therefore unresolvable for a reader of `main`. | Blocks review, and blocks anyone later checking whether this spec matched the architecture. Needs the target-architecture doc merged (or its location corrected) before Fas 3 implementation starts. |
-| A1 | Fas 3 may convert Fas 2's `runtime/tools.py` into a `runtime/tools/` package (behaviour-preserving move + re-export), touching just-merged Fas 2 code. | Alternative is a frozen Fas 2 file and a sibling module, i.e. two admission gates. |
-| A2 | Patch representation is whole-file content + platform-computed diff, not model-emitted unified diff. | Trades scalability for verifiability; decides how much of §13.1's "minimala patchar" Fas 3 actually delivers. |
-| A3 | Call-count budget (`BudgetGate.max_calls`) satisfies "budgettak maskinellt bevisat". There is no USD ceiling in the platform today, and Pi Builder's own README records observed model cost as `unknown`. | If the operator reads "budgettak" as money, Fas 3 needs cost telemetry first and this spec understates its dependencies. |
-| A4 | **Admission-layer network denial is sufficient for "nätverkstak maskinellt bevisat" in v0.1**; real OS-level isolation is a tracked follow-up. | The most consequential open question. Decides whether the container-backed sandbox is Fas 3 scope or Fas 3.1 scope. |
-| A5 | The new code fixture belongs in `verticals/` as a vertical package rather than as a plain test fixture under `agent-platform/tests/`. | "Fix a failing test" is a platform capability, not a customer domain; the vertical-package contract may not be the right home. |
-| A6 | The vertical id `vertical-02-code-fixture` is free and appropriately named. | `vertical-02` may be reserved for a planned customer domain. |
-| A7 | The sandbox may launch `sys.executable` with a scrubbed env rather than a pinned per-run virtualenv. | Fidelity vs. simplicity; affects how strong the isolation claim is. |
-| A8 | Deferred items (the seven remaining §13.2 operators, container sandbox, symbol/dependency map, unified-diff application) should get GitHub issues, but **this draft created none** — the controller session owns issue creation. | Fas 2's deferral was captured as issue #138; Fas 3's deferrals currently have no tracking. |
-| A9 | The run workspace lives in a system temp dir and is destroyed on every exit path, so a failed run leaves no inspectable artifact beyond the session log's diff and hashes. | If the operator wants post-mortem inspection of failed runs, workspaces need a retained `.runs/` location and a retention policy instead. |
-| A10 | No process-level memory/CPU ceiling in v0.1 (wall-clock and output size only). | If "process limits" from §15 is read as mandatory for Fas 3, this is a gap. |
+| # | Assumption | Why it matters | Ruling |
+|---|---|---|---|
+| A0 | **`docs/architecture/cortxt-agent-platform-target-architecture.md` is not on `main`.** It exists only in commit `8dd1048` on branch `agent/reasoning-kernel-dm1`, and `archive/` (which held `experiments/runtime-pi-builder/`) has been moved out of the repository. This spec's §-references are therefore unresolvable for a reader of `main`. | Blocks review, and blocks anyone later checking whether this spec matched the architecture. Needs the target-architecture doc merged (or its location corrected) before Fas 3 implementation starts. | **RESOLVED.** Doc merged to `main` 2026-08-16, same night, before this review. §-references now resolve. |
+| A1 | Fas 3 may convert Fas 2's `runtime/tools.py` into a `runtime/tools/` package (behaviour-preserving move + re-export), touching just-merged Fas 2 code. | Alternative is a frozen Fas 2 file and a sibling module, i.e. two admission gates. | **RESOLVED: convert.** One admission gate now, consistent with §32.1's eventual single Tool Gateway — fragmenting into per-phase gates now is debt the Gateway would have to reconcile later. |
+| A2 | Patch representation is whole-file content + platform-computed diff, not model-emitted unified diff. | Trades scalability for verifiability; decides how much of §13.1's "minimala patchar" Fas 3 actually delivers. | Open. |
+| A3 | Call-count budget (`BudgetGate.max_calls`) satisfies "budgettak maskinellt bevisat". There is no USD ceiling in the platform today, and Pi Builder's own README records observed model cost as `unknown`. | If the operator reads "budgettak" as money, Fas 3 needs cost telemetry first and this spec understates its dependencies. | Open. |
+| A4 | **Admission-layer network denial is sufficient for "nätverkstak maskinellt bevisat" in v0.1**; real OS-level isolation is a tracked follow-up. | The most consequential open question. Decides whether the container-backed sandbox is Fas 3 scope or Fas 3.1 scope. | **RESOLVED: real isolation now, not deferred.** Operator overruled the draft's recommendation — `docker run --network none` is Fas 3 scope. See rewritten decisions 3 and 7. |
+| A5 | The new code fixture belongs in `verticals/` as a vertical package rather than as a plain test fixture under `agent-platform/tests/`. | "Fix a failing test" is a platform capability, not a customer domain; the vertical-package contract may not be the right home. | **RESOLVED: vertical.** §13 frames Coding Agent itself as "the first complete application of the platform" — structurally parallel to other verticals (research, architecture work), not mere infrastructure beneath them. |
+| A6 | The vertical id `vertical-02-code-fixture` is free and appropriately named. | `vertical-02` may be reserved for a planned customer domain. | **RESOLVED: confirmed free**, name stands. |
+| A7 | The sandbox may launch `sys.executable` with a scrubbed env rather than a pinned per-run virtualenv. | Fidelity vs. simplicity; affects how strong the isolation claim is. | Open — largely superseded by A4's container decision; revisit if the image build needs its own interpreter rather than the host's. |
+| A8 | Deferred items (the seven remaining §13.2 operators, container sandbox, symbol/dependency map, unified-diff application) should get GitHub issues, but **this draft created none** — the controller session owns issue creation. | Fas 2's deferral was captured as issue #138; Fas 3's deferrals currently have no tracking. | Open — issue creation still owed; container sandbox item is now moot (it's in scope, not deferred). |
+| A9 | The run workspace lives in a system temp dir and is destroyed on every exit path, so a failed run leaves no inspectable artifact beyond the session log's diff and hashes. | If the operator wants post-mortem inspection of failed runs, workspaces need a retained `.runs/` location and a retention policy instead. | Open. |
+| A10 | No process-level memory/CPU ceiling in v0.1 (wall-clock and output size only). | If "process limits" from §15 is read as mandatory for Fas 3, this is a gap. | Open — network ceiling moved in-scope per A4; memory/CPU did not. |
