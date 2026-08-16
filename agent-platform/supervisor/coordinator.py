@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import time
@@ -33,8 +34,10 @@ class Coordinator:
         child_session = state.create(self._store, task_id=config["task_id"])
         child_session_id = child_session["session_id"]
 
-        config_path = Path(tempfile.mkstemp(prefix="fas4-child-config-", suffix=".json")[1])
-        config_path.write_text(json.dumps(config), encoding="utf-8")
+        fd, config_path_str = tempfile.mkstemp(prefix="fas4-child-config-", suffix=".json")
+        config_path = Path(config_path_str)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(config))
 
         args = [sys.executable, "-m", "runtime.coding_loop_cli",
                 "--session-id", child_session_id, "--store", str(self._store),
