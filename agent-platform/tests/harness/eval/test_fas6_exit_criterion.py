@@ -16,16 +16,14 @@ The `hash_embedding` arm needs 0 model calls and runs in the default suite. The 
 gated behind `real_inference` (needs CORTXT_EMBEDDING_URL/API_KEY), so a skipped real arm is
 NOT a pass.
 
-STATUS (2026-08-17): SCAFFOLD — the harness helpers (fixture builder, path enumeration, best-path
-selection, determining-metric measurement, baseline arm) are implemented and deterministically
-validated with the hash baseline (0 calls). The fixture is NOT yet a *valid* exit proof: with
-`hash_embedding` on node-ids the current fixture already selects the strong path (score 0.556 vs
-0.183), so a real-embedding arm would be trivially green — it cannot demonstrate the embedding
-improvement §23 requires. A valid fixture must make the competing paths ~equal on the
-graph-based determining metrics so that only *semantic* nearness (real embeddings) can break the
-tie, and it must be constructed a priori (not tuned against results) to stay falsifiable. That
-design is pending and must be resolved BEFORE spending real Voyage budget. Do not rely on this
-test as evidence yet.
+STATUS (2026-08-17): **FIXTURE LÅST och deterministiskt validerad (0 calls).** The semantic
+tie-break fixture (seed 0, ids s1/s2/w1/w2) is pre-registered: the two branches are graph-wise
+equal on the determining metrics, and the `hash_embedding` baseline deterministically mis-ranks
+the semantically-irrelevant branch above the relevant one (0.4837 > 0.4832). The empirical
+real-Voyage arm is gated behind `real_inference`; its pass rule is that the real embedder must
+select the semantically-relevant branch (start->s1->s2->goal) that hash fails to select. The
+fixture is LOCKED — it must NOT be changed after seeing a real-embedding result (see
+`test_fixture_is_valid_and_hash_misranks_deterministically`).
 """
 
 from __future__ import annotations
@@ -54,34 +52,107 @@ class GeoFixture:
     goal: str
 
 
-def _build_fixture(seed: int) -> GeoFixture:
-    """Construct a problem where strong-evidence near-goal paths compete with lure paths.
+def _build_tiebreak_fixture(seed: int, ids=("s1", "s2", "w1", "w2")) -> GeoFixture:
+    """Semantic tie-break fixture: two start->goal paths graphwise-identical but semantically
+    different.
 
-    Deterministic: node ids/evidence/contradiction derived from the seed so the fixture is
-    reproducible (same seed -> same graph). The goal sits at high evidence; two candidate
-    routes from `start` diverge: one short/high-evidence/low-contradiction toward the goal,
-    one long/low-evidence/high-contradiction (a lure).
+    Both routes have length 3 and *identical* per-position evidence/contradiction profiles, so
+    the graph-based determining metrics (goal_relevance, evidence_coverage, contradiction_risk)
+    are equal between the two paths by construction. The ONLY dimension that can distinguish
+    them is `expected_information_gain` — semantic nearness of node content to the goal — which
+    is the embedding-dependent term. ``ids`` lets us fix the node ids deterministically (do NOT
+    change after pre-registration) so we can search over id spellings that make the id-based
+    ``hash_embedding`` baseline mis-rank the paths.
     """
-    # content strings that are semantically different so real embeddings separate them
-    strong = f"targeted claim about resolved outcome {seed}"
-    weak = f"tangential decoy hypothesis {seed}"
-    lurec = f"contradictory assertion {seed}"
+    a1, a2, b1, b2 = ids
+    goal_content = "final resolved outcome: the system reached a stable, consistent conclusion"
+    s1c = "claim directly supporting the final conclusion and consistent with it"
+    s2c = "evidence confirming the resolved outcome, strongly consistent"
+    w1c = "tangential kitchen recipe about unrelated seasonal fruit"
+    w2c = "sports commentary about an unrelated tournament"
     s = ProblemSpace()
     s.add_node(ReasoningNode(id="start", content=f"start context {seed}", evidence=0.4, contradiction=0.1))
-    s.add_node(ReasoningNode(id="s1", content=strong, evidence=0.9, contradiction=0.0))
-    s.add_node(ReasoningNode(id="s2", content=strong, evidence=0.8, contradiction=0.0))
-    s.add_node(ReasoningNode(id="w1", content=weak, evidence=0.2, contradiction=0.1))
-    s.add_node(ReasoningNode(id="w2", content=lurec, evidence=0.1, contradiction=0.85))
-    s.add_node(ReasoningNode(id="goal", content="goal: final resolved state", evidence=0.95, contradiction=0.0))
-    # strong route: start -> s1 -> s2 -> goal
-    s.add_edge("start", "s1")
-    s.add_edge("s1", "s2")
-    s.add_edge("s2", "goal")
-    # lure route: start -> w1 -> w2 -> goal
-    s.add_edge("start", "w1")
-    s.add_edge("w1", "w2")
-    s.add_edge("w2", "goal")
-    return GeoFixture(id=f"seed-{seed}", space=s, start="start", goal="goal")
+    # path A (semantically relevant to goal): s1 -> s2 -> goal
+    s.add_node(ReasoningNode(id=a1, content=s1c, evidence=0.7, contradiction=0.1))
+    s.add_node(ReasoningNode(id=a2, content=s2c, evidence=0.7, contradiction=0.1))
+    # path B (semantically unrelated lure): w1 -> w2 -> goal — SAME evidence/contradiction profile
+    s.add_node(ReasoningNode(id=b1, content=w1c, evidence=0.7, contradiction=0.1))
+    s.add_node(ReasoningNode(id=b2, content=w2c, evidence=0.7, contradiction=0.1))
+    s.add_node(ReasoningNode(id="goal", content=goal_content, evidence=0.9, contradiction=0.0))
+    s.add_edge("start", a1)
+    s.add_edge("start", b1)
+    s.add_edge(a1, a2)
+    s.add_edge(a2, "goal")
+    s.add_edge(b1, b2)
+    s.add_edge(b2, "goal")
+    return GeoFixture(id=f"tiebreak-{seed}", space=s, start="start", goal="goal")
+
+
+def _path_score(space, path, goal, embedder) -> float:
+    from reasoning.geometric import score_path
+    return score_path(space, path, goal, CandidatePathScore(embedder=embedder))
+
+
+def _ranked_paths(space, start, goal, embedder):
+    """Sort all simple start->goal paths by score_path desc with the given embedder."""
+    from reasoning.geometric import CandidatePathScore, score_path
+    scored = [(p, score_path(space, p, goal, CandidatePathScore(embedder=embedder)))
+              for p in _all_simple_paths(space, start, goal)]
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored
+
+
+def _semantically_ground_truth_path(path):
+    """The path that starts on the semantically-relevant branch is the ground truth (starts s1)."""
+    return path and path[1] in ("s1",)
+
+
+def find_misranking_seed(candidate_seeds=range(0, 60), id_sets=None):
+    """Deterministic (0 model calls): find a seed(+id set) where the hash baseline ranks the
+    semantically-irrelevant path above the semantically-relevant one. Run BEFORE any real
+    embedding result; the found configuration is then locked a priori.
+
+    We search over seeds/id-spellings against hash's deterministic id-based ranking — this is
+    constructing a fixture sensitive to embedding quality (hash *does* mis-rank), not tuning
+    against a real-embedding outcome. id_sets default: a few deterministic id spellings.
+    """
+    from reasoning.geometric.embeddings import hash_embedding
+    id_sets = id_sets or [
+        ("s1", "s2", "w1", "w2"),
+        ("a1", "a2", "b1", "b2"),
+        ("claim_alpha", "claim_alpha2", "lure_alpha", "lure_alpha2"),
+        ("p1", "p2", "q1", "q2"),
+    ]
+    for ids in id_sets:
+        for seed in candidate_seeds:
+            fx = _build_tiebreak_fixture(seed, ids=ids)
+            ranked = _ranked_paths(fx.space, fx.start, fx.goal, hash_embedding)
+            if not ranked:
+                continue
+            best_path = ranked[0][0]
+            # ground-truth path is the one starting on s1/a1/claim_alpha/p1 (the "s"-branch)
+            gr_branch = ids[0]
+            if best_path[1] != gr_branch:
+                return seed, ids
+    return None, None
+
+
+def _graphs_equal_between_paths(fx) -> bool:
+    """Validate that the two branches are equal on the graph-based determining metrics."""
+    from reasoning.geometric.embeddings import hash_embedding
+    from reasoning.geometric import score_path, CandidatePathScore
+    ranked = _ranked_paths(fx.space, fx.start, fx.goal, hash_embedding)
+    if len(ranked) < 2:
+        return False
+    p1, p2 = ranked[0][0], ranked[1][0]
+    gr1, ev1, cr1 = _determining_metrics(fx.space, p1, fx.goal, CandidatePathScore(embedder=hash_embedding))
+    gr2, ev2, cr2 = _determining_metrics(fx.space, p2, fx.goal, CandidatePathScore(embedder=hash_embedding))
+    # by construction the two branches have identical evidence/contradiction profiles and equal
+    # graph distance, so the graph-based metrics must be (near-)equal.
+    return (abs(ev1 - ev2) < 1e-9 and abs(cr1 - cr2) < 1e-9 and abs(gr1 - gr2) < 1e-9)
+
+
+
 
 
 def _determining_metrics(space: ProblemSpace, path: list[str], goal: str, policy: CandidatePathScore):
@@ -137,10 +208,50 @@ def _best_path(space: ProblemSpace, start: str, goal: str, embedder):
     return best or [start], best_score or 0.0
 
 
+# --- locked, pre-registered fixture (a priori, do NOT change after real-embedding result) ---
+# Found deterministically (0 calls) via find_misranking_seed: hash_embedding mis-ranks the
+# semantically-irrelevant path (start->w1->w2->goal) above the relevant one (start->s1->s2->goal)
+# by 0.4837 > 0.4832, and the two branches are graph-wise equal on the determining metrics.
+LOCKED_SEED = 0
+LOCKED_IDS = ("s1", "s2", "w1", "w2")
+GROUND_TRUTH_FIRST_NODE = "s1"  # semantically-relevant branch must win for a good embedding
+
+
+def _locked_fixture() -> GeoFixture:
+    return _build_tiebreak_fixture(LOCKED_SEED, ids=LOCKED_IDS)
+
+
+def test_fixture_is_valid_and_hash_misranks_deterministically():
+    """Deterministic fixture pre-registration (0 model calls): the baseline must mis-rank and
+    the branches must be graph-wise equal, else the fixture cannot demonstrate an embedding
+    improvement. This locks the fixture before any real-embedding outcome."""
+    from reasoning.geometric.embeddings import hash_embedding
+
+    fx = _locked_fixture()
+    ranked = _ranked_paths(fx.space, fx.start, fx.goal, hash_embedding)
+    assert len(ranked) >= 2, "fixture must have >=2 candidate paths"
+    best = ranked[0][0]
+    assert best[1] != GROUND_TRUTH_FIRST_NODE, (
+        "fixture invalid: hash already selects the semantically-relevant path; "
+        "cannot demonstrate embedding improvement"
+    )
+    assert _graphs_equal_between_paths(fx), (
+        "fixture invalid: branches differ on graph-based determining metrics"
+    )
+
+
 @pytest.mark.real_inference
 @pytest.mark.docker_required
 def test_fas6_geometric_beats_baseline_on_determining_metrics(tmp_path):
-    """Empirical §23 exit proof, run against a live Voyage embedder (real_inference arm)."""
+    """Empirical §23 exit proof, run against a live Voyage embedder (real_inference arm).
+
+    Because the two branches are graph-wise equal on the determining metrics, the ONLY thing
+    that can break the tie is `expected_information_gain` (semantic nearness to the goal). The
+    exit pass rule: the real embedder must select the semantically-relevant branch
+    (start->s1->s2->goal) that the hash baseline fails to select — demonstrating measurable
+    improvement on sökvalet (which the determining metrics report identically per branch, so
+    no branch can regress them).
+    """
     from adapters.inference.budget_gate import BudgetGate
     from runtime.embedding_port import EmbeddingPort
 
@@ -159,34 +270,25 @@ def test_fas6_geometric_beats_baseline_on_determining_metrics(tmp_path):
         expected_dim=1024,
     )
 
-    results = {}
-    for seed in range(3):
-        fx = _build_fixture(seed)
-        # baseline (deterministic, no model calls)
-        gr_b, ev_b, cr_b = _determining_metrics(fx.space, _best_path(fx.space, fx.start, fx.goal, _hash())[0], fx.goal, CandidatePathScore(embedder=_hash()))
-        # real embedder
-        voy_path, voy_score = _best_path(fx.space, fx.start, fx.goal, voyage)
-        gr_v, ev_v, cr_v = _determining_metrics(fx.space, voy_path, fx.goal, CandidatePathScore(embedder=voyage))
-        results[seed] = {"baseline": (gr_b, ev_b, cr_b), "voyage": (gr_v, ev_v, cr_v), "voy_score": voy_score}
+    fx = _locked_fixture()
+    hash_path, _ = _best_path(fx.space, fx.start, fx.goal, _hash())
+    voy_path, voy_score = _best_path(fx.space, fx.start, fx.goal, voyage)
 
-    # aggregate + assert no regression on each determining metric (tolerance 0) and
-    # improvement on the composite (voy chosen path must not underperform baseline).
-    agg = {seed: results[seed] for seed in results}
-    for seed, r in agg.items():
-        b, v = r["baseline"], r["voyage"]
-        for metric_idx, name in enumerate(["goal_relevance", "evidence_coverage", "contradiction_risk"]):
-            base_val = b[metric_idx]
-            voy_val = v[metric_idx]
-            # contradiction risk is "lower is better": no regression = voy <= base on risk,
-            # and for goal_relevance/evidence_coverage no regression = voy >= base.
-            good = (voy_val <= base_val) if name == "contradiction_risk" else (voy_val >= base_val)
-            # HARD assert for the exit proof: no regression on any determining metric.
-            assert good, (
-                f"Fas 6 exit NOT met, fixture {seed}: {name} regressed "
-                f"(baseline={base_val:.3f} -> voyage={voy_val:.3f})"
-            )
-    print(f"Fas 6 exit empirical results: {agg}")
+    # report actual numbers, not "improvement observed"
+    print("hash best path:", hash_path)
+    print("voyage best path:", voy_path, "score:", round(voy_score, 4))
+    print("hash selected relevant branch?:", hash_path[1] == GROUND_TRUTH_FIRST_NODE)
+    print("voyage selected relevant branch?:", voy_path[1] == GROUND_TRUTH_FIRST_NODE)
 
+    # Exit pass rule: real embedding must correct the baseline's semantic mis-ranking.
+    assert hash_path[1] != GROUND_TRUTH_FIRST_NODE, (
+        "baseline unexpectedly selects the relevant branch; fixture no longer discriminating"
+    )
+    assert voy_path[1] == GROUND_TRUTH_FIRST_NODE, (
+        f"Fas 6 exit NOT met: voyage selected {voy_path} (branch {voy_path[1]}), "
+        f"expected the semantically-relevant branch {GROUND_TRUTH_FIRST_NODE}; "
+        "the real embedder did NOT improve semantic search selection over hash"
+    )
 
 
 def _hash():
