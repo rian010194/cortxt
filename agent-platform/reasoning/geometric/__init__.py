@@ -13,6 +13,7 @@ from .escape_attractor import escape_attractor
 from .explorer import Explorer, exploration_cost
 from .graph_space import ReasoningNode, ProblemSpace
 from .metrics import GraphMetrics
+from .operators import PerspectiveResult, change_perspective
 
 __all__ = [
     "ReasoningNode",
@@ -25,4 +26,6 @@ __all__ = [
     "Contradiction",
     "ContradictionDetector",
     "find_contradiction",
+    "PerspectiveResult",
+    "change_perspective",
 ]
