@@ -83,3 +83,83 @@ Detta betyder att en embeddings-väg **inte behöver uppfinna ny fail-closed-inf
   utan att röra credentials)?
 3. Godkänner du att ett **begränsat riktigt anrop** görs för att verifiera /embeddings-tillgång
   (inom systemhanterad budget, fail-closed), som underlag till beslutet?
+
+## UPPDATERAT VERIFIERINGSRESULTAT (2026-08-17, operatör konfigurerade InferX-bundle) — **A BEKRÄFTAD**
+Operatören deployade InferX-katalogbundlen `Qwen3.6-35B-A3B-FP8 + Qwen3-Embedding-0.6B +
+Qwen3-Reranker-0.6B` och godkände ett nytt, begränsat verifieringsanrop mot den. Resultat:
+**HTTP 200**, `model=Qwen/Qwen3-Embedding-0.6B`, `embedding_dim=1024`, `prompt_tokens=5`.
+Anropet gjordes med API-nyckeln hämtad direkt från urklipp in i anropet — nyckeln skrevs aldrig
+ut eller committades.
+
+- **Stabil bas-URL (modell-nivå, ingen instans-ID inbakad):**
+  `https://model.inferx.net/funccall/tn-1bbbzbamb8/default/Qwen3.6-35B-A3B-FP8/m3/v1`
+  (`/v1` = LLM, `/m2/v1` = rerank, `/m3/v1` = embeddings — per katalogens routing)
+- **Modell:** `Qwen/Qwen3-Embedding-0.6B`
+- **Tidigare 404 var provisorisk, nu förklarad:** berodde på fel modellnamn (chatt-modellen
+  `INFERX_MODEL`, inte en embeddings-modell) — inte på att InferX saknar embeddings-stöd.
+
+Den tidigare öppna frågan 3 (godkänn ett begränsat riktigt anrop) är därmed besvarad: **ja,
+godkänt och genomfört.** Fråga 1/2 besvaras: **A**, med modell/endpoint enligt ovan.
+
+### Ny upptäckt under implementering: adapter-inkompatibilitet
+`cortxt_resilient_inference.http_adapter.OpenAICompatibleAdapter` är hårdkodad mot
+`/chat/completions` och en chatt-meddelande-svarsform (`payload["choices"][0]["message"]`) —
+den kan **inte** återanvändas oförändrad för embeddings (annat endpoint, annat svarsschema:
+`payload["data"][0]["embedding"]`). Löst genom en ny, lokal adapter (`_EmbeddingHttpAdapter` i
+`runtime/embedding_port.py`) som implementerar samma `Adapter`-protokoll
+(`(route, timeout_ms) -> Mapping`) som `cortxt_resilient_inference.runner.execute` förväntar —
+utan att ändra det externa paketet. Skillnad mot `OpenAICompatibleAdapter`: timeout hanteras
+in-process (urllib-timeout) i denna första version, inte via en terminerbar barnprocess;
+processisolering kan läggas till senare om embeddings-anrop behöver samma hård-kill-garanti.
+
+### Status: `embedding_port.py`-kontraktet är förberett (TDD, inga riktiga anrop i testerna)
+- `agent-platform/runtime/embedding_port.py` — `EmbeddingPort`, fail-closed på samma två
+  grindar som `TextInferencePort` (BudgetGate + provider_policy), instansen är själv en
+  `EmbeddingFn` (`__call__(text) -> list[float]`) — drop-in för
+  `CandidatePathScore.embedder`/`GraphMetrics.semantic_closeness`.
+- `agent-platform/tests/runtime/test_embedding_port.py` — 9 tester, alla gröna, inklusive ett
+  drop-in-kompatibilitetstest som anropar `GraphMetrics.semantic_closeness` med en
+  `EmbeddingPort`-instans som `embedder=` (mockad backend, inget riktigt nätverksanrop).
+- Full default-svit efter tillägget: **345 passed, 3 skipped, 20 deselected** (0 regressions;
+  ökningen mot tidigare 331 kommer från task 1:s `test_graph_types.py` + dessa 9 nya).
+- **Ej gjort än:** `CORTXT_EMBEDDING_URL`/`CORTXT_EMBEDDING_API_KEY` är inte kopplade in i någon
+  produktionskonfiguration, och det empiriska Fas 6-exit-steget (RLM mot riktiga
+  resonemangsproblem med denna embedder) är inte kört — det kräver separat budgetgodkännande.
+
+## SLUTLIGT PROVIDERVAL (2026-08-17): Voyage AI, inte InferX
+Efter kostnadsgenomgång (InferX GPU-instanser: instans-kostnad även vid vila/kallstart,
+dubbletter kan uppstå av misstag och kosta pengar) bytte operatören mål till **Voyage AI**
+(Anthropics egen rekommenderade embeddings-partner):
+- **200 miljoner gratis tokens** (de flesta modeller) — vårt verifieringsanrop kostade 4 tokens;
+  ett fullt Fas 6-exit-steg ryms sannolikt inom gratisnivån.
+- **Ren hostad API — inga GPU-instanser att hantera.** Inget Standby/Ready-läge, ingen
+  kallstart, ingen risk för kostsamma dubbletter av det slag InferX visade sig ha.
+- **Samma svarsform som InferX** (`{"object": "list", "data": [{"embedding": [...]}], ...}`) —
+  `_EmbeddingHttpAdapter` i `embedding_port.py` behövde **noll kodändringar** för att fungera
+  mot Voyage; bara ny `base_url`/`model`/`api_key_env`. Detta bekräftar att kontraktet verkligen
+  är providerneutralt, inte bara InferX-format i förklädnad.
+
+**Verifierat (2026-08-17, konto skapat av operatör, ett nytt begränsat anrop):**
+```
+HTTP 200 OK
+model: voyage-4-lite
+object: list
+embedding_dim: 1024
+total_tokens: 4
+```
+API-nyckeln (`cortxt-embedding-verify`, Voyage-projekt "default project") hämtades från
+urklipp direkt in i anropet — aldrig skriven ut eller committad.
+
+**Uppdaterat §27#10-underlag:**
+```json
+{
+  "base_url": "https://api.voyageai.com/v1",
+  "model": "voyage-4-lite",
+  "api_key_env": "CORTXT_EMBEDDING_API_KEY",
+  "embedding_dim": 1024,
+  "verified": "2026-08-17, HTTP 200, 4 total_tokens, Voyage AI (ersätter InferX-alternativet)"
+}
+```
+InferX-spåret ovan kvarstår som ett verifierat, fungerande alternativ (samma kontrakt, andra
+env-värden) om Voyage av någon anledning behöver bytas ut senare — men Voyage är nu det
+rekommenderade förstahandsvalet givet kostnads- och driftsprofilen.
