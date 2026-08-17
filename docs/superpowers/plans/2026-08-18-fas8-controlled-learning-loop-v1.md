@@ -1,9 +1,15 @@
 # Fas 8 — Kontrollerad learning loop — implementationsplan (TDD)
 
-Status: **PLAN-DRAFT — REDO FÖR KIMI-REVIEW PÅ OPERATÖRENS BEGÄRAN (spec GODKÄND).** Bygger på GODKÄND spec
+Status: **PLAN v2 — KIMI-PLAN-REVIEW #1: GODKÄND MED P1+P2, ALLA FYND ÅTGÄRDADE — REDO FÖR
+OPERATÖRSINSPEKTION.** Bygger på GODKÄND spec
 `docs/superpowers/specs/2026-08-18-fas8-controlled-learning-loop-v01-design.md` (Kimi re-review #2 → GODKÄND,
-commit `34bdbec`). Branch `spec/fas8-controlled-learning-loop`. Planen går till Kimi för oberoende review innan
-operatörsinspektion och exekvering (operatörens direktiv: spec→Kimi→plan→Kimi→operatörsinspektion→exekvera).
+commit `34bdbec`). Branch `spec/fas8-controlled-learning-loop`. Planen har gått till Kimi för oberoende review
+(operatörens direktiv): **VERDIKT = GODKÄND (med P1 + P2, inga P0-blockerare)**. Åtgärdade fynd i v2:
+P1.1 `promoted_from` i aktiv-pekare-schemat (Task 2); P1.2 fail-closed-test vid inkomplett matris (Task 4);
+P2.1 stavning PromoteRule→PromotionRule; P2.2 Task 3 Create evidence.py; P2.3 Task 9 explicit
+geometric-regression; P2.4 wrapper som ren intern helper; P2.5 id som @property; P2.6 EmbeddingFn-protokoll i
+mock. Återstår innan exekvering: **operatörsinspektion** (operatörens direktiv). Fullt plan-review-utlåtande i
+`agent-platform/runs/fas8-plan-kimi-review.out` (gitignored, committas ej).
 
 Goal: bygga den deterministiska kärnan av Fas 8 — en versionerad-kandidat-livscykel (CandidateRegistry →
 offline EvidenceMatrix → rule-driven PromotionGate → rollback) med **stabila, typ-agnostiska kontrakt**
@@ -56,12 +62,13 @@ def test_manifest_hash_binds_to_serialized_payload():     # P0.1
     assert c1.payload is payload or c1.payload == payload  # immutable snapshot, not mutable ref
 ```
 **Step 2:** kör → FAIL (modul saknas).
-**Step 3 (GREEN):** implementera `Candidate` som `frozen=True` dataclass: fält `{id, type, name, version,
-manifest_hash, status, payload_ref, proposed_at, promoted_by, promoted_at, rolled_back_at}`; `id` är property
-`f"{type}@{name}@{version}"`; `manifest_hash = sha256(json.dumps(payload, sort_keys=True))`; `payload_ref`
+**Step 3 (GREEN):** implementera `Candidate` som `frozen=True` dataclass med fält `{type, name, version,
+manifest_hash, status, payload_ref, proposed_at, promoted_by, promoted_at, rolled_back_at}` och **`id` som en
+`@property`** (plan-review fynd #7: `id` är DERIVED = `f"{type}@{name}@{version}"`, inte ett dataclass-fält,
+så det kan inte divergera); `manifest_hash = sha256(json.dumps(payload, sort_keys=True))`; `payload_ref`
 pekar på en **låst kopia** (frozen payload-snapshot), inte på original-mutable-objektet.
 **Step 4:** PASS. 
-**Step 5:** commit `feat(learning): Candidate datamodel — immutable, id=type@name@version, hash over serialized payload`.
+**Step 5:** commit `feat(learning): Candidate datamodel — immutable, id property=type@name@version, hash over serialized payload`.
 
 ---
 
@@ -79,7 +86,9 @@ hash-idempotens, audit-kolumner; aktiv-pekare-tabell.
 över två registry-instanser (persistens); `set_active(type,name,version)` skriver aktiv-pekare.
 **Step 3 (GREEN):** `CandidateRegistry` med `sqlite3`, `_ensure_table`-mönster (samma som `BudgetGate`),
 tabeller `candidates(type,name,version,manifest_hash,status,payload_json,promoted_by,audit_timestamps)` +
-`active_candidates(type,name,active_version,updated_at)`; hash-verifiering vid add.
+`active_candidates(type,name,active_version,promoted_from,updated_at)` — **P1.1 från plan-review: `promoted_from`
+finns explicit i aktiv-pekare-tabellen** (fylls vid `set_active` med den föregående aktiva versionen) så
+rollback (Task 7) kan slå upp föregående version atomärt; hash-verifiering vid add.
 **Step 5:** commit `feat(learning): CandidateRegistry — SQLite persist, type@name@version key, active-pointer`.
 
 ---
@@ -92,7 +101,8 @@ facts/events/instructions/tasks) (Beslut 10c, P2.6).
 
 **Files:**
 - Create: `agent-platform/learning/submit.py`
-- Modify: `agent-platform/learning/evidence.py` (fas (a)-del)
+- Create: `agent-platform/learning/evidence.py` (fas (a)-del; **P2.2 från plan-review: filen skapas här, den
+  finns inte före Task 3**)
 - Test: `agent-platform/tests/learning/test_submit.py`
 
 **Step 1 (RED):** submit lägger en kandidat i `eval_pending` och klassificerar dess payload; submit med bruten
@@ -119,9 +129,11 @@ registry + `MANDATORY_OPERATOR_GATES`-union; `promoted_by`-semantik (P2.5).
 - (c) `promoted_by`-initiering: auto-promotion sätter `"gate:<gate_name>"` (P2.5).
 - Och: försämrad policy-kandidat → `REJECT`; strikt-bättre + no-regression → `PROMOTE`; neutral → `AWAIT_OPERATOR`
   (P1.7).
-**Step 3 (GREEN):** `PromoteRule` frozen dataclass; `PromotionGate.evaluate(matrix, candidate_id)` slår upp typ
+- **P1.2 från plan-review (fail-closed vid inkomplett matris):** en `EvidenceMatrix` med saknade rundor →
+  Verdict `REJECT`/`AWAIT_OPERATOR`, **aldrig** `PROMOTE` (spec Error handling: `CannotDecide`).
+**Step 3 (GREEN):** `PromotionRule` frozen dataclass; `PromotionGate.evaluate(matrix, candidate_id)` slår upp typ
 i registry, hämtar registrerade regler, union MANDATORY_OPERATOR_GATES, evaluerar datadrivet (metric/threshold/
-comparator), returnerar `{PROMOTE, AWAIT_OPERATOR, REJECT}`.
+comparator), returnerar `{PROMOTE, AWAIT_OPERATOR, REJECT}`; inkomplett matris → `CannotDecide`-väg → fail-closed.
 **Step 5:** commit `feat(learning): PromotionGate rule-executor — internal rule resolution, self-approval safe`.
 
 ---
@@ -134,8 +146,9 @@ inte klarar → fail-closed (ingen promotionsvikt).
 
 **Files:**
 - Modify: `agent-platform/learning/evidence.py`
-- Modify: `agent-platform/learning/promotion_gate.py` (anrop fas (b) före evaluate — i en orkestrerande
-  wrapper, t.ex. `learning/pipeline.py`)
+- Modify: `agent-platform/learning/promotion_gate.py` (anrop fas (b) före evaluate — **P2.4 från plan-review: en
+  eventuell orkestrerande wrapper, t.ex. `learning/pipeline.py`, om den skapas, deklareras som en REN intern
+  helper utan nya offentliga kontrakt**)
 - Test: `agent-platform/tests/learning/test_evidence.py`
 
 **Step 1 (RED):** matris med bruten hash / ofullständig fixture-täckning / regresserande rad → verifier fail → gate
@@ -158,7 +171,9 @@ live-eval **pre-computar/förcachar** alla embeddings (nodes+goal) så `embedder
 
 **Step 1 (RED):** EvidenceMatrix med 2 kandidater + baseline; no-regression-flagga korrekt; en mockad
 "Voyage-lik" embedder ändrar ranking (semantiskt nära) medan `hash_embedding`-default är deterministisk; test
-att **embedder anropas ≤ #unika texter** (pre-cache, P1.2) med en räknande mock.
+att **embedder anropas ≤ #unika texter** (pre-cache, P1.2) med en räknande mock. **P2.6 från plan-review: mocken
+implementerar samma `EmbeddingFn`-protokoll som `EmbeddingPort` (Fas 6) — `__call__(text) -> vec` — så att
+drop-in-kontraktet för Voyage testas explicit, inte bara en godtycklig callable.**
 **Step 3 (GREEN):** `Evaluator` använder geometriska fixtures + `score_path`; pre-cache-wrapper runt `EmbeddingFn`.
 **Step 5:** commit `feat(learning): Evaluator — multi-candidate EvidenceMatrix, embedding pre-cache (P1.2)`.
 
@@ -215,6 +230,9 @@ saknad rad, DB-läsningsmönster.)
 promotion av v2 → returnerar v2:s `CandidatePathScore`; `score_path` med default-policy ger identiskt resultat
 före/efter (produktion ostörd).
 **Step 3 (GREEN):** tunn injektionsfunktion; ingen ändring av befintliga default-värden.
+**Step 4 (P2.3 från plan-review — explicit regression):** efter `path_scoring.py`-ändringen körs BÅDE
+`tests/learning/` OCH hela `tests/reasoning/geometric/` grönt (inte bara learning-testerna) — stärker
+"ingen regression"-garantin på de 328 passen.
 **Step 5:** commit `feat(learning): active_policy injection into score_path — default unchanged (Beslut 8)`.
 
 ---
