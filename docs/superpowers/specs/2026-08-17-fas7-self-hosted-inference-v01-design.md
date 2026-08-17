@@ -1,21 +1,22 @@
 # Fas 7 — Egenhostad inference — design
 
-Status: **DRAFT v5 — väntar på operatörsgranskning.** Writer: Claude (orchestrator session),
-2026-08-17, branch `spec/fas7-self-hosted-inference` (grenad från `ci/adr-doc-currency-gate-clean`,
-senaste commit `3eda624`). **Revideringshistorik 2026-08-17:** (v1) InferX som förslag → avvisat
-av operatören (opak GPU-prissättning). (v2) Ett lokal-RTX-4060-först-plus-Vast.ai-fallback-förslag
-→ **operatören avvisade det lokala steget explicit** ("vill inte använda min egen GPU"). (v3)
+Status: **DRAFT v6 — GODKÄND MED ANMÄRKNINGAR (Kimi, 2026-08-17), väntar på operatörsgranskning
+av kvarstående P2-punkter.** Writer: Claude (orchestrator session), 2026-08-17, branch
+`spec/fas7-self-hosted-inference` (grenad från `ci/adr-doc-currency-gate-clean`, senaste commit
+`3eda624`). **Revideringshistorik 2026-08-17:** (v1) InferX som förslag → avvisat av operatören
+(opak GPU-prissättning). (v2) Ett lokal-RTX-4060-först-plus-Vast.ai-fallback-förslag →
+**operatören avvisade det lokala steget explicit** ("vill inte använda min egen GPU"). (v3)
 **Vast.ai som enda deployment-väg**, konkret modell (Qwen3-8B-Instruct) + ett kostnadstak på
 25–30 USD föreslaget. (v4) Kostnadstaket korrigerat till ~10 USD och en faktafel om InferX rättad
 (auto-decommission fungerade faktiskt — den verkliga Fas 6-kostnaden var överdimensionering, inte
-ett trasigt idle-shutdown). **(v5, denna version) Beslut 8 tillagt:** operatören föreslog att
-bygga ett eget automatiskt idle-stopp + snabb återstart istället för att lita på ett manuellt
-"kom ihåg att stänga av"-krav. Verifierat mot Vast.ai:s dokumentation (inte gissat): `stop`
-(ej `destroy`) bevarar disk och stoppar bara GPU-fakturering; lagring kostar ~$0.10–0.15/GB/månad;
-Vast.ai har en inbyggd hård **Max Duration**-backstop. Detta sänker "glömd instans"-worst-case
-från ~$146–212/månad till ~$3–7.50/månad (lagring) + Max Duration som absolut yttergräns. Se
-Beslut 8. Ingen Kimi-granskning begärd ännu (kostnadskänsligt per operatörsinstruktion — begärs
-bara om operatören explicit ber om det). Inga kodändringar i produktionsvägar; bara denna spec.
+ett trasigt idle-shutdown). (v5) Beslut 8 tillagt: operatörsförslag om automatiskt idle-stopp +
+Vast.ai:s inbyggda Max Duration som backstop, verifierat mot Vast.ai:s dokumentation. **(v6, denna
+version) Kimi-granskning genomförd på operatörens explicita begäran** (`hermes -p coordinator
+--provider kimi-coding -m kimi-k2.6`) — se "Kimi-granskning" nedan. **P1 åtgärdad:** Beslut 7:s
+påstående "noll ändringar krävs" var fel — `text_inference_port.py:88` har `route_id` hårdkodat,
+vilket motsäger Beslut 6; rättat till en minimal, bakåtkompatibel parametrisering. Fem P2-fynd
+kvarstår som öppna punkter för operatören/plan-fasen (se "Kimi-granskning"). Inga kodändringar i
+produktionsvägar ännu; bara denna spec.
 Authority: architectural proposal for one bounded vertical slice; does not override
 `docs/agents/current-operating-model.md`.
 Related: `docs/architecture/cortxt-agent-platform-target-architecture.md` §14.1–14.3 (Inference
@@ -36,8 +37,8 @@ och den InferX/Voyage-baslinje denna spec jämför mot).
 capacity-metrics, (3) samma `InferencePort`, (4) jämförbar cost/quality-telemetri mot befintliga
 externa providers. Exit: minst en godkänd task class kan köras helt utan extern inferenceprovider.
 
-Den centrala observationen som formar hela denna spec: **leverabel (3) är redan uppfylld av
-existerande kod, inte något som ska byggas.** `TextInferencePort`
+Den centrala observationen som formar hela denna spec: **leverabel (3) är i grunden redan uppfylld
+av existerande kod, inte något som ska byggas om från grunden.** `TextInferencePort`
 (`agent-platform/runtime/text_inference_port.py`) är redan providerneutral — den pratar med
 *vilken* OpenAI-kompatibel `/chat/completions`-endpoint som helst via `CORTXT_INFERENCE_URL`/
 `CORTXT_INFERENCE_API_KEY` (konfigurerbara env-namn via konstruktorn), fail-closed på två oberoende
@@ -45,8 +46,11 @@ grindar (BudgetGate + `inference/provider_policy.py`, ADR-016) innan något nät
 egenhostad modell blir därmed **en tredje instans av samma port-instansiering** — exakt samma
 mönster som `embedding_port.py` (Fas 6) redan bevisade för `/embeddings`. Fas 7 introducerar därför
 **ingen ny arkitektur och ingen ny portklass**; den introducerar en ny *deployment* (en självvald,
-självhostad modell bakom en OpenAI-kompatibel endpoint) och en ny *provider-evidence*-rad för den
-routen.
+självhostad modell bakom en OpenAI-kompatibel endpoint), en ny *provider-evidence*-rad för den
+routen, och **en minimal parametrisering** av porten (Beslut 7, rättat efter Kimi-granskning: ett
+hårdkodat `route_id`-fält behöver bli en konstruktörsparameter — se Beslut 7 för detaljer). Den
+sistnämnda är en enradsändring i linje med portens befintliga parametriseringsmönster, inte ett
+avsteg från "ingen ny arkitektur".
 
 Detta håller specen liten och i linje med `docs/architecture`:s invariant "Inference är en
 utbytbar port; egenhostad inference införs stegvis" (§29.6) och §14.3:s väg ("En lokal eller hyrd
@@ -180,6 +184,13 @@ godkänna, inte en pågående provisionering):**
 för en avgränsad, lågkomplex task class (Beslut 4), (c) kan skalas upp senare om exit-kriteriet
 visar att kvalitet är den begränsande faktorn, inte kostnad.
 
+**Kvantisering — aktivt avvägande, inte implicit default (Kimi P2 #2):** bf16 valdes för
+kvalitetsmarginal, men för just detta avgränsade proof-of-concept kunde en Q4-kvantiserad 8B
+(eller Qwen3-4B) på en billigare 16GB-GPU sänka kostnaden ytterligare, utan att äventyra
+exit-kriteriets syfte (bevisa portoberoende, inte maximal modellkvalitet). Kvarstår som en öppen
+punkt för operatören att ta ställning till vid provisionering — bf16/24GB är denna specs
+rekommendation, inte ett låst krav.
+
 **Hård gräns:** exakt modell + instansstorlek + faktisk provisionering är ett operatörsgodkänt
 kostnadsbeslut (se "Blockerade delar"), inte fastlåst av denna spec. Operatören har låg
 förkunskap om modellval — denna rekommendation är en startpunkt att godkänna eller justera, inte
@@ -274,20 +285,34 @@ eval-metodik.
 anledningen (byggd under Fas 2a för att jämföra kostnad över routes). Att bygga en parallell
 telemetriyta vore duplicering utan nytt behov.
 
-### 7. Samma InferencePort — återanvänds oförändrad, ingen ny portklass
+### 7. Samma InferencePort — återanvänds nästan oförändrad; en minimal parametrisering krävs (rättat efter Kimi P1)
 
 **Beslut:** `TextInferencePort.__init__` accepterar redan `model`, `base_url_env`, `api_key_env`
 som konstruktorparametrar. Den självhostade routen instansieras som **en andra
 `TextInferencePort`-instans** pekad på nya env-namn (t.ex. `CORTXT_SELFHOSTED_URL`/
 `CORTXT_SELFHOSTED_API_KEY`), fail-closed på samma BudgetGate + samma `provider_policy`-modul.
-**Noll ändringar i `text_inference_port.py` krävs.**
 
-**Varför detta är leverabeln, inte ett hinder för den:** §23:s krav är "samma InferencePort" —
-det bevisas precis genom att **inte** skriva ny portkod, samma sätt Fas 6:s `embedding_port.py`
-bevisade portmönstrets generaliserbarhet till en ny endpoint-typ utan att röra
-`text_inference_port.py`. Detta är den tredje instansen av samma mönster (text via InferX,
-embeddings via Voyage, text via egenhostad Vast.ai-serving) — exakt det §16.1-tesen om en
-utbytbar port med många adapters förutsäger.
+**Kimi-granskning (2026-08-17) fann P1: påståendet "noll ändringar krävs" var felaktigt.**
+`text_inference_port.py:88` har `route_id` **hårdkodat** till `"l0-default"` inuti
+`_call_backend`s request-dict — verifierat i koden. Det motsäger Beslut 6, som kräver ett
+distinkt `route_id` (t.ex. `"selfhosted-qwen3-8b"`) per route för `BudgetGate`s
+kostnadsjämförelse (`GROUP BY route_id`). **Rättat beslut:** en minimal, bakåtkompatibel ändring
+krävs — `route_id` görs till en konstruktörsparameter på `TextInferencePort` (default
+`"l0-default"` så befintliga anrop/tester är oförändrade), och `_call_backend` använder
+`self._route_id` istället för den hårdkodade strängen. Detta är fortfarande **inte en ny
+portklass eller ett nytt kontrakt** — bara en parametrisering av ett värde som redan fanns i
+requesten, i linje med hur `model`/`base_url_env`/`api_key_env` redan är parametriserade.
+
+**Varför detta fortfarande är samma leverabel, bara mer ärligt beskriven:** §23:s krav är "samma
+InferencePort" — det handlar om att inte bygga en ny port eller ett nytt kontrakt, inte om
+bokstavligen noll diff. En enradsparametrisering av ett redan konfigurerbart mönster är
+kvalitativt samma sak som Fas 6:s `embedding_port.py` bevisade (generalisering utan
+omarkitektur), inte ett avsteg från det. Detta är fortfarande den tredje instansen av samma
+mönster (text via InferX, embeddings via Voyage, text via egenhostad Vast.ai-serving).
+
+**TDD-konsekvens:** denna ändring (och dess test — verifiera att `route_id` propagerar till
+`fas2a_inference_spend`-raden) blir en explicit, liten TDD-task i planen, inte något som antas
+"redan fungera".
 
 ### 8. Automatiskt idle-stopp + Max Duration-backstop + snabb återstart (tillagt efter operatörsförslag 2026-08-17)
 
@@ -307,18 +332,33 @@ princip som `BudgetGate`s fail-closed-design):
    Duration** sätts vid provisionering (en hyreskontrakt-gräns som stoppar instansen automatiskt
    när den nås, oavsett om vår watcher körs eller kraschat). Detta är den verkliga garantin mot "vår
    egen kod glömde stänga av" — samma roll som `BudgetGate`s DB-baserade fail-closed-räkning spelar
-   för inferenskostnad.
+   för inferenskostnad. **Konkret värde (Kimi P2 #4, tidigare saknat):** rekommendation **2–4
+   timmar** för bevisfasen — gott om marginal mot den uppskattade 5–10h totala körtiden fördelat
+   över flera sessioner, samtidigt som det håller backstoppet meningsfullt tight snarare än
+   slappt. Exakt värde bekräftas vid provisionering, inte fastlåst här.
 
 **Snabb återstart:** en tunn `ensure_running()`-wrapper runt `TextInferencePort`-anropet (plan-
 nivå-detalj var exakt den läggs) kollar instansstatus före anrop; om stoppad, anropas
 `start_instance` och en poll mot `/health` (Beslut 5) tills servern svarar, sedan fortsätter
 anropet. Kallstartslatensen syns bara på det första anropet efter en paus, inte på varje anrop.
 
+**Öppen verifieringspunkt (Kimi P2 #3, inte löst av denna spec):** resonemanget "disk bevaras vid
+stop" förutsätter att Vast.ai garanterar **samma värd** för en stoppad instans. På en
+marknadsplats kan `start_instance` i princip omallokera till en annan värd — om disken är
+värdlokal (inte nätverkslagring) följer den inte med, och "snabb återstart" blir då i praktiken en
+ny nedladdning + omprovisionering. Detta **måste verifieras mot Vast.ai:s faktiska
+instansmodell/dokumentation vid provisioneringstillfället**, inte antas. Om värdstabilitet inte
+kan garanteras är fallbacken enkel: acceptera den långsammare kallstarten (fortfarande fungerande,
+bara inte "snabb") eller höj idle-tröskeln så stopp sker mer sällan.
+
 **Varför detta sänker risken rejält (rättad siffra, inte gissad):** eftersom `stop` bevarar disken
 men stänger av GPU-fakturering, och Vast.ai:s lagringspris typiskt är $0.10–0.15/GB/månad, blir
 worst-case för en **glömd men korrekt stoppad** instans (~30–50 GB modell-disk) **~$3–7.50/månad**
 i lagring — inte de ~$146–212/månad som gällde om GPU:n stod igång kontinuerligt (Beslut 2). Med
 Max Duration som backstop begränsas även scenariot "watchern kraschade" till en hård bortre gräns.
+**Öppen punkt (Kimi P2 #5):** ~$3–7.50/månad-golvet förutsätter att endast lagring debiteras för
+en stoppad instans — bekräfta vid provisionering att Vast.ai inte tar ut någon separat
+"stoppad instans"- eller IP-reservationsavgift som skulle höja golvet.
 
 **Kallstartstid — INTE verifierad, ska mätas, inte antas:** eftersom disken bevaras behöver
 omstarten bara göra container-boot + vLLM-motorinitiering + vikt-laddning till GPU-minne, inte en
@@ -339,8 +379,10 @@ konfigurerade och verifierade innan instansen lämnas obevakad", ett TDD-verifie
 
 ## Components (nya/ändrade moduler)
 
-Inga ändringar i `agent-platform/runtime/text_inference_port.py` eller
-`agent-platform/inference/provider_policy.py`. Nya moduler:
+**Ändrad (minimal, Beslut 7):** `agent-platform/runtime/text_inference_port.py` —
+`route_id` blir en konstruktörsparameter (default `"l0-default"`, bakåtkompatibelt) istället för
+hårdkodad i `_call_backend`. Inga ändringar i `agent-platform/inference/provider_policy.py`.
+Nya moduler:
 
 - `agent-platform/runtime/selfhosted_liveness.py` — `parse_liveness(metrics_payload) ->
   LivenessSample` (ren funktion) + en tunn `_LivenessHttpProbe`-I/O-wrapper (samma split som
@@ -419,6 +461,37 @@ Egenhostad modell (vLLM, OpenAI-kompatibel /chat/completions + /health + /metric
   bevisad-värde-driven iteration, inte v1:s bevis-att-porten-generaliserar-scope.
 - **Ny task class uppfunnen för detta ändamål** — Beslut 4 återanvänder befintlig L0-fixture
   medvetet.
+
+## Kimi-granskning (2026-08-17, kimi-k2.6 via `hermes -p coordinator --provider kimi-coding`)
+
+**Verdikt: GODKÄND MED ANMÄRKNINGAR.** Begärd explicit av operatören (kostnadskänsligt, körs
+sparsamt per operatörsinstruktion). Full utdata i sessionens temp-loggar.
+
+**P1 (åtgärdad, se Beslut 7):** `route_id` hårdkodat i `text_inference_port.py:88` motsade
+Beslut 7:s "noll ändringar"-påstående — verifierat i koden, rättat till en minimal
+konstruktörsparametrisering.
+
+**P2 (öppna, inte blockerande — för operatören/plan-fasen att ta ställning till):**
+1. Kostnadsräkningen är aritmetiskt korrekt (Kimi räknade om själv) men saknar en direkt
+   fotnot/länk till research-underlaget i slutversionen — kosmetiskt, inte substantiellt.
+2. **Kvantiseringsvalet (bf16 vs Q4-kvantiserad 8B, eller Qwen3-4B på en billigare 16GB-GPU) bör
+   vara ett aktivt, dokumenterat avvägande i Beslut 2, inte en implicit default.** Kvaliteten från
+   bf16 är försvarbar men kostnadsbesparingen av en mindre/kvantiserad modell för just detta
+   avgränsade proof-of-concept vägdes inte in explicit.
+3. **Beslut 8:s "disk bevaras vid stop" förutsätter värdstabilitet som inte är verifierad.** På en
+   marknadsplats kan `start_instance` omallokera till en annan värd — om disken är värdlokal
+   (inte nätverkslagring) följer den då inte med, och "snabb återstart" blir i praktiken en ny
+   nedladdning. Måste verifieras mot Vast.ai:s faktiska instansmodell innan Beslut 8 implementeras.
+4. **Max Duration saknar ett konkret rekommenderat värde.** Kimi föreslår 2–4 timmar för
+   bevisfasen som utgångspunkt — tvålagersskyddet (Beslut 8) är arkitektoniskt sunt men behöver
+   ett faktiskt tal, inte bara principen.
+5. Bekräfta att en stoppad instans inte har dolda avgifter (t.ex. IP-reservation) utöver ren
+   lagring — golvet ~$3–7.50/månad (Beslut 8) förutsätter att endast lagring debiteras.
+
+**Hantering:** P1 är åtgärdad i denna version (v6). P2 #2–5 kräver verifiering mot Vast.ai:s
+faktiska plattformsbeteende vid provisioneringstillfället (inte något som kan avgöras från denna
+spec i isolation) — de läggs till som explicita plan-nivå-verifieringssteg, inte antaganden. P2 #1
+är en enkel dokumentationsjustering.
 
 ## Blockerade delar och operatörsbeslut (att lyfta)
 
