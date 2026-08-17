@@ -5,6 +5,10 @@
 **Deciders:** Rikard (operatör)  \
 **Technical Story:** CORTXT F0/F1 beslutspaket, godkänd 2026-08-13 efter oberoende Codex-review (runda 2 GODKÄND); evidensbevis `.hermes/codex/f0f1-decision-packet-2026-08-13.md` (v0.2, gitignored lokalt)
 
+> **STATUS-AMENDMENT (2026-08-16, ADR-020):** proof environment-namnet i Negative consequences nedan
+> ("Norcom/CSL") ska läsas som **"proof environment B"** i alla nya referenser — terminologiredaktion
+> inför repo-publicering, sakbeslutet nedan är oförändrat och kvar Accepted.
+
 ## Context
 
 Batch 0 Foundation Authority Freeze är genomförd: GitHub Project 4 är `Legacy AI Workspace Delivery — frozen`, den befintliga backloggen är legacy-backlog, och ett legacy-item är inte automatiskt Cortxt-roadmap eller dispatchbart. Innan roadmap- och dispatch-arbete kan börja måste Cortxts produktvision, första användare och primära problem vara explicit beslutade.
