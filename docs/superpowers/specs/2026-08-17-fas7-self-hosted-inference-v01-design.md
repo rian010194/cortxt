@@ -1,16 +1,20 @@
 # Fas 7 — Egenhostad inference — design
 
-Status: **DRAFT v3 — väntar på operatörsgranskning.** Writer: Claude (orchestrator session),
+Status: **DRAFT v4 — väntar på operatörsgranskning.** Writer: Claude (orchestrator session),
 2026-08-17, branch `spec/fas7-self-hosted-inference` (grenad från `ci/adr-doc-currency-gate-clean`,
-senaste commit `3eda624`). **Revideringshistorik 2026-08-17:** (v1) InferX som förslag →
-avvisat av operatören (opak GPU-prissättning + Fas 6:s idle-kostnadsincident). (v2) Ett
-lokal-RTX-4060-först-plus-Vast.ai-fallback-förslag → **operatören avvisade det lokala steget
-explicit** ("vill inte använda min egen GPU"). (v3, denna version) **Vast.ai är den enda
-deployment-vägen**, valt över RunPod eftersom operatören prioriterar pris ($0.20/hr L4-klass)
-över RunPod:s bekvämare färdigmall och accepterar det manuella vLLM/Docker-konfigurationsarbetet.
-Beslut 2, 3 och 5 justerade i konsekvens. Ingen Kimi-granskning begärd ännu (kostnadskänsligt per
-operatörsinstruktion — begärs bara om operatören explicit ber om det). Inga kodändringar i
-produktionsvägar; bara denna spec.
+senaste commit `3eda624`). **Revideringshistorik 2026-08-17:** (v1) InferX som förslag → avvisat
+av operatören (opak GPU-prissättning). (v2) Ett lokal-RTX-4060-först-plus-Vast.ai-fallback-förslag
+→ **operatören avvisade det lokala steget explicit** ("vill inte använda min egen GPU"). (v3)
+**Vast.ai som enda deployment-väg**, konkret modell (Qwen3-8B-Instruct) + ett kostnadstak på
+25–30 USD föreslaget. **(v4, denna version) Kostnadstaket korrigerat och en faktafel rättad:**
+operatören ifrågasatte 25–30 USD-siffran (för hög — 5–10h × $0.20–0.29/hr ≈ $1–3, inte $25–30) och
+den tidigare motiveringen "Fas 6:s idle-kostnadsincident" (InferX auto-decommissionerade i
+verkligheten en instans efter 15–20 min idle enligt sessionsloggen — det som faktiskt hände var
+överdimensionering, en 35B-modell för en uppgift som bara behövde 0.6B, plus en duplicerad instans
+manuellt städad för $0.28, inte ett misslyckat idle-shutdown). Se Beslut 1 och Beslut 2 för de
+rättade resonemangen och det nya, lägre taket (~10 USD). Ingen Kimi-granskning begärd ännu
+(kostnadskänsligt per operatörsinstruktion — begärs bara om operatören explicit ber om det). Inga
+kodändringar i produktionsvägar; bara denna spec.
 Authority: architectural proposal for one bounded vertical slice; does not override
 `docs/agents/current-operating-model.md`.
 Related: `docs/architecture/cortxt-agent-platform-target-architecture.md` §14.1–14.3 (Inference
@@ -109,18 +113,25 @@ faser) snarare än att bygga den — detta är därför ett explicit, inte under
 lokal-först-utkastet):** operatören vill uttryckligen **inte** använda sin egen maskin (RTX 4060)
 för detta — inget lokalt steg. En marknadsjämförelse (RunPod, Vast.ai, Lambda Cloud, Together.ai,
 Fireworks.ai, Modal, InferX; se research-underlag 2026-08-17) visade att InferX **inte** har
-transparent $/hr-prissättning för GPU-hyra (bara per-token för katalogmodeller) och att Fas 6
-redan fick ett konkret idle-kostnadsproblem där en InferX-instans inte auto-decommissionerades
-snabbt nog. Mellan de återstående alternativen valde operatören **Vast.ai** framför **RunPod**:
-RunPod:s Serverless är bekvämare (färdig vLLM-mall, äkta scale-to-zero) men dyrare per GPU-timme;
-Vast.ai är billigare ($0.20/hr för en L4-klass GPU, källa: research-underlaget) men kräver manuell
-vLLM/Docker-konfiguration — operatören har uttryckligen prioriterat pris över bekvämlighet och
-bekräftat att det manuella arbetet inte är ett hinder.
+transparent $/hr-prissättning för GPU-hyra (bara per-token för katalogmodeller, ingen
+självbetjänad sida för dedikerad GPU-hyra hittades). Mellan de återstående alternativen valde
+operatören **Vast.ai** framför **RunPod**: RunPod:s Serverless är bekvämare (färdig vLLM-mall,
+äkta scale-to-zero) men dyrare per GPU-timme; Vast.ai är billigare ($0.20/hr för en L4-klass GPU,
+källa: research-underlaget) men kräver manuell vLLM/Docker-konfiguration — operatören har
+uttryckligen prioriterat pris över bekvämlighet och bekräftat att det manuella arbetet inte är
+ett hinder.
 
-**Varför inte InferX:** InferX:s prissättning för GPU-hyra är opak (ingen självbetjänad
-$/hr-sida hittades), och Fas 6:s idle-kostnadsincident visar att auto-decommissioning där inte kan
-litas på. Att fortsätta på samma leverantör "för att det redan finns credentials" vore att
-optimera för bekvämlighet över kostnadskontroll.
+**Varför inte InferX (rättad motivering, v4):** ett tidigare utkast av denna spec påstod att en
+InferX-instans "inte auto-decommissionerades snabbt nog" under Fas 6 — det var **fel**, rättat
+efter operatörens fråga. Sessionsloggen visar tvärtom att InferX **auto-decommissionerade en
+instans efter 15–20 minuters idle**, vilket fungerade. Den faktiska kostnaden där kom från att en
+**35B-modell** deployades för en uppgift (embeddings) som bara behövde en **0.6B**-modell —
+överdimensionering, inte ett trasigt idle-shutdown — plus en duplicerad instans som manuellt
+städades bort för **$0.28** (trivialt belopp). Skälet att undvika InferX här är därför enbart den
+**opaka $/hr-prissättningen för GPU-hyra**, inte ett (obekräftat) påstått
+idle-avstängningsproblem. Detta betyder också att InferX:s bevisade fungerande
+auto-decommissioning är en verklig fördel InferX har som Vast.ai (Beslut 2) saknar — vägt mot
+priset, väger operatören ändå Vast.ai högre.
 
 **Varför inte lokal RTX 4060:** ett tidigare utkast av denna spec föreslog lokal körning som ett
 gratis första steg (tekniskt fullt möjligt — Q4-kvantiserad 7–8B ryms på 8 GB vRAM). Operatören
@@ -140,25 +151,33 @@ cache-marginal, så en **24 GB-GPU** (Vast.ai L4- eller RTX 4090-klass) rymmer d
 kvantiseringens kvalitetsförlust — bättre än den kvantiserade lokal-vägen som avvisades i Beslut 1
 skulle gett.
 
-**Konkret kostnadsram (förslag att godkänna, inte en pågående provisionering):**
+**Konkret kostnadsram (rättad i v4 efter operatörens fråga om taket var rimligt — förslag att
+godkänna, inte en pågående provisionering):**
 - **GPU:** Vast.ai on-demand, L4 (24 GB) i första hand (~$0.20/hr enligt research-underlaget),
   RTX 4090 (24 GB, ~$0.29/hr) som reserv om L4-tillgänglighet är dålig hos en given värd.
 - **Uppskattad total körtid:** setup/felsökning (vLLM-container, modellnedladdning) + N=3-
   eval-rundor + liveness-probe-verifiering — grovt **5–10 timmar** sammanlagt, inte kontinuerlig
   drift.
-- **Kostnadstak att godkänna:** **~25–30 USD** för hela bevisfasen (spec→plan→exit-kriterium),
-  med god marginal mot den grova tidsuppskattningen. Vida under Fas 6:s InferX-incidentskala.
-- **Operativ disciplin (kritiskt, given Fas 6:s idle-incident):** Vast.ai on-demand-instanser har
-  **ingen inbyggd scale-to-zero** (till skillnad från RunPod Serverless, som avvisades i Beslut 1)
-  — instansen kostar per minut tills den **manuellt stoppas**. Plan-nivå-krav: varje eval-session
-  avslutas med en explicit stop-instans-åtgärd, inte "lämnas köra". Detta är den direkta motsvarigheten
-  till incidentens root cause och måste vara en checklisterad, inte underförstådd, del av TDD-planen.
+- **Faktisk kostnad vid avsedd användning:** 5–10h × $0.20–0.29/hr ≈ **$1–3**. (Föregående version
+  av denna spec föreslog ett tak på $25–30 här — en omotiverad ~10× marginal utan förklaring;
+  operatören ifrågasatte den, med rätta.)
+- **Kostnadstak att godkänna: ~10 USD.** Fortfarande ~35–50 timmars marginal mot den uppskattade
+  faktiska användningen (5–10h) — täcker upprepade felsökningsförsök utan att vara ett
+  slentrianmässigt högt tak.
+- **Risken om instansen glöms igång (varför ett hårt stopp behövs, inte bara ett kostnadstak):**
+  Vast.ai on-demand-instanser har **ingen inbyggd scale-to-zero** (till skillnad från RunPod
+  Serverless, som avvisades i Beslut 1) — de kostar per minut tills de **manuellt stoppas**. Om en
+  instans lämnas igång en hel månad (730h) av misstag: $0.20/hr → **~146 USD/månad**, $0.29/hr →
+  **~212 USD/månad**. Det är den reella nedsidan, inte det avsedda scenariot. Plan-nivå-krav:
+  varje eval-session avslutas med en explicit stop-instans-åtgärd (checklisterad i TDD-planen,
+  inte underförstådd), och ett kostnadslarm/dagligt saldo-kontroll under den period instansen kan
+  vara igång. (InferX hade i jämförelse en bevisat fungerande 15–20-min-idle-auto-decommission —
+  se rättelsen i Beslut 1 — vilket Vast.ai saknar; det är en reell avvägning operatören medvetet
+  accepterar genom att välja Vast.ai.)
 
-**Varför liten, inte stor:** Fas 6 fick ett konkret kostnadsvarningsincident (35B-instansen kostade
-$0.066/min och auto-decommissionerades inte snabbt nog, "onödig kostnad" enligt sessionsloggen).
-En mindre modell (a) håller GPU-hyran låg under bevisfasen, (b) räcker för en avgränsad,
-lågkomplex task class (Beslut 4), (c) kan skalas upp senare om exit-kriteriet visar att kvalitet
-är den begränsande faktorn, inte kostnad.
+**Varför liten, inte stor:** en mindre modell (a) håller GPU-hyran låg under bevisfasen, (b) räcker
+för en avgränsad, lågkomplex task class (Beslut 4), (c) kan skalas upp senare om exit-kriteriet
+visar att kvalitet är den begränsande faktorn, inte kostnad.
 
 **Hård gräns:** exakt modell + instansstorlek + faktisk provisionering är ett operatörsgodkänt
 kostnadsbeslut (se "Blockerade delar"), inte fastlåst av denna spec. Operatören har låg
@@ -359,8 +378,9 @@ byggas och testas med fixtures innan GPU:n existerar):
    kräver ett separat godkännande av kostnadsram vid det tillfället.
 2. **Modellval + instansstorlek + faktisk kostnad (Beslut 2).** **Konkret förslag:**
    Qwen3-8B-Instruct (bf16) på en 24 GB Vast.ai-GPU (L4 i första hand, RTX 4090 som reserv),
-   kostnadstak **~25–30 USD** för hela bevisfasen (se Beslut 2 för detaljer). Kräver operatörens
-   explicita godkännande av just detta tak innan provisionering — inte bara riktningen.
+   kostnadstak **~10 USD** för hela bevisfasen (faktisk uppskattad användning $1–3; se Beslut 2
+   för det korrigerade räknestycket och risken vid en glömd instans, ~$146–212/månad). Kräver
+   operatörens explicita godkännande av just detta tak innan provisionering — inte bara riktningen.
 3. **Faktisk GPU-provisionering och credential-/providerkonfiguration** (`CORTXT_SELFHOSTED_URL`/
    `CORTXT_SELFHOSTED_API_KEY`) — skrivs aldrig ut/committas, sätts av operatören i miljön som kör
    riktiga anrop.
