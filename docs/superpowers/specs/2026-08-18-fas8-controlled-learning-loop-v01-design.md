@@ -12,7 +12,10 @@ större målet"-avsnittet; (b) recursive-geometric reasoning ska **genomsyra** d
 utnyttjas — Beslut 10a/10b; (c) Cloudflare **Agent Memory**-arkitekturen (multi-typ-klassificering +
 verifier-checks + multi-channel-retrieval) lånas som **designinspiration** utan beroende på betatjänsten —
 Beslut 10c; (d) BÅDE denna spec och den efterföljande TDD-planen skickas till **Kimi för oberoende review**
-innan TDD-plan skrivs respektive innan operatörsinspektion; (e) operatören vill inspektera innan exekvering.
+innan TDD-plan skrivs respektive innan operatörsinspektion; (e) operatören vill inspektera innan exekvering;
+(f) i Kimi-reviewen begärs dessutom **rekommendationer för V01-helhet** — Fas 8 är den *sista* fasen i v0.1,
+så Kimi ska också ge 3–5 prioriterade rekommendationer för att knyta ihop säcken till en bra, sammanhållen
+V01 och förbereda v.02-starten (se review-promten, runs/).
 Detta är en **explicit begärd Kimi-gate** (undantag från den autonoma sparsamhetsregeln), en granskning per
 artefakt.
 
