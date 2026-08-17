@@ -1,11 +1,32 @@
 # Fas 7 — Egenhostad inference — implementationsplan (TDD)
 
-Status: **PLAN v2 — KLAR (Task 1–8 implementerade och gröna).** Slutverifiering med
-`PYTHONPATH= python -m pytest agent-platform/ -m "not real_inference and not docker_required" -q`
-→ **366 passed, 3 skipped, 0 failed** (bas 348/3 + 18 nya tester från Task 1–8; 0 regressioner),
-körda med Python312 på branch `spec/fas7-self-hosted-inference`. Task 1–8 committade var för sig
-(se git-log). Fas B (Vast.ai-provisionering + vLLM-deploy + levande endpoint-test) är ej påbörjad —
-görs separat efter pre-flight-checklistan nedan.
+Status: **PLAN v3 — Task 1–8 KLARA och gröna. Fas B PÅBÖRJAD, PAUSAD (instans stoppad, blockerad
+på ett verktygsproblem, inte ett designproblem).** Task 1–8 slutverifiering:
+**371 passed, 3 skipped, 0 failed** (commit `dcb0bf7`, Python312, tom PYTHONPATH). Task 1–8
+committade var för sig (se git-log).
+
+**Fas B, faktiskt utfört 2026-08-17 (operatörsauktoriserat, se spec "Autonomt exekveringsmandat"):**
+- Instans provisionerad: 1x RTX 3090 (24 GB, > 16 GB-golvet), Qwen3-8B-AWQ, $0.138/hr, Tyskland,
+  Vast.ai instans-ID `47966869`.
+- **Tre ytterligare verkliga buggar hittade och rättade via live-testning** (utöver Kimis P1):
+  `selfhosted_liveness.py`s Prometheus-metriknamn (`gpu_cache_usage_perc` → verklig
+  `kv_cache_usage_perc`), samma fils saknade Bearer-auth mot den riktiga endpointen,
+  `_VastAiControlAdapter.status()`s JSON-parsning (saknade `instances`-wrappern i det riktiga
+  svaret), `start()`/`stop()`s antagna `/start//stop/`-subrutter (verklig API: en PUT med
+  `{"state": ...}`-body), och `BudgetGate`s `attempt_started`-rad som inte skickade `route_id`
+  (route-isoleringen höll bara delvis innan denna fix). Alla rättade, TDD-verifierade, committade
+  (`df754ea`, `dcb0bf7`).
+- **Kallstartstid uppmätt (ersätter tidigare "INTE verifierad"-status i Beslut 8):** **59.2
+  sekunder** från stoppad till frisk (verklig `ensure_running()`-körning). Bekräftar samtidigt
+  att disk + värd bevaras vid omstart (löser Kimi P2 #3).
+- **Blockerat, INTE en kodbugg:** det riktiga N=3-evalsteget (Task 8:s harness mot den
+  deployade modellen) kunde inte slutföras. Cloudflare Quick Tunnel-domänen
+  (`*.trycloudflare.com`) slutade svara i DNS under sessionen (bekräftat via `Resolve-DnsName`
+  mot 1.1.1.1: "Non-existent domain") — Vast.ai:s raw IP:port-väg är HTTP-only och vår
+  säkerhetspolicy (`cortxt_resilient_inference`) kräver korrekt HTTPS, så det fanns ingen
+  fungerande extern HTTPS-väg kvar. Chrome-tillägget kopplade dessutom från mitt i
+  felsökningen. **Instansen stoppades manuellt** (bekräftat stoppad, ~$0.13 spenderat av $10).
+  Se "Fas B — återstår" nedan.
 
 Bygger på GODKÄND spec
 `docs/superpowers/specs/2026-08-17-fas7-self-hosted-inference-v01-design.md` (v7, Kimi-granskad
@@ -502,22 +523,38 @@ kod. **Blockerar Fas B, inte denna plans Task 1–8:**
 ## Fas B — Empiriskt exit-bevis (separat, GPU-/budgetstyrt, EJ del av Task 1–8)
 
 Görs endast efter pre-flight-checklistan ovan + operatörens go för faktisk provisionering
-(kostnadstak ~10 USD, se spec Beslut 2):
+(kostnadstak ~10 USD, se spec Beslut 2). **Status 2026-08-17: steg 1–3 klara, steg 4 delvis
+(fixturer skrivna, körning blockerad), steg 5–8 återstår.**
 
-1. Deploya Qwen3-8B-Instruct (AWQ eller GPTQ int4) på en Vast.ai ≥16GB-instans (billigast
-   tillgängliga vid provisionering) bakom vLLM (`/chat/completions`, `/health`, `/metrics`).
-2. Verifiera `_LivenessHttpProbe` (Task 3) mot den riktiga endpointen — första riktiga
-   integrationspunkten.
-3. Verifiera `_VastAiControlAdapter` (Task 5) mot det riktiga Vast.ai-API:t: stoppa, starta,
-   mät faktisk kallstartstid (skriv ner den uppmätta siffran — se specens
-   "Kallstartstid — INTE verifierad"-anteckning; ersätt gissningen med ett mätt värde).
-4. Bygg de faktiska L0-fixturerna för `TaskClassFixture` (Task 8) — en avgränsad, namngiven
-   uppgiftsklass (t.ex. kort klassificering/extraktion över syntetisk text).
-5. Kör N=3 rundor av task-class-evalen mot den självhostade routen, jämför mot InferX-baslinjen
+1. ✅ Deploya Qwen3-8B-Instruct AWQ på en Vast.ai ≥16GB-instans (RTX 3090 24GB, $0.138/hr,
+   instans-ID `47966869`) bakom vLLM.
+2. ✅ Verifierat `_LivenessHttpProbe` mot den riktiga endpointen (både via direkt IP och
+   Cloudflare-tunneln, innan tunneln dog — se punkt 5 nedan).
+3. ✅ Verifierat `_VastAiControlAdapter` mot det riktiga Vast.ai-API:t: två faktiska buggar
+   hittade och rättade (se plan-status ovan), riktig stop→start-cykel körd,
+   **kallstartstid uppmätt: 59.2 sekunder**.
+4. ⚠️ L0-fixturer skrivna (`fas7_exit_proof.py`, sentimentklassificering, 3 instanser) men
+   **N=3-körningen kunde inte slutföras** — se punkt 5.
+5. ❌ **BLOCKERAT (verktygsproblem, inte designfel):** Vast.ai:s Cloudflare Quick Tunnel
+   (`*.trycloudflare.com`) slutade svara i DNS mitt i sessionen (bekräftat: `Resolve-DnsName`
+   mot 1.1.1.1 → "Non-existent domain" för samtliga tunnel-subdomäner, inklusive Instance
+   Portal-domänen själv). Vast.ai:s raw IP:port-väg är HTTP-only; `cortxt_resilient_inference`
+   kräver HTTPS (korrekt säkerhetsbeteende, inte något att kringgå). Chrome-tillägget
+   kopplade dessutom från under felsökningen. **Öppen fråga inför nästa körning:** hitta en
+   stabil HTTPS-ingång till Vast.ai-instansen — kandidater: (a) en riktig namngiven Cloudflare
+   Tunnel (kräver ett Cloudflare-konto/domän, inte en Quick Tunnel), (b) en egen
+   TLS-terminerande reverse proxy på instansen, (c) verifiera om Vast.ai:s direkta portar kan
+   få TLS via deras "Secure Cloud"-erbjudande. Detta är ett nytt öppet beslut för
+   operatören/nästa session, inte löst av denna plan.
+6. Kör N=3 rundor av task-class-evalen mot den självhostade routen, jämför mot InferX-baslinjen
    (samma fixtures, olika `route_id`) — Beslut 6:s cost/quality-jämförelse.
-6. Verifiera §23-exit-kriteriet operationellt: en fullständig eval-runda visar **noll**
+7. Verifiera §23-exit-kriteriet operationellt: en fullständig eval-runda visar **noll**
    `attempt_started`-rader mot en extern-provider-`route_id` i `fas2a_inference_spend` (Beslut 4).
-7. Skriv en exit-checklista (`2026-08-17-fas7-exit-criterion-checklist.md`, samma mall som Fas
+   **Delvis redan bekräftat:** route-isoleringen (Beslut 6-fixen) verifierades i det avbrutna
+   N=3-försöket — alla spend-rader (även de misslyckade) visade korrekt `selfhosted-qwen3-8b-awq`,
+   inga externa routes förekom. Det som återstår är att göra samma verifiering på en **lyckad**
+   runda.
+8. Skriv en exit-checklista (`2026-08-17-fas7-exit-criterion-checklist.md`, samma mall som Fas
    5/6) med de faktiska mätvärdena — inte antagna.
-8. (Valfritt, kostnadskänsligt) Kimi-granskning av den sammanhållna Fas 7-sviten, endast om
+9. (Valfritt, kostnadskänsligt) Kimi-granskning av den sammanhållna Fas 7-sviten, endast om
    operatören explicit ber om det — samma disciplin som denna plans spec-fas.
