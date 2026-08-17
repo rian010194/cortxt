@@ -169,6 +169,9 @@ class CodingLoop:
                     diff_text, changed = diff_workspace(ws.baseline, ws.work)
                     captured["diff"] = diff_text
                     captured["files_changed"] = changed
+                    captured["file_contents"] = {
+                        path: (ws.work / path).read_text(encoding="utf-8") for path in changed
+                    }
                     return out_of_scope_paths(changed, declared_scope) == []
 
                 def _verify(proposal) -> bool:
@@ -221,6 +224,7 @@ class CodingLoop:
                     "result": {
                         "diff": captured["diff"],
                         "files_changed": captured["files_changed"],
+                        "file_contents": captured["file_contents"],
                         "tests_passed": captured["tests_passed"],
                     },
                     "reason": None,
