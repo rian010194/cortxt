@@ -15,6 +15,7 @@ from .graph_space import ReasoningNode, ProblemSpace
 from .metrics import GraphMetrics
 from .operators import PerspectiveResult, change_perspective, compare_paths
 from .path_scoring import CandidatePathScore, score_path
+from .trajectory import TrajectoryReport
 
 __all__ = [
     "ReasoningNode",
@@ -32,4 +33,5 @@ __all__ = [
     "compare_paths",
     "CandidatePathScore",
     "score_path",
+    "TrajectoryReport",
 ]
