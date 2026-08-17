@@ -67,7 +67,7 @@ class CandidateRegistry:
             "promoted_by,promoted_at,rolled_back_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (
                 candidate.type, candidate.name, candidate.version, candidate.manifest_hash,
-                candidate.status, json.dumps(dict(candidate.payload)),
+                candidate.status, json.dumps(dict(candidate.payload), sort_keys=True, ensure_ascii=False),
                 candidate.proposed_at, candidate.promoted_by, candidate.promoted_at, candidate.rolled_back_at,
             ),
         )
@@ -86,7 +86,7 @@ class CandidateRegistry:
                 "promoted_at,rolled_back_at FROM candidates WHERE type=? AND name=? "
                 "ORDER BY version DESC LIMIT 1",
                 (type_, name),
-            ).fetchone()  # v1 < v2 < v10 (lexical); acceptable for short semver in v1, refined in plan if needed
+            ).fetchone()  # v1 < v2, but v10 < v2 lexically; acceptable for short semver in v1
         return self._row_to_candidate(row) if row else None
 
     def all(self) -> list[Candidate]:
@@ -131,9 +131,15 @@ class CandidateRegistry:
             return None
         (type_, name, version, man, status, payload_json, proposed_at,
          promoted_by, promoted_at, rolled_back_at) = row
-        return Candidate(
+        candidate = Candidate(
             type=type_, name=name, version=version,
             payload=json.loads(payload_json), status=status,
             proposed_at=proposed_at, promoted_by=promoted_by,
             promoted_at=promoted_at, rolled_back_at=rolled_back_at,
         )
+        # Kimi P1.1: verify the reconstructed hash matches the stored hash — detect DB tampering/bit-rot.
+        if candidate.manifest_hash != man:
+            raise sqlite3.IntegrityError(
+                f"candidate {candidate.id} hash mismatch: stored={man} != reconstructed={candidate.manifest_hash}"
+            )
+        return candidate
