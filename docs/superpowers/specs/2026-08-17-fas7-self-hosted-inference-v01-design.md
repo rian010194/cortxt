@@ -73,6 +73,34 @@ Detta följer samma process som Fas 2–6: spec → (valfri) oberoende review �
 Ingen implementationskod, ingen GPU-provisionering och inga riktiga inferensanrop görs innan
 operatören godkänt den specifika planen och kostnaden (hård grind, se "Blockerade delar").
 
+## Varför inte OpenRouter/en annan aggregator? (operatörsfråga, besvarad 2026-08-17)
+
+Operatören ifrågasatte explicit om detta arbete alls är motiverat jämfört med att bara använda
+OpenRouter eller en annan API-aggregator (Together, Groq, Fireworks m.fl.) — rimlig fråga, eftersom
+en aggregator sannolikt är **billigare och enklare** för låg volym som enstaka evals. Ärligt svar:
+**detta byggs inte för kostnadseffektivitet.** OpenRouter *är* en extern inferenceprovider — bara
+en aggregator av andra externa providers — så att köra en task class genom OpenRouter skulle
+uppfylla **noll** av §23:s exit-kriterium ("...kan köras **utan extern inferenceprovider**").
+Skälen som faktiskt motiverar detta:
+
+1. **Leverantörsoberoende, inte kostnad.** Om OpenRouter höjer priser, ändrar villkor, får
+   driftstopp eller stänger ett konto försvinner hela den vägen. Fas 7 bevisar att minst en
+   uppgiftsklass kan köras även om alla externa providers är otillgängliga samtidigt.
+2. **Datasuveränitet-vägen.** En riktigt egenhostad modell (i förlängningen på egen hårdvara) kan
+   nå L1-dataklass utan någon tredje parts DPA/assurance-process (jfr Beslut 3). En aggregator
+   ärver alltid sina underliggande providers assurance-nivå — den vägen finns inte där.
+3. **§14.3 — vägen mot en egen inferensprodukt.** Målbilden är att Cortxt på sikt äger sin egen
+   serveringsstack, inte bara konsumerar andras API:er. Den operativa muskeln (deployment,
+   liveness, capacity, modellops) byggs bara genom att faktiskt göra det en gång.
+4. **Avgränsat experiment, inte en ersättning av Fas 5/6:s providers.** Fas 5 (InferX) och Fas 6
+   (Voyage) fortsätter oförändrade för det mesta arbetet; Fas 7 bevisar bara att *ett* spår kan stå
+   på egna ben.
+
+Om dessa skäl inte väger tyngre än kostnaden/besväret för operatören är rätt beslut att nedgradera
+Fas 7 till diagnostisk/lågprioriterad (samma nedtrappningsmönster §23 redan definierar för andra
+faser) snarare än att bygga den — detta är därför ett explicit, inte underförstått, godkännande
+(se "Blockerade delar", punkt 0 nedan).
+
 ## Scope decisions
 
 ### 1. Deployment-väg: Vast.ai (hyrd), inte operatörens egen GPU (operatörsbeslut 2026-08-17)
@@ -103,14 +131,28 @@ ett lokalt steg.
 Vast.ai kräver operatörens explicita godkännande av kostnadsram innan den sker — detta beslut
 fastställer *vilken* leverantör, inte att pengar spenderas nu.
 
-### 2. Modellval: liten öppen instruct-modell, budgetmedveten
+### 2. Modellval + konkret kostnadsram
 
-**Rekommendation:** en öppen instruct-modell i 7–8B-klassen (t.ex. Qwen3-8B-Instruct) — ryms
-bekvämt på en L4-klass GPU (Beslut 1) utan aggressiv kvantisering, vilket ger bättre kvalitet än
-en lokal Q4-begränsad körning skulle gjort. Qwen-familjen är redan bevisad i detta projekt
-(Qwen3-Coder-Next-FP8 via InferX i Fas 5, Qwen3-Embedding-0.6B/Qwen3-35B testade i Fas 6) — att
-stanna i samma familj minskar operativ nyhet, oavsett att serveringsvägen nu är Vast.ai istället
-för InferX.
+**Rekommendation:** **Qwen3-8B-Instruct**, kört **okvantiserat (bf16/fp16)** — Qwen-familjen är
+redan bevisad i detta projekt (Qwen3-Coder-Next-FP8 via InferX i Fas 5, Qwen3-Embedding-0.6B/
+Qwen3-35B testade i Fas 6), vilket minskar operativ nyhet. 8B i bf16 kräver ~16 GB vikter + KV-
+cache-marginal, så en **24 GB-GPU** (Vast.ai L4- eller RTX 4090-klass) rymmer den bekvämt utan
+kvantiseringens kvalitetsförlust — bättre än den kvantiserade lokal-vägen som avvisades i Beslut 1
+skulle gett.
+
+**Konkret kostnadsram (förslag att godkänna, inte en pågående provisionering):**
+- **GPU:** Vast.ai on-demand, L4 (24 GB) i första hand (~$0.20/hr enligt research-underlaget),
+  RTX 4090 (24 GB, ~$0.29/hr) som reserv om L4-tillgänglighet är dålig hos en given värd.
+- **Uppskattad total körtid:** setup/felsökning (vLLM-container, modellnedladdning) + N=3-
+  eval-rundor + liveness-probe-verifiering — grovt **5–10 timmar** sammanlagt, inte kontinuerlig
+  drift.
+- **Kostnadstak att godkänna:** **~25–30 USD** för hela bevisfasen (spec→plan→exit-kriterium),
+  med god marginal mot den grova tidsuppskattningen. Vida under Fas 6:s InferX-incidentskala.
+- **Operativ disciplin (kritiskt, given Fas 6:s idle-incident):** Vast.ai on-demand-instanser har
+  **ingen inbyggd scale-to-zero** (till skillnad från RunPod Serverless, som avvisades i Beslut 1)
+  — instansen kostar per minut tills den **manuellt stoppas**. Plan-nivå-krav: varje eval-session
+  avslutas med en explicit stop-instans-åtgärd, inte "lämnas köra". Detta är den direkta motsvarigheten
+  till incidentens root cause och måste vara en checklisterad, inte underförstådd, del av TDD-planen.
 
 **Varför liten, inte stor:** Fas 6 fick ett konkret kostnadsvarningsincident (35B-instansen kostade
 $0.066/min och auto-decommissionerades inte snabbt nog, "onödig kostnad" enligt sessionsloggen).
@@ -308,13 +350,17 @@ Följande **kräver operatörsbefattning** och blockerar plan/TDD-exekvering av 
 inte den deterministiska kärnans TDD — liveness-parsing, portinstansiering, policy-logik kan
 byggas och testas med fixtures innan GPU:n existerar):
 
+0. **Att bygga Fas 7 alls, istället för att stanna vid externa providers (inkl. aggregatorer som
+   OpenRouter)** — se "Varför inte OpenRouter/en annan aggregator?" ovan. Detta är i grunden ett
+   leverantörsoberoende-/produktvisionsbeslut, inte ett kostnadsbeslut, och kräver operatörens
+   medvetna godkännande av den avvägningen innan resten av gaterna nedan blir relevanta.
 1. **Val av GPU-leverantör/hosting (Beslut 1).** **Operatörsgodkänt 2026-08-17:** Vast.ai, inte
-   lokal hårdvara (avvisat explicit) och inte InferX/RunPod. Faktisk provisionering kräver ett
-   separat godkännande av kostnadsram vid det tillfället.
-2. **Modellval + instansstorlek + faktisk kostnad (Beslut 2).** Rekommendation: liten öppen
-   Qwen3-instruct-modell (~7–8B). Operatören har låg förkunskap om modellval — denna spec föreslår
-   en startpunkt, men exakt modell + Vast.ai-instansstorlek och kostnadsram kräver fortsatt
-   explicit godkännande innan provisionering.
+   lokal hårdvara (avvisat explicit) och inte InferX/RunPod/en aggregator. Faktisk provisionering
+   kräver ett separat godkännande av kostnadsram vid det tillfället.
+2. **Modellval + instansstorlek + faktisk kostnad (Beslut 2).** **Konkret förslag:**
+   Qwen3-8B-Instruct (bf16) på en 24 GB Vast.ai-GPU (L4 i första hand, RTX 4090 som reserv),
+   kostnadstak **~25–30 USD** för hela bevisfasen (se Beslut 2 för detaljer). Kräver operatörens
+   explicita godkännande av just detta tak innan provisionering — inte bara riktningen.
 3. **Faktisk GPU-provisionering och credential-/providerkonfiguration** (`CORTXT_SELFHOSTED_URL`/
    `CORTXT_SELFHOSTED_API_KEY`) — skrivs aldrig ut/committas, sätts av operatören i miljön som kör
    riktiga anrop.
