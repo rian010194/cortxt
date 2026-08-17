@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from context_store.store import ContextReference
+from runtime.tools.gate import ToolAdmissionError
 
 
 class InferencePort(Protocol):
@@ -25,7 +26,7 @@ DecomposeFn = Callable[[ContextReference, Any], list[ContextReference]]
 
 def decide_child_refs(context_ref: ContextReference, config: Any, depth: int,
                        decompose_fn: DecomposeFn,
-                       data_class_check: Callable[[str], bool] | None = None,
+                       data_class_check: Callable[[str], bool] = lambda dc: True,
                        ) -> list[ContextReference]:
     """Pure leaf-vs-decompose decision — no inference dependency at all.
 
@@ -37,28 +38,31 @@ def decide_child_refs(context_ref: ContextReference, config: Any, depth: int,
     combined decide+execute function used only inside a spawned process's own
     main(), which always has a real inference port available.
 
-    ``data_class_check`` (optional) applies the parent's admission policy to
-    this node's own data class before any further decomposition is allowed —
-    a ref whose data_class is not in the allowlist yields a leaf (blocked at
-    this boundary) rather than spawning children that would be rejected
-    downstream (spec §11.4 Tool Gateway admission). Coordinator.run_node
-    passes a closure over its ``allowed_data_classes``.
+    ``data_class_check`` (optional, defaults to allow-all) applies the parent's
+    admission policy to this node's own data class BEFORE any further
+    decomposition is allowed — a ref whose data_class is not in the allowlist
+    raises ToolAdmissionError (fail-closed at this boundary, §11.4 Tool Gateway
+    admission) rather than returning [] and silently treating the ref as a leaf
+    to be read anyway.
     """
-    if data_class_check is not None and not data_class_check(context_ref.data_class):
-        return []
+    if not data_class_check(context_ref.data_class):
+        raise ToolAdmissionError(
+            f"rlm_context_read: data_class={context_ref.data_class!r} rejected for "
+            f"locator={context_ref.locator!r}")
     can_decompose = depth < config.max_depth and config.max_total_children > 0
     return decompose_fn(context_ref, config) if can_decompose else []
 
 
 def run_node_body(context_ref: ContextReference, config: Any, depth: int,
-                   inference: InferencePort, decompose_fn: DecomposeFn) -> dict:
+                   inference: InferencePort, decompose_fn: DecomposeFn,
+                   data_class_check: Callable[[str], bool] = lambda dc: True) -> dict:
     """Pure decision+execute body: leaf (one model call) vs decompose (caller
     spawns children). Only called from within a process that already has a
     real inference port (rlm_child_cli.main(), Task 6) — never from
     Coordinator.run_node itself, which uses decide_child_refs above instead
     to avoid needing any inference port at the spawning level.
     """
-    child_refs = decide_child_refs(context_ref, config, depth, decompose_fn)
+    child_refs = decide_child_refs(context_ref, config, depth, decompose_fn, data_class_check)
 
     if not child_refs:
         value = inference.invoke(context_ref)
@@ -155,6 +159,20 @@ def main(argv: list[str] | None = None) -> int:
             except (SliceBudgetExhausted, ValueError):
                 return []
 
+        # Inherit the parent's allowlist from the JSON payload; the same value
+        # is passed back into Coordinator.run_node below so grandchildren keep
+        # the policy.
+        from runtime.tools.gate import DataClassGate
+        allowed_data_classes = frozenset(payload.get("allowed_data_classes", ["L0", "internal"]))
+        data_class_gate = DataClassGate(allowed_data_classes=allowed_data_classes)
+
+        def _gate_check(data_class: str) -> bool:
+            try:
+                data_class_gate.admit("rlm_context_read", data_class)
+                return True
+            except ToolAdmissionError:
+                return False
+
         budget_gate = BudgetGate(max_calls=payload.get("max_calls", 1),
                                   db_path=store / args.session_id / "spend.db")
         port = TextInferencePort(
@@ -168,7 +186,8 @@ def main(argv: list[str] | None = None) -> int:
             "output_schema", {"type": "object", "properties": {"answer": {"type": "string"}}}))
 
         decision = run_node_body(context_ref=context_ref, config=config, depth=args.depth,
-                                  inference=adapter, decompose_fn=_decompose_context)
+                                  inference=adapter, decompose_fn=_decompose_context,
+                                  data_class_check=_gate_check)
 
         if decision["is_leaf"]:
             # Placeholder unit cost: 0.01 per leaf invocation, matching Task 13/17's
@@ -187,7 +206,6 @@ def main(argv: list[str] | None = None) -> int:
         # this process now becomes a spawner for its own children — the
         # concrete instance of "a node that decomposes further runs a full
         # Coordinator" (spec beslut 2)
-        allowed_data_classes = frozenset(payload.get("allowed_data_classes", ["L0", "internal"]))
         from supervisor.coordinator import Coordinator
         coordinator = Coordinator(store=store)
         result = coordinator.run_node(task_id=args.session_id, context_ref=context_ref,

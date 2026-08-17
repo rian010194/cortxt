@@ -511,7 +511,9 @@ class Coordinator:
     def run_node(self, task_id: str, context_ref: ContextReference, config: RLMConfig,
                  depth: int = 0,
                  allowed_data_classes: frozenset[str] = frozenset({"L0", "internal"}),
-                 poll_interval: float = 0.5, timeout: float = 120.0) -> dict:
+                 poll_interval: float = 0.5, timeout: float | None = None) -> dict:
+        if timeout is None:
+            timeout = config.max_runtime_seconds
         session = state.create(self._store, task_id=task_id)
         session_id = session["session_id"]
 
@@ -535,10 +537,15 @@ class Coordinator:
             seq = state.latest_sequence(state.load(self._store, session_id))
             state.append(self._store, session_id, seq, "session.terminal", {"status": status})
             return {"run_id": session_id, "status": status, "children": [],
-                    "depth_reached": depth, "termination_reason": terminal["payload"].get("reason")}
+                    "depth_reached": depth, "termination_reason": terminal["payload"].get("reason"),
+                    "branches_explored": 0, "model_invocations": 1, "contradictions_found": 0}
 
         child_configs = split_rlm_config(config, len(child_refs))
         results = []
+        for ref in child_refs:
+            seq = state.latest_sequence(state.load(self._store, session_id))
+            state.append(self._store, session_id, seq, "context.sliced", {
+                "locator": ref.locator, "range": list(ref.range), "data_class": ref.data_class})
         for ref, cfg in zip(child_refs, child_configs):
             child_session_id, child_process, config_path, ref_path = self._spawn_rlm_node(
                 session_id, task_id, ref, cfg, depth + 1, allowed_data_classes)
@@ -555,13 +562,39 @@ class Coordinator:
             child_index = build_index(child_tree, total_budget=cfg)
             results.append(_index_to_result(child_index, child_tree))
 
-        overall_status = "succeeded" if all(r["status"] == "succeeded" for r in results) else "blocked"
+        # Remaining five §11.2 bounds are enforced post-hoc (same philosophy as
+        # the cost cap): max_model_invocations/max_context_reads/max_cost/
+        # max_output_size are aggregated from the projected subtree and checked
+        # against this node's own (disjointly allocated) budget share.
+        total_model_invocations = sum(r.get("model_invocations", 0) for r in results)
+        total_context_reads = sum(r.get("context_reads", 0) for r in results)
+        total_cost = sum(r.get("cost", 0.0) for r in results)
+        total_output_size = sum(r.get("output_size", 0) for r in results)
+        bounds_exceeded = (
+            total_model_invocations > config.max_model_invocations
+            or total_context_reads > config.max_context_reads
+            or total_cost > config.max_cost
+            or total_output_size > config.max_output_size
+        )
+        all_children_ok = all(r["status"] == "succeeded" for r in results)
+        if all_children_ok and not bounds_exceeded:
+            overall_status = "succeeded"
+            termination_reason = None
+        elif all_children_ok and bounds_exceeded:
+            overall_status = "blocked"
+            termination_reason = "budget_exhausted"
+        else:
+            overall_status = "blocked"
+            termination_reason = None
         seq = state.latest_sequence(state.load(self._store, session_id))
         state.append(self._store, session_id, seq, "session.terminal", {"status": overall_status})
 
         depth_reached = max((_max_nested_depth(r, depth + 1) for r in results), default=depth + 1)
         return {"run_id": session_id, "status": overall_status, "children": results,
-                "depth_reached": depth_reached, "termination_reason": None}
+                "depth_reached": depth_reached, "termination_reason": termination_reason,
+                "branches_explored": len(results),
+                "model_invocations": total_model_invocations,
+                "contradictions_found": sum(r.get("contradictions_found", 0) for r in results)}
 
     def _spawn_rlm_node(self, parent_session_id, task_id, context_ref, config, depth,
                         allowed_data_classes: frozenset[str]):
