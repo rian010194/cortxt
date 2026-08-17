@@ -65,11 +65,12 @@ def _build_tiebreak_fixture(seed: int, ids=("s1", "s2", "w1", "w2")) -> GeoFixtu
     ``hash_embedding`` baseline mis-rank the paths.
     """
     a1, a2, b1, b2 = ids
-    goal_content = "final resolved outcome: the system reached a stable, consistent conclusion"
-    s1c = "claim directly supporting the final conclusion and consistent with it"
-    s2c = "evidence confirming the resolved outcome, strongly consistent"
-    w1c = "tangential kitchen recipe about unrelated seasonal fruit"
-    w2c = "sports commentary about an unrelated tournament"
+    goal_content = f"g{seed}: final resolved outcome, stable conclusion"
+    # semantically-relevant content (near goal) vs semantically-unrelated content
+    s1c = f"s1{seed}: claim directly supporting the final resolved conclusion"
+    s2c = f"s2{seed}: evidence confirming the resolved outcome, consistent"
+    w1c = f"w1{seed}: unrelated tang:{seed} recipe about fruit"
+    w2c = f"w2{seed}: unrelated sports tournament commentary"
     s = ProblemSpace()
     s.add_node(ReasoningNode(id="start", content=f"start context {seed}", evidence=0.4, contradiction=0.1))
     # path A (semantically relevant to goal): s1 -> s2 -> goal
@@ -209,10 +210,15 @@ def _best_path(space: ProblemSpace, start: str, goal: str, embedder):
 
 
 # --- locked, pre-registered fixture (a priori, do NOT change after real-embedding result) ---
-# Found deterministically (0 calls) via find_misranking_seed: hash_embedding mis-ranks the
-# semantically-irrelevant path (start->w1->w2->goal) above the relevant one (start->s1->s2->goal)
-# by 0.4837 > 0.4832, and the two branches are graph-wise equal on the determining metrics.
-LOCKED_SEED = 0
+# Found deterministically (0 calls) via find_misranking_seed with the CONTENT-BASED
+# `expected_information_gain` (path_scoring bäddar in node content, not ids): the
+# `hash_embedding` baseline mis-ranks the semantically-irrelevant path (start->w1->w2->goal)
+# above the relevant one (start->s1->s2->goal) by 0.5166 > 0.4976, and the two branches are
+# graph-wise equal on the determining metrics.
+# NOTE: re-locked after the path_scoring content-fix (seed 3, was 0). Legitimate re-lock: the
+# prior real run aborted on budget BEFORE any embedding outcome was used, so no Voyage result
+# pollutes this pre-registration.
+LOCKED_SEED = 3
 LOCKED_IDS = ("s1", "s2", "w1", "w2")
 GROUND_TRUTH_FIRST_NODE = "s1"  # semantically-relevant branch must win for a good embedding
 

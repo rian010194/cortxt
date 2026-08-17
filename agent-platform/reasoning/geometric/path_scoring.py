@@ -36,6 +36,19 @@ def _avg(vals: list[float]) -> float:
     return sum(vals) / len(vals) if vals else 0.0
 
 
+def _content(space: ProblemSpace, nid: str) -> str:
+    """The node's content (embedding input for semantic nearness), falling back to its id.
+
+    `expected_information_gain` measures semantic similarity of *content* to the goal — not of
+    opaque node ids — so a real embedder (e.g. Voyage) can actually capture goal relevance.
+    `hash_embedding` remains deterministic (just hashing of this string).
+    """
+    node = space.node(nid)
+    if node and node.content:
+        return node.content
+    return nid
+
+
 def score_path(
     space: ProblemSpace,
     path: list[str],
@@ -47,7 +60,7 @@ def score_path(
     if not path:
         return 0.0
 
-    ig = [cosine(policy.embedder(n), policy.embedder(goal)) for n in path]
+    ig = [cosine(policy.embedder(_content(space, n)), policy.embedder(_content(space, goal))) for n in path]
     gr = [GraphMetrics.graph_distance_to_goal(space, n, goal) for n in path]
     ev = [GraphMetrics.evidence_coverage(space, n) for n in path]
     distinct = len(set(path))
