@@ -100,7 +100,7 @@ class _EmbeddingHttpAdapter:
 
         started = time.monotonic()
         try:
-            body = json.dumps({"model": model, "input": self.text}).encode("utf-8")
+            body = json.dumps({"model": model, "input": [self.text]}).encode("utf-8")
             request = urllib.request.Request(
                 endpoint, data=body, method="POST",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -201,7 +201,8 @@ class EmbeddingPort:
         envelope: Any = _resilient_execute(request, adapters={"l0-embedding": adapter})
         if envelope.get("status") != "succeeded":
             raise EmbeddingError(
-                f"embedding call did not succeed (task={task_id}, reason={envelope.get('terminal_reason')})"
+                f"embedding call did not succeed (task={task_id}, "
+                f"reason={envelope.get('terminal_reason')}, attempts={envelope.get('attempts')})"
             )
         response = envelope.get("response") or {}
         embedding = response.get("embedding")
