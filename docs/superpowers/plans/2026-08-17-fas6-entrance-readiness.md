@@ -2,8 +2,9 @@
 
 Status: **PRE-SPEC ANALYSIS — not an implementation.** Written 2026-08-17 on
 branch `ci/adr-doc-currency-gate-clean` after Fas 5 (RLM v1) implementation
-completed (17/17 tasks, 308 passed structural suite). This note documents what
-must be true before a Fas 6 design spec and implementation plan can be
+completed (17/17 tasks, 308 passed structural suite) AND its exit criterion
+was empirically verified against a live InferX model. This note documents what
+must still be true before a Fas 6 design spec and implementation plan can be
 entered, grounded in the actual verified code state — not in fabrication.
 
 ## Fas 6 leverables (target-architecture §23)
@@ -45,15 +46,18 @@ model/embedding endpoint), which is not configured in this environment (no
 `CORTXT_INFERENCE_*` credentials). This is not a code-writing problem I can
 solve speculatively — it is an environment + open-decision dependency.
 
-### 2. Fas 5 exit evidence is not yet empirical
-§23 ties Fas 6's cost-multiplier policy to measurable RLM evidence:
-> "Kostnadsmultiplikatorn ... blir en uppgiftsberoende, versionsstyrd
-> policyparameter istället för en fast konstant" — only when Fas 5 produces
-> measurable cost-per-successful-run evidence.
-
-Fas 5's exit proofs (Task 13/17) are written but SKIPPED — they need a live
-model. Without real RLM cost data, Fas 6's path-scoring cost policy would be
-built on an unverified baseline.
+### 2. Fas 5 exit evidence — RESOLVED (empirically verified live)
+Fas 5's exit criterion (Coding + research classes) was **empirically verified
+against a live InferX model** on 2026-08-17 (`Qwen3-Coder-Next-FP8`, Python312):
+both `test_rlm_beats_baseline_*` exit proofs PASSED with real model calls
+(logged in `fas2a_inference_spend`). This unblocks the "no measurable RLM
+cost evidence" concern — real cost-per-round data now exists (though still
+using the placeholder unit-cost formula until `TextInferencePort`'s real
+cost field is confirmed). The §23 cost-multiplier policy can now be grounded
+in real RLM-vs-baseline cost data rather than a guess. Honest caveat: the
+research-class pass asserts RLM `status`, not citation-correct text (known
+text-return integration gap), so the *full* research citation-correctness
+remains to be proven.
 
 ### 3. No Fas 6 design spec exists
 Fas 2-5 each follow: spec → Kimi review → plan (TDD tasks) → execute. There is
