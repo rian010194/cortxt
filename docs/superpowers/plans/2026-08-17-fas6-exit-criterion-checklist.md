@@ -71,6 +71,17 @@ voyage relevant=0.5461   lure=0.5195     → voyage korrigerar (relevant över l
 
 **Slutsats: §23 Fas 6-exit-kriteriet är UPPFYLLT** — geometric reasoning (via riktig Voyage-embedding) ger mätbar förbättring på sökvalet utan regression över de beslutande måtten, på en a priori-låst, falsifierbar fixture (hash mis-rankar, voyage korrigerar).
 
+## Oberoende granskning (Kimi, 2026-08-17, ONE sammanhållen genomgång)
+
+Kimi k2.6 (provider kimi-coding) granskade den sammanhållna Fas 6-sviten (exit-harness + fixture,
+path_scoring, embedding_port-invariants) och gav **GODKÄND** med INGESTION-citat (`LOCKED_SEED=3`,
+pass-regeln `sc_voy_rel > sc_voy_lure`). SUMMERING: "Exit-bevisningen är ärlig och falsifierbar…
+Ingenting i granskningen tyder på att det rapporterade PASS:et är ogiltigt." Tre fynd åtgärdades:
+P1 (latent id-vs-content inkonsistens i `_determining_metrics` — oanvänd `ig`-rad borttagen),
+P2.1 (sleep vid cache-träff → flyttad till cache-miss-only i memoizer), P2.2 (testnamn tydliggjort
+till `test_fas6_geometric_corrects_hash_semantic_misranking_on_locked_fixture`). Exit-PASS
+re-verifierat efter fixarna (voyage 0.5461 > 0.5196; hash 0.5166 > 0.4976).
+
 ## Sammanfattning
 
-Fas 6 är **komplett och exit-verifierad**: deterministisk kärna (36 geometric-tester + embedding_port), riktig embeddings-provider (Voyage) inkopplad och drop-in, och §23-exit-kriteriet empiriskt uppfyllt mot en live-model på en låst fixture (inga regressioner på de beslutande måtten, semantiskt korrekt sökval). GUI-viewer är deferred (operatörsbeslut 2026-08-17) på ny bas, inte legacy `web/`. Återstående rena operatörsfrågor: ingen — allt delegerbart arbete är gjort och grönt; Kimi-granskning av hela sviten återstår som engångsgate (steg E).
+Fas 6 är **komplett och exit-verifierad**: deterministisk kärna (36 geometric-tester + embedding_port), riktig embeddings-provider (Voyage) inkopplad och drop-in, och §23-exit-kriteriet empiriskt uppfyllt mot en live-model på en låst fixture (inga regressioner på de beslutande måtten, semantiskt korrekt sökval). Oberoende (Kimi) granskning av hela sviten: **GODKÄND** (fynd åtgärdade, exit-PASS re-verifierat). GUI-viewer är deferred (operatörsbeslut 2026-08-17) på ny bas, inte legacy `web/`. **Fas 6 är avslutad.** Push gör operatören själv efter genomgång.
