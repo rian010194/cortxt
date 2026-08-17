@@ -67,3 +67,14 @@ def test_path_diversity_and_information_gain():
     # 'a' has two one-hop routes (b and h); both can reach j -> diversity 1.0
     assert GraphMetrics.path_diversity(s, "a", "j") == 1.0
     assert GraphMetrics.information_gain(s, "a", 0.4, 0.9) == pytest.approx(0.5)
+
+
+def test_semantic_closeness_accepts_injected_embedder():
+    from reasoning.geometric import ProblemSpace, ReasoningNode
+    from reasoning.geometric.metrics import GraphMetrics
+    s = ProblemSpace()
+    s.add_node(ReasoningNode(id="a", evidence=0.9))
+    s.add_node(ReasoningNode(id="b"))
+    custom = lambda nid: [1.0, 0.0]
+    # identisk nod mot samma injector -> 1.0
+    assert GraphMetrics.semantic_closeness(s, "a", "a", embedder=custom) == 1.0

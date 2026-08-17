@@ -14,9 +14,14 @@ class GraphMetrics:
     """Stateless collection of the v1 geometric metrics."""
 
     @staticmethod
-    def semantic_closeness(space: ProblemSpace, a: str, b: str) -> float:
-        """Cosine similarity of embedding vectors for two nodes."""
-        return cosine(hash_embedding(a), hash_embedding(b))
+    def semantic_closeness(space: ProblemSpace, a: str, b: str, embedder=hash_embedding) -> float:
+        """Cosine similarity of embedding vectors for two nodes.
+
+        ``embedder`` is injectable (default ``hash_embedding``) so path scoring and this
+        diagnostic proximity metric share one source (P1.1: swap the provider at §27 #10 as
+        a drop-in).
+        """
+        return cosine(embedder(a), embedder(b))
 
     @staticmethod
     def graph_distance_to_goal(space: ProblemSpace, nid: str, goal: str) -> float:
