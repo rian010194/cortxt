@@ -24,16 +24,21 @@ Testbevis: `pytest agent-platform/ -m "not real_inference and not docker_require
 **331 passed, 4 skipped, 0 failed** (bas 308 + 23 nya geometric-tester). Kimi-granskning av
 spec (GODKÄND) och plan (GODKÄND-BAR) genomförd; alla fynd åtgärdade.
 
-## Vad som kräver §27 #10 (embeddings-provider) — ej i denna v1
+## Vad som kräver §27 #10 (embeddings-provider) — VOYAGE VALD, `embedding_port` byggd
 
-- Ersätta `hash_embedding` med en riktig provider via `EmbeddingFn`-ytan (drop-in på
-  `CandidatePathScore.embedder` och `GraphMetrics.semantic_closeness`).
-- **Verifierat (provisoriskt) 2026-08-17:** InferX `/embeddings` gav HTTP 404 med den
-  konfigurerade chat-modellen — men operatören konfigurerar InferX `/embeddings`; 404 är sannolikt
-  (a) ej konfigurerat ännu och/eller (b) fel modellnamn (chat-modell ≠ `text-embedding-*`). A
-  återstår som mål när konfigureringen är klar; B (hash-stub) förblir default; C (lokal/
-  open-source) om InferX-vägen inte realiseras. Se
-  `2026-08-17-fas6-embeddings-provider-decision.md`.
+- **Provider vald (operatör):** **Voyage AI** (`https://api.voyageai.com/v1`, `voyage-4-lite`,
+  dim 1024) — ersätter InferX-alternativet (kostnads-/driftsprofil: 200M gratis tokens, ingen
+  GPU-instans). Verifierat HTTP 200 2026-08-17.
+- **`embedding_port.py` är byggd (TDD, grön):** `agent-platform/runtime/embedding_port.py`
+  implementerar `EmbeddingFn` (`__call__` drop-in för `CandidatePathScore.embedder` +
+  `GraphMetrics.semantic_closeness`), fail-closed på BudgetGate + provider-policy, med en lokal
+  `_EmbeddingHttpAdapter` som är providerneutral (0 ändringar mot Voyage/InferX bägge).
+- **Återstår för ett fullt levande §27#10:**
+  1. Koppla `CORTXT_EMBEDDING_URL`/`CORTXT_EMBEDDING_API_KEY` i produktionskonfiguration
+     (operatörsgrind — credentials skrivs aldrig ut/committas).
+  2. Köra det empiriska Fas 6-exit-steget mot riktiga resonemangsproblem med embeddern
+     (separat budgetgodkännande, systemhanterat).
+  Kärnan är redan drop-in-redo och grön (340 passed).
 
 ## Vad som kräver inference-budget (det empiriska exit-stegest) — ej i denna v1
 
