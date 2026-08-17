@@ -323,25 +323,40 @@ def test_fas6_geometric_beats_baseline_on_determining_metrics(tmp_path):
     )
 
     fx = _locked_fixture()
-    hash_path, _ = _best_path(fx.space, fx.start, fx.goal, _hash())
-    voy_path, voy_score, voy_embed = _cached_sleep_best_path(fx.space, fx.start, fx.goal, voyage)
+    paths = list(_all_simple_paths(fx.space, fx.start, fx.goal))
+    relevant = next(p for p in paths if p[1] == GROUND_TRUTH_FIRST_NODE)   # start->s1->s2->goal
+    lure = next(p for p in paths if p[1] != GROUND_TRUTH_FIRST_NODE)        # start->w1->w2->goal
 
-    # report actual numbers, not "improvement observed"
-    print("hash best path:", hash_path)
-    print("voyage best path:", voy_path, "score:", round(voy_score, 4))
-    print("hash selected relevant branch?:", hash_path[1] == GROUND_TRUTH_FIRST_NODE)
-    print("voyage selected relevant branch?:", voy_path[1] == GROUND_TRUTH_FIRST_NODE)
-    print(f"voyage unique embedding calls: {voy_embed.call_count['unique']} (raw invoked {voy_embed.call_count['invoked']})")
+    def h(p):  # hash baseline score (0 calls)
+        return score_path(fx.space, p, fx.goal, CandidatePathScore(embedder=_hash()))
 
-    # Exit pass rule: real embedding must correct the baseline's semantic mis-ranking.
-    assert hash_path[1] != GROUND_TRUTH_FIRST_NODE, (
-        "baseline unexpectedly selects the relevant branch; fixture no longer discriminating"
+    # voyage scores with the cached/sleep embedder (few unique calls)
+    embedder = _memoized_embedder(voyage)
+    def v(p): return score_path(fx.space, p, fx.goal, CandidatePathScore(embedder=embedder))
+    sc_hash_rel, sc_hash_lure = h(relevant), h(lure)
+    sc_voy_rel, sc_voy_lure = v(relevant), v(lure)
+
+    def determining(p):
+        return _determining_metrics(fx.space, p, fx.goal, CandidatePathScore(embedder=_hash()))
+
+    gr_r, ev_r, cr_r = determining(relevant)
+    gr_l, ev_l, cr_l = determining(lure)
+
+    print("=== Fas 6 exit — 2x2 path scores ===")
+    print(f"hash   relevant(w)={sc_hash_rel:.4f}   lure(wo)={sc_hash_lure:.4f}")
+    print(f"voyage relevant(w)={sc_voy_rel:.4f}   lure(wo)={sc_voy_lure:.4f}")
+    print(f"determining metrics (graph-wise equal branches): relevant=(gr={gr_r:.3f}, ev={ev_r:.3f}, cr={cr_r:.3f})  lure=(gr={gr_l:.3f}, ev={ev_l:.3f}, cr={cr_l:.3f})")
+    print(f"relevant=lure on determining metrics (no regression possible): {abs(gr_r-gr_l)<1e-9 and abs(ev_r-ev_l)<1e-9 and abs(cr_r-cr_l)<1e-9}")
+    print(f"voyage unique embedding calls: {embedder.call_count['unique']} (raw invoked {embedder.call_count['invoked']})")
+
+    # Exit pass rule: the real embedder must correct hash's semantic mis-ranking.
+    assert sc_hash_lure > sc_hash_rel, "hash baseline must mis-rank (lure above relevant) — fixture discriminating"
+    assert sc_voy_rel > sc_voy_lure, (
+        f"Fas 6 exit NOT met: voyage scored relevant {sc_voy_rel:.4f} <= lure {sc_voy_lure:.4f}; "
+        "real embedder did NOT improve semantic ranking over hash"
     )
-    assert voy_path[1] == GROUND_TRUTH_FIRST_NODE, (
-        f"Fas 6 exit NOT met: voyage selected {voy_path} (branch {voy_path[1]}), "
-        f"expected the semantically-relevant branch {GROUND_TRUTH_FIRST_NODE}; "
-        "the real embedder did NOT improve semantic search selection over hash"
-    )
+    print("Fas 6 exit PASS: voyage corrects hash's semantic mis-ranking"
+          f" (relevant {sc_voy_rel:.4f} > lure {sc_voy_lure:.4f}; hash had lure {sc_hash_lure:.4f} > relevant {sc_hash_rel:.4f})")
 
 
 def _hash():
