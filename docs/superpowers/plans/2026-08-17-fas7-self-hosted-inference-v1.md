@@ -1,13 +1,15 @@
 # Fas 7 — Egenhostad inference — implementationsplan (TDD)
 
-Status: **PLAN v1 — redo för exekvering av den deterministiska kärnan (Task 1–8).** Bygger på
-GODKÄND spec `docs/superpowers/specs/2026-08-17-fas7-self-hosted-inference-v01-design.md`
-(v6, Kimi-granskad `GODKÄND MED ANMÄRKNINGAR`, commit `b5d8f1e`; P1 åtgärdad i specen, 5×P2 som
-öppna verifieringspunkter — se "Pre-flight checklist" nedan innan Fas B). Operatören godkände
-2026-08-17: gate 0 (leverantörsoberoende-motivet, se specens "Varför inte OpenRouter?") och
-kostnadstaket (~10 USD proof-fas). Branch: fortsätt på `spec/fas7-self-hosted-inference` (eller en
-ny implementationsgren av samma namn med `-impl`-suffix — avgörs vid start, se `using-git-worktrees`
-om isolering önskas).
+Status: **PLAN v2 — AUTONOM EXEKVERING PÅGÅR.** Bygger på GODKÄND spec
+`docs/superpowers/specs/2026-08-17-fas7-self-hosted-inference-v01-design.md` (v7, Kimi-granskad
+`GODKÄND MED ANMÄRKNINGAR`, commit `4a6b854`; P1 åtgärdad, kvantiseringsvalet slutgiltigt
+beslutat — se spec Beslut 2; 4×P2 kvar som pre-flight-verifieringspunkter, ej blockerande för
+Task 1–8). Operatören godkände 2026-08-17 gate 0, kostnadstaket (~10 USD, redan laddat på
+operatörens Vast.ai-konto) och **auktoriserade explicit autonom exekvering av resten av Fas 7**,
+inklusive att Claude tar kontroll över operatörens inloggade Vast.ai-webbläsarsession för
+admin-steg (se spec "Autonomt exekveringsmandat"). Task 1–8 dispatchas till Hermes för
+implementation (build-arbete, inte skrivet direkt av Claude); Fas B:s Vast.ai-admin-steg utförs av
+Claude via `claude-in-chrome`. Branch: `spec/fas7-self-hosted-inference`.
 
 Goal: implementera den **deterministiska, GPU-oberoende kärnan** av Fas 7 — `route_id`-
 parametrisering (Beslut 7-fix), `selfhosted_liveness.py` (Beslut 5), `selfhosted_lifecycle.py`
@@ -472,9 +474,10 @@ som Fas 6:s "308 + nya" — skriv aldrig ett antaget tal utan att faktiskt ha k�
 Dessa kräver verifiering mot Vast.ai:s faktiska plattform vid provisioneringstillfället, inte
 kod. **Blockerar Fas B, inte denna plans Task 1–8:**
 
-1. **Kvantiseringsval bekräftat (Kimi P2 #2):** bf16 (rekommendation) vs Q4-kvantiserad 8B/
-   Qwen3-4B på en billigare 16GB-GPU — operatören bekräftar valet explicit, inte bara accepterar
-   en default.
+1. **LÖST (spec v7):** kvantiseringsvalet är slutgiltigt beslutat — Qwen3-8B-Instruct AWQ/GPTQ
+   int4 på ≥16GB Vast.ai-GPU (billigast tillgängliga), operatören bekräftade explicit att detta
+   räcker. Ingen ytterligare bekräftelse behövs vid provisionering, bara att välja billigast
+   tillgängliga ≥16GB-erbjudande.
 2. **Värdstabilitet vid `stop`/`start` (Kimi P2 #3):** verifiera i Vast.ai:s dokumentation eller
    genom en testkörning att en stoppad instans faktiskt återupptas på **samma värd** med disken
    intakt — annars är "snabb återstart" i Beslut 8 optimistisk, och idle-tröskeln bör höjas eller
@@ -494,8 +497,8 @@ kod. **Blockerar Fas B, inte denna plans Task 1–8:**
 Görs endast efter pre-flight-checklistan ovan + operatörens go för faktisk provisionering
 (kostnadstak ~10 USD, se spec Beslut 2):
 
-1. Deploya Qwen3-8B-Instruct (bf16) på en Vast.ai L4/RTX4090-instans bakom vLLM
-   (`/chat/completions`, `/health`, `/metrics`).
+1. Deploya Qwen3-8B-Instruct (AWQ eller GPTQ int4) på en Vast.ai ≥16GB-instans (billigast
+   tillgängliga vid provisionering) bakom vLLM (`/chat/completions`, `/health`, `/metrics`).
 2. Verifiera `_LivenessHttpProbe` (Task 3) mot den riktiga endpointen — första riktiga
    integrationspunkten.
 3. Verifiera `_VastAiControlAdapter` (Task 5) mot det riktiga Vast.ai-API:t: stoppa, starta,
