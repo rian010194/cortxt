@@ -12,6 +12,7 @@
 .codex-tmp/
 archive/
 *.trace
+agent-platform/runs/
 
 # ---- Python ----
 __pycache__/
