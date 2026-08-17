@@ -1,6 +1,8 @@
 """Fas 8 Task 1 — Candidate datamodel: immutable, id ≡ type@name@version, hash over serialized payload."""
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from learning import Candidate
@@ -23,7 +25,7 @@ def test_manifest_hash_binds_to_serialized_payload():
 
 
 def test_payload_is_immutable_snapshot_not_mutable_ref():
-    """P0.1: mutating the original payload dict after construction does NOT change the candidate's payload."""
+    """P0.1: mutating the caller's original dict does NOT change the candidate's payload."""
     payload = {"w1": 0.15, "w2": 0.4, "w5": 0.5}
     c = Candidate(type="policy", name="np", version="v1", payload=payload)
     original_hash = c.manifest_hash
@@ -32,8 +34,15 @@ def test_payload_is_immutable_snapshot_not_mutable_ref():
     assert c.manifest_hash == original_hash
 
 
+def test_payload_is_read_only_mappingproxy():
+    """Kimi checkpoint P1: payload is deep-immutable (MappingProxyType) — direct mutation raises TypeError."""
+    c = Candidate(type="policy", name="np", version="v1", payload={"w1": 0.15})
+    with pytest.raises(TypeError):
+        c.payload["w1"] = 0.99  # type: ignore[index]
+
+
 def test_candidate_is_frozen():
-    """Candidate fields are immutable once constructed."""
+    """Candidate fields are immutable once constructed (narrow exception types, Kimi P1)."""
     c = Candidate(type="policy", name="np", version="v1", payload={})
-    with pytest.raises(Exception):
+    with pytest.raises((FrozenInstanceError, AttributeError)):
         c.version = "v9"
