@@ -60,7 +60,9 @@ def score_path(
     if not path:
         return 0.0
 
-    ig = [cosine(policy.embedder(_content(space, n)), policy.embedder(_content(space, goal))) for n in path]
+    goal_txt = _content(space, goal)
+    goal_emb = policy.embedder(goal_txt)
+    ig = [cosine(policy.embedder(_content(space, n)), goal_emb) for n in path]
     gr = [GraphMetrics.graph_distance_to_goal(space, n, goal) for n in path]
     ev = [GraphMetrics.evidence_coverage(space, n) for n in path]
     distinct = len(set(path))
