@@ -6,8 +6,9 @@ wrapper that makes a cold start transparent to the caller.
 """
 from __future__ import annotations
 
+import os
 import time
-from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 
 def should_stop_for_idle(
@@ -20,3 +21,110 @@ def should_stop_for_idle(
     instance is never treated as "idle forever".
     """
     return (now_ts - last_activity_ts) >= idle_threshold_minutes * 60
+
+
+class SelfhostedLifecycleError(RuntimeError):
+    """Raised when a self-hosted instance cannot be brought to healthy, fail-closed."""
+
+
+@runtime_checkable
+class InstanceControl(Protocol):
+    """Minimal contract for starting/stopping/querying a Vast.ai instance."""
+
+    def status(self) -> str:  # "running" | "stopped"
+        ...
+
+    def start(self) -> None:
+        ...
+
+    def stop(self) -> None:
+        ...
+
+
+class _VastAiControlAdapter:
+    """Vast.ai REST boundary for one instance.
+
+    Real HTTP implementation is exercised only against the live platform in
+    Fas B; the deterministic TDD scope (this task) drives it via a FakeControl
+    with the same ``InstanceControl`` shape. ``api_key_env`` names the environ
+    variable holding the credential -- the value is never logged or stored.
+    """
+
+    def __init__(self, instance_id: str, api_key_env: str = "CORTXT_SELFHOSTED_API_KEY") -> None:
+        self._instance_id = instance_id
+        self._api_key_env = api_key_env
+
+    def _api_key(self) -> str:
+        key = os.environ.get(self._api_key_env) or ""
+        if not key:
+            raise SelfhostedLifecycleError(
+                f"Vast.ai control missing credential in {self._api_key_env}"
+            )
+        return key
+
+    def status(self) -> str:
+        # Vast.ai GET /api/v0/instances/<id> returns the instance state.
+        # Fail-closed to "stopped" on any error so ensure_running prefers to
+        # (re)start rather than assume healthy. Deferred concretization of
+        # endpoint/response shape to Fas B.
+        try:
+            import urllib.request
+            key = self._api_key()
+            req = urllib.request.Request(
+                f"https://console.vast.ai/api/v0/instances/{self._instance_id}/",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                import json
+                state = json.loads(resp.read().decode("utf-8")).get("actual_status")
+                return "running" if state == "running" else "stopped"
+        except Exception:
+            return "stopped"
+
+    def start(self) -> None:
+        self._request("PUT", "/start/")
+
+    def stop(self) -> None:
+        self._request("PUT", "/stop/")
+
+    def _request(self, method: str, action: str) -> None:
+        try:
+            import urllib.request
+            key = self._api_key()
+            req = urllib.request.Request(
+                f"https://console.vast.ai/api/v0/instances/{self._instance_id}/{action}",
+                method=method,
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            urllib.request.urlopen(req, timeout=5).read()
+        except Exception as exc:  # fail-closed on any control failure
+            raise SelfhostedLifecycleError(
+                f"Vast.ai control {action.strip('/')} failed: {exc}"
+            ) from exc
+
+
+def ensure_running(
+    control: InstanceControl,
+    probe,
+    poll_interval_s: float = 5,
+    max_wait_s: float = 120,
+) -> None:
+    """Bring an instance to healthy, starting it if needed (Beslut 8).
+
+    If ``control.status()`` is not "running", start it, then poll the liveness
+    ``probe`` until ``alive=True`` or ``max_wait_s`` elapses. On timeout raise
+    ``SelfhostedLifecycleError`` (fail-closed -- better a clear error than a
+    call against a not-ready server).
+    """
+    if control.status() != "running":
+        control.start()
+    deadline = time.monotonic() + max_wait_s
+    while True:
+        if probe.check().alive:
+            return
+        if time.monotonic() >= deadline:
+            raise SelfhostedLifecycleError(
+                "self-hosted instance did not become healthy within "
+                f"{max_wait_s}s (max_wait_s)"
+            )
+        time.sleep(poll_interval_s)
