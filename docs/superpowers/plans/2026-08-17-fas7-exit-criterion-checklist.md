@@ -72,6 +72,10 @@ fixar).
 
 ## Öppna punkter — INTE löst av denna körning, ärligt kvarstående
 
+**Operatörsbeslut 2026-08-17: samtliga fyra punkter nedan skjuts till Fas 7 v2.** Fas 7 v1 stänger
+här — exit-kriteriet är uppfyllt, men ingen produktionsdrift, ingen aktiv routing och ingen
+långlevande instans följer av det. v2 tar vid produktionshärdningen när den blir aktuell.
+
 1. **Cloudflare Quick Tunnel är inte produktionsstabilt.** Den första tunneln (etablerad vid
    första provisioneringen) slutade svara i DNS efter en stop/start-cykel (bekräftat:
    `Resolve-DnsName` mot 1.1.1.1 → "Non-existent domain" för samtliga tunnel-subdomäner). En andra
