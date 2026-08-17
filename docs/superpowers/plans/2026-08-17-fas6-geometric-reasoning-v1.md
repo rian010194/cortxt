@@ -1,12 +1,12 @@
 # Fas 6 — Geometric Reasoning v1 — implementationsplan (TDD)
 
-Status: **PLAN — KRÄVER ÄNDRINGAR åtgärdade (Kimi, 2026-08-17); GODKÄND-BAR.** Bygger på GODKÄND spec
+Status: **EXEKVERAD — alla 8 Task klara, kärnan grön.** Bygger på GODKÄND spec
 `docs/superpowers/specs/2026-08-17-fas6-geometric-reasoning-v01-design.md` (Kimi re-review #2 →
 GODKÄND, commit `0275ec1`). Branch `ci/adr-doc-currency-gate-clean`. Plan-Kimi-granskning gav
-2×P1 + 3×P2, alla åtgärdade här (P1.1 contradiction_degree-förtydligande, P1.2 mutable default,
-P2.1 ProblemSpace-serialisering, P2.2 onormaliserade vikter, P2.3 RED/Fail-steg); Kimi sa att
-planen är GODKÄND-bar utan ytterligare runda efter P1-fix. Task 1–2 exekverade och gröna
-(314 passed). Resten exekveras via TDD.
+2×P1 + 3×P2, alla åtgärdade (commit `40efe69`); Kimi sa att planen är GODKÄND-bar utan
+ytterligare runda efter P1-fix. **Full exekvering klar: default-sviten 331 passed (308 + 23
+nya geometric), 0 regressioner, 0 modellanrop.** Se exit-checklistan
+`2026-08-17-fas6-exit-criterion-checklist.md`.
 Goal: implementera den deterministiska kärnan av Fas 6 — typat Problem State + reasoning
 graph, contradiction-detektering, tre operatorer, path scoring (versionsstyrd policy,
 hash-embedding default), TrajectoryReport — utan regression (308 passed + nya), 0 modellanrop.
