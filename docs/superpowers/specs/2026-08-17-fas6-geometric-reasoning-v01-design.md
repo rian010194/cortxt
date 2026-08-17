@@ -232,19 +232,22 @@ oförändrade och gröna. Hela kärnan är **0 modellanrop** och körs i default
 skulle bryta etablerad, granskad arkitektur. Nya moduler/operatorer läggs till sida vid sida,
 inte genom omskrivning av befintlig funktionalitet.
 
-### 8. Första förslaget på beslutande vs diagnostiska mått (§27 #8) — för review, inte låst
+### 8. Beslutande vs diagnostiska mått (§27 #8) — FORMELT BESLUTAT (operatör, 2026-08-17)
 
-**Beslut (förslag till befintlighetsbeslut, ska bekräftas före exit-utvärdering):** för v1
-föreslås `goal_relevance`, `evidence_coverage` och `contradiction_risk` (via path scoring) som
-**beslutande** mått för sökval; övriga §12.2-mått (centrality, novelty, stability,
-path_diversity, information_gain, revisit_ratio, semantic_closeness) som **diagnostiska** —
-de rapporteras i trajectory-rapporten men styr inte aktivt.
+**Beslut (formellt, operatören godkände specens startpunkt 2026-08-17 — inte längre "förslag"):**
+`goal_relevance`, `evidence_coverage` och `contradiction_risk` (via path scoring) är de
+**beslutande** måtten för sökval i Fas 6 v1; övriga §12.2-mått (centrality, novelty, stability,
+path_diversity, information_gain, revisit_ratio, semantic_closeness) är **diagnostiska** — de
+rapporteras i trajectory-rapporten men styr inte aktivt. Detta uppfyller §23:s krav att
+beslutande mått avgörs innan exit-kriteriet utvärderas.
 
-**Varför inte låsa det här:** §23 Fas 6-exit-kriteriet kräver att "vilket/vilka mått i §12.2
-som är beslutande är avgjort innan detta exit-kriterium utvärderas (§27 #8)". Detta är ett
-**öppet beslut** som formellt ska avgöras (operatör + review) — specen föreslår en startpunkt
-så implementeringen kan bygga mot något konkret, men beslutationsslaget ska inte klistras in
-som fastslaget. Detta är ett operatörsbefattningsbyte-punkt som lyfts separat.
+**Motivering (varför startpunkten behölls, ingen avvikelse):** de tre beslutande måtten är de
+som §23-fas-trappan kopplar exit-kriteriet ("mätbar förbättring på beslutande mått") till, och
+de viktas redan tyngst i `CandidatePathScore`/`score_path` (w2=goal_relevance, w3=evidence_coverage,
+w5=contradiction_risk). En avvikelse skulle kräva omviktning av policyn utan empiriskt behov;
+som beslutande mäter de sökvalets faktiska utfall (närhet till mål, evidens-täthet, motsägelse)
+snarare än grafens struktur. Beslutet är versionsstyrt och kan revideras i en senare fas om data
+motiverar det (se Deferred decisions).
 
 ## Components (nya/ändrade moduler)
 
@@ -342,11 +345,12 @@ själva scoring-/rapportkedjan är identisk.
 Följande **kräver operatörsbefattning** och blockerar *inte* denna spec/plan/implementering av
 kärnan, men måste lyftas explicit:
 
-1. **§27 #10 — embeddings-provider.** Vilken embedding/endpoint ska ersätta `hash_embedding`,
-   och hur `InferencePort` ska normalisera embeddings. Kärnan är drop-in-redo; själva
-   provider-bytet är ett beslut + credentials-gated arbete.
-2. **§27 #8 — beslutande vs diagnostiska mått.** Specen föreslår en startpunkt (Beslut 8),
-   men det formaliserade beslutet ska fattas innan exit-kriteriet utvärderas.
+1. **§27 #10 — embeddings-provider (credentials + produktionfästning).** Voyage AI vald
+   (`voyage-4-lite`, dim 1024); `embedding_port.py` byggd. Kvarstår: operatören sätter
+   `CORTXT_EMBEDDING_URL`/`CORTXT_EMBEDDING_API_KEY` i den miljö som kör de riktiga anropen
+   (skrivs aldrig ut/committas), och att den kopplas in i produktionskonfiguration.
+2. **§27 #8 — beslutande vs diagnostiska mått.** **FORMELT BESLUTAT 2026-08-17** (Beslut 8):
+   goal_relevance, evidence_coverage, contradiction_risk beslutande; övriga diagnostiska.
 3. **Inference-budget för Fas 6-exit-bevis** (analogt Fas 5): om det empiriska exit-kriteriet
    ska bevisas mot en riktig modell krävs budget. Detta är systemhanterat (inget tal från
    operatören) men kräver att budgeten faktiskt sätts vid exits-tidpunkten.
@@ -355,8 +359,8 @@ kärnan, men måste lyftas explicit:
 
 | Decision | Revisit when |
 |---|---|
-| Riktig embeddings-provider (§27 #10) | Providerbeslut + credentials tillgängliga; drop-in via `CandidatePathScore.embedder`. |
-| Beslutande vs diagnostiska mått (§27 #8) | Före Fas 6-exit-utvärdering; specen föreslår startpunkt. |
+| Riktig embeddings-provider (§27 #10) | Providerbeslut + credentials tillgängliga; drop-in via `CandidatePathScore.embedder`. Voyage vald; env-koppling kvarstår (operatörsgrind). |
+| Beslutande vs diagnostiska mått (§27 #8) | **FORMELT BESLUTAT 2026-08-17**; revideras bara om empiriska data motiverar omviktning i en senare fas. |
 | Fler §10.2-operatorer (abstract/concretize/counterexample) | När en operator behövs av en beslutande metric eller en annan strategi. |
 | Embereddings-baserad context-slicing | §27 #10 löst — då som tillägg ovanpå Fas 5:s strukturella slicing. |
 | GUI trajectory-viewer (på ny bas) | När riktiga runs-data finns att visa: kärnan byggd + §27 #10 löst + exit-kriteriet kört mot riktig modell. Byggs på ny bas, **inte legacy `web/`** (explicit operatörsbeslut 2026-08-17). `TrajectoryReport`-datakontraktet (rapporten) levereras i denna v1. |
