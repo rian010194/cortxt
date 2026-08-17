@@ -1,37 +1,19 @@
 # Fas 8 — Kontrollerad learning loop — design
 
-Status: **v3 — KIMI-REVIEW GENOMFÖRD (KRÄVER ÄNDRINGAR), ALLA FYND ÅTGÄRDADE — REDO FÖR KIMI RE-REVIEW.
-Writer: Hermes (producer), 2026-08-18, branch
+Status: **v3 — GODKÄND AV KIMI (RE-REVIEW #2, 2026-08-18).** Writer: Hermes (producer), 2026-08-18, branch
 `spec/fas8-controlled-learning-loop` (grenad från `spec/fas7-self-hosted-inference`@`60b61a6`, dvs. efter
 Fas 7 v1 avslutad; den lokala `main`-grenen är föråldrad / Fas 4-era och saknar `agent-platform/portability/`
 från PR #135, så `-self-hosted-inference`-tip är den enda bas som innehåller allt beskrivet nuläge).
 
-**Kimi-granskning (2026-08-18, kimi-k2.6 via `hermes -p coordinator --provider kimi-coding`):**
-**VERDIKT = KRÄVER ÄNDRINGAR.** Fullt utlåtande i `agent-platform/runs/fas8-spec-kimi-review.out`
-(gitignored, committas ej). Producer äger rework: samtliga fynd hash-bindas nedan och åtgärdas i v3.
-- **P0.1** `CandidatePathScore` är mutable → bryter hash-garantin → **åtgärdat (Beslut 7/9):** registry hash-låser
-  det **serialiserade payload-objektet** (dict/json), inte runtime-instansen; `CandidatePathScore` noteras som
-  ett payload-format som kan göras frozen i plan-fasen.
-- **P0.2** `PromotionGate.evaluate(matrix, rules)` tog `rules` från adaptern → self-approval-bypass → **åtgärdat
-  (Beslut 3):** `evaluate` tar INTE emot regler från adaptern; den resolverar kandidatens typ-registrerade
-  regler internt ur `CandidateRegistry` och union:ar alltid med `MANDATORY_OPERATOR_GATES`.
-- **P0.3** `PromotionRule`-datamodellen för ofullständig → **åtgärdat (Beslut 3):** utökad med `candidate_type`,
-  `metric`, `threshold`, `comparator`.
-- **P1.1** Geometric-safety på policy-vikter = kategori-fel → **åtgärdat (Beslut 10a):** ersatt med konkreta
-  policy-constraint-säkerhetsregler; geometric-genomsyrandet ligger nu ärligt på selektionssidan (`score_path`).
-- **P1.2** Voyage-injektion utan kostnadsgräns → **åtgärdat (Beslut 10b):** Evaluator pre-computar/förcachar alla
-  embeddings före `score_path`.
-- **P1.3** EvidenceClassifier underdefinierad → **åtgärdat (Beslut 10c):** konkret exempel för policy-evidence.
-- **P1.4** "Tränad policy" ut-scope med falsk trygghet → **åtgärdat (Beslut 6):** kontraktet specificerat som
-  parametriskt-bärande; icke-parametriska kräver utvidgning av `payload_ref`/`Evaluator`.
-- **P1.5** `rollback(type)` → **åtgärdat (Beslut 7/Components):** `rollback(type, name)`.
-- **P1.6** Skill/tool som "beskriven modell" → **åtgärdat (Beslut 5):** ärligt omdefinierat som
-  "mekanism-kopplade, ej djup-verifierade" med §23-djupet för dessa två i v1.x.
-- **P1.7** Intern motsägelse om neutrala kandidater → **åtgärdat (Beslut 2):** endast strikt-bättre auto-promotas;
-  neutrala gör det inte.
-- **P2.1–P2.3** polish → åtgärdade/noterade (active_policy-detalj, `Engine.solve`-verifiering, test-baslinje-caveat).
-- **V01-rekommendationer** → inkorporerade i "Vägen till det större målet" + "V01-close-out" (byte:
-  samlad `V01-exit-report.md`, Supervisor läser aktiv policy, N=3-gröna exit-körningar).
+**Kimi-granskning #1 (2026-08-18):** VERDIKT = KRÄVER ÄNDRINGAR (3×P0 + 7×P1 + 3×P2 + V01-recs), krävde
+rework. **Kimi re-review #2 (2026-08-18):** **GODKÄND** — samtliga P0/P1-fynd verifierat LÖSTA, self-approval-
+bypassen mekaniskt stängd (3 oberoende spärrar), inga nya P0/P1. Tre **nya P2-fynd** noterade som polish för
+TDD-planen (inte design-blockerare): **P2.4** `candidate_id` ska explicit definieras som `type@name@version`
+(dvs `Candidate.id` ≡ sammansatt nyckel, för entydig registry-lookup); **P2.5** `promoted_by` ska vara
+`"gate:<gate_name>"`/`"system:auto"` vid auto-promotion och `"operator:<name>"` vid manuell (tydligt audit-
+spår); **P2.6** `EvidenceClassifier` har **två faser** — (a) initial klassificering vid `submit_candidate`,
+(b) verifier-checks av `EvidenceMatrix` före `PromotionGate.evaluate`. Alla tre adopteras i TDD-planen.
+Fulla utlåtanden i `agent-platform/runs/fas8-spec-kimi-review*.out` (gitignored, committas ej).
 
 **Operatörens direktiv 2026-08-18 (inkorporerat i v2):** (a) specen ska lägga grunden för det större målet,
 inte bara en liten mekanism-demo — därför v2:s Beslut 9 (stabila typ-agnostiska kontrakt) + "Vägen till det
