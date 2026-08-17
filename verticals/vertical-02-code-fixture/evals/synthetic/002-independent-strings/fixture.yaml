@@ -1,0 +1,16 @@
+fixture_id: v02-syn-code-002
+fixture_type: positive
+description: >
+  Single-file bug, independent of 001: last_word returns the wrong token
+  (off-by-one index into the split words list). Used as M1's second,
+  independent child run.
+workspace_dir: ./workspace
+declared_scope:
+  - strings_util.py
+caps:
+  max_files: 1
+  max_bytes_per_file: 16384
+  max_changed_lines: 20
+  max_executions: 4
+expected_failing_test: test_strings_util.py::test_last_word
+human_review_required: false

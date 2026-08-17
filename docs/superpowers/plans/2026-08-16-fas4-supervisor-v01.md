@@ -539,7 +539,8 @@ def run_child(store: Path, session_id: str, task_id: str, fixture_dir: Path,
                                profile=profile)
             envelope = loop.run(task_id=task_id, fixture_dir=fixture_dir)
         if envelope["status"] == "succeeded" and "file_contents" in envelope.get("result", {}):
-            writer.append("result.available", {"file_contents": envelope["result"]["file_contents"]})
+            writer.append("result.available", {"file_contents": envelope["result"]["file_contents"],
+                                                 "cost": envelope.get("cost", {})})
         return envelope
     finally:
         stop_heartbeat.set()
@@ -1622,8 +1623,7 @@ class Coordinator:
         result_event = next(e for e in child1_doc["events"] if e["event_type"] == "result.available")
         file_contents = result_event["payload"]["file_contents"]
 
-        spent = child1_doc["events"][-2]["payload"].get("cost", {}).get("sandbox_executions_used", 0) \
-            if len(child1_doc["events"]) > 1 else 0
+        spent = result_event["payload"].get("cost", {}).get("sandbox_executions_used", 0)
         surplus = reclaimable_surplus(child1_spec["allocated_budget"], spent)
         child2_budget = next_child_budget(child2_spec["allocated_budget"], surplus)
         seq = state.latest_sequence(state.load(self._store, root_session_id))
