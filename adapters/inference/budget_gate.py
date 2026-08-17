@@ -38,6 +38,7 @@ class BudgetGate:
             self._max_calls = int(raw) if raw is not None and raw.isdigit() else 0
         self._db = Path(db_path) if db_path else DEFAULT_DB
         self._last_task_id: str | None = None
+        self._route_id: str = "l0-default"
         self._ensure_table()
 
     def _ensure_table(self) -> None:
@@ -81,6 +82,14 @@ class BudgetGate:
         """Attach the current task id for the next spend row."""
         self._last_task_id = task_id
 
+    def set_route_id(self, route_id: str) -> None:
+        """Attach the route for the next spend rows (Fas7 Beslut 6 route isolation).
+
+        Default stays ``l0-default`` so behaviour is unchanged until a caller
+        (e.g. ``TextInferencePort``) names its route.
+        """
+        self._route_id = route_id
+
     def record(
         self,
         cost_status: str = "unknown",
@@ -119,8 +128,8 @@ class BudgetGate:
             self.record(
                 cost_status="failed",
                 latency_ms=int((time.monotonic() - started) * 1000),
-                route_id="l0-default",
-                selected_route_id="l0-default",
+                route_id=self._route_id,
+                selected_route_id=self._route_id,
             )
             raise
         # Success outcome row with latency, so a completed call is distinguishable from an
@@ -128,7 +137,7 @@ class BudgetGate:
         self.record(
             cost_status="success",
             latency_ms=int((time.monotonic() - started) * 1000),
-            route_id="l0-default",
-            selected_route_id="l0-default",
+            route_id=self._route_id,
+            selected_route_id=self._route_id,
         )
         return result
