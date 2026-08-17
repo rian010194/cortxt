@@ -2,5 +2,6 @@
 from __future__ import annotations
 
 from .candidate import Candidate
+from .registry import CandidateRegistry
 
-__all__ = ["Candidate"]
+__all__ = ["Candidate", "CandidateRegistry"]
