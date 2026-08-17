@@ -1,9 +1,12 @@
 # Fas 6 — Geometric Reasoning v1 — implementationsplan (TDD)
 
-Status: **PLAN — SKICKAD till Kimi-review (2026-08-17).** Bygger på GODKÄND spec
+Status: **PLAN — KRÄVER ÄNDRINGAR åtgärdade (Kimi, 2026-08-17); GODKÄND-BAR.** Bygger på GODKÄND spec
 `docs/superpowers/specs/2026-08-17-fas6-geometric-reasoning-v01-design.md` (Kimi re-review #2 →
-GODKÄND, commit `0275ec1`). Branch `ci/adr-doc-currency-gate-clean`. Task 1–2 redan exekverade
-och gröna (314 passed totalt). Planen granskas av Kimi innan resterande TDD-task exekveras.
+GODKÄND, commit `0275ec1`). Branch `ci/adr-doc-currency-gate-clean`. Plan-Kimi-granskning gav
+2×P1 + 3×P2, alla åtgärdade här (P1.1 contradiction_degree-förtydligande, P1.2 mutable default,
+P2.1 ProblemSpace-serialisering, P2.2 onormaliserade vikter, P2.3 RED/Fail-steg); Kimi sa att
+planen är GODKÄND-bar utan ytterligare runda efter P1-fix. Task 1–2 exekverade och gröna
+(314 passed). Resten exekveras via TDD.
 Goal: implementera den deterministiska kärnan av Fas 6 — typat Problem State + reasoning
 graph, contradiction-detektering, tre operatorer, path scoring (versionsstyrd policy,
 hash-embedding default), TrajectoryReport — utan regression (308 passed + nya), 0 modellanrop.
@@ -165,8 +168,13 @@ def find_contradiction(space, node_id, threshold=0.7) -> list[Contradiction]: ..
 **Step 1 (RED):** explicit kant detekteras med source="edge"; tröskelöverskridande nodhittas
 med source="degree"; nod utan motstycke → tom lista.
 
+**Step 2:** pytest → FAIL (metod saknas).
+
 **Step 3 (GREEN):** implementera enligt kontrakt ovan (kollar `edge_types(a,nid)` för
-"contradicts", plus noder vars `contradiction_degree >= threshold`).
+"contradicts", plus noder vars `GraphMetrics.contradiction_degree(space, nid) >= threshold`).
+Obs (P1.1-fix): `contradiction_degree` är en **metod** i `metrics.py` som läser det befintliga
+`ReasoningNode.contradiction`-fältet — inget nytt nodschema-fält införs; nodens kontradiktion
+hämtas via metriken, inte via en egen fältnyckel.
 
 **Step 4:** pass. Re-export i `__init__.py` (`Contradiction`, `ContradictionDetector`,
 `find_contradiction`).
@@ -200,8 +208,10 @@ def compare_paths(space, path_a, path_b, goal, policy) -> tuple[list[str], float
 (compare_paths beror på Task 6:s `score_path` — sekvensera Task 6 före den sista delen av
 Task 5 om nödvändigt, eller definiera compare_paths i Task 6. Se not.)
 
-**Step 1–5:** TDD per funktion. `change_perspective` testas först (oberoende), commit.
-`compare_paths` implementeras och committas EFTER att `score_path` finns (Task 6).
+**Step 1–5:** TDD per funktion. `change_perspective` testas först (oberoende) — Step 1 RED
+(skriv test), Step 2 verifiera pytest → FAIL (metod saknas), Step 3 GREEN, Step 4 verifiera
+pass, Step 5 commit. `compare_paths` implementeras och committas EFTER att `score_path` finns
+(Task 6), med samma RED→FAIL→GREEN-sekvens.
 
 **Commit:** `feat(geometric): change_perspective + compare_paths operators`.
 
@@ -222,21 +232,30 @@ formeln med `CandidatePathScore`-vikter och en `embedder` (default hash_embeddin
 @dataclass
 class CandidatePathScore:
     version: str = "v1"
-    w1: float = 0.2  # expected_information_gain
-    w2: float = 0.3  # goal_relevance
-    w3: float = 0.3  # evidence_coverage
-    w4: float = 0.1  # path_novelty
-    w5: float = 0.2  # contradiction_risk (subtract)
-    w6: float = 0.1  # expected_cost (subtract)
-    w7: float = 0.1  # policy_risk (subtract)
+    # Normaliserade vikter (P2.2): additiva w1..w4 summerar till 1.0; subtraktiva w5..w7
+    # summerar till 1.0 — så score ligger i ett tydligt intervall och är jämförbar över versioner.
+    w1: float = 0.15  # expected_information_gain
+    w2: float = 0.40  # goal_relevance
+    w3: float = 0.30  # evidence_coverage
+    w4: float = 0.15  # path_novelty          (w1+w2+w3+w4 = 1.0)
+    w5: float = 0.50  # contradiction_risk (subtract)
+    w6: float = 0.25  # expected_cost     (subtract)
+    w7: float = 0.25  # policy_risk       (subtract)   (w5+w6+w7 = 1.0)
     embedder: EmbeddingFn = hash_embedding
 
-def score_path(space, path, goal, policy: CandidatePathScore = CandidatePathScore()) -> float: ...
+def score_path(space, path, goal, policy: CandidatePathScore | None = None) -> float:
+    # P1.2-fix: mutable default undviks — instansiera CandidatePathScore() i kroppen när None.
+    policy = policy or CandidatePathScore()
+    ...
 ```
+Not: vikterna är policydata (versionsstyrd dataclass) och ska utvärderas mot fixtures; dessa
+värden är v1-standarder som tydligt normaliserats (§12.4).
 
 **Step 1 (RED):** score med kända handräknade värden (inte tautologi — väntevärde från
 policydata + fixturens kända metrics); högre evidens/novelty → högre score; contradiction →
 lägre.
+
+**Step 2:** pytest → FAIL (metod saknas).
 
 **Step 3 (GREEN):** implementera formeln (Beslut 5) med aggregering över path-noder; använd
 `GraphMetrics` för termerna + `policy.embedder` för expected_information_gain (cosine mot
@@ -281,8 +300,14 @@ class TrajectoryReport:
 metadata (node_type, evidence, contradiction), attraktorer, contradictions, policy-version
 inkluderas; `render_text()` innehåller path + score.
 
-**Step 3 (GREEN):** implementera (ren funktion från space; `to_json` använder `json.dumps` med
-kanoniskt/stable-ordning — t.ex. `sort_keys=True` — för determinism; inga modellanrop).
+**Step 2:** pytest → FAIL (metod saknas).
+
+**Step 3 (GREEN):** implementera (ren funktion från space; P2.1-fix: `to_json` expanderar
+`ProblemSpace` explicit till nodlista (id, node_type, evidence, contradiction, confidence,
+visited_count, metadata) + kantlista (src, dst, types) — manuell dict-uppbyggnad, INTE
+`json.dumps(space)` direkt (ProblemSpace är inte JSON-serialiserbart); `json.dumps` med
+`sort_keys=True` + `default=str` för determinism och icke-serialiserbara värden; inga
+modellanrop).
 
 **Step 4:** pass.
 
