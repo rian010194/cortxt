@@ -24,6 +24,16 @@ Testbevis: `pytest agent-platform/ -m "not real_inference and not docker_require
 **331 passed, 4 skipped, 0 failed** (bas 308 + 23 nya geometric-tester). Kimi-granskning av
 spec (GODKÄND) och plan (GODKÄND-BAR) genomförd; alla fynd åtgärdade.
 
+> **Kör-miljö-pitfall (2026-08-17, rekonsilierad):** hela default-sviten (inkl.
+> `embedding_port`) är **345 passed, 3 skipped, 20 deselected** (331 Fas 6-kärna + 6
+> `test_graph_types.py` + 9 embedding-port-tester), verifierat med Python312
+> (`C:\Users\rikar\AppData\Local\Programs\Python\Python312\python.exe`) från `agent-platform/`.
+> **Kräver att `PYTHONPATH` töms (`PYTHONPATH=`)** — annars kontaminerar sessionens hermes-venv
+> `rpds`-installationen (trasig `rpds.rpds`) Python312:s importväg → 6 collection-errors
+> (test_agent_loop/test_coding_loop). En körning med kontaminerad PYTHONPATH (eller med
+> hermes-venv Python 3.11.15) ger annat item-antal (340+4 / 344 items); 345 är det auktoritativa
+> talet med ren PYTHONPATH + Python312.
+
 ## Vad som kräver §27 #10 (embeddings-provider) — VOYAGE VALD, `embedding_port` byggd
 
 - **Provider vald (operatör):** **Voyage AI** (`https://api.voyageai.com/v1`, `voyage-4-lite`,
