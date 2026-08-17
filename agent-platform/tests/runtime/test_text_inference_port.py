@@ -204,3 +204,33 @@ def test_route_id_is_configurable(tmp_path, monkeypatch):
     )
     port.invoke("x", output_schema={"type": "object"})
     assert captured["route_id"] == "selfhosted-qwen3-8b"
+
+
+def test_two_routes_produce_isolated_spend_rows(tmp_path, monkeypatch):
+    monkeypatch.setattr("runtime.text_inference_port._resilient_execute",
+                         lambda request, adapters: {"status": "succeeded", "response": {"content": "{}"}})
+    monkeypatch.setattr("runtime.text_inference_port._RI_AVAILABLE", True)
+    monkeypatch.setenv("CORTXT_INFERENCE_URL", "https://example.invalid")
+    monkeypatch.setenv("CORTXT_INFERENCE_API_KEY", "k")
+    monkeypatch.setenv("CORTXT_SELFHOSTED_URL", "https://example.invalid")
+    monkeypatch.setenv("CORTXT_SELFHOSTED_API_KEY", "k")
+    db_path = tmp_path / "spend.db"
+    gate = BudgetGate(max_calls=10, db_path=db_path)
+
+    inferx_port = TextInferencePort(model="m1", budget_gate=gate,
+        provider_evidence={"approved": True, "provider_id": "inferx"}, data_class="L0")
+    selfhosted_port = TextInferencePort(model="qwen3-8b-instruct", budget_gate=gate,
+        provider_evidence={"approved": True, "provider_id": "vastai"}, data_class="L0",
+        base_url_env="CORTXT_SELFHOSTED_URL", api_key_env="CORTXT_SELFHOSTED_API_KEY",
+        route_id="selfhosted-qwen3-8b")
+
+    inferx_port.invoke("x", output_schema={"type": "object"})
+    selfhosted_port.invoke("y", output_schema={"type": "object"})
+
+    import sqlite3
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT route_id FROM fas2a_inference_spend WHERE cost_status='success'"
+        ).fetchall()
+    route_ids = {r[0] for r in rows}
+    assert route_ids == {"l0-default", "selfhosted-qwen3-8b"}

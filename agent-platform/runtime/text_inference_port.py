@@ -69,6 +69,12 @@ class TextInferencePort:
         if decision.allowed is not True:
             raise TextInferenceError(f"provider policy denied this port: {decision.reasons}")
         
+        # Fas7 Beslut 6: make spend rows route-isolated so GROUP BY route_id is
+        # meaningful. Only when the gate exposes set_route_id (BudgetGate does);
+        # a bare callable gate keeps its default route.
+        set_route = getattr(self._gate, "set_route_id", None)
+        if callable(set_route):
+            set_route(self._route_id)
         return self._gate(self._call_backend, prompt, output_schema)
 
     def _call_backend(self, prompt: str, output_schema: dict) -> dict:
