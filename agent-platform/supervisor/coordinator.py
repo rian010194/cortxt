@@ -392,22 +392,54 @@ class Coordinator:
         if not self._store.is_dir():
             return summaries
 
+        all_docs: dict[str, dict] = {}
         for session_dir in self._store.iterdir():
             if not session_dir.is_dir():
                 continue
-            session_id = session_dir.name
             try:
-                doc = state.load(self._store, session_id)
-            except state.SessionError:  # root session file missing/corrupt
+                all_docs[session_dir.name] = state.load(self._store, session_dir.name)
+            except state.SessionError:
                 continue
 
-            is_root = any(e["event_type"] == "child.spawned" for e in doc["events"])
-            if not is_root:
+        # Build parent -> [children] edges from child.spawned events; process
+        # children before parents (reverse topological / depth-first
+        # post-order) so a parent's any_lost check sees its child's just-updated
+        # status.
+        children_of: dict[str, list[str]] = {}
+        for sid, doc in all_docs.items():
+            for event in doc["events"]:
+                if event["event_type"] == "child.spawned":
+                    child_sid = event["payload"].get("session_id")
+                    if child_sid:
+                        children_of.setdefault(sid, []).append(child_sid)
+
+        visited: set[str] = set()
+        order: list[str] = []
+
+        def _visit(sid: str) -> None:
+            if sid in visited or sid not in all_docs:
+                return
+            visited.add(sid)
+            for child_sid in children_of.get(sid, []):
+                _visit(child_sid)
+            order.append(sid)  # post-order: children land in `order` before this sid
+
+        for sid in list(all_docs):
+            _visit(sid)
+
+        for session_id in order:
+            doc = all_docs[session_id]
+            is_root_like = session_id in children_of  # has at least one child.spawned event
+            if not is_root_like:
                 continue
             already_terminal = any(e["event_type"] == "session.terminal" for e in doc["events"])
             if already_terminal:
                 continue
 
+            # re-read fresh: a child processed earlier in `order` may have just
+            # been marked terminal/lost, and this session's own doc must
+            # reflect that before its any_lost check runs
+            doc = state.load(self._store, session_id)
             any_lost = False
             for event in doc["events"]:
                 if event["event_type"] != "child.spawned":
@@ -419,39 +451,24 @@ class Coordinator:
                     state.append(self._store, session_id, seq, "session.terminal",
                                  {"status": "blocked", "reason": "child session record is malformed"})
                     continue
-                
-                # Try to load child session - handle corrupt/missing records
                 try:
                     child_doc = state.load(self._store, child_session_id)
                 except state.SessionError as error:
-                    # child session record corrupt/missing - mark as lost
                     any_lost = True
                     seq = state.latest_sequence(state.load(self._store, session_id))
                     state.append(self._store, session_id, seq, "session.terminal",
                                  {"status": "blocked", "reason": f"child session record is corrupt or missing: {error}"})
                     continue
-                
-                # Check for terminal event - handle malformed payload
-                try:
-                    terminal_events = any(e.get("event_type") == "session.terminal" for e in child_doc.get("events", []))
-                except (KeyError, TypeError, AttributeError) as error:
-                    any_lost = True
-                    seq = state.latest_sequence(state.load(self._store, session_id))
-                    state.append(self._store, session_id, seq, "session.terminal",
-                                 {"status": "blocked", "reason": f"child session event payload is malformed: {error}"})
-                    continue
-                
-                if terminal_events:
+
+                terminal_event = next((e for e in child_doc["events"] if e.get("event_type") == "session.terminal"), None)
+                if terminal_event is not None:
+                    if terminal_event["payload"]["status"] in ("lost", "blocked", "failed"):
+                        any_lost = True
                     continue
 
-                # Check liveness - handle malformed payload
                 try:
-                    child = ChildProcess(
-                        pid=event["payload"]["pid"], 
-                        pgid=event["payload"]["pgid"],
-                        session_id=child_session_id, 
-                        start_time=event["payload"]["start_time"]
-                    )
+                    child = ChildProcess(pid=event["payload"]["pid"], pgid=event["payload"]["pgid"],
+                                          session_id=child_session_id, start_time=event["payload"]["start_time"])
                     if self._spawner.is_alive(child):
                         seq = state.latest_sequence(state.load(self._store, child_session_id))
                         state.append(self._store, child_session_id, seq, "session.reattached", {})
