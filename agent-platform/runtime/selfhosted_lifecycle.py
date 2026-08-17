@@ -6,8 +6,10 @@ wrapper that makes a cold start transparent to the caller.
 """
 from __future__ import annotations
 
+import json
 import os
 import time
+import urllib.request
 from typing import Protocol, runtime_checkable
 
 
@@ -63,43 +65,51 @@ class _VastAiControlAdapter:
         return key
 
     def status(self) -> str:
-        # Vast.ai GET /api/v0/instances/<id> returns the instance state.
-        # Fail-closed to "stopped" on any error so ensure_running prefers to
-        # (re)start rather than assume healthy. Deferred concretization of
-        # endpoint/response shape to Fas B.
+        # Vast.ai GET /api/v0/instances/<id>/ returns the instance state
+        # nested under a top-level "instances" key (verified live 2026-08-17
+        # -- an earlier draft assumed flat fields and always returned
+        # "stopped" for a genuinely running instance). Fail-closed to
+        # "stopped" on any error so ensure_running prefers to (re)start
+        # rather than assume healthy.
         try:
-            import urllib.request
             key = self._api_key()
             req = urllib.request.Request(
                 f"https://console.vast.ai/api/v0/instances/{self._instance_id}/",
                 headers={"Authorization": f"Bearer {key}"},
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
-                import json
-                state = json.loads(resp.read().decode("utf-8")).get("actual_status")
+                body = json.loads(resp.read().decode("utf-8"))
+                state = (body.get("instances") or {}).get("actual_status")
                 return "running" if state == "running" else "stopped"
         except Exception:
             return "stopped"
 
     def start(self) -> None:
-        self._request("PUT", "/start/")
+        self._set_state("running")
 
     def stop(self) -> None:
-        self._request("PUT", "/stop/")
+        self._set_state("stopped")
 
-    def _request(self, method: str, action: str) -> None:
+    def _set_state(self, state: str) -> None:
+        # Vast.ai's real control API (verified live 2026-08-17 via the
+        # official `vastai` CLI's --explain) is a single PUT to the instance
+        # resource with a JSON {"state": ...} body -- there is no separate
+        # /start/ or /stop/ sub-route, which an earlier draft assumed.
         try:
-            import urllib.request
             key = self._api_key()
+            body = json.dumps({"state": state}).encode("utf-8")
             req = urllib.request.Request(
-                f"https://console.vast.ai/api/v0/instances/{self._instance_id}/{action}",
-                method=method,
-                headers={"Authorization": f"Bearer {key}"},
+                f"https://console.vast.ai/api/v0/instances/{self._instance_id}/",
+                data=body, method="PUT",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
             )
             urllib.request.urlopen(req, timeout=5).read()
         except Exception as exc:  # fail-closed on any control failure
             raise SelfhostedLifecycleError(
-                f"Vast.ai control {action.strip('/')} failed: {exc}"
+                f"Vast.ai control set-state({state!r}) failed: {exc}"
             ) from exc
 
 

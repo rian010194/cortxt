@@ -47,6 +47,25 @@ def test_failed_call_still_counts_attempt(monkeypatch, tmp_path):
     assert "attempt_started" in statuses and "failed" in statuses
 
 
+def test_attempt_started_row_uses_set_route_id(tmp_path):
+    """Fas7 Beslut 6 route isolation: found via a live Fas B run, 2026-08-17 --
+    the upfront attempt_started record() call didn't pass route_id, so every
+    attempt row always showed the "l0-default" default regardless of
+    set_route_id(), even though the later success/failed rows did it right.
+    """
+    import sqlite3
+
+    db = tmp_path / "t.db"
+    gate = BudgetGate(max_calls=1, db_path=db)
+    gate.set_route_id("selfhosted-qwen3-8b-awq")
+    gate(lambda: 42)
+    with sqlite3.connect(db) as conn:
+        rows = conn.execute(
+            "SELECT route_id FROM fas2a_inference_spend WHERE cost_status='attempt_started'"
+        ).fetchall()
+    assert all(r[0] == "selfhosted-qwen3-8b-awq" for r in rows)
+
+
 def test_db_records_attempt_rows(monkeypatch, tmp_path):
     import sqlite3
 

@@ -120,7 +120,8 @@ class BudgetGate:
             )
         # Record an attempt row UP FRONT so the ceiling advances even if the call fails (CP1.1 P2):
         # a raised/failed attempt still consumes budget, preventing silent bypass via retries.
-        self.record(cost_status="attempt_started", latency_ms=0)
+        self.record(cost_status="attempt_started", latency_ms=0,
+                     route_id=self._route_id, selected_route_id=self._route_id)
         started = time.monotonic()
         try:
             result = invoke(*args, **kwargs)

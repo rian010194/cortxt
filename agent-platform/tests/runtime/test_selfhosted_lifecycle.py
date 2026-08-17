@@ -57,3 +57,80 @@ def test_ensure_running_raises_after_max_wait(monkeypatch):
     with pytest.raises(SelfhostedLifecycleError):
         ensure_running(control=FakeControl(), probe=FakeProbe(), poll_interval_s=0,
                         max_wait_s=0)
+
+
+def test_status_parses_real_vastai_response_shape(monkeypatch):
+    # Verified live against Vast.ai's actual GET /api/v0/instances/<id>/
+    # response, 2026-08-17: fields are nested under a top-level "instances"
+    # key, not flat as an earlier draft assumed -- that earlier version always
+    # returned "stopped" for a genuinely running instance.
+    import json
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return json.dumps({"instances": {"actual_status": "running"}}).encode()
+
+    def fake_urlopen(request, timeout=None):
+        return FakeResponse()
+
+    monkeypatch.setattr("runtime.selfhosted_lifecycle.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("CORTXT_SELFHOSTED_API_KEY", "secret-token")
+    control = _VastAiControlAdapter(instance_id="47966869",
+                                     api_key_env="CORTXT_SELFHOSTED_API_KEY")
+    assert control.status() == "running"
+
+
+def test_status_stopped_when_actual_status_not_running(monkeypatch):
+    import json
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return json.dumps({"instances": {"actual_status": "exited"}}).encode()
+
+    def fake_urlopen(request, timeout=None):
+        return FakeResponse()
+
+    monkeypatch.setattr("runtime.selfhosted_lifecycle.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("CORTXT_SELFHOSTED_API_KEY", "secret-token")
+    control = _VastAiControlAdapter(instance_id="47966869",
+                                     api_key_env="CORTXT_SELFHOSTED_API_KEY")
+    assert control.status() == "stopped"
+
+
+def test_stop_sends_real_vastai_request_shape(monkeypatch):
+    # Verified live against Vast.ai's actual control API, 2026-08-17 (via the
+    # official vastai CLI's --explain): a single PUT to the instance resource
+    # with {"state": "stopped"}, not a separate /stop/ sub-route as an
+    # earlier draft assumed.
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return b"{}"
+
+    def fake_urlopen(request, timeout=None):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["body"] = request.data
+        return FakeResponse()
+
+    monkeypatch.setattr("runtime.selfhosted_lifecycle.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("CORTXT_SELFHOSTED_API_KEY", "secret-token")
+    control = _VastAiControlAdapter(instance_id="47966869",
+                                     api_key_env="CORTXT_SELFHOSTED_API_KEY")
+    control.stop()
+    assert captured["url"] == "https://console.vast.ai/api/v0/instances/47966869/"
+    assert captured["method"] == "PUT"
+    assert captured["body"] == b'{"state": "stopped"}'
