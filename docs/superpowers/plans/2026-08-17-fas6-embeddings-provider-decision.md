@@ -52,17 +52,20 @@ Detta betyder att en embeddings-väg **inte behöver uppfinna ny fail-closed-inf
 3. **C endast** om InferX saknar en tillräcklig embeddings-modell (då ny BD-adapter krävs och
    granskas enligt ADR-016-processen).
 
-## VERIFIERINGSRESULTAT (2026-08-17, 1 begränsat fail-closed-anrop)
-- **A är UTESLUTET på befintlig bas:** InferX `https://model.inferx.net/endpoints/v1/embeddings`
-  svarade **HTTP 404** (tom kropp) med den konfigurerade modellen. Det finns ingen verifierad
-  `/embeddings`-route där. Precis som Fas 5 fann 404 på `INFERX_MODEL`-värdet för chat, ger
-  `/embeddings` 404 här. (En chat-modell `Qwen3…` är inte nödvändigtvis en embeddings-modell;
-  oavsett orsak finns ingen påvisad väg i dagsläget.)
-- **Innebörd:** de enda kvarvarande valen är **B** (behåll deterministisk hash-stub — kärnan är
-  redan grön) eller **C** (lokal/open-source embedding, ny BD-adapter, kräver
-  TDD + ADR-granskning). Ingen riktig embeddings-prova är tillgänglig via InferX just nu.
-- **Inga credentials** har skrivits ut/committats; anropet var read-only/idempotent och
-  fail-closed (budget/status kontrollerades; inget sparades bortom status).
+## VERIFIERINGSRESULTAT (2026-08-17, 1 begränsat fail-closed-anrop) — PROVISORISKT
+- InferX `https://model.inferx.net/endpoints/v1/embeddings` svarade **HTTP 404** (tom kropp)
+  med den konfigurerade modellen (`INFERX_MODEL`).
+- **PROVISORISKT utfall — inte "uteslutet":** operatören håller på att konfigurera InferX
+  `/embeddings` (2026-08-17). 404 beror sannolikt på (a) att embeddings-sidan ännu inte är
+  konfigurerad, och/eller (b) fel modell — en **chat-modell (`Qwen3…`) är inte nödvändigtvis en
+  embeddings-modell**; OpenAI-kompatibelt `/embeddings` kräver ett `text-embedding-*`-modellnamn.
+- **Behövs från operatören när konfigureringen är klar:** (1) bekräftad bas-URL, (2) ev. annan
+  route-path om inte standard `/v1/embeddings`, (3) **rätt embeddings-modellnamn**, (4) att
+  verifiering tillåts. Då görs en ny, begränsad fail-closed-probe innan implementering.
+- **Innebörd just nu:** kärnan förblir grön med **B** (`hash_embedding`) — inget tryck att
+  byta. **C** (lokal/open-source) kvarstår som alternativ om InferX-/embedding-vägen inte
+  realiseras. Inga credentials skrevs ut/committades; anropet var read-only/idempotent och
+  fail-closed.
 
 ## Konsekvenser (vilka som är mänskliga grindar — inte delegeras)
 - **Provider-/endpoint-beslut** = operatörsgrind (vilken embedding-källa + modell).

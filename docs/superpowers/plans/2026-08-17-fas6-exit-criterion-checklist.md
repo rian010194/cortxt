@@ -28,10 +28,11 @@ spec (GODKÄND) och plan (GODKÄND-BAR) genomförd; alla fynd åtgärdade.
 
 - Ersätta `hash_embedding` med en riktig provider via `EmbeddingFn`-ytan (drop-in på
   `CandidatePathScore.embedder` och `GraphMetrics.semantic_closeness`).
-- **Verifierat 2026-08-17:** InferX exponerar INGEN `/embeddings`-route (HTTP 404) på den
-  konfigurerade bas-URL:en — så **Alternativ A (InferX /embeddings) är uteslutet** på befintlig
-  bas. Kvarvarande val: B (behåll deterministisk stub — kärnan är grön) eller C (lokal/
-  open-source embedding via ny BD-adapter, kräver TDD + ADR-granskning). Se
+- **Verifierat (provisoriskt) 2026-08-17:** InferX `/embeddings` gav HTTP 404 med den
+  konfigurerade chat-modellen — men operatören konfigurerar InferX `/embeddings`; 404 är sannolikt
+  (a) ej konfigurerat ännu och/eller (b) fel modellnamn (chat-modell ≠ `text-embedding-*`). A
+  återstår som mål när konfigureringen är klar; B (hash-stub) förblir default; C (lokal/
+  open-source) om InferX-vägen inte realiseras. Se
   `2026-08-17-fas6-embeddings-provider-decision.md`.
 
 ## Vad som kräver inference-budget (det empiriska exit-stegest) — ej i denna v1
