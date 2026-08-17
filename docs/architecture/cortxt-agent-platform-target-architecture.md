@@ -2,7 +2,8 @@
 
 Status: proposed target architecture  
 Authority: architectural proposal; does not override the current operating model  
-Date: 2026-08-12  
+Date: 2026-08-12 (original)  
+Last updated: 2026-08-17  
 Owner: Rikard  
 Review trigger: before implementation scope is approved and whenever a major platform boundary changes
 
@@ -17,7 +18,9 @@ Review trigger: before implementation scope is approved and whenever a major pla
 Detta dokument beskriver den långsiktiga målbilden och en stegvis väg dit. Det
 är inte en beskrivning av vad som är produktionsverifierat idag.
 
-Vid konflikt gäller dokumentationsordningen i `docs/README.md`. Framför allt:
+Vid konflikt gäller dokumentationsordningen nedan (ADR-016 planerade en
+`docs/authority-map` för detta, men den punkten i ADR-016:s Validation-lista
+är fortfarande ogjord — `docs/README.md` finns inte i repot). Framför allt:
 
 - `docs/agents/current-operating-model.md` beskriver dagens verifierade väg;
 - `docs/architecture/dispatch-contract.md` är fortsatt normativt för dispatch,
@@ -45,8 +48,11 @@ Målprodukten består av:
 9. ett oberoende evaluation- och evidenslager;
 10. versionsstyrda vertical packages för domänspecifika förmågor.
 
-Hermes och Pi används under migrationen som adaptrar, fallback och benchmark.
-De ska inte vara nödvändiga för Cortxt Agent Platforms kärnfunktion.
+Hermes koordinerande roll används under migrationen som adapter, fallback och
+benchmark och ersätts stegvis av Cortxt Supervisor (§24.1). Hermes, Pi och
+Codex som kodningsmotorer är däremot permanenta parallella routingval enligt
+ADR-019 (2026-08-16) — de ersätts inte, oavsett hur Cortxt Agent Platform
+utvecklas (se §22.3/§24.2).
 
 ## 2. Produktvision
 
@@ -235,10 +241,34 @@ Varje child run ska ha:
 - querybar status;
 - terminalt strukturerat resultat.
 
+### 7.4 Statusmappning mot result envelope
+
+Supervisorns state machine (§7.2) och dispatch-kontraktets normativa
+result-envelope-status använder inte samma vokabulär. Mappningen:
+
+| Supervisor state / händelse | Result envelope status |
+| --- | --- |
+| ADMITTED … VERIFYING, WAITING_FOR_OPERATOR | inget envelope ännu (icke-terminalt) |
+| SUCCEEDED | `succeeded` |
+| BLOCKED | `blocked` |
+| FAILED | `failed` |
+| timeout | `timed_out` |
+| budgettak nått | `budget_exceeded` |
+| cancellation | `cancelled` |
+| child status `lost` (Fas 4, §27 #4) | root `blocked` med reason som pekar till förlorat barn |
+
+Envelopen i §19.2 utökas inte av denna tabell — dispatch-kontraktet är
+normativt och ändras bara via separat godkännande (§19.1). Verifierat mot
+Fas 4-koden (final-fix-rapport, Fix 1): Supervisor v0.1 mappar i praktiken
+timeout till `blocked` med reason, inte till ett eget `timed_out`-fält.
+Målbilden bör lyfta `timed_out` och `budget_exceeded` till förstaklassiga
+terminalorsaker i en senare fas.
+
 ## 8. Agent Runtime
 
-Agent Runtime är Cortxts egna agent harness och ersätter stegvis Pi som primär
-coding harness.
+Agent Runtime är Cortxts egna agent harness. Den kompletterar Pi, Hermes och
+Codex som ett permanent parallellt routingval för kodningsuppgifter (ADR-019,
+se §22.3/§24.2) — den ersätter dem inte.
 
 ### 8.1 Gemensam runtime
 
@@ -429,6 +459,14 @@ Varje RLM-körning ska ha:
 - alla relevanta grenar är integrerade;
 - en materiell motsägelse kräver operatör eller ny evidens;
 - policy eller säkerhetsgräns stoppar fortsatt arbete.
+
+### 11.4 Dataklass vid context-ingest
+
+Inläst kontext ärver och behåller sin dataklass. Aggregerad kontext i Problem
+State klassas som den högsta ingående dataklassen. Klassen ska vara synlig för
+Tool Gateway och provider eligibility (ADR-016 dataklass→gate) vid varje
+efterföljande anrop som konsumerar den aggregerade kontexten. Detta bygger på
+dataklass-metadata som redan krävs per nod och relation (§9.3).
 
 ## 12. Geometric Reasoning Engine
 
@@ -731,6 +769,9 @@ migration har godkänts separat.
 
 ### 19.2 Utökat result envelope
 
+Se §7.4 för mappningen mellan Supervisorns interna state machine och
+statusfälten nedan.
+
 ```yaml
 agent:
   platform_version: cortxt-agent-v0.1
@@ -776,7 +817,13 @@ admission även när instruktionen kommer från material som agenten analyserar.
 ### 20.3 Rekursionsrisk
 
 Rekursion får aldrig vara den enda stoppmekanismen. Hårda ceilings verkställs
-utanför modellen och gäller root samt samtliga barn tillsammans.
+utanför modellen och gäller root samt samtliga barn tillsammans som mål.
+
+Mekanismen skiljer sig från målet: i v0.1 (detacherade processer, Fas 4)
+verkställs detta genom disjunkt förallokerad delbudget per barn plus
+post-hoc rollover vid integrering, inte genom realtidsaggregering av
+kostnad/tokens över processgränser. Realtidsaggregering över detacherade
+barn är ett öppet beslut (§27).
 
 ## 21. Observability och evidens
 
@@ -805,11 +852,12 @@ Approved Dispatch
        |
        v
 Routing policy
-  |             |
-  v             v
-Hermes/Pi     Cortxt Agent Platform
-legacy path   target path
-  |             |
+  |                              |
+  v                              v
+Hermes/Pi                     Cortxt Agent Platform
+kodning: permanent routingval   target path
+(ADR-019); koordinering: migreras (§24.1)
+  |                              |
   +-------> common result envelope and evaluation
 ```
 
@@ -859,20 +907,33 @@ Ingen extern agentruntime ska vara ett dolt beroende i Cortxt Agent Core.
 
 ## 23. Implementationstrappa
 
+Trappans numrering är en planeringsordning, inte ett bevisat byggförlopp.
+Enligt ADR-017 landade delar av Reasoning Kernel, RLM Engine och Geometric
+Engine i main redan före Fas 2 (PR #113, 2026-08-14), med stubbad inference.
+Detta ändrar inte målbilden men läsaren ska inte anta att fasnumret speglar
+faktisk landningsordning i koden.
+
+Från och med Fas 4 och framåt gäller: ett exit-kriterium räknas som uppfyllt
+först vid minst tre (N=3) konsekutiva gröna körningar av dess bevis, inte ett
+engångsbevis. Detta gäller inte retroaktivt Fas 0–3.
+
 ### Fas 0 — Arkitektur och baseline
 
 Leverabler:
 
 - godkänd begreppsmodell;
 - beslut om package boundary;
-- 10–20 representativa fixtures;
+- en fixturekorpus dimensionerad mot en strategi×mått-täckningsmatris (inte
+  ett fast intervall) — minimum per cell eller en motiverad tom-cell-policy
+  ska framgå av matrisen, inte antas från "10–20 fixtures";
 - baseline från dagens Hermes/Pi-väg;
 - initiala schemas för Agent State och Model Invocation.
 
 Exit:
 
 - vi kan mäta kvalitet, kostnad, ledtid och reviewfynd för dagens väg;
-- målarkitekturen motsäger inte normativa säkerhetskontrakt.
+- målarkitekturen motsäger inte normativa säkerhetskontrakt;
+- strategi×mått-täckningsmatrisen existerar och är godkänd.
 
 ### Fas 1 — Inference Gateway
 
@@ -910,6 +971,9 @@ Leverabler:
 
 - repository discovery;
 - read/search/patch/test/diff tools;
+- Tool Gateway v0.1: schema-, permission- och effektklassvalidering (§32.1)
+  före varje tool-anrop — ersätter direkta funktionsanrop (t.ex. dagens
+  `apply_patch`-anrop direkt från Supervisor);
 - execution sandbox;
 - bounded write policy;
 - kodspecifika operatorer.
@@ -917,7 +981,8 @@ Leverabler:
 Exit:
 
 - en enkel kodfixture kan lösas och verifieras utan Pi eller Hermes;
-- workspace-, nätverks- och budgettak är maskinellt bevisade.
+- workspace-, nätverks- och budgettak är maskinellt bevisade;
+- ingen tool-exekvering sker utan att passera Tool Gateway.
 
 Detta exit-kriterium bevisar kapacitet, inte en avsikt att göra Pi eller
 Hermes onödiga — de förblir permanenta routingval per ADR-019.
@@ -938,6 +1003,12 @@ Exit:
 
 - två avgränsade child runs kan genomföras och integreras utan Hermes.
 
+v0.1 exponerar status och kontroll via CLI/query (operator-CLI, querybar
+status); integration mot operatörens faktiska ytor (Hermes desktop primärt,
+Buzz som komplement, per current-operating-model) är inte bevisad och krävs
+innan Supervisor kan ta huvudvägsansvar (jfr §24.1). Live heartbeat till en
+mänsklig operatör i UI/dashboard-form är explicit out of scope för v0.1.
+
 ### Fas 5 — RLM v1
 
 Leverabler:
@@ -947,12 +1018,19 @@ Leverabler:
 - context slicing;
 - branch budget;
 - structured synthesis;
-- RLM-specifika evals.
+- RLM-specifika evals;
+- skalning av Supervisor från Fas 4:s v0.1-tak (2 barn, djup 1, se §25) till
+  det djup och den branch-budget RLM kräver (jfr §19.1: max_depth 2,
+  max_total_children 6) — detta är en egen leverabel, inte ett antagande.
 
 Exit:
 
-- RLM slår eller matchar enklare baseline på minst en långkontextklass inom
-  godkänd total kostnad.
+- RLM slår enklare baseline med en i förväg definierad marginal på minst en
+  långkontextklass inom godkänd total kostnad.
+- Om detta inte uppnås efter tre (N=3) oberoende utvärderingsrundor: RLM-
+  spåret nedgraderas, genom operatörsbeslut, till experimentell/diagnostisk
+  strategi bakom Reasoning Kernel med enklare baseline som default. Se
+  "Nedtrappningsvägar" nedan för konsekvensen för Fas 6.
 
 ### Fas 6 — Geometric Reasoning v1
 
@@ -960,7 +1038,7 @@ Leverabler:
 
 - Problem State schema;
 - reasoning graph;
-- embeddings;
+- embeddings (källa: se §27, öppet och blockerande beslut);
 - första operatoruppsättningen;
 - contradiction- och attractor-detektering;
 - path scoring;
@@ -968,8 +1046,13 @@ Leverabler:
 
 Exit:
 
-- strategin ger mätbar förbättring på minst ett i förväg definierat mått utan
-  regression över säkerhetsfixtures.
+- vilket/vilka mått i §12.2 som är beslutande (till skillnad från
+  diagnostiska) är avgjort innan detta exit-kriterium utvärderas (§27 #8);
+- strategin ger mätbar förbättring på det/de beslutande måtten utan
+  regression över säkerhetsfixtures;
+- om Fas 5 nedtrappats enligt ovan: `recursive_geometric` (§10.1) får
+  fortsätta utvecklas men blir inte default-strategi förrän RLM-spåret är
+  återupprättat.
 
 ### Fas 7 — Egenhostad inference
 
@@ -991,11 +1074,31 @@ Leverabler:
 - versionerade förbättringskandidater;
 - offline eval och promotion flow;
 - rollback;
-- eventuellt tränad operator- eller routingpolicy.
+- eventuellt tränad operator- eller routingpolicy;
+- Skill Platform-promotion (§31) och Tool Platform-evolution (§32.3) som
+  fungerande byggd pipeline, inte bara en beskriven modell.
 
 Exit:
 
 - ingen automatisk ändring kan nå produktion utan verifierad promotion.
+
+### Nedtrappningsvägar
+
+Denna sektion beskriver konsekvensen om ett fas-experiment inte levererar
+mätbar nytta — §28-invarianten ("Ett misslyckat experiment får inte förstöra
+den verifierade operativa vägen") skyddar produktionen men säger inget om
+själva fasens eller de beroende fasernas öde. Konkret:
+
+- Fas 5 (RLM): se nedtrappningsvillkoret i Fas 5-exit ovan.
+- Fas 6 (Geometric Reasoning): om Fas 6:s eget exit-kriterium inte uppnås
+  efter tre oberoende utvärderingsrundor, beslutar operatören om Geometric
+  Reasoning nedgraderas till diagnostiskt lager (mätvärden loggas, men
+  påverkar inte routing) eller pausas helt. §2:s tes om reasoning som
+  transformationer i ett problemrum kvarstår som produktvision oavsett utfall
+  — plattformens övriga lager (Supervisor, Agent Runtime, RLM, Inference
+  Gateway) är inte beroende av att Geometric Reasoning lyckas.
+- Nedtrappning är alltid ett operatörsbeslut, aldrig automatik — i linje med
+  §28 ("Modellen föreslår; auktoritativ kod validerar och verkställer").
 
 ## 24. Ersättningskriterier
 
@@ -1058,6 +1161,9 @@ Begränsningar:
 
 ## 26. Initial package boundary
 
+**Historisk:** Denna paketgräns ersattes av §33 (ADR-016, Decision 1). Den
+behålls här för spårbarhet, inte som aktuell auktoritet.
+
 Den nya koden introduceras utan omedelbar flytt av befintliga filer:
 
 ```text
@@ -1107,11 +1213,20 @@ Följande ska avgöras innan respektive implementation:
    grunden), och portabla minnes-/CPU-tak för sandboxen är fortfarande out of
    scope (assumption A10 i Fas 3-specen).
 5. Vilken extern provideradapter som används som bootstrap.
-6. Vilka fixtures som utgör quality floor för Hermes- och Pi-ersättning.
+6. Vilka fixtures som utgör quality floor för (a) Hermes koordinerande roll
+   som ersätts av Supervisor (§24.1), och (b) Cortxt Coding Agent som giltigt
+   routingval jämte Pi/Hermes/Codex (§24.2) — Pi, Hermes och Codex som
+   kodningsmotorer ersätts inte per ADR-019, så "ersättning" gäller bara (a).
 7. Om Agent Platform initialt ligger i detta repo eller i ett eget package med
    separat releasecykel.
 8. Vilka geometric metrics som är beslutande respektive endast diagnostiska.
 9. När egenhostad inference har affärsvärde jämfört med hyrd kapacitet.
+10. Embeddings-provider för Fas 6 (§12.2 semantisk närhet). InferencePort
+    (§14.1) normaliserar idag inte embeddings, och ingen fas levererar det.
+    Blockerande för Fas 6-start.
+11. Realtidsaggregering av kostnad/token-budget över detacherade
+    processgränser (§20.3) — v0.1 verkställer bara via disjunkt
+    förallokering plus post-hoc rollover, inte löpande aggregering.
 
 ## 28. Arkitektoniska invariants
 
@@ -1140,24 +1255,36 @@ Följande är förslag tills de godkänts genom repositoryts beslutsprocess:
    ersatt av ADR-019, 2026-08-16 — se §22.3/§24.2).
 5. RLM och geometric reasoning ägs av Cortxt Agent Core.
 6. Inference är en utbytbar port; egenhostad inference införs stegvis.
-7. Hermes, Pi och Prime Agent används under migrationen som adapters,
-   fallback eller benchmark, aldrig som dolda kärnberoenden.
+7. Hermes koordinerande roll och Prime Agent används under migrationen som
+   adapters, fallback eller benchmark och ersätts stegvis, aldrig som dolda
+   kärnberoenden. Hermes, Pi och Codex som kodningsmotorer är permanenta
+   routingval (ADR-019) och migreras inte bort.
 8. Dagens kontroll-, säkerhets- och evalfundament behålls.
 
 ## 30. Nästa planeringssteg
 
-Innan implementation bör nästa beslutspaket innehålla:
+Klart (verifierat mot ADR-registret och koden):
 
-- ett ADR för Agent Platform som ny bounded context;
-- ett ADR för `InferencePort` och leverantörsoberoende modellgräns;
-- v0.1-schemas för Agent State, Model Invocation och Trajectory Event;
-- en fixturematris med dagens Hermes/Pi-baseline;
-- ett första vertikalt slice med tydlig tids- och kostnadsbudget;
-- threat model för Agent Runtime, Tool Gateway och Execution Runtime;
-- beslut om vilka befintliga backlog-items som ska ersättas eller omformuleras.
+- ADR för Agent Platform som ny bounded context (ADR-016);
+- ADR för `InferencePort` och leverantörsoberoende modellgräns (ADR-016);
+- ett första vertikalt slice (ADR-017);
+- v0.1-schemas för Agent State, Model Invocation och Trajectory Event
+  (`contracts/`, `agent-platform/state/`, `agent-platform/inference/`).
+
+Fortfarande öppet innan nästa större beslutspaket:
+
+- en fixturematris med dagens Hermes/Pi-baseline (fixtures finns spridda i
+  repot, men ingen sammanställd matris);
+- threat model för Agent Runtime, Tool Gateway och Execution Runtime (inget
+  sådant dokument finns i `docs/` ännu);
+- beslut om vilka befintliga backlog-items som ska ersättas eller
+  omformuleras;
+- ADR-016:s öppna Validation-punkt om `docs/authority-map` (se noten under
+  "Dokumentets roll" ovan) är fortfarande ogjord.
 
 Implementationen ska börja med ett vertikalt, körbart flöde och inte med en
-omfattande repositoryflytt eller fullständig plattformsinfrastruktur.
+omfattande repositoryflytt eller fullständig plattformsinfrastruktur — det
+har den redan gjort (ADR-017).
 
 ## 31. Skill Platform
 
@@ -1199,7 +1326,7 @@ fixtures, verifierad förbättring och rollbackmöjlighet.
 | --- | --- |
 | Instruktion, exempel eller källa | Eval mot fixtures och regressioner. |
 | Workflow eller reasoning-operator | Jämförelse mot baseline och säkerhetsfixtures. |
-| Executable helper | Sandbox, dependency review och contract tests. |
+| Executable helper | Sandbox, dependency review och contract tests. Om helpern är agentförfattad krävs dessutom en namngiven mänsklig operatörsgrind innan promotion. |
 | Nytt tool eller ny behörighet | Separat toolgranskning och operatörsbeslut. |
 | Credential, extern effekt eller policy | Alltid operatörsgrind. |
 
@@ -1279,6 +1406,7 @@ agent-platform/
 |- skills/
 |- tools/
 |- inference/
+|- portability/            (byggd; motsvaras inte i §26 - historisk)
 `- profiles/
 
 adapters/
@@ -1286,6 +1414,11 @@ adapters/
 |- agent-runtime/
 |- tools/
 `- storage/
+
+harness/                   (planerad, inte byggd ännu)
+|- runtime/                (jfr §26:s "execution" - namnet i denna sektion
+|                          följer runtime-and-evaluation-harness.md, rad 68)
+`- evaluation/
 ```
 
 Repositoryts befintliga `skills/` och `tools/` fortsätter innehålla dagens
@@ -1293,3 +1426,7 @@ konkreta inventory. `agent-platform/skills` och `agent-platform/tools` ska
 innehålla plattformskod för registry, gateway, policy, evolution och promotion.
 Ingen befintlig exekveringsväg flyttas in i scaffolden innan ett vertikalt slice
 och dess kontrakt är verifierade.
+
+`harness/runtime/` är den normativa promotion-path som
+`runtime-and-evaluation-harness.md` (rad 68) beskriver — namnet ersätter §26:s
+äldre `harness/execution/`.
