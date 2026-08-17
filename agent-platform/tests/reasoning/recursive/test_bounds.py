@@ -100,3 +100,14 @@ def test_max_output_size_enforced_fail_closed():
     run = eng.run(PROB := [[1, 2], [3, 4]], expected=10)
     assert run.stop_reason == StopReason.BUDGET_EXHAUSTED
     assert run.output_length >= 0
+
+
+# -- v1 defaults (dispatch contract §19.1) ------------------------------- #
+def test_v1_defaults_match_dispatch_contract_19_1():
+    from reasoning.recursive.bounds import RLMConfig
+    config = RLMConfig()
+    assert config.max_depth == 2
+    assert config.max_total_children == 6
+    assert config.max_branches_per_node == 3
+    assert config.max_model_invocations == 20
+    assert config.max_context_reads == 30
