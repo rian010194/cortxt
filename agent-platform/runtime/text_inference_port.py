@@ -40,7 +40,8 @@ class TextInferencePort:
     def __init__(self, model: str, budget_gate, provider_evidence: dict,
                  data_class: str = "L0", base_url_env: str = "CORTXT_INFERENCE_URL",
                  api_key_env: str = "CORTXT_INFERENCE_API_KEY",
-                 per_attempt_timeout_ms: int = 30000, max_attempts_total: int = 1) -> None:
+                 per_attempt_timeout_ms: int = 30000, max_attempts_total: int = 1,
+                 route_id: str = "l0-default") -> None:
         self._model = model
         self._gate = budget_gate
         self._data_class = data_class
@@ -49,6 +50,7 @@ class TextInferencePort:
         self._api_key_env = api_key_env
         self._timeout_ms = per_attempt_timeout_ms
         self._max_attempts = max_attempts_total
+        self._route_id = route_id
 
     def invoke(self, prompt: str, output_schema: dict) -> dict:
         from inference.provider_policy import AssuranceStatus, ProviderEvidence, evaluate_provider
@@ -85,7 +87,7 @@ class TextInferencePort:
             "task_id": task_id,
             "routes": [
                 {
-                    "route_id": "l0-default",
+                    "route_id": self._route_id,
                     "policy_eligible": True,
                     "base_url": base_url,
                     "model": self._model,
@@ -110,7 +112,7 @@ class TextInferencePort:
             {"role": "user", "content": prompt},
         ]
         adapter = _HttpAdapter(messages=messages)
-        envelope: Any = _resilient_execute(request, adapters={"l0-default": adapter})
+        envelope: Any = _resilient_execute(request, adapters={self._route_id: adapter})
         if envelope.get("status") != "succeeded":
             raise TextInferenceError(
                 f"inference did not succeed (task={task_id}, reason={envelope.get('terminal_reason')})"
