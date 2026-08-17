@@ -1,11 +1,12 @@
 # Fas 6 — Geometric Reasoning v1 — design
 
-Status: **UNDER RE-REVIEW (Kimi).** Writer: Hermes (producer), 2026-08-17, branch
-`ci/adr-doc-currency-gate-clean`. Första Kimi-granskningen (kimi-k2.6, provider
+Status: **GODKÄND (Kimi re-review #2, 2026-08-17).** Writer: Hermes (producer), 2026-08-17,
+branch `ci/adr-doc-currency-gate-clean`. Första Kimi-granskningen (kimi-k2.6, provider
 kimi-coding, 2026-08-17) gav **KRÄVER ÄNDRINGAR**: 1 × P1 (P1.1 embeddings-isoleringen var
 feltolkad — `GraphMetrics.semantic_closeness` konsumerar redan `hash_embedding`) och 4 × P2
 (P2.1 node_type-ägarskap, P2.2 AttractorDetector är v0.1, P2.3 10 mått + guidance, P2.4
-308-provenans). Alla fynd åtgärdade i denna revision (märkta i texten). Re-review pågår.
+308-provenans). Alla fynd åtgärdade (märkta i texten). **Re-review #2 → GODKÄND, inga
+kvarstående fynd.** Specen är godkänd för plan (TDD) och exekvering.
 Authority: architectural proposal for one bounded vertical slice; does not override
 `docs/agents/current-operating-model.md`.
 Related: `docs/architecture/cortxt-agent-platform-target-architecture.md` §9 (Problem
