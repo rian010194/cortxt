@@ -157,8 +157,13 @@ def _graphs_equal_between_paths(fx) -> bool:
 
 
 def _determining_metrics(space: ProblemSpace, path: list[str], goal: str, policy: CandidatePathScore):
-    """Return the three determining metrics averaged over the chosen path (score_path terms)."""
-    ig = [policy.embedder(n) for n in path]  # not used directly here; metrics below are graph-based
+    """Return the three determining metrics averaged over the chosen path (score_path terms).
+
+    Note: this measures the graph-based determining metrics only (goal_relevance,
+    evidence_coverage, contradiction_risk); it does NOT include the embedding-dependent
+    `expected_information_gain`, so there is no id-vs-content embedding call here (P1-fix:
+    removed the unused `ig`/`policy.embedder` line that was misleading).
+    """
     goal_relevance = _avg([_gr(space, n, goal) for n in path])
     evidence_coverage = _avg([_ev(space, n) for n in path])
     contradiction_risk = _avg([_cr(space, n) for n in path])
@@ -209,13 +214,12 @@ def _best_path(space: ProblemSpace, start: str, goal: str, embedder):
     return best or [start], best_score or 0.0
 
 
-def _memoized_embedder(embedder):
+def _memoized_embedder(embedder, on_miss=None):
     """Wrap any EmbeddingFn with a per-unique-text cache (records how many unique calls).
 
-    This collapses the many repeated per-node/goal embedding calls (a goal is embedded once per
-    path-node today) to one real call per unique text — the single biggest reducer of Voyage
-    API calls before any rate-limit handling. Exposes `.call_count` (unique texts) and
-    `.total_invoked` (raw calls, before cache) for verification.
+    This collapses repeated per-node/goal embedding calls to one real call per unique text.
+    `on_miss` (optional) runs only on a cache-miss (real call) — e.g. a rate-limit sleep —
+    never on cache hits (P2.1-fix). Exposes `.call_count` (unique / raw invoked).
     """
     cache: dict[str, list] = {}
     counts = {"unique": 0, "invoked": 0}
@@ -224,6 +228,8 @@ def _memoized_embedder(embedder):
         counts["invoked"] += 1
         if text not in cache:
             counts["unique"] += 1
+            if on_miss is not None:
+                on_miss()
             cache[text] = list(embedder(text))
         return cache[text]
 
@@ -232,19 +238,16 @@ def _memoized_embedder(embedder):
 
 
 def _cached_sleep_best_path(space: ProblemSpace, start: str, goal: str, base_embedder, sleep: float = 0.3):
-    """Like _best_path but with a memoizing embedder + a small sleep between unique calls.
+    """Like _best_path but with a memoizing embedder + a small sleep on each cache-miss.
 
-    `sleep` spaces out the (now few) unique Voyage calls to avoid tripping the rate limit.
+    `sleep` spaces out the (few) unique Voyage calls only (P2.1-fix: not on cache hits).
     """
     import time
 
-    embedder = _memoized_embedder(base_embedder)
+    embedder = _memoized_embedder(base_embedder, on_miss=(lambda: time.sleep(sleep)) if sleep else None)
 
     def sleepy_embedder(text):
-        vec = embedder(text)
-        if embedder.call_count["unique"] > 0 and sleep:
-            time.sleep(sleep)  # rate-limit spread between distinct calls
-        return vec
+        return embedder(text)
 
     policy = CandidatePathScore(embedder=sleepy_embedder)
     best, best_score = None, None
@@ -294,15 +297,17 @@ def test_fixture_is_valid_and_hash_misranks_deterministically():
 
 @pytest.mark.real_inference
 @pytest.mark.docker_required
-def test_fas6_geometric_beats_baseline_on_determining_metrics(tmp_path):
+def test_fas6_geometric_corrects_hash_semantic_misranking_on_locked_fixture(tmp_path):
     """Empirical §23 exit proof, run against a live Voyage embedder (real_inference arm).
 
     Because the two branches are graph-wise equal on the determining metrics, the ONLY thing
     that can break the tie is `expected_information_gain` (semantic nearness to the goal). The
-    exit pass rule: the real embedder must select the semantically-relevant branch
-    (start->s1->s2->goal) that the hash baseline fails to select — demonstrating measurable
-    improvement on sökvalet (which the determining metrics report identically per branch, so
-    no branch can regress them).
+    exit pass rule: the real embedder must rank the semantically-relevant branch
+    (start->s1->s2->goal) ABOVE the lure branch that the hash baseline mis-ranks — demonstrating
+    measurable improvement on the semantic search selection (the determining metrics are
+    identical per branch by construction, so no branch can regress them). Note: this asserts
+    on the composite path score (incl. semantic IG), not on the graph-based determining
+    metrics directly (P2.2-rename).
     """
     from adapters.inference.budget_gate import BudgetGate
     from runtime.embedding_port import EmbeddingPort
