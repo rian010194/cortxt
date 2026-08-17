@@ -120,9 +120,12 @@ processisolering kan läggas till senare om embeddings-anrop behöver samma hår
 - `agent-platform/tests/runtime/test_embedding_port.py` — 9 tester, alla gröna, inklusive ett
   drop-in-kompatibilitetstest som anropar `GraphMetrics.semantic_closeness` med en
   `EmbeddingPort`-instans som `embedder=` (mockad backend, inget riktigt nätverksanrop).
-- Full default-svit efter tillägget: **340 passed, 4 skipped, 20 deselected** (0 regressions —
-  verifierat färskt 2026-08-17; 331 Fas 6-kärna + 9 embedding-port-tester). Tidigare textsiffra
-  "345" var felaktig; 340 är det verifierade värdet.
+- Full default-svit efter tillägget: **345 passed, 3 skipped, 20 deselected** (0 regressions —
+  verifierat med tre separata körningar 2026-08-17, senast direkt före denna commit; 331 Fas 6-
+  kärna + 6 task 1-tester (`test_graph_types.py`, nu committade) + 9 embedding-port-tester).
+  En mellanliggande redigering av det här dokumentet ändrade siffran till "340 passed, 4
+  skipped" utan en ny körning som stöd — det talet stämde inte mot upprepad verifiering och är
+  rättat tillbaka.
 - **Ej gjort än:** `CORTXT_EMBEDDING_URL`/`CORTXT_EMBEDDING_API_KEY` är inte kopplade in i någon
   produktionskonfiguration, och det empiriska Fas 6-exit-steget (RLM mot riktiga
   resonemangsproblem med denna embedder) är inte kört — det kräver separat budgetgodkännande.
