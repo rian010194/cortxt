@@ -4,19 +4,20 @@ Auktoritativt index över arkitekturbesluten i detta repo. Status per decision-s
 `docs/style-guide.md` / ADR-mönstret: **Accepted** = normativt inom sitt scope; **Proposal** = reviewbart
 förslag, inte implementeringsauktoritet; **Superseded** = historisk referens, ersatt av nyare beslut.
 
-Uppdaterat: 2026-08-16 (ADR-019, permanent multi-engine routing för kodningsmotorer).
+Uppdaterat: 2026-08-16 (ADR-020, terminologiredaktion proof environment-namn).
 
 | # | Titel | Status | Notis |
 | --- | --- | --- | --- |
 | 011 | Model Router for Coordinator Fallback | **Superseded** (ADR-017) | Predaterar F0/F1; statisk fallback-kedja ersatt av providerneutral inference (ADR-016) + reasoning (ADR-017) |
 | 012 | Disaster Recovery for Profiles, Skills, and Memory | **Superseded** (ADR-017) | Predaterar F0/F1; portabilitet förskjuts mot Cortxt-ägda portar/tillstånd |
 | 013 | Skill Composition Model | **Superseded** (ADR-017) | Predaterar F0/F1; statisk skill-pack-modell ersatt av providerneutral arkitektur |
-| 014 | Cortxt Product Vision and First User (F0) | **Accepted** | Produktvision + första användare |
-| 015 | Cortxt First Wedge and Product Surface (F1) | **Accepted** | Wedge B: provider-/dataklassstyrd långvarig analys; repository+CLI |
+| 014 | Cortxt Product Vision and First User (F0) | **Accepted** (amended 2026-08-16 för proof-env-namn per ADR-020) | Produktvision + första användare |
+| 015 | Cortxt First Wedge and Product Surface (F1) | **Accepted** (amended 2026-08-16 för proof-env-namn per ADR-020) | Wedge B: provider-/dataklassstyrd långvarig analys; repository+CLI |
 | 016 | Agent Platform bounded context, InferencePort och provider-assurance | **Accepted** (amended 2026-08-14 för reasoning/ per ADR-017) | Bounded context + InferencePort + dataklass→gate; reasoning/ nu tracked/Accepted |
 | 017 | Agent Platform — reasoning-kärnan accepterad som tracked arkitektur | **Accepted** (post-review) | Vertikalt slice DM1–4 (PR #113, commit `09f1d8a`) bevisar behovet; `agent-platform/reasoning/` → tracked |
 | 018 | Workflow-state carrier — GitHub Issue labels | **Accepted** | `workflow:*`-labels är tillståndsbärare (ADR-018); Project 4 frusen legacy |
 | 019 | Coding execution — permanent multi-engine routing, not Pi/Hermes replacement | **Accepted** | Pi/Hermes/Codex (+ framtida Copilot) permanenta routingval jämte egen Coding Agent; upphäver §24.2-ersättningskriterier i target-architecture.md |
+| 020 | Proof environment naming — redact product/partner name from public surface | **Accepted** | Terminologiredaktion: "Norcom/CSL" → "proof environment B" framåt; ADR-014/015 oredigerade och kvar Accepted för sakinnehållet |
 
 ## Beslut och auktoritet
 

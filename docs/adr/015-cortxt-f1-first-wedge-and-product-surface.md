@@ -5,6 +5,10 @@
 **Deciders:** Rikard (operatör)  \
 **Technical Story:** CORTXT F0/F1 beslutspaket, godkänd 2026-08-13 efter oberoende Codex-review (runda 2 GODKÄND); evidens `.hermes/codex/f0f1-decision-packet-2026-08-13.md` (gitignored lokalt)
 
+> **STATUS-AMENDMENT (2026-08-16, ADR-020):** proof environment-namnet nedan ("Norcom/CSL") ska läsas
+> som **"proof environment B"** i alla nya referenser — terminologiredaktion inför repo-publicering,
+> sakbeslutet (Wedge B) nedan är oförändrat och kvar Accepted.
+
 ## Context
 
 F0 (ADR-014) är godkänd. Nästa beslut är den första wedge: den minsta sammanhängande produktupplevelsen som löser ett verkligt problem, kan användas av Rikard, kan lämnas över till en andra användare, demonstrerar en del av den större visionen, inte kräver att hela Agent Platform byggs först, och producerar evidens som avgör nästa investering.
