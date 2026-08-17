@@ -9,7 +9,8 @@ from pathlib import Path
 
 from runtime import session_state as state
 from supervisor.coordinator import Coordinator
-from supervisor.run_tree import build_index
+from supervisor.run_tree import NodeDocs, build_index
+from reasoning.recursive.bounds import RLMConfig
 
 
 def _status(store: Path, root_session_id: str) -> dict:
@@ -17,9 +18,13 @@ def _status(store: Path, root_session_id: str) -> dict:
     child_ids = [e["payload"]["session_id"] for e in root_doc["events"]
                  if e["event_type"] == "child.spawned"]
     child_docs = {sid: state.load(store, sid) for sid in child_ids}
-    index = build_index(root_doc, child_docs, total_budget=0)
+    tree = NodeDocs(session_doc=root_doc,
+                     children={sid: NodeDocs(session_doc=doc, children={})
+                               for sid, doc in child_docs.items()})
+    index = build_index(tree, total_budget=RLMConfig())
     return {"root_status": index.root_status,
-            "children": [{"session_id": c.session_id, "status": c.status} for c in index.children]}
+            "children": [{"session_id": c.session_id, "status": c.root_status}
+                          for c in index.children]}
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -16,7 +16,6 @@ from runtime import session_state as state
 from runtime.execution.write_policy import WriteCaps
 from supervisor.budget import next_child_budget, reclaimable_surplus
 from supervisor.process_spawner import ChildProcess, ProcessSpawner
-from supervisor.run_tree import build_index
 from supervisor.workspace_handoff import apply_incoming_changes
 
 
@@ -162,16 +161,13 @@ class Coordinator:
             results.append({"session_id": session_id, "status": terminal["payload"]["status"],
                              "reason": terminal["payload"].get("reason")})
 
-        root_doc = state.load(self._store, root_session_id)
-        child_docs = {sid: state.load(self._store, sid) for sid, _, _ in child_processes if sid is not None}
-        index = build_index(root_doc, child_docs, total_budget=total_budget)
-
         overall_status = "succeeded" if all(c["status"] == "succeeded" for c in results) else "blocked"
         seq = state.latest_sequence(state.load(self._store, root_session_id))
         state.append(self._store, root_session_id, seq, "session.terminal", {"status": overall_status})
 
+        allocated = sum(spec["allocated_budget"] for spec in child_specs)
         return {"run_id": root_session_id, "status": overall_status, "children": results,
-                "budget": {"total": index.total_budget, "allocated": index.allocated_budget}}
+                "budget": {"total": total_budget, "allocated": allocated}}
 
     def run_m2(self, task_id: str, child1_spec: dict, child2_spec: dict, total_budget: int,
                poll_interval: float = 0.5, timeout: float = 120.0) -> dict:
