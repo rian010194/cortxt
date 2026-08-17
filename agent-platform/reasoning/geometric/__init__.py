@@ -8,6 +8,7 @@ function.
 """
 
 from .attractor_detector import AttractorDetector
+from .contradiction import Contradiction, ContradictionDetector, find_contradiction
 from .escape_attractor import escape_attractor
 from .explorer import Explorer, exploration_cost
 from .graph_space import ReasoningNode, ProblemSpace
@@ -21,4 +22,7 @@ __all__ = [
     "escape_attractor",
     "Explorer",
     "exploration_cost",
+    "Contradiction",
+    "ContradictionDetector",
+    "find_contradiction",
 ]
