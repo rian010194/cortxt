@@ -57,9 +57,17 @@ spec (GODKÄND) och plan (GODKÄND-BAR) genomförd; alla fynd åtgärdade.
   regression över säkerhetsfixtures" mot en **riktig modell** (analogt Fas 5). Kräver riktiga
   runs-data och budget (systemhanterat). Detta är det enda återstående steget för ett fullt
   empiriskt exit-bevis; det deterministiska lagret är färdigt för "levande" use.
-- §27 #8 (beslutande vs diagnostiska mått): specen föreslår startpunkt (goal_relevance,
-  evidence_coverage, contradiction_risk beslutande); formellt beslut ska fattas före
-  exit-utvärdering.
+- §27 #8 (beslutande vs diagnostiska mått): **FORMELT BESLUTAT 2026-08-17** — se specen.
+
+**Exit-körningsstatus (2026-08-17, steg C):** fixturen är låst + deterministiskt validerad, och
+`embedding_port`→Voyage-kopplingen är verifierad korrekt (adapter `succeeded`, dim 1024;
+`EmbeddingPort`-plumbing bevisad via isolerad mock). Exit-körningen **blockeras av en extern
+rate-limit**: Voyage svarar **HTTP 429 `rate_limited`** även på enstaka, spridda anrop (verifierat
+inkl. per-attempt-outcome). Cache per unik text (6 unika istället för 10+ raw) + sleep-spread
+är inbyggt och deterministiskt bevisat, men **räckte inte** — 429 inträffar på även ett enskilt,
+spritt anrop → det är ett **kontobaserat/nyckelbaserat driftstak hos Voyage**, inte en frekvens-
+eller kodbugg. Kräver justering på Voyage-kontot (högre rate-limit/nivå) innan exit-steget kan
+köras som avgörande bevis. Ingen nyckel i docs/commits; kostnad hittills minimal (mest 429-fail-closed).
 
 ## Sammanfattning
 
