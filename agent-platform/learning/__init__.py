@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from .candidate import Candidate
+from .evidence import EvidenceClassifier
 from .registry import CandidateRegistry
+from .submit import submit_candidate
 
-__all__ = ["Candidate", "CandidateRegistry"]
+__all__ = ["Candidate", "CandidateRegistry", "EvidenceClassifier", "submit_candidate"]
