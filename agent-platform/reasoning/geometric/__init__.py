@@ -14,6 +14,7 @@ from .explorer import Explorer, exploration_cost
 from .graph_space import ReasoningNode, ProblemSpace
 from .metrics import GraphMetrics
 from .operators import PerspectiveResult, change_perspective
+from .path_scoring import CandidatePathScore, score_path
 
 __all__ = [
     "ReasoningNode",
@@ -28,4 +29,6 @@ __all__ = [
     "find_contradiction",
     "PerspectiveResult",
     "change_perspective",
+    "CandidatePathScore",
+    "score_path",
 ]
