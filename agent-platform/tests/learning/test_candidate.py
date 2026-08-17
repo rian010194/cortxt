@@ -46,3 +46,12 @@ def test_candidate_is_frozen():
     c = Candidate(type="policy", name="np", version="v1", payload={})
     with pytest.raises((FrozenInstanceError, AttributeError)):
         c.version = "v9"
+
+
+def test_non_json_payload_fails_closed_at_construction():
+    """Kimi checkpoint N2: contract promises TypeError at construction for non-JSON payload."""
+    from datetime import datetime
+
+    with pytest.raises(TypeError):
+        Candidate(type="policy", name="np", version="v1", payload={"dt": datetime.now()})
+

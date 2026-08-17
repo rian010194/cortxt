@@ -7,9 +7,11 @@ refined by Kimi checkpoint review):
 - ``id`` is a DERIVED property = ``f"{type}@{name}@{version}"`` (Kimi P2.4) — it can never diverge.
 - ``manifest_hash`` is a sha256 over the SERIALIZED payload dict (stable under key order via
   sort_keys), NOT over a mutable runtime object (Kimi P0.1).
-- ``payload`` is a READ-ONLY ``MappingProxyType`` (Kimi P1: shallow-frozen dataclass is not deep
-  immutability). A consumer cannot mutate it, and mutating the caller's original dict after
-  construction does not change the candidate.
+- ``payload`` is a LOCKED JSON SNAPSHOT (Kimi P1: shallow-frozen dataclass is not immutability; the
+  JSON round-trip at construction produces a private *copy*, so the candidate is decoupled from the
+  caller's dict, and the top level is read-only via MappingProxyType). NOTE: this is a read-only
+  snapshot, NOT recursive deep-immutability — a nested dict inside the payload copy is still technically
+  mutable, but it cannot affect the candidate's stored copy or hash (both frozen at construction).
 
 CONTRACT: ``payload`` must be JSON-serializable (json.dumps is used for hashing + locking — any
 non-JSON value (datetime, set, custom object) fails closed at construction with TypeError).
