@@ -1,20 +1,21 @@
 # Fas 7 — Egenhostad inference — design
 
-Status: **DRAFT v4 — väntar på operatörsgranskning.** Writer: Claude (orchestrator session),
+Status: **DRAFT v5 — väntar på operatörsgranskning.** Writer: Claude (orchestrator session),
 2026-08-17, branch `spec/fas7-self-hosted-inference` (grenad från `ci/adr-doc-currency-gate-clean`,
 senaste commit `3eda624`). **Revideringshistorik 2026-08-17:** (v1) InferX som förslag → avvisat
 av operatören (opak GPU-prissättning). (v2) Ett lokal-RTX-4060-först-plus-Vast.ai-fallback-förslag
 → **operatören avvisade det lokala steget explicit** ("vill inte använda min egen GPU"). (v3)
 **Vast.ai som enda deployment-väg**, konkret modell (Qwen3-8B-Instruct) + ett kostnadstak på
-25–30 USD föreslaget. **(v4, denna version) Kostnadstaket korrigerat och en faktafel rättad:**
-operatören ifrågasatte 25–30 USD-siffran (för hög — 5–10h × $0.20–0.29/hr ≈ $1–3, inte $25–30) och
-den tidigare motiveringen "Fas 6:s idle-kostnadsincident" (InferX auto-decommissionerade i
-verkligheten en instans efter 15–20 min idle enligt sessionsloggen — det som faktiskt hände var
-överdimensionering, en 35B-modell för en uppgift som bara behövde 0.6B, plus en duplicerad instans
-manuellt städad för $0.28, inte ett misslyckat idle-shutdown). Se Beslut 1 och Beslut 2 för de
-rättade resonemangen och det nya, lägre taket (~10 USD). Ingen Kimi-granskning begärd ännu
-(kostnadskänsligt per operatörsinstruktion — begärs bara om operatören explicit ber om det). Inga
-kodändringar i produktionsvägar; bara denna spec.
+25–30 USD föreslaget. (v4) Kostnadstaket korrigerat till ~10 USD och en faktafel om InferX rättad
+(auto-decommission fungerade faktiskt — den verkliga Fas 6-kostnaden var överdimensionering, inte
+ett trasigt idle-shutdown). **(v5, denna version) Beslut 8 tillagt:** operatören föreslog att
+bygga ett eget automatiskt idle-stopp + snabb återstart istället för att lita på ett manuellt
+"kom ihåg att stänga av"-krav. Verifierat mot Vast.ai:s dokumentation (inte gissat): `stop`
+(ej `destroy`) bevarar disk och stoppar bara GPU-fakturering; lagring kostar ~$0.10–0.15/GB/månad;
+Vast.ai har en inbyggd hård **Max Duration**-backstop. Detta sänker "glömd instans"-worst-case
+från ~$146–212/månad till ~$3–7.50/månad (lagring) + Max Duration som absolut yttergräns. Se
+Beslut 8. Ingen Kimi-granskning begärd ännu (kostnadskänsligt per operatörsinstruktion — begärs
+bara om operatören explicit ber om det). Inga kodändringar i produktionsvägar; bara denna spec.
 Authority: architectural proposal for one bounded vertical slice; does not override
 `docs/agents/current-operating-model.md`.
 Related: `docs/architecture/cortxt-agent-platform-target-architecture.md` §14.1–14.3 (Inference
@@ -164,16 +165,16 @@ godkänna, inte en pågående provisionering):**
 - **Kostnadstak att godkänna: ~10 USD.** Fortfarande ~35–50 timmars marginal mot den uppskattade
   faktiska användningen (5–10h) — täcker upprepade felsökningsförsök utan att vara ett
   slentrianmässigt högt tak.
-- **Risken om instansen glöms igång (varför ett hårt stopp behövs, inte bara ett kostnadstak):**
-  Vast.ai on-demand-instanser har **ingen inbyggd scale-to-zero** (till skillnad från RunPod
-  Serverless, som avvisades i Beslut 1) — de kostar per minut tills de **manuellt stoppas**. Om en
-  instans lämnas igång en hel månad (730h) av misstag: $0.20/hr → **~146 USD/månad**, $0.29/hr →
-  **~212 USD/månad**. Det är den reella nedsidan, inte det avsedda scenariot. Plan-nivå-krav:
-  varje eval-session avslutas med en explicit stop-instans-åtgärd (checklisterad i TDD-planen,
-  inte underförstådd), och ett kostnadslarm/dagligt saldo-kontroll under den period instansen kan
-  vara igång. (InferX hade i jämförelse en bevisat fungerande 15–20-min-idle-auto-decommission —
-  se rättelsen i Beslut 1 — vilket Vast.ai saknar; det är en reell avvägning operatören medvetet
-  accepterar genom att välja Vast.ai.)
+- **Risken om instansen glöms igång — nu automatiserad bort, se Beslut 8 (reviderat efter
+  operatörsförslag):** Vast.ai on-demand-instanser har **ingen inbyggd scale-to-zero** (till
+  skillnad från RunPod Serverless, som avvisades i Beslut 1) — obevakade kostar de per minut tills
+  de stoppas. Utan skydd, om en instans lämnas igång en hel månad (730h): $0.20/hr →
+  **~146 USD/månad**, $0.29/hr → **~212 USD/månad**. Operatören föreslog att bygga automatik
+  istället för att lita på ett manuellt "kom ihåg"-krav — se **Beslut 8** för det fulla designet
+  (mjukt idle-stopp via Vast.ai:s `stop_instance`-API + Vast.ai:s inbyggda hårda Max
+  Duration-backstop). Med Beslut 8 på plats sjunker worst-case till lagringskostnaden för en
+  korrekt *stoppad* (inte igångvarande) instans (~$3–7.50/månad, se Beslut 8) plus Max
+  Duration som absolut yttergräns om även watchern skulle fela.
 
 **Varför liten, inte stor:** en mindre modell (a) håller GPU-hyran låg under bevisfasen, (b) räcker
 för en avgränsad, lågkomplex task class (Beslut 4), (c) kan skalas upp senare om exit-kriteriet
@@ -285,8 +286,56 @@ som konstruktorparametrar. Den självhostade routen instansieras som **en andra
 det bevisas precis genom att **inte** skriva ny portkod, samma sätt Fas 6:s `embedding_port.py`
 bevisade portmönstrets generaliserbarhet till en ny endpoint-typ utan att röra
 `text_inference_port.py`. Detta är den tredje instansen av samma mönster (text via InferX,
-embeddings via Voyage, text via egenhostad lokal/Vast.ai-serving) — exakt det §16.1-tesen om en
+embeddings via Voyage, text via egenhostad Vast.ai-serving) — exakt det §16.1-tesen om en
 utbytbar port med många adapters förutsäger.
+
+### 8. Automatiskt idle-stopp + Max Duration-backstop + snabb återstart (tillagt efter operatörsförslag 2026-08-17)
+
+**Beslut:** operatören föreslog att ersätta det manuella "kom ihåg att stänga av"-kravet (Beslut 2)
+med automatik, och bygga för snabb återstart från kallstart snarare än att låta instansen stå igång
+i onödan. Detta byggs som **två oberoende, samverkande skyddslager** (defense-in-depth, samma
+princip som `BudgetGate`s fail-closed-design):
+
+1. **Mjukt idle-stopp (business-logik, vår kod):** en liten watcher-process läser samma
+   aktivitetssignal `selfhosted_liveness.py` redan samlar in (Beslut 5) — senaste lyckade anrops-
+   tidsstämpel mot den självhostade routen (härledbar ur `fas2a_inference_spend` eller
+   `fas2a_selfhosted_liveness`). Efter en konfigurerbar idle-tröskel (t.ex. 10–15 min, exakt värde
+   avgörs i planen) anropas Vast.ai:s `stop_instance`-API — **inte** `destroy` — vilket stoppar
+   GPU-fakturering men **bevarar disken**, så modellvikterna inte behöver laddas ner igen vid nästa
+   start (verifierat mot Vast.ai:s dokumentation, se källor i konversationen 2026-08-17).
+2. **Hård backstop (plattformsenforcerad, oberoende av vår kod):** Vast.ai:s inbyggda **Max
+   Duration** sätts vid provisionering (en hyreskontrakt-gräns som stoppar instansen automatiskt
+   när den nås, oavsett om vår watcher körs eller kraschat). Detta är den verkliga garantin mot "vår
+   egen kod glömde stänga av" — samma roll som `BudgetGate`s DB-baserade fail-closed-räkning spelar
+   för inferenskostnad.
+
+**Snabb återstart:** en tunn `ensure_running()`-wrapper runt `TextInferencePort`-anropet (plan-
+nivå-detalj var exakt den läggs) kollar instansstatus före anrop; om stoppad, anropas
+`start_instance` och en poll mot `/health` (Beslut 5) tills servern svarar, sedan fortsätter
+anropet. Kallstartslatensen syns bara på det första anropet efter en paus, inte på varje anrop.
+
+**Varför detta sänker risken rejält (rättad siffra, inte gissad):** eftersom `stop` bevarar disken
+men stänger av GPU-fakturering, och Vast.ai:s lagringspris typiskt är $0.10–0.15/GB/månad, blir
+worst-case för en **glömd men korrekt stoppad** instans (~30–50 GB modell-disk) **~$3–7.50/månad**
+i lagring — inte de ~$146–212/månad som gällde om GPU:n stod igång kontinuerligt (Beslut 2). Med
+Max Duration som backstop begränsas även scenariot "watchern kraschade" till en hård bortre gräns.
+
+**Kallstartstid — INTE verifierad, ska mätas, inte antas:** eftersom disken bevaras behöver
+omstarten bara göra container-boot + vLLM-motorinitiering + vikt-laddning till GPU-minne, inte en
+ny modellnedladdning — rimligen sekunder-till-några-minuter för en 8B-modell, men ingen konkret
+siffra hittades i research-underlaget. Detta mäts empiriskt under TDD-implementeringen (första
+verkliga `ensure_running()`-anrop loggar och rapporterar faktisk tid) — se
+[[feedback_verify_before_writing_claims]]-disciplinen: siffran skrivs inte som fakta förrän den är
+mätt.
+
+**Precedent:** mönstret (egen idle-shutoff-watcher ovanpå Vast.ai:s API) är redan beprövat i
+communityn (ett öppet källkods-exempel gör exakt detta) — inte ett experimentellt
+egenutvecklat protokoll.
+
+**Konsekvens för Beslut 2:** "Operativ disciplin"-stycket i Beslut 2 ersätts av detta — kravet är
+inte längre "kom ihåg att stänga av manuellt" utan "watchern + Max Duration måste faktiskt vara
+konfigurerade och verifierade innan instansen lämnas obevakad", ett TDD-verifierbart krav snarare
+än en mänsklig vana.
 
 ## Components (nya/ändrade moduler)
 
@@ -296,6 +345,9 @@ Inga ändringar i `agent-platform/runtime/text_inference_port.py` eller
 - `agent-platform/runtime/selfhosted_liveness.py` — `parse_liveness(metrics_payload) ->
   LivenessSample` (ren funktion) + en tunn `_LivenessHttpProbe`-I/O-wrapper (samma split som
   `_EmbeddingHttpAdapter`).
+- `agent-platform/runtime/selfhosted_lifecycle.py` (Beslut 8) — idle-detektering (ren funktion mot
+  `LivenessSample`-historik) + en tunn `_VastAiControlAdapter`-I/O-wrapper (`stop_instance`/
+  `start_instance`, samma split-mönster) + `ensure_running()`-wrappern.
 - Task-runner/eval-skript (plan-nivå-detalj, exakt plats avgörs i TDD-planen) som återanvänder
   Fas 5:s N=3-baseline-eval-harness pekad på den nya `TextInferencePort`-instansen och en existerande
   L0-fixture-klass (Beslut 4).
@@ -337,6 +389,11 @@ Egenhostad modell (vLLM, OpenAI-kompatibel /chat/completions + /health + /metric
   policy-logik, redan testad generellt, ny testrad för den specifika evidensen).
 - **Route-isoleringstest:** assert att `fas2a_inference_spend`-rader taggade med den självhostade
   `route_id` aldrig blandas med InferX/Voyage-rader inom samma test-DB.
+- **Idle-detektering och lifecycle-beslut (Beslut 8), deterministisk del:** ren funktion som tar
+  en `LivenessSample`-historik + idle-tröskel → beslutar `should_stop: bool`, testad mot
+  fixture-tidsstämplar (ingen riktig Vast.ai-anrop). `ensure_running()`s tillståndslogik
+  (kollad/stoppad/startande/redo) testas mot mockade `_VastAiControlAdapter`-svar, samma
+  felklassificeringsmönster som `_EmbeddingHttpAdapter`.
 - **Empiriskt exit-bevis (separat, budget-/GPU-styrt steg, kräver operatörsgodkännande):**
   N=3-rundor av den valda task class (Beslut 4) mot den faktiska deployade modellen, jämfört mot
   InferX-baslinjen — samma struktur som Fas 5:s exit-bevis, inte en del av den deterministiska
@@ -378,9 +435,10 @@ byggas och testas med fixtures innan GPU:n existerar):
    kräver ett separat godkännande av kostnadsram vid det tillfället.
 2. **Modellval + instansstorlek + faktisk kostnad (Beslut 2).** **Konkret förslag:**
    Qwen3-8B-Instruct (bf16) på en 24 GB Vast.ai-GPU (L4 i första hand, RTX 4090 som reserv),
-   kostnadstak **~10 USD** för hela bevisfasen (faktisk uppskattad användning $1–3; se Beslut 2
-   för det korrigerade räknestycket och risken vid en glömd instans, ~$146–212/månad). Kräver
-   operatörens explicita godkännande av just detta tak innan provisionering — inte bara riktningen.
+   kostnadstak **~10 USD** för hela bevisfasen (faktisk uppskattad användning $1–3). Med Beslut 8:s
+   idle-stopp + Max Duration-backstop på plats är "glömd instans"-worst-case nedbringad till
+   lagringskostnad (~$3–7.50/månad), inte de ursprungliga ~$146–212/månad. Kräver operatörens
+   explicita godkännande av kostnadstaket innan provisionering — inte bara riktningen.
 3. **Faktisk GPU-provisionering och credential-/providerkonfiguration** (`CORTXT_SELFHOSTED_URL`/
    `CORTXT_SELFHOSTED_API_KEY`) — skrivs aldrig ut/committas, sätts av operatören i miljön som kör
    riktiga anrop.
@@ -388,6 +446,9 @@ byggas och testas med fixtures innan GPU:n existerar):
    `FAS2A_INFERENCE_BUDGET_MAX`, men kräver att operatören faktiskt sätter budgeten vid
    exit-bevisets tidpunkt.
 5. **Merge/deploy av denna spec till en godkänd plan** — självgodkännande är förbjudet (§28).
+6. **Idle-tröskel + Max Duration-värden (Beslut 8).** Exakta tal (t.ex. 10–15 min idle-tröskel,
+   Max Duration-längd) är plan-nivå-detaljer men sätts i praktiken vid provisionering — hör ihop
+   med punkt 3:s gate, inte en separat blockering, men nämns här för spårbarhet.
 
 ## Deferred decisions
 
@@ -398,4 +459,5 @@ byggas och testas med fixtures innan GPU:n existerar):
 | L1/L2-dataklasstöd på den självhostade routen | Avslutad oberoende assurance för den specifika Vast.ai-infrastrukturen — ingen väg dit finns ännu. |
 | Fler task classes utan extern provider | Efter att den första (Beslut 4) är exit-bevisad — §24.3:s villkor ("quality floor uppfylld, latency/kostnad accepterad, dataskydd verifierat, fallback finns") avgör per klass. |
 | Caching/batching/modellpool/lastbalansering (§14.3 steg 4–5) | När v1:s enkla en-modell-en-route-bevis är klart och ett verkligt behov (kostnad eller genomströmning) motiverar det. |
+| Exakt kallstartstid (Beslut 8) | Mäts empiriskt vid första verkliga `ensure_running()`-anropet under TDD-implementeringen — inte antagen i specen. Om den visar sig oacceptabelt lång (t.ex. flera minuter) kan idle-tröskeln höjas eller idle-stoppet stängas av för aktiva evalsessioner. |
 | §27 #9 (affärsvärde egenhostad vs hyrd) fullt besvarad | När cost/quality-jämförelsen (Beslut 6) ger faktiska tal från en riktig deployment — denna spec besvarar bara "vilken väg vi provar först", inte den ekonomiska slutsatsen. |
