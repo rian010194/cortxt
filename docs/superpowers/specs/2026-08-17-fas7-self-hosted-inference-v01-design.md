@@ -1,6 +1,10 @@
 # Fas 7 — Egenhostad inference — design
 
-Status: **v7 — GODKÄND, operatören har frigivit autonom exekvering av resten av Fas 7.**
+Status: **v8 — FAS 7 AVSLUTAD. §23-exit-kriteriet empiriskt uppfyllt** (riktig N=3-körning mot
+en riktig Vast.ai-deployment, 3/3 lyckades, noll externa providers — se
+`docs/superpowers/plans/2026-08-17-fas7-exit-criterion-checklist.md`). Instansen stoppad,
+~$0.16 av $10-taket förbrukat. Fyra öppna produktionshärdningspunkter kvarstår ärligt
+dokumenterade (viktigast: Cloudflare Quick Tunnels är inte stabila nog för obevakad drift).
 Writer: Claude (orchestrator session), 2026-08-17, branch `spec/fas7-self-hosted-inference`
 (grenad från `ci/adr-doc-currency-gate-clean`, senaste commit `3eda624`). **Revideringshistorik
 2026-08-17:** (v1) InferX som förslag → avvisat av operatören (opak GPU-prissättning). (v2) Ett
