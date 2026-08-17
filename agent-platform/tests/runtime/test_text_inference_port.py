@@ -169,3 +169,38 @@ def test_call_backend_raises_when_execute_does_not_succeed(tmp_path, monkeypatch
     with pytest.raises(TextInferenceError) as exc:
         port.invoke("p", output_schema={"type": "object"})
     assert "did not succeed" in str(exc.value).lower()
+
+
+def test_route_id_defaults_to_l0_default(tmp_path, monkeypatch):
+    captured = {}
+    def fake_execute(request, adapters):
+        captured["route_id"] = request["routes"][0]["route_id"]
+        return {"status": "succeeded", "response": {"content": "{}"}}
+    monkeypatch.setattr("runtime.text_inference_port._resilient_execute", fake_execute)
+    monkeypatch.setattr("runtime.text_inference_port._RI_AVAILABLE", True)
+    monkeypatch.setenv("CORTXT_INFERENCE_URL", "https://example.invalid")
+    monkeypatch.setenv("CORTXT_INFERENCE_API_KEY", "k")
+    port = TextInferencePort(
+        model="synthetic-model", budget_gate=_gate(tmp_path, max_calls=5),
+        provider_evidence={"approved": True, "provider_id": "p"}, data_class="L0",
+    )
+    port.invoke("x", output_schema={"type": "object"})
+    assert captured["route_id"] == "l0-default"
+
+def test_route_id_is_configurable(tmp_path, monkeypatch):
+    captured = {}
+    def fake_execute(request, adapters):
+        captured["route_id"] = request["routes"][0]["route_id"]
+        return {"status": "succeeded", "response": {"content": "{}"}}
+    monkeypatch.setattr("runtime.text_inference_port._resilient_execute", fake_execute)
+    monkeypatch.setattr("runtime.text_inference_port._RI_AVAILABLE", True)
+    monkeypatch.setenv("CORTXT_SELFHOSTED_URL", "https://example.invalid")
+    monkeypatch.setenv("CORTXT_SELFHOSTED_API_KEY", "k")
+    port = TextInferencePort(
+        model="qwen3-8b-instruct", budget_gate=_gate(tmp_path, max_calls=5),
+        provider_evidence={"approved": True, "provider_id": "p"}, data_class="L0",
+        base_url_env="CORTXT_SELFHOSTED_URL", api_key_env="CORTXT_SELFHOSTED_API_KEY",
+        route_id="selfhosted-qwen3-8b",
+    )
+    port.invoke("x", output_schema={"type": "object"})
+    assert captured["route_id"] == "selfhosted-qwen3-8b"
