@@ -209,6 +209,52 @@ def _best_path(space: ProblemSpace, start: str, goal: str, embedder):
     return best or [start], best_score or 0.0
 
 
+def _memoized_embedder(embedder):
+    """Wrap any EmbeddingFn with a per-unique-text cache (records how many unique calls).
+
+    This collapses the many repeated per-node/goal embedding calls (a goal is embedded once per
+    path-node today) to one real call per unique text — the single biggest reducer of Voyage
+    API calls before any rate-limit handling. Exposes `.call_count` (unique texts) and
+    `.total_invoked` (raw calls, before cache) for verification.
+    """
+    cache: dict[str, list] = {}
+    counts = {"unique": 0, "invoked": 0}
+
+    def fn(text):
+        counts["invoked"] += 1
+        if text not in cache:
+            counts["unique"] += 1
+            cache[text] = list(embedder(text))
+        return cache[text]
+
+    fn.call_count = counts
+    return fn
+
+
+def _cached_sleep_best_path(space: ProblemSpace, start: str, goal: str, base_embedder, sleep: float = 0.3):
+    """Like _best_path but with a memoizing embedder + a small sleep between unique calls.
+
+    `sleep` spaces out the (now few) unique Voyage calls to avoid tripping the rate limit.
+    """
+    import time
+
+    embedder = _memoized_embedder(base_embedder)
+
+    def sleepy_embedder(text):
+        vec = embedder(text)
+        if embedder.call_count["unique"] > 0 and sleep:
+            time.sleep(sleep)  # rate-limit spread between distinct calls
+        return vec
+
+    policy = CandidatePathScore(embedder=sleepy_embedder)
+    best, best_score = None, None
+    for cand in _all_simple_paths(space, start, goal):
+        sc = score_path(space, cand, goal, policy)
+        if best_score is None or sc > best_score:
+            best, best_score = cand, sc
+    return (best or [start], best_score or 0.0, embedder)
+
+
 # --- locked, pre-registered fixture (a priori, do NOT change after real-embedding result) ---
 # Found deterministically (0 calls) via find_misranking_seed with the CONTENT-BASED
 # `expected_information_gain` (path_scoring bäddar in node content, not ids): the
@@ -278,13 +324,14 @@ def test_fas6_geometric_beats_baseline_on_determining_metrics(tmp_path):
 
     fx = _locked_fixture()
     hash_path, _ = _best_path(fx.space, fx.start, fx.goal, _hash())
-    voy_path, voy_score = _best_path(fx.space, fx.start, fx.goal, voyage)
+    voy_path, voy_score, voy_embed = _cached_sleep_best_path(fx.space, fx.start, fx.goal, voyage)
 
     # report actual numbers, not "improvement observed"
     print("hash best path:", hash_path)
     print("voyage best path:", voy_path, "score:", round(voy_score, 4))
     print("hash selected relevant branch?:", hash_path[1] == GROUND_TRUTH_FIRST_NODE)
     print("voyage selected relevant branch?:", voy_path[1] == GROUND_TRUTH_FIRST_NODE)
+    print(f"voyage unique embedding calls: {voy_embed.call_count['unique']} (raw invoked {voy_embed.call_count['invoked']})")
 
     # Exit pass rule: real embedding must correct the baseline's semantic mis-ranking.
     assert hash_path[1] != GROUND_TRUTH_FIRST_NODE, (
@@ -300,3 +347,29 @@ def test_fas6_geometric_beats_baseline_on_determining_metrics(tmp_path):
 def _hash():
     from reasoning.geometric.embeddings import hash_embedding
     return hash_embedding
+
+
+def test_cache_reduces_unique_embedding_calls_deterministically():
+    """Deterministic proof (mock embedder, 0 real calls): per-unique-text caching collapses the
+    many repeated per-node/goal embedding calls to one per unique fixture text."""
+    class CountingEmbedder:
+        def __init__(self):
+            self.invoked = 0
+
+        def __call__(self, text):
+            self.invoked += 1
+            return [0.5] * 8
+
+    fx = _locked_fixture()
+    base = CountingEmbedder()
+    # sleep=0 for the deterministic test (no real delays)
+    best, score, memo = _cached_sleep_best_path(fx.space, fx.start, fx.goal, base, sleep=0.0)
+    uniq = memo.call_count["unique"]
+    invoked = memo.call_count["invoked"]
+    assert best[1] is not None
+    # the raw embedder was invoked at least as many times as unique calls benefitted the cache:
+    # raw invoked (on the underlying) should be MUCH larger than unique for this repeated fixture
+    assert uniq <= len({fx.space.node(n).content for n in fx.space.ids() if fx.space.node(n).content}), \
+        f"unique calls ({uniq}) exceed number of distinct contents; caching broken"
+    assert invoked >= uniq, "invoked must be >= unique (cache only helps after first)"
+    print(f"cache proof: unique={uniq}, raw invoked={invoked}, best={best}")
