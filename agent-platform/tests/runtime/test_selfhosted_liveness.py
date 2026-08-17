@@ -1,4 +1,4 @@
-from runtime.selfhosted_liveness import LivenessSample, parse_liveness
+from runtime.selfhosted_liveness import LivenessSample, _LivenessHttpProbe, parse_liveness
 
 VLLM_METRICS_FIXTURE = """
 # HELP vllm:num_requests_running Number of requests currently running on GPU.
@@ -25,3 +25,23 @@ def test_parse_liveness_malformed_metrics_degrades_not_crashes():
     assert sample.alive is True
     assert sample.vram_pct is None
     assert sample.queue_depth is None
+
+
+def test_probe_classifies_timeout(monkeypatch):
+    def raise_timeout(*a, **kw):
+        raise TimeoutError()
+    monkeypatch.setattr("runtime.selfhosted_liveness.urllib.request.urlopen", raise_timeout)
+    probe = _LivenessHttpProbe(base_url="https://example.invalid", timeout_ms=100)
+    sample = probe.check()
+    assert sample.alive is False
+
+def test_probe_success_calls_parse_liveness(monkeypatch):
+    monkeypatch.setattr(
+        "runtime.selfhosted_liveness._LivenessHttpProbe._fetch_health", lambda self: True)
+    monkeypatch.setattr(
+        "runtime.selfhosted_liveness._LivenessHttpProbe._fetch_metrics",
+        lambda self: VLLM_METRICS_FIXTURE)
+    probe = _LivenessHttpProbe(base_url="https://example.invalid", timeout_ms=1000)
+    sample = probe.check()
+    assert sample.alive is True
+    assert sample.vram_pct == 42.0
