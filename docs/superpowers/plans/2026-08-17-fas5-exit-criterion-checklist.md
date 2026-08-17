@@ -54,3 +54,30 @@ model (`ProviderEvidence` missing `provider_id`; interpreter mismatch). The
 same is expected here — `provider_evidence`/`BudgetGate`/port wiring in
 `test_exit_criterion_coding.py` may need forwarding fixes. Do not weaken the
 assertion or the fixture to force a pass.
+
+---
+
+## Research-class exit criterion (Task 17)
+
+Status: **STRUCTURALLY WRITTEN, NOT YET RUN AGAINST A LIVE MODEL** in this
+environment (same blocker as the Coding class — no `CORTXT_INFERENCE_*`
+credentials here). `test_exit_criterion_research.py` skips loudly.
+
+| Check | Command | Result |
+|---|---|---|
+| Research exit proof — MECHANICALLY WRITTEN, NOT YET RUN | `pytest agent-platform/tests/harness/eval/test_exit_criterion_research.py -m "real_inference and docker_required"` | **SKIPPED** — no live-model credentials set. Not a pass. |
+
+### Known integration gap to close at live-run (declared by plan, not hidden)
+RLM's synthesized result for research content is **text**, while Task 8's
+`integrate_results` folds **int-valued** children (via `_content_sum`).
+Before the research exit assertion is meaningful, the text-return path must
+be extended or bypassed for the research fixture type — decide based on what
+the real run returns, per `systematic-debugging`. The real per-invocation
+cost field (`TextInferencePort`) is likewise a confirmed-at-runtime wiring,
+not a guessed name (same note as Coding class).
+
+### Rounds recorded (research)
+Pending live run. When completed, record per-round: fixture seed, baseline
+success/cost, RLM success/cost, observed multiplier, citation-match pass/fail
+per round, and the 2-of-3 verdict — same evidence format as Fas 4.
+
