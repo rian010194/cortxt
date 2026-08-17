@@ -49,3 +49,15 @@ def change_perspective(space: ProblemSpace, nid: str, target: str) -> Perspectiv
                 if t in _PERSPECTIVE_TYPES:
                     sub.add_edge(src, dst, rel_type=t)
     return PerspectiveResult(subgraph=sub, changed=True)
+
+
+def compare_paths(space, path_a, path_b, goal, policy=None) -> tuple[list[str], float]:
+    """Rank two candidate paths via path scoring (Task 5/6); return (better_path, score)."""
+    from .path_scoring import CandidatePathScore, score_path
+
+    policy = policy or CandidatePathScore()
+    sa = score_path(space, path_a, goal, policy)
+    sb = score_path(space, path_b, goal, policy)
+    if sb > sa:
+        return path_b, sb
+    return path_a, sa

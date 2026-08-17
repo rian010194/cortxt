@@ -43,3 +43,19 @@ def test_change_perspective_analogous_to_target():
     res = change_perspective(s, "b", "target")
     assert res.changed is True
     assert "b" in res.subgraph.ids()
+
+
+def test_compare_paths_returns_better_path_and_score():
+    from reasoning.geometric import CandidatePathScore, ReasoningNode, compare_paths, score_path
+    s = ProblemSpace()
+    s.add_node(ReasoningNode(id="a", evidence=0.9, contradiction=0.0))
+    s.add_node(ReasoningNode(id="b", evidence=0.2, contradiction=0.8))
+    s.add_node(ReasoningNode(id="goal", evidence=0.9, contradiction=0.0))
+    s.add_edge("a", "goal")
+    s.add_edge("a", "b")
+    s.add_edge("b", "goal")
+    good_path = ["a", "goal"]
+    bad_path = ["a", "b", "goal"]
+    best, best_score = compare_paths(s, good_path, bad_path, "goal")
+    assert best == good_path
+    assert best_score == score_path(s, good_path, "goal")
