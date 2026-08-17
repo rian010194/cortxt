@@ -44,3 +44,42 @@ jobs:
       - run: npm ci
       - run: npx tsc -b --noEmit
       - run: npx oxlint
+
+  adr-doc-currency:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          set -euo pipefail
+          base="origin/${GITHUB_BASE_REF}"
+          changed="$(git diff --name-only "${base}...HEAD")"
+          echo "Files changed vs ${base}:"
+          echo "${changed}"
+          adr_files="$(echo "${changed}" | grep -E '^docs/adr/[0-9]+-.*\.md$' || true)"
+          if [ -z "${adr_files}" ]; then
+            echo "OK: no numbered ADR files changed; documentation-currency gate not triggered."
+            exit 0
+          fi
+          echo "Changed numbered ADR files:"
+          echo "${adr_files}"
+          accepted=""
+          while IFS= read -r f; do
+            if [ -f "${f}" ] && grep -iqE '^(\*\*)?Status:(\*\*)?[[:space:]]*Accepted\b' "${f}"; then
+              accepted="${accepted}${f}"$'\n'
+            fi
+          done <<< "${adr_files}"
+          if [ -z "${accepted}" ]; then
+            echo "OK: changed ADR file(s) are not Accepted (draft/proposed/superseded); gate not triggered."
+            exit 0
+          fi
+          if echo "${changed}" | grep -qx 'docs/architecture/REVIEW_LOG.md'; then
+            echo "OK: Accepted ADR(s) changed and docs/architecture/REVIEW_LOG.md is updated in the same PR:"
+            echo "${accepted}"
+            exit 0
+          fi
+          adrs_oneline="$(echo "${accepted}" | paste -sd' ' -)"
+          echo "::error::Accepted ADR(s) changed without updating docs/architecture/REVIEW_LOG.md: ${adrs_oneline} -- per AGENTS.md section \"Documentation currency\", an Accepted ADR must add a row to docs/architecture/REVIEW_LOG.md (append-only register) in the same PR."
+          exit 1
