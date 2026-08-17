@@ -1,8 +1,9 @@
 # Fas 6 — Geometric Reasoning v1 — implementationsplan (TDD)
 
-Status: **PLAN — redo för TDD-exekvering.** Bygger på GODKÄND spec
+Status: **PLAN — SKICKAD till Kimi-review (2026-08-17).** Bygger på GODKÄND spec
 `docs/superpowers/specs/2026-08-17-fas6-geometric-reasoning-v01-design.md` (Kimi re-review #2 →
-GODKÄND, commit `0275ec1`). Branch `ci/adr-doc-currency-gate-clean`.
+GODKÄND, commit `0275ec1`). Branch `ci/adr-doc-currency-gate-clean`. Task 1–2 redan exekverade
+och gröna (314 passed totalt). Planen granskas av Kimi innan resterande TDD-task exekveras.
 Goal: implementera den deterministiska kärnan av Fas 6 — typat Problem State + reasoning
 graph, contradiction-detektering, tre operatorer, path scoring (versionsstyrd policy,
 hash-embedding default), TrajectoryReport — utan regression (308 passed + nya), 0 modellanrop.
@@ -84,10 +85,10 @@ def test_add_edge_default_opaque_keeps_behavior():
 def test_node_type_index_derives_from_nodes():
     s = ProblemSpace()
     s.add_node(ReasoningNode(id="c", node_type="claim"))
-    assert "claim" in s.node_types("c")  # eller s.node_type("c") == "claim"
+    assert s.node_type("c") == "claim"
 ```
 
-**Step 2:** pytest → FAIL (edge_types/node_types saknas).
+**Step 2:** pytest → FAIL (edge_types/node_type saknas).
 
 **Step 3 (GREEN):** `ProblemSpace` får `_edge_types: dict[tuple[str,str], set[str]]`; `add_edge`
 får valfri `rel_type: str|None=None` (appendar till setet); `edge_types(src,dst) -> list[str]`
