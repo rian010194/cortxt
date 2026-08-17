@@ -127,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
                               db_path=args.store / args.session_id / "spend.db")
     port = TextInferencePort(
         model=config["model"], budget_gate=budget_gate,
-        provider_evidence=config.get("provider_evidence", {"approved": True}),
+        provider_evidence=config.get("provider_evidence", {"approved": True, "provider_id": "inferx"}),
         data_class=config.get("data_class", "L0"),
     )
     fixture_dir = Path(config["fixture_dir"])
