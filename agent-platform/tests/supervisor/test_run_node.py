@@ -82,3 +82,23 @@ def test_run_node_result_carries_envelope_fields(tmp_path, fake_spawner_leaf_onl
                                    config=RLMConfig(max_total_children=0))
     for key in ("branches_explored", "model_invocations", "contradictions_found"):
         assert key in result
+
+
+def test_run_node_root_data_class_blocked(tmp_path, fake_spawner_leaf_only):
+    """An out-of-scope data class on the ROOT ref is denied before any flush —
+    returns a controlled blocked result, does NOT crash (Kimi review fix)."""
+    from context_store.store import ContextReference
+    from reasoning.recursive.bounds import RLMConfig
+    from supervisor.coordinator import Coordinator
+
+    coordinator = Coordinator(store=tmp_path, spawner=fake_spawner_leaf_only)
+    ref = ContextReference(source="repo", locator="secret.env", range=(0, 10),
+                            data_class="restricted")
+    result = coordinator.run_node(
+        task_id="t-blocked", context_ref=ref,
+        config=RLMConfig(max_total_children=0),
+        allowed_data_classes=frozenset({"L0", "internal"}))
+    assert result["status"] == "blocked"
+    assert result["termination_reason"] == "admission_denied"
+    assert result["children"] == []
+    assert result["model_invocations"] == 0

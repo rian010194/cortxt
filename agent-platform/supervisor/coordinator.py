@@ -19,6 +19,7 @@ from reasoning.recursive.bounds import RLMConfig
 from runtime import session_state as state
 from runtime.execution.write_policy import WriteCaps
 from runtime.rlm_child_cli import decide_child_refs
+from runtime.tools.gate import ToolAdmissionError
 from supervisor.budget import next_child_budget, reclaimable_surplus, split_rlm_config
 from supervisor.process_spawner import (ChildProcess, ProcessSpawnError,
                                         ProcessSpawner)
@@ -520,9 +521,22 @@ class Coordinator:
         # in-process decision: leaf vs decompose — Coordinator never calls a
         # model itself (Fas 3 §32.1); decide_child_refs needs no inference
         # port at all, unlike the original draft's run_node_body+_NullInference
-        child_refs = decide_child_refs(
-            context_ref, config, depth, _decompose_context,
-            data_class_check=lambda dc: dc in allowed_data_classes)
+        try:
+            child_refs = decide_child_refs(
+                context_ref, config, depth, _decompose_context,
+                data_class_check=lambda dc: dc in allowed_data_classes)
+        except ToolAdmissionError as error:
+            # fail-closed: an out-of-scope data class is denied before ANY
+            # process is created — surface it as a controlled blocked result,
+            # not an unhandled crash (Kimi review, Stage A checkpoint).
+            seq = state.latest_sequence(state.load(self._store, session_id))
+            state.append(self._store, session_id, seq, "session.terminal",
+                         {"status": "blocked", "reason": f"admission denied: {error}"})
+            return {"run_id": session_id, "status": "blocked", "children": [],
+                    "depth_reached": depth,
+                    "termination_reason": "admission_denied",
+                    "branches_explored": 0, "model_invocations": 0,
+                    "contradictions_found": 0}
 
         if not child_refs:
             child_session_id, child_process, config_path, ref_path = self._spawn_rlm_node(
