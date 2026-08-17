@@ -35,7 +35,7 @@ def test_payload_is_immutable_snapshot_not_mutable_ref():
 
 
 def test_payload_is_read_only_mappingproxy():
-    """Kimi checkpoint P1: payload is deep-immutable (MappingProxyType) — direct mutation raises TypeError."""
+    """Kimi checkpoint P1: top-level payload is read-only (MappingProxyType) — direct mutation raises TypeError."""
     c = Candidate(type="policy", name="np", version="v1", payload={"w1": 0.15})
     with pytest.raises(TypeError):
         c.payload["w1"] = 0.99  # type: ignore[index]
