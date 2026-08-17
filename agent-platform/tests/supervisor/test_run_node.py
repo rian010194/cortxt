@@ -69,3 +69,16 @@ def test_run_node_propagates_allowed_data_classes_to_spawned_children(tmp_path, 
     assert spy.seen_payloads
     for payload in spy.seen_payloads:
         assert payload.get("allowed_data_classes") == ["foo"], payload
+
+
+def test_run_node_result_carries_envelope_fields(tmp_path, fake_spawner_leaf_only):
+    from context_store.store import ContextReference
+    from reasoning.recursive.bounds import RLMConfig
+    from supervisor.coordinator import Coordinator
+
+    coordinator = Coordinator(store=tmp_path, spawner=fake_spawner_leaf_only)
+    ref = ContextReference(source="repo", locator="a.py", range=(0, 10), data_class="internal")
+    result = coordinator.run_node(task_id="t3", context_ref=ref,
+                                   config=RLMConfig(max_total_children=0))
+    for key in ("branches_explored", "model_invocations", "contradictions_found"):
+        assert key in result

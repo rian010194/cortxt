@@ -52,3 +52,20 @@ def test_decide_child_refs_returns_empty_list_for_a_leaf_decision():
     config = RLMConfig(max_total_children=0)
     refs = decide_child_refs(ref, config, depth=0, decompose_fn=lambda r, c: [r, r])
     assert refs == []
+
+
+def test_decide_child_refs_rejects_out_of_scope_data_class():
+    from runtime.rlm_child_cli import decide_child_refs
+    import pytest
+    from runtime.tools.gate import ToolAdmissionError
+
+    ref = ContextReference(source="repo", locator="secret.env", range=(0, 10),
+                            data_class="restricted")
+    config = RLMConfig(max_total_children=0)
+
+    def deny_restricted(data_class: str) -> bool:
+        return data_class != "restricted"
+
+    with pytest.raises(ToolAdmissionError):
+        decide_child_refs(ref, config, depth=0, decompose_fn=lambda r, c: [],
+                           data_class_check=deny_restricted)
