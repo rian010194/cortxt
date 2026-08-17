@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import time
+import urllib.request
 from dataclasses import dataclass
 
 
@@ -61,3 +62,39 @@ def parse_liveness(
         tokens_per_sec=None,
         checked_at=now_fn(),
     )
+
+
+class _LivenessHttpProbe:
+    """The single HTTP boundary against vLLM's /health and /metrics.
+
+    Same fail-closed classification discipline as embedding_port.py's
+    _EmbeddingHttpAdapter: TimeoutError / URLError / OSError (or any non-200 on
+    /health) -> alive=False; nothing escapes check() as an uncontrolled
+    exception.
+    """
+
+    def __init__(self, base_url: str, timeout_ms: int = 1000) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._timeout_s = max(0.001, timeout_ms / 1000.0)
+
+    def _get_text(self, path: str) -> str | None:
+        try:
+            with urllib.request.urlopen(
+                f"{self._base_url}{path}", timeout=self._timeout_s
+            ) as resp:
+                return resp.read().decode("utf-8", errors="replace")
+        except (TimeoutError, urllib.error.URLError, OSError):
+            return None
+
+    def _fetch_health(self) -> bool:
+        # vLLM /health returns 200 when ready; any non-200 / exception -> down.
+        return self._get_text("/health") is not None
+
+    def _fetch_metrics(self) -> str:
+        text = self._get_text("/metrics")
+        return text if text is not None else ""
+
+    def check(self) -> LivenessSample:
+        health_ok = self._fetch_health()
+        metrics_text = self._fetch_metrics()
+        return parse_liveness(health_ok=health_ok, metrics_text=metrics_text)
