@@ -1,22 +1,27 @@
 # Fas 7 — Egenhostad inference — design
 
-Status: **DRAFT v6 — GODKÄND MED ANMÄRKNINGAR (Kimi, 2026-08-17), väntar på operatörsgranskning
-av kvarstående P2-punkter.** Writer: Claude (orchestrator session), 2026-08-17, branch
-`spec/fas7-self-hosted-inference` (grenad från `ci/adr-doc-currency-gate-clean`, senaste commit
-`3eda624`). **Revideringshistorik 2026-08-17:** (v1) InferX som förslag → avvisat av operatören
-(opak GPU-prissättning). (v2) Ett lokal-RTX-4060-först-plus-Vast.ai-fallback-förslag →
-**operatören avvisade det lokala steget explicit** ("vill inte använda min egen GPU"). (v3)
-**Vast.ai som enda deployment-väg**, konkret modell (Qwen3-8B-Instruct) + ett kostnadstak på
-25–30 USD föreslaget. (v4) Kostnadstaket korrigerat till ~10 USD och en faktafel om InferX rättad
-(auto-decommission fungerade faktiskt — den verkliga Fas 6-kostnaden var överdimensionering, inte
-ett trasigt idle-shutdown). (v5) Beslut 8 tillagt: operatörsförslag om automatiskt idle-stopp +
-Vast.ai:s inbyggda Max Duration som backstop, verifierat mot Vast.ai:s dokumentation. **(v6, denna
-version) Kimi-granskning genomförd på operatörens explicita begäran** (`hermes -p coordinator
---provider kimi-coding -m kimi-k2.6`) — se "Kimi-granskning" nedan. **P1 åtgärdad:** Beslut 7:s
-påstående "noll ändringar krävs" var fel — `text_inference_port.py:88` har `route_id` hårdkodat,
-vilket motsäger Beslut 6; rättat till en minimal, bakåtkompatibel parametrisering. Fem P2-fynd
-kvarstår som öppna punkter för operatören/plan-fasen (se "Kimi-granskning"). Inga kodändringar i
-produktionsvägar ännu; bara denna spec.
+Status: **v7 — GODKÄND, operatören har frigivit autonom exekvering av resten av Fas 7.**
+Writer: Claude (orchestrator session), 2026-08-17, branch `spec/fas7-self-hosted-inference`
+(grenad från `ci/adr-doc-currency-gate-clean`, senaste commit `3eda624`). **Revideringshistorik
+2026-08-17:** (v1) InferX som förslag → avvisat av operatören (opak GPU-prissättning). (v2) Ett
+lokal-RTX-4060-först-plus-Vast.ai-fallback-förslag → **operatören avvisade det lokala steget
+explicit** ("vill inte använda min egen GPU"). (v3) **Vast.ai som enda deployment-väg**, konkret
+modell (Qwen3-8B-Instruct) + ett kostnadstak på 25–30 USD föreslaget. (v4) Kostnadstaket
+korrigerat till ~10 USD och en faktafel om InferX rättad (auto-decommission fungerade faktiskt —
+den verkliga Fas 6-kostnaden var överdimensionering, inte ett trasigt idle-shutdown). (v5) Beslut
+8 tillagt: operatörsförslag om automatiskt idle-stopp + Vast.ai:s inbyggda Max Duration som
+backstop, verifierat mot Vast.ai:s dokumentation. (v6) Kimi-granskning genomförd på operatörens
+explicita begäran (`hermes -p coordinator --provider kimi-coding -m kimi-k2.6`) →
+**GODKÄND MED ANMÄRKNINGAR**; P1 åtgärdad (Beslut 7:s "noll ändringar"-påstående var fel,
+`route_id` var hårdkodat — rättat till en minimal parametrisering); 5×P2 som öppna punkter.
+**(v7, denna version) Operatören:** (a) bekräftade explicit att den mindre, kvantiserade modellen
++ svagare (≥16GB) GPU:n är tillräcklig — löser Kimi P2 #2, se Beslut 2; (b) godkände gate 0 +
+kostnadstaket (~10 USD, redan laddat på operatörens Vast.ai-konto); (c) **auktoriserade explicit
+att Claude tar kontroll över operatörens inloggade Vast.ai-session (webbläsare) för de admin-steg
+Hermes byggarbete når fram till** (instansprovisionering, vLLM-deploy, Max Duration-inställning,
+stop/start) — se "Autonomt exekveringsmandat" nedan för exakt scope. (d) instruerade att resten av
+Fas 7 nu ska skötas autonomt, utan ytterligare avstämningsfrågor utöver genuina blockerare/
+destruktiva avvikelser.
 Authority: architectural proposal for one bounded vertical slice; does not override
 `docs/agents/current-operating-model.md`.
 Related: `docs/architecture/cortxt-agent-platform-target-architecture.md` §14.1–14.3 (Inference
@@ -147,19 +152,28 @@ ett lokalt steg.
 Vast.ai kräver operatörens explicita godkännande av kostnadsram innan den sker — detta beslut
 fastställer *vilken* leverantör, inte att pengar spenderas nu.
 
-### 2. Modellval + konkret kostnadsram
+### 2. Modellval + konkret kostnadsram (SLUTGILTIGT BESLUTAT 2026-08-17, löser Kimi P2 #2)
 
-**Rekommendation:** **Qwen3-8B-Instruct**, kört **okvantiserat (bf16/fp16)** — Qwen-familjen är
-redan bevisad i detta projekt (Qwen3-Coder-Next-FP8 via InferX i Fas 5, Qwen3-Embedding-0.6B/
-Qwen3-35B testade i Fas 6), vilket minskar operativ nyhet. 8B i bf16 kräver ~16 GB vikter + KV-
-cache-marginal, så en **24 GB-GPU** (Vast.ai L4- eller RTX 4090-klass) rymmer den bekvämt utan
-kvantiseringens kvalitetsförlust — bättre än den kvantiserade lokal-vägen som avvisades i Beslut 1
-skulle gett.
+**Beslut (operatörsstyrt, ersätter v6:s öppna bf16/24GB-rekommendation):** **Qwen3-8B-Instruct,
+kvantiserad (AWQ eller GPTQ int4 — inte GGUF/Q4_K_M, som var den lokala RTX 4060-vägens format;
+vLLM stödjer AWQ/GPTQ nativt och moget, till skillnad från dess omogna GGUF-stöd)**, på en
+**16 GB-klass Vast.ai-GPU** snarare än 24 GB. Operatören frågade explicit om den mindre
+modellen + svagare GPU:n räcker — svaret är **ja**: §23-exit-kriteriet handlar om att bevisa
+leverantörsoberoende arkitektur (Beslut 7) för en avgränsad, lågkomplex L0-task class (Beslut 4),
+inte om att maximera modellkvalitet. En kvantiserad 8B (~5–6 GB vikter + KV-cache-marginal på
+16 GB) är gott och väl tillräcklig för det, och billigare 16GB-kort finns typiskt till lägre
+$/hr än 24GB-klassen (L4/4090). Qwen-familjen är redan bevisad i detta projekt (Qwen3-Coder-
+Next-FP8 via InferX i Fas 5, Qwen3-Embedding-0.6B/Qwen3-35B testade i Fas 6).
+
+**Exakt GPU-modell/erbjudande väljs vid provisionering** (marknadsplatsutbudet varierar) — kravet
+är: **≥16 GB vRAM, billigast tillgängliga sådana på Vast.ai vid det tillfället**, inte ett specifikt
+kortnamn fastlåst i förväg.
 
 **Konkret kostnadsram (rättad i v4 efter operatörens fråga om taket var rimligt — förslag att
 godkänna, inte en pågående provisionering):**
-- **GPU:** Vast.ai on-demand, L4 (24 GB) i första hand (~$0.20/hr enligt research-underlaget),
-  RTX 4090 (24 GB, ~$0.29/hr) som reserv om L4-tillgänglighet är dålig hos en given värd.
+- **GPU:** Vast.ai on-demand, ≥16 GB-klass (billigast tillgängliga vid provisionering — typiskt
+  billigare än L4:s ~$0.20/hr; L4/24GB som reserv endast om inget 16GB-alternativ finns till
+  rimligt pris).
 - **Uppskattad total körtid:** setup/felsökning (vLLM-container, modellnedladdning) + N=3-
   eval-rundor + liveness-probe-verifiering — grovt **5–10 timmar** sammanlagt, inte kontinuerlig
   drift.
@@ -180,16 +194,11 @@ godkänna, inte en pågående provisionering):**
   korrekt *stoppad* (inte igångvarande) instans (~$3–7.50/månad, se Beslut 8) plus Max
   Duration som absolut yttergräns om även watchern skulle fela.
 
-**Varför liten, inte stor:** en mindre modell (a) håller GPU-hyran låg under bevisfasen, (b) räcker
-för en avgränsad, lågkomplex task class (Beslut 4), (c) kan skalas upp senare om exit-kriteriet
-visar att kvalitet är den begränsande faktorn, inte kostnad.
-
-**Kvantisering — aktivt avvägande, inte implicit default (Kimi P2 #2):** bf16 valdes för
-kvalitetsmarginal, men för just detta avgränsade proof-of-concept kunde en Q4-kvantiserad 8B
-(eller Qwen3-4B) på en billigare 16GB-GPU sänka kostnaden ytterligare, utan att äventyra
-exit-kriteriets syfte (bevisa portoberoende, inte maximal modellkvalitet). Kvarstår som en öppen
-punkt för operatören att ta ställning till vid provisionering — bf16/24GB är denna specs
-rekommendation, inte ett låst krav.
+**Varför liten och kvantiserad, inte stor/okvantiserad:** en mindre, kvantiserad modell (a) håller
+GPU-hyran låg under bevisfasen (16GB-klass är billigare än 24GB), (b) räcker gott för en
+avgränsad, lågkomplex task class (Beslut 4) — exit-kriteriet mäter portoberoende, inte
+modellkvalitet, (c) kan skalas upp senare (större modell, mindre kvantisering, större GPU) om ett
+framtida exit-kriterium för en svårare task class visar att kvalitet är den begränsande faktorn.
 
 **Hård gräns:** exakt modell + instansstorlek + faktisk provisionering är ett operatörsgodkänt
 kostnadsbeslut (se "Blockerade delar"), inte fastlåst av denna spec. Operatören har låg
@@ -474,10 +483,9 @@ konstruktörsparametrisering.
 **P2 (öppna, inte blockerande — för operatören/plan-fasen att ta ställning till):**
 1. Kostnadsräkningen är aritmetiskt korrekt (Kimi räknade om själv) men saknar en direkt
    fotnot/länk till research-underlaget i slutversionen — kosmetiskt, inte substantiellt.
-2. **Kvantiseringsvalet (bf16 vs Q4-kvantiserad 8B, eller Qwen3-4B på en billigare 16GB-GPU) bör
-   vara ett aktivt, dokumenterat avvägande i Beslut 2, inte en implicit default.** Kvaliteten från
-   bf16 är försvarbar men kostnadsbesparingen av en mindre/kvantiserad modell för just detta
-   avgränsade proof-of-concept vägdes inte in explicit.
+2. **LÖST (v7):** kvantiseringsvalet gjordes till ett aktivt, operatörsstyrt beslut i Beslut 2 —
+   Qwen3-8B-Instruct AWQ/GPTQ int4 på ≥16GB, inte bf16/24GB. Operatören bekräftade explicit att
+   den mindre modellen/svagare GPU:n är tillräcklig för exit-kriteriets syfte.
 3. **Beslut 8:s "disk bevaras vid stop" förutsätter värdstabilitet som inte är verifierad.** På en
    marknadsplats kan `start_instance` omallokera till en annan värd — om disken är värdlokal
    (inte nätverkslagring) följer den då inte med, och "snabb återstart" blir i praktiken en ny
@@ -493,35 +501,44 @@ faktiska plattformsbeteende vid provisioneringstillfället (inte något som kan 
 spec i isolation) — de läggs till som explicita plan-nivå-verifieringssteg, inte antaganden. P2 #1
 är en enkel dokumentationsjustering.
 
-## Blockerade delar och operatörsbeslut (att lyfta)
+## Autonomt exekveringsmandat (operatörsauktoriserat 2026-08-17, v7)
 
-Följande **kräver operatörsbefattning** och blockerar plan/TDD-exekvering av deployment-delen (men
-inte den deterministiska kärnans TDD — liveness-parsing, portinstansiering, policy-logik kan
-byggas och testas med fixtures innan GPU:n existerar):
+Följande **var** operatörsgrindar (se historiken nedan för vad de krävde) och är nu **avklarade
+eller explicit delegerade** — dokumenterat här som register (vad operatören faktiskt beslutade,
+vid detta tillfälle), inte som en levande status som kan bli inaktuell:
 
-0. **Att bygga Fas 7 alls, istället för att stanna vid externa providers (inkl. aggregatorer som
-   OpenRouter)** — se "Varför inte OpenRouter/en annan aggregator?" ovan. Detta är i grunden ett
-   leverantörsoberoende-/produktvisionsbeslut, inte ett kostnadsbeslut, och kräver operatörens
-   medvetna godkännande av den avvägningen innan resten av gaterna nedan blir relevanta.
-1. **Val av GPU-leverantör/hosting (Beslut 1).** **Operatörsgodkänt 2026-08-17:** Vast.ai, inte
-   lokal hårdvara (avvisat explicit) och inte InferX/RunPod/en aggregator. Faktisk provisionering
-   kräver ett separat godkännande av kostnadsram vid det tillfället.
-2. **Modellval + instansstorlek + faktisk kostnad (Beslut 2).** **Konkret förslag:**
-   Qwen3-8B-Instruct (bf16) på en 24 GB Vast.ai-GPU (L4 i första hand, RTX 4090 som reserv),
-   kostnadstak **~10 USD** för hela bevisfasen (faktisk uppskattad användning $1–3). Med Beslut 8:s
-   idle-stopp + Max Duration-backstop på plats är "glömd instans"-worst-case nedbringad till
-   lagringskostnad (~$3–7.50/månad), inte de ursprungliga ~$146–212/månad. Kräver operatörens
-   explicita godkännande av kostnadstaket innan provisionering — inte bara riktningen.
-3. **Faktisk GPU-provisionering och credential-/providerkonfiguration** (`CORTXT_SELFHOSTED_URL`/
-   `CORTXT_SELFHOSTED_API_KEY`) — skrivs aldrig ut/committas, sätts av operatören i miljön som kör
-   riktiga anrop.
-4. **Inference-/GPU-budget för det empiriska exit-beviset** (analogt Fas 5/6) — systemhanterat via
-   `FAS2A_INFERENCE_BUDGET_MAX`, men kräver att operatören faktiskt sätter budgeten vid
-   exit-bevisets tidpunkt.
-5. **Merge/deploy av denna spec till en godkänd plan** — självgodkännande är förbjudet (§28).
-6. **Idle-tröskel + Max Duration-värden (Beslut 8).** Exakta tal (t.ex. 10–15 min idle-tröskel,
-   Max Duration-längd) är plan-nivå-detaljer men sätts i praktiken vid provisionering — hör ihop
-   med punkt 3:s gate, inte en separat blockering, men nämns här för spårbarhet.
+0. **Gate 0 (bygga Fas 7 alls, leverantörsoberoende-motivet):** **GODKÄNT.**
+1. **Val av GPU-leverantör/hosting (Beslut 1):** **GODKÄNT.** Vast.ai. Operatören är inloggad på
+   Vast.ai med ~10 USD saldo redan laddat.
+2. **Modellval + instansstorlek (Beslut 2):** **GODKÄNT, SLUTGILTIGT.** Qwen3-8B-Instruct,
+   AWQ/GPTQ int4, ≥16 GB Vast.ai-GPU (billigast tillgängliga vid provisionering). Operatören
+   bekräftade explicit att detta räcker för exit-kriteriets syfte.
+3. **Kostnadstak (Beslut 2):** **GODKÄNT.** ~10 USD för hela bevisfasen.
+4. **Faktisk GPU-provisionering, credential-/providerkonfiguration och admin-steg inne på
+   Vast.ai (instansskapande, vLLM-deploy, Max Duration-inställning, stop/start):**
+   **DELEGERAT MED SPECIFIK MEKANISM.** Operatören auktoriserade explicit att **Claude tar
+   kontroll över operatörens redan inloggade Vast.ai-webbläsarsession** (via
+   `claude-in-chrome`-verktygen) för de admin-steg som Hermes byggarbete inte kan göra själv
+   (Hermes kodar/testar; Claude utför UI-handlingar i operatörens konto när Hermes arbete når en
+   sådan punkt). `CORTXT_SELFHOSTED_URL`/`CORTXT_SELFHOSTED_API_KEY` sätts av Claude i den miljö
+   som gör riktiga anrop under detta mandat — **skrivs aldrig ut i chatt eller committas**, i
+   linje med det generella credential-förbudet.
+5. **Inference-budget för det empiriska exit-beviset:** täcks av samma ~10 USD-tak (punkt 3);
+   `FAS2A_INFERENCE_BUDGET_MAX` sätts som en del av exekveringen, inte en separat väntande grind.
+6. **Merge/deploy av denna spec till en godkänd plan:** planen (`2026-08-17-fas7-self-hosted-
+   inference-v1.md`) är redan skriven och operatörsgodkänd att exekvera — självgodkännande av
+   *kod* (§28) gäller fortfarande normalt (verifiering/tester, inte Claudes egen bekräftelse), men
+   ytterligare avstämningsfrågor om att *starta* exekveringen är inte längre nödvändiga.
+7. **Idle-tröskel + Max Duration-värden (Beslut 8):** sätts av Claude vid provisionering inom
+   specens rekommenderade intervall (10–15 min idle, 2–4h Max Duration) som en del av mandatet,
+   inte en väntande fråga.
+
+**Vad som INTE är delegerat (kvarstår som genuina stopp-villkor, per operatörens egen instruktion
+"sköts autonomt... [utom] genuina blockerare"):** att spendera utöver ~10 USD-taket utan att
+fråga; att radera/förstöra data eller andra resurser utanför denna specs scope; att upptäcka ett
+last-bärande designfel i planen (inte bara ett justeringsbehov); eller något som kräver ett nytt,
+separat kostnads- eller leverantörsbeslut som inte redan täcks av Beslut 1–2 ovan (t.ex. att byta
+GPU-leverantör igen, eller höja kostnadstaket).
 
 ## Deferred decisions
 
