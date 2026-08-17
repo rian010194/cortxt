@@ -1,12 +1,20 @@
 # Fas 8 — Kontrollerad learning loop — design
 
-Status: **v1 — DESIGN-SPEC KLAR FÖR OPERATÖRSGRANSKNING.** Writer: Hermes (producer), 2026-08-18, branch
+Status: **v2 — DESIGN-SPEC UTVIDGAD TILL GRUND FÖR STÖRRE MÅLET, REDO FÖR KIMI-REVIEW PÅ OPERATÖRENS
+BEGÄRAN.** Writer: Hermes (producer), 2026-08-18, branch
 `spec/fas8-controlled-learning-loop` (grenad från `spec/fas7-self-hosted-inference`@`60b61a6`, dvs. efter
 Fas 7 v1 avslutad; den lokala `main`-grenen är föråldrad / Fas 4-era och saknar `agent-platform/portability/`
 från PR #135, så `-self-hosted-inference`-tip är den enda bas som innehåller allt beskrivet nuläge).
 
-Ingen Kimi-granskning begärd (operatören har inte bett om det; denna spec följer den autonoma disciplinen —
-Kimi-granskning sker ENDAST på operatörens explicita begäran).
+**Operatörens direktiv 2026-08-18 (inkorporerat i v2):** (a) specen ska lägga grunden för det större målet,
+inte bara en liten mekanism-demo — därför v2:s Beslut 9 (stabila typ-agnostiska kontrakt) + "Vägen till det
+större målet"-avsnittet; (b) recursive-geometric reasoning ska **genomsyra** det som byggs och **Voyage**
+utnyttjas — Beslut 10a/10b; (c) Cloudflare **Agent Memory**-arkitekturen (multi-typ-klassificering +
+verifier-checks + multi-channel-retrieval) lånas som **designinspiration** utan beroende på betatjänsten —
+Beslut 10c; (d) BÅDE denna spec och den efterföljande TDD-planen skickas till **Kimi för oberoende review**
+innan TDD-plan skrivs respektive innan operatörsinspektion; (e) operatören vill inspektera innan exekvering.
+Detta är en **explicit begärd Kimi-gate** (undantag från den autonoma sparsamhetsregeln), en granskning per
+artefakt.
 
 Authority: architectural proposal for one bounded vertical slice; does not override
 `docs/agents/current-operating-model.md`.
@@ -38,6 +46,18 @@ gate + promotion state machine + rollback store) och bevisar den **end-to-end p�
 kandidattyp först** (versionerad reasoning-policy — `CandidatePathScore`-vikter), som sedan appliceras på de
 två §23-utpekade pipeline-kraven (Skill-promotion, Tool-evolution) som *samma* primitives andra och tredje
 applikation — inte som nya mekanismer.
+
+**Detta är medvetet grunden för ett större mål, inte en envändnings-demo.** Målbilden (ADR-014/015,
+`docs/agents/goal-operating-model.md`, F0/Milestone-2) säger att användaren/operatören äger sin arbetsförmågas
+state, reasoning, minne, **tools, evidens och evolution** — och att profiler ska återanvända en gemensam kärna.
+Fas 8 är den fas som institutionaliserar **evolutionen**: plattformens egen arbetsförmåga (skills, tools,
+reasoning-strategier, routing-/operator-policies) ska kunna förbättras *styrt* under ett explicitt mandat,
+utan att en agent tyst ger sig själv nya rättigheter (§31.1:s varning). För att denna mekanism ska kunna
+växa till att bära hela spektrat av kandidattyper — inklusive tränade policies och automatisk
+kandidatgenerering från trajectorier (§31.1) — definierar v1 **stabila, typ-agnostiska kontrakt** (Beslut 9),
+inte bara en fungerande demo på en kandidattyp. Varje framtida kandidattyp är då en *adapterregistrering* på
+samma kontrakt, inte en omdesign. Denna grundsyn löper genom hela specen och sammanfattas i avsnittet
+"Vägen till det större målet" nedan.
 
 Att bygga livscykelprimitiven först och applicera den på policy-parametrar först är medvetet:
 
@@ -121,7 +141,7 @@ gränser").
 
 ## Scope decisions
 
-### 1. Kandidattyp för v1-beviset: versionerad reasoning-policy (`CandidatePathScore`-vitketer), inte skill-version eller ny strategivariant
+### 1. Kandidattyp för v1-beviset: versionerad reasoning-policy (`CandidatePathScore`-vikter), inte skill-version eller ny strategivariant
 
 **Beslut:** v1 bevisar hela livscykelloopen end-to-end på en **policy-parameter-kandidat** — en ny
 viktuppsättning för `CandidatePathScore` mot geometriska fixtures. Detta är den **enda kandidattypen vars
@@ -165,32 +185,68 @@ avvisas, en förbättring/neutral promotas om regeln i övrigt är uppfylld. (Ex
 bör promotas avgörs i plan-fasen; förslaget i denna spec är att neutrala **inte** auto-promotas eftersom
 utbytesrisken inte motiveras av nytta — se Beslut 4.)
 
-### 3. Promotion gate: regelstyrd automatisk grind för effektfria kandidater, operatörsgrind hårdkodad för allt med extern effekt (self-approval strukturellt omöjligt)
+### 3. Promotion gate: en regelstyrd regel-*exekutor* (rules-as-data), operatörsgrind representerad som ett regelobjekt (self-approval strukturellt omöjligt)
 
-**Beslut:** promotion godkänns av **två oberoende lager**:
+**Beslut:** promotion godkänns av **två oberoende lager**, och — avgörande för det större målet (Beslut 9)
+— implementeras grinden som en **ren regel-*exekutor* över ett `promotion_rules`-register**, inte som en rad
+hardcodade if-satser per kandidattyp. Varje kandidattyp registrerar sin egen uppsättning regelobjekt (härledda
+ur §31-tabellen och §32.2-effektklasserna); grinden evaluerar dem mot `EvidenceMatrix` + fixtures och
+producerar ett Verdict. En framtida kandidattyp (strategi, tränad policy) är då bara *en ny
+regelregistrering och en ny evaluerare*, utan att röra gate-koden. Detta är den mekaniska anledningen till
+att Fas 8 kan vara grunden för hela spektrat av kandidattyper.
+
+De två lagren:
 
 1. **Teknisk, regelstyrd grind (automatisk, auktoritativ kod):** offline eval-verdict (Beslut 2) + kandidattypens
-   §31-promotion-regel. **Ingen modell/agent är inblandad i beslutet** — det är ren datalogik mot
-   `EvidenceMatrix` + fixture-result. Detta uppfyller §28:s "*Modellen föreslår; auktoritativ kod validerar
-   och verkställer*".
-2. **Operatörsgrind (hård, icke-delegerbar)** för alla kandidatklasser där §31-tabellen kräver det: **"Ny
-   behörighet, credential, extern effekt eller policy → alltid operatörsgrind"** och **"executable helper →
-   namngiven mänsklig operatörsgrind"** och **"nytt tool → separat toolgranskning och operatörsbeslut"**.
+   §31-promotion-regel(er), utvärderade som data av gate-exekutorn. **Ingen modell/agent är inblandad i
+   beslutet** — det är ren datalogik mot `EvidenceMatrix` + fixture-result. Detta uppfyller §28:s
+   "*Modellen föreslår; auktoritativ kod validerar och verkställer*".
+2. **Operatörsgrind (hård, icke-delegerbar):** representerad som ett **`OperatorGateRule`-regelobjekt** som — när
+   tillämpad — returnerar `AWAIT_OPERATOR` tills en namngiven operatörmottagare ger godkännande. Inga
+   modell-anrop kan producera ett `PROMOTE` när en `OperatorGateRule` är aktiv. Reglerna för vilka klasser som
+   kräver operatörsgrind är **inte deletable av någon kandidat** — de härleds ur den oföränderliga
+   §31-tabellen (se "icke-delegerbara regler" nedan).
+
+**`PromotionRule`-kontraktet (data, Beslut 9):**
+
+```python
+@dataclass(frozen=True)
+class PromotionRule:
+    # antingen en automatisk teknisk regel ...
+    kind: "eval" | "safety" | "operator_gate"
+    # ... eller en operator-gate:
+    operator_scope: str | None      # t.ex. "tool"|"credential"|"external_effect"|"policy"|"executive_helper"
+    # en AWAIT_OPERATOR-regel har ingen eval-tröskel; den blockerar alltid tills godkänd.
+```
+
+- `kind="eval"`: kandidaten promotas om eval-verdictet (Beslut 2) är godkänt ("no regression + rule-pass").
+- `kind="safety"`: kandidaten promotas endast om alla säkerhetsfixtures passerar (fail-closed).
+- `kind="operator_gate"` med `operator_scope`: **alltid** `AWAIT_OPERATOR` oavsett eval-resultat; kräver en
+  namngiven människa (per §31: "credential/extern effekt/policy → alltid operatörsgrind"; "executable helper →
+  namngiven operatör"; "nytt tool → separat toolgranskning").
+
+**Icke-delegerbara regler (data som inte kan överskridas):** en kandidat kan aldrig registrera bort en
+`operator_gate`-regel. För att representera "Ny behörighet/credential/extern effekt/policy och executable
+helper/tool kräver alltid människa" **utan att hårt koda en if-sats per klass** ligger operator-gate-kraven i
+en enda, okrossbar regelbas (t.ex. en konstant `MANDATORY_OPERATOR_GATES` härledd ur §31/§32.2) som
+gate-exekutorn injicerar i *varje* kandidattyps regeluppsättning oavsett vad adaptern registrerar. Det är
+regelbasen, inte per-typ-koden, som garantierar self-approval-förbudet.
 
 **Konsekvens för v1-kandidattypens gate-konfiguration:** en effektfri **policy-parameter**-kandidat
-(`CandidatePathScore`-vikter) har ingen extern effekt/credential/behörighet → dess §31-promotion-regel är
-"Eval mot fixtures och regressioner" → kan **auto-promotas av den regelstyrda grinden**. En **skill**-kandidat
-av typen "instruktion/exempel/källa" har också regeln "Eval mot fixtures och regressioner" → auto-gate
-möjlig, men eftersom skill-eval i v1 är live-eval (budgetsteg) så begränsas skill-promotion i v1 till
-**explicit planerad/demoo** och promotas aldrig tyst. En **tool**-kandidat rör alltid effektklassen
-(`external_mutation`/`irreversible`/`credential` → §32.2) → **alltid operatörsgrind** (Beslut 5).
+(`CandidatePathScore`-vikter) har ingen extern effekt/credential/behörighet → dess regeluppsättning är
+`[eval, safety]` → kan **auto-promotas** av den regelstyrda grinden. En **skill**-kandidat av typen
+"instruktion/exempel/källa" har också `[eval, safety]` → auto-gate möjlig, men eftersom skill-eval i v1 är
+live-eval (budgetsteg) så begränsas skill-promotion i v1 till **explicit planerad/demoo** och promotas aldrig
+tyst. En **tool**-kandidat rör alltid effektklassen (`external_mutation`/`irreversible`/`credential` → §32.2)
+→ `MANDATORY_OPERATOR_GATES` gör den **alltid `AWAIT_OPERATOR`** (Beslut 5), oavsett eval-resultat.
 
 **Varför detta respekterar self-approval-förbudet (§28):** "Model proposes, authoritative code validates"
-är uppfyllt eftersom (a) kandidaten *föreslås* av en agent/operatör men (b) *verkställs* enbart av kod-gaten
-eller en namngiven operatör — algoritmen kan inte "vilja" promota sig själv, och kod-gaten har inget
-intressekonflikt-objekt. Den regelstyrda auto-gaten är **inte** self-approval: det är en *fast, förprogrammerad
-säkerhetsregel* (samma princip som `BudgetGate`s fail-closed-räkning), inte en fri-flytande agent som godkänner
-sig själv.
+är uppfyllt eftersom (a) kandidaten *föreslås* av en agent/operatör men (b) *verkställs* enbart av gate-exekutorn
+över oföränderliga regler eller av en namngiven operatör — algoritmen kan inte "vilja" promota sig själv, och
+gate-exekutorn har inget intressekonflikt-objekt och kan inte skriva om sin egen regelbas. Den regelstyrda
+auto-gaten är **inte** self-approval: det är samma princip som `BudgetGate`s fail-closed-räkning (fast regler
+som data), inte en fri-flytande agent som godkänner sig själv. Testet som bevisar detta: en kandidatadapter
+som försöker registrera bort en `operator_gate`-regel misslyckas med ett `ImmutableRuleError`.
 
 ### 4. Strategiportabilitet (#138): förs in i scope som mekanismen, full per-vertikal-evolution avsiktligt v1.x
 
@@ -287,6 +343,104 @@ innan (default-policyn är ostörd tills en kandidat faktiskt promotas, och äve
 prefix-verifierad). Detta är den deterministiska motsvarigheten till §28:s "misslyckat experiment förstör
 inte verifierad väg".
 
+### 9. Stabila, typ-agnostiska kontrakt — grunden för det större målet (Beslut 3 utvidgat)
+
+**Beslut:** för att Fas 8 ska vara *grunden*, inte en demo, fastställer v1 **fem stabila kontrakt** som alla
+framtida kandidattyper pluggar in på utan att röra kärnmekanismen. Dessa är v1:s verkliga leverans —
+mekanismen som "bara fungerar för policy" är underordnad de kontrakt som låter den växa:
+
+1. **`Candidate`-datamodellen (typ-agnostisk):** `{id, type, name, version, manifest_hash (sha256),
+   status, payload_ref, proposed_at, promoted_by, promoted_at, rolled_back_at}`. En framtida
+   `type="strategy"`- eller `type="trained_policy"`-kandidat är bara en ny `type`-sträng + en adapter som
+   mappar sin payload till `payload_ref` — ingenting i registry/gate/rollback ändras.
+2. **`Evaluator`-porten (kandidattyp-parameter):** en interface `Evaluator(candidate_payload, fixtures,
+   active_baseline) -> EvidenceMatrix`. V1 implementerar `PolicyEvaluator` (deterministisk, `score_path`).
+   En framtida `SkillEvaluator` (live, budgetgated) eller `TrainedPolicyEvaluator` är en ny implementering
+   av samma port — evaluatorn byts per typ, köreren ändras inte.
+3. **`PromotionRule`/`promotion_rules`-registret (data, Beslut 3):** regler är data per kandidattyp + en
+   okrossbar `MANDATORY_OPERATOR_GATES`-regelbas. En framtida kandidattyp registrerar bara sin regeluppsättning
+   och evaluerare; gate-exekutorn är typ-agnostisk.
+4. **`CandidateRegistry`-schemat (SQLite, persistent, versionerad):** `candidates` + `active_candidates`-tabeller
+   med hash-låsta, immutabla rader och audit-kolumner. Samma schema bär policy, skill, tool och framtida typer
+   — inga per-typ-tabeller.
+5. **Candidate-*ingångsdörren* (§31.1-ready):** `submit_candidate(type, payload, provenance)`-inkomstfunktion
+   som validerar manifest-hash + typregistrering och lägger en kandidat i `eval_pending`. Framtida
+   *automatisk* kandidatgenerering från trajectorier (§31.1: observation → pattern detection → skill
+   candidate) kan då mata in via samma dörr som manuell/agent-proponering — skillnaden är bara *varifrån*
+   payloaden kommer, inte *hur* den behandlas. Detta gör att v1 inte blockerar den automatiska genereringsänden.
+
+Dessa fem kontrakt är vad som gör Fas 8 till fundamentet för hela den kontrollerade learning-loopen i
+målbilden. Alla fem finns som deterministiska, testbara ytor i v1 (0 live-resurser). Se "Vägen till det
+större målet" för hur v1.x-stegen (strategiportabilitet, tränad policy, §31.1-auto-generation, drift-monitor)
+var och en bara är en ny implementering/registrering på ett av dessa kontrakt.
+
+### 10. Recursive + geometric reasoning genomsyrar loopen; Voyage som semantisk grund; Agent Memory som evidens-/retrieval-inspiration (operatörsdirektiv 2026-08-18)
+
+**Beslut (operatörens direktiv):** recursive-geometric reasoning ska **genomsyra** det vi bygger, **Voyage**
+utnyttjas som den semantiska grunden, och **Cloudflare Agent Memorys arkitektur** (multi-typ-klassificering +
+multi-channel-retrieval + verifier-checked) lånas som **designinspiration** för loopens evidens-/provenance-
+hantering — **utan att bero på Cloudflares beta-tjänst** (ingen SLA, prissättning okänd; operatörens egen
+bedömning). Detta är tre sammanflätade teman som Fas 8 konkretiserar enligt nedan.
+
+**10a. Recursive-geometric reasoning som loopens substrat.** Den kontrollerade learning-loopen är i sig ett
+reasoning-problem, inte bara en mekanisk pipeline. v1 använder det **redan accepterade geometric-paketet**
+(`agent-platform/reasoning/geometric/`, ADR-017) som den naturliga ramen istället för att uppfinna en
+parallell struktur:
+
+- **Candidate space = reasoning graph:** kandidaterna (+ den aktiva baslinjen) modelleras som noder i en
+  `ProblemSpace`; kantevärden bär "kan utvärderas tillsammans"-relationen. **`score_path` + `CandidatePathScore`
+  (Beslut 1) är redan den versionsstyrda policy som rankar kandidatbanor** — loopens "välj bästa kandidat"
+  är alltså ett anrop till den befintliga geometriska sökfunktionen, inte ny mekanik.
+- **Recursive decomposition:** en komplex promotion/eval uppgift dekomponeras (recursive-mönstret) i
+  del-evals per kandidat och re-integreras till en EvidenceMatrix — samma operator-mönster som
+  `reasoning/kernel/engine.py`'s `_solve_recursive` formaliserar.
+- **Attractor- och contradiction-detektering som säkerhetssignal vid promotion:** innan en kandidat promotas
+  körs geometric-operatorerna `AttractorDetector`/`contradiction` (existerande, ADR-017) mot den nya
+  kandidatens effekt-surface som **extra `safety`-regel**: en kandidat som skapar en attraktor (t.ex. en
+  policy som låser routing i ett dåligt lokalt optimum) eller introducerar en contradiction mot den verifierade
+  operativa vägens invarianter → `REJECT`. Detta är en konkret mekanisk tillämpning av §28:s
+  "*Ett misslyckat experiment får inte förstöra den verifierade operativa vägen*" och §31.1:s varning om att
+  en kandidat inte tyst får ge sig själv ny kraft.
+
+**10b. Voyage som semantisk grund.** `CandidatePathScore.embedder` accepterar redan en `EmbeddingFn`, och
+`EmbeddingPort` (`agent-platform/runtime/embedding_port.py`, Fas 6) är en drop-in Voyage-embedder
+(`voyage-4-lite`, dim 1024, env `CORTXT_EMBEDDING_URL/API_KEY`, operatörsstyrd). Den semantiska termen i
+`score_path` — `expected_information_gain` (semantisk närhet mellan kandidatinnehåll och mål) — blir **meningsfull
+endast med en riktig embedder; `hash_embedding` förblir den deterministiska defaulten men rankar bara på id/text,
+inte semantik** (vilket Fas 6 bevisade: hash mis-rankar semantiskt, Voyage korrigerar). Fas 8 utformar
+policy-kandidat-evalen så att **Voyage kan injiceras som den semantiska embeddern**
+(för det deterministiska core-testet körs `hash_embedding`; för en riktig, promotion-berättigad semantisk
+jämförelse körs Voyage som ett **budgetgated steg** med samma cache+sleep-rate-limit-disciplin Fas 6
+etablerade). Detta gör
+att Fas 8:s promotion-beslut i sin live-form "ser" semantisk förbättring, inte bara strukturell — direkt i
+linje med operatörens direktiv att utnyttja Voyage.
+
+**10c. Cloudflare Agent Memory som designinspiration.** Agent Memorys arkitektur — en **verifier** som kör
+flera checks innan ett minne klassas i fyra typer (**facts, events, instructions, tasks**) och **multi-channel
+retrieval** (fulltext / exact fact-key / raw message / vector / HyDE-vector) som **fuseras** — är ett mer
+sofistikerat schema än det nuvarande session-per-child-logging-approach (Fas 5, option 1). Fas 8 lånar **idén,
+inte tjänsten**:
+
+- **Typad kandidat-/evidensklassificering:** varje kandidat + dess eval-evidence klassificeras i ≤ fyra typer
+  (`facts`, `events`, `instructions`, `tasks`) med en **verifier-liknande `EvidenceClassifier`** som kör
+  deterministiska strukturella checks (manifest-form, hash-integritet, fixture-täckning, no-regression) innan
+  evidens tillåts bära vikt i en promotion. Samma princip som Agent Memorys verifier: *inget minne/evidens
+  klassas utan att först klara checks* — här: *ingen kandidat får promotionsvikt utan verifierad evidens*.
+- **Multi-channel retrieval som grund för framtida kandidatgenerering:** v1 lagrar klassificerad evidens i
+  `CandidateRegistry`-schemat (Beslut 9, punkt 5) med tydliga nycklar; en v1.x-`EvidenceRetriever` kan sedan
+  söka över flera kanaler (typ / manifest-hash / raw payload / framtida Voyage-vektor) och fusera resultaten
+  för att *mata* §31.1:s automatiska kandidatgenerering. v1 bygger klassificeringen + lagringsschemat (så att
+  multi-channel-retrieval är plug-in-klart), men själva den fuserade retrieval-queryn är v1.x.
+- **Explicit icke-beroende:** inget i v1 beror på Cloudflares Agent Memory-API/beta. Vi lånar arkitekturen
+  (typifiering + verifier-checks + multi-channel) som tolkningsram för evidens-hantering; betatjänstens
+  brist på SLA/okänd prissättning (operatörens egen riskbedömning) gör att den **inte** används i produktion.
+
+**Konsekvens för v1-komponenter:** `agent-platform/learning/` får en `EvidenceClassifier` (typifiering +
+verifier-checks), kör mot `ProblemSpace`/`score_path` för kandidat-rankning (10a), tillåter Voyage-injektion
+som drop-in-embedder (10b), och lagrar typad evidens i registry-schemat (10c). Allt detta har en deterministisk
+kärna (hash-embedder, mockade fixtures, 0 live-resurser) plus budgetgateda live-armar (Voyage). Det är en
+*tillämpning av operatörens direktiv som genomsyrar hela loopen* — inte en eftermonterad extrafunktion.
+
 ## Components (nya/ändrade moduler)
 
 **Ny modul** `agent-platform/learning/` (motsvarar "evolution och promotion"-ansvaret som §33 reserverar
@@ -301,11 +455,21 @@ för `agent-platform/skills`/`tools` men som idag inte existerar):
 - `evaluator.py` — kör `EvidenceMatrix`: för varje kandidatkörning mot fixture-set, samlar success/cost/latency
   + no-regression-flagga mot aktiv baseline. Återanvänder fixture-generatorerna från
   `agent-platform/harness/eval/` (t.ex. `run_task_class_eval`-liknande per-fixture-verdict, men
-  multi-kandidat).
-- `promotion_gate.py` — `PromotionGate.evaluate(matrix, candidate_type, rules) -> Verdict` där Verdict ∈
-  `{PROMOTE, AWAIT_OPERATOR, REJECT}`. Ren, deterministisk, testbar funktion. `AWAIT_OPERATOR` hårdkodas för
-  effektklasser (`external_mutation/irreversible/credential`, tool-kandidat, executavle helper per §31).
+  multi-kandidat). **Kandidat-ranking sker via den befintliga geometriska `score_path` + `CandidatePathScore`
+  (Beslut 10a), med `embedder` injicerbar: `hash_embedding` som deterministisk default, `EmbeddingPort`
+  (Voyage, Fas 6) som budgetgated drop-in (Beslut 10b).**
+- `evidence.py` — **`EvidenceClassifier` (Beslut 10c):** typifierar varje kandidats evidens i ≤ fyra typer
+  (`facts | events | instructions | tasks`) och kör **verifier-liknande deterministiska checks** (manifest-form,
+  hash-integritet, fixture-täckning, no-regression) innan evidens får bära promotionsvikt. Ren, deterministisk,
+  testbar; lagrar till registry-schemat som typad evidens (plug-in-klar för framtida multi-channel-retrieval).
+- `promotion_gate.py` — **typ-agnostisk regel-*exekutor***: `PromotionGate.evaluate(matrix, rules) -> Verdict`
+  där Verdict ∈ `{PROMOTE, AWAIT_OPERATOR, REJECT}`. Ren, deterministisk, testbar funktion som evaluerar en
+  data-`rules`-uppsättning (Beslut 3/9) — `eval`/`safety`-regler auto-beslutar, `operator_gate`-regler ger
+  `AWAIT_OPERATOR`, och `MANDATORY_OPERATOR_GATES` (okrossbar, härledd ur §31/§32.2) injiceras alltid i varje
+  kandidattyps regler. En adapter som försöker registrera bort en operator-gate-regel → `ImmutableRuleError`.
 - `rollback.py` — `rollback(type)` → atomär pekaråterställning + audit-rad. Ren transaktionslogik.
+- `submit.py` — candidate-**ingångsdörren** (`submit_candidate(type, payload, provenance)`); validerar
+  manifest-hash + typregistrering, lägger kandidat i `eval_pending` (Beslut 9, punkt 5).
 - `__init__.py` — publika exports.
 
 **Nya kandidatadapters** (ett torrt anpassat lager ovanpå `candidate.py`):
@@ -332,19 +496,27 @@ kan återanvändas rakt av som Fas 8-evals villkor.
 
 ```text
 Kandidatproponering (agent/operatör föreslår en variant)
-  -> CandidateRegistry.add(Candidate(type=policy|skill|tool, version, payload, manifest_hash))  [draft|eval_pending]
-      -> Evaluator.kör EvidenceMatrix                            (fixture-set + active_baseline, multi-kandidat)
-          -> PromotionGate.evaluate(matrix, type, rules)         (ren funktion)
-              -> AWAIT_OPERATOR  (tool / external-effekt / credential / executable-helper, §31-tabell)
-              -> PROMOTE         (effektfri policy/skill, eval-verdict + no-regression + rule)
-              -> REJECT          (försämrad / regressande / rule-fail)
+  -> submit_candidate(type, payload, provenance)                          (ingångsdörr, Beslut 9.5)
+      -> EvidenceClassifier.verifier-checks + typifiering (facts|events|instructions|tasks, Beslut 10c)
+          -> CandidateRegistry.add(Candidate(type, version, manifest_hash, status=eval_pending))
+              -> Evaluator kör EvidenceMatrix (fixture-set + active_baseline, multi-kandidat)
+                  -> kandidat-rankning via geometric score_path + CandidatePathScore
+                     (embedder = hash_embedding default / Voyage via EmbeddingPort, Beslut 10b)
+                  -> geometric safety: AttractorDetector/contradiction mot kandidatens effekt-surface (Beslut 10a)
+                  -> PromotionGate.evaluate(matrix, rules)                 (ren regel-exekutor, data regler)
+                      -> AWAIT_OPERATOR  (MANDATORY_OPERATOR_GATES: tool/external-effekt/credential/exec-helper)
+                      -> PROMOTE         (effektfri policy/skill: [eval, safety]-regler + no-regression)
+                      -> REJECT          (försämrad / regressande / geometric-attraktor / rule-fail)
   Promotion (PROMOTE):
       -> SQLite-transaktion: spara new-active-version, promoted_from=prev, promoted_at (atomär)
-  Rollback (operatör eller kod-gate vid diff som flaggar regression i drift):
+  Rollback (operatör eller kod-gate vid drift-regression):
       -> SQLite-transaktion: flytta aktiv-pekare tillbaka till promoted_from (atomär, audit-rad)
 
 Produktionsväg (ostörd tills en kandidat promotas):
   score_path(...) -> policy = learning.active_policy(...) or CandidatePathScore()   (default oförändrad)
+
+Framtida (v1.x, samma kontrakt):
+  EvidenceRetriever (multi-channel, Agent Memory-inspirerad) -> matar §31.1 pattern detection -> submit_candidate
 ```
 
 ## Error handling
@@ -370,6 +542,17 @@ Produktionsväg (ostörd tills en kandidat promotas):
   - `Evaluator` multi-kandidat: EvidenceMatrix med ≥2 kandidater + baseline; no-regression-flagga korrekt.
   - `rollback`: promotion sedan rollback återställer aktiv-pekare + skriver audit-rad; idempotent (rollback
     av redan rullad-back är no-op eller explicit fel, inte korruption).
+  - **Geometric safety-rule (Beslut 10a):** `PromotionGate` med en extra `safety`-regel som kör
+    `AttractorDetector`/`contradiction` mot kandidatens effekt-surface — en kandidat som skapar en attraktor
+    eller contradiction mot den verifierade operativa vägens invarianter → `REJECT`, oavsett eval-success.
+    Testas mot mockade geometric-fixtures (0 live-resurser).
+  - **`EvidenceClassifier` (Beslut 10c):** typifiering i `facts|events|instructions|tasks` korrekt; en kandidat
+    vars evidens inte klarar verifier-checks (bruten hash, ofullständig fixture-täckning, regresserande) får
+    INTE promotionsvikt (fail-closed). Deterministik.
+  - **Voyage-injektion (Beslut 10b):** `Evaluator`-porten accepterar en `EmbeddingFn`; fastställ att
+    `hash_embedding`-default ger deterministisk (om än id-baserad) ranking, och att en mockad "Voyage-lik"
+    embedder (som korrekt rangordnar semantiskt närliggande kandidatinnehåll) ändrar ranking som väntat — allt
+    med mock, 0 riktiga anrop. En riktig Voyage-körning är en separat `real_inference`-arm (se nedan).
   - **Exit-test (produktion ostörd):** medan en kandidat evalueras/promotas/rullas tillbaka, returnerar
     befintliga `Engine.solve`/`score_path`-anrop EXAKT samma resultat som innan (default-policy oförändrad
     tills en kandidat faktiskt promotas, och även då är den nya policyn prefix-verifierad). Assertion mot
@@ -377,6 +560,11 @@ Produktionsväg (ostörd tills en kandidat promotas):
   - **Dubbel-riktnings-exit-tests:** (a) en medvetet *bättre* policy-kandidat kan promotas (mekanismen
     fungerar); (b) en medvetet *försämrad* policy-kandidat avvisas och produktionen berörs aldrig. Båda
     deterministiska, 0 inferensanrop.
+- **Budgetgated live-arm (separat, utom default-sviten, `real_inference`):** en Voyage-semantisk policy-eval
+  som bevisar semantisk förbättring (kandidat vars `expected_information_gain`-term med Voyage rankar bättre
+  än hash-baselinjen), med samma cache+sleep-rate-limit-disciplin som Fas 6, budgetgated via isolerad
+  `db_path`. Kräver operatörssatta `CORTXT_EMBEDDING_URL/API_KEY` + godkänd budget (Hårda gränser). En skippad
+  live-arm är INTE ett pass (samma regel som Fas 6).
 - **Ingen regression:** hela default-sviten (`pytest agent-platform/ -m "not real_inference and not
   docker_required"`) förblir grön på de **328** befintliga passen (de 3 `test_text_inference_port`-route_id-
   testerna är ett **miljö-/beroendecaveat** — `cortxt_resilient_inference`-paket ej installerat — som föregår
@@ -409,6 +597,37 @@ Produktionsväg (ostörd tills en kandidat promotas):
 - **Automatisk kandidatgenerering från trajectories** (§31.1's "pattern detection → skill candidate") —
   den observerande/genererande änden är v1.x; v1 bygger att en *given* kandidat kan evalueras, promotas och
   rullas tillbaka. (Manuell/agent-proponerad kandidat är input.)
+- **Beroende på Cloudflares Agent Memory-tjänst (API/beta)** — vi lånar arkitekturen (typifiering +
+  verifier-checks + multi-channel), använder **inte** betatjänsten i produktion (ingen SLA, okänd prissättning;
+  operatörens egen riskbedömning, Beslut 10c). Den fuserade multi-channel-retrieval-queryn är v1.x, inte v1.
+- **Live Voyage-semantisk policy-eval som promotion-berättigad** — ett budgetgated steg (Beslut 10b), separat
+  från v1:s deterministiska kärna (hash-embedder). Kräver operatörsgodkänd budget + att
+  `CORTXT_EMBEDDING_URL/API_KEY` är operatörssatta (samma disciplin som Fas 6/7).
+- **Att göra `select_strategy` (kernel) till en promotbar routingpolicy** — v1.x, se ovan; v1 rör
+  `CandidatePathScore`/geometric-policy, inte `Strategy`-enumen.
+
+## Vägen till det större målet (hur v1 är grunden, inte en återvändsgränd)
+
+Varje v1.x-steg nedan är en **ny implementering eller registrering på ett av Beslut 9:s fem kontrakt** (eller
+en ny adapter/regel på Beslut 3/10) — ingen kärnmekanism behöver rivas. Det är detta som gör v1 till
+fundamentet för F0-målbilden (ADR-014/015, goal-operating-model): plattformens egna arbetsförmåga (skills,
+tools, strategies, policies, memories) blir *styrt förbättringsbar* över tid.
+
+| v1.x-steg | Vilken kontrakt/typ det pluggar in på | Varför det inte är v1 |
+|---|---|---|
+| **Strategiportabilitet (#138), full per-vertikal** | Ny `type="strategy"`-kandidat + `StrategyEvaluator` (Evaluator-porten) + `CandidatePathScore`-eller-`Strategy`-payload | En andra vertikalprofil som faktiskt behöver strategieval finns inte än (Beslut 4); exit kräver det inte |
+| **`select_strategy` → promotbar routing-policy** | Policy-kandidat som wrapperar strategi-valet (Evaluator-porten) | Att göra kernels strategival till en promotbar policy är en ny exekveringsyta, v1.x (Beslut 4/10) |
+| **Tränad operator-/routing-policy (leverabel 4)** | `type="trained_policy"` + `TrainedPolicyEvaluator` som producerar exakt samma versionerade viktkandidat-format som v1:s `CandidatePathScore`-kandidat | Ren ML-träning är en egen stor leverans (Beslut 6) — men v1 redan gjort dess *utdata promotbar* |
+| **§31.1 automatisk kandidatgenerering från trajectorier** | Candidate-**ingångsdörren** (`submit_candidate`); `EvidenceClassifier`/multi-channel-retrieval (10c) matar "pattern detection"-steget | Genereringsänden är v1.x; v1 gör att en *given* kandidat (vem som än föreslår den) klarar verifierad promotion |
+| **Drift-monitor / online-feedback (rollback vid driftregression)** | Lagret ovanpå den aktiva-pekaren (aktiva policy-versionen är redan versionerad + rullbar) | v1 rullar tillbaka *manuellt/kod-gat*; automatisk drift-detektering och online-feedback är en separat v1.x-mekanism |
+| **Multi-channel-evidence-retrieval (Agent Memory-riktig)** | Typad evidens i `CandidateRegistry`-schemat (10c) | v1 lagrar typad evidens; den fuserade flerkanals-queryn (fulltext/fact-key/raw/vector/HyDE) är v1.x |
+| **Live Voyage-semantisk promotion-berättigad eval** | `EmbeddingPort` som drop-in-embedder i `Evaluator` (10b) | Budgetgated steg, separat från deterministisk kärna |
+
+**Vad som ALDRIG förändras över dessa steg** (de icke-delegerbara garantierna som verifieras i v1 och skyddas
+av varje efterföljande fas): ingen kandidat promotar sig själv (regelbasen är okrossbar, Beslut 3/9); inget
+experiment förstör den verifierade operativa vägen (rollback + prefix-verifierad promotion, Beslut 7/8);
+promotion kräver alltid verifierad evidens (EvidenceClassifier-verifier-checks, Beslut 10c); operatorn
+behåller mandatet över allt med extern effekt/credential/irreversibelt (Beslut 3/§31/§32).
 
 ## Hårda gränser (icke-delegerbara mänskliga gatear — gäller implementeraren, planen och review-grinden)
 
@@ -420,9 +639,17 @@ Produktionsväg (ostörd tills en kandidat promotas):
   (efter operatörens önskemål, inte på eget start) och mergas endast efter operatörsgodkännande.
 - **Självapproval av spec/plan är förbjudet** (§28). Ingen agent/modell godkänner sin egen spec eller plan.
 - **Extern effekt, credential, producerad deploy, oåterkallelig skrivning** — alltid operatörsgrind.
+- **Voyage-credentials och eventuell live-eval-budget** — `CORTXT_EMBEDDING_URL/API_KEY` sätts av operatören,
+  ALDRIG av en agent (Fas 6-disciplin, §27#10); en live Voyage-eval som påverkar promotion är ett operatörs-
+  godkänt budgetsteg (Beslut 10b). Varje siffra (kostnad, tak) skrivs bara efter verifiering mot primärkälla.
 - **Inga riktiga resurser (GPU, molntjänst, kontokrediter) spenderas av denna spec** — om en framtida
   live-eval körs, gäller Fas 7-disciplinen: verifiera claims mot primärkälla, skriv ingen gissad siffra, och
   en tydlig kostnadsram som operatören godkänner innan något spenderas.
+- **Oberoende granskning (Kimi) per operatörens direktiv 2026-08-18:** BÅDE denna design-spec och den
+  efterföljande TDD-planen skickas till Kimi för oberoende granskning **innan** TDD-planen skrivs respektive
+  innan operatörsinspektion/exekvering. Producenten äger rework (KRÄVER → hash-bind → re-review tills GODKÄND
+  eller max rundor). Detta är en explicit operatörsbegärd gate, inte rutinmässig Kimi-användning (sparsamma
+  Kimi-anrop; en granskning per artefakt).
 
 ## Byggarbete = dispatch
 
