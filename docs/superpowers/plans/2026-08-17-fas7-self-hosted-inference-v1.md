@@ -1,6 +1,13 @@
 # Fas 7 — Egenhostad inference — implementationsplan (TDD)
 
-Status: **PLAN v2 — AUTONOM EXEKVERING PÅGÅR.** Bygger på GODKÄND spec
+Status: **PLAN v2 — KLAR (Task 1–8 implementerade och gröna).** Slutverifiering med
+`PYTHONPATH= python -m pytest agent-platform/ -m "not real_inference and not docker_required" -q`
+→ **366 passed, 3 skipped, 0 failed** (bas 348/3 + 18 nya tester från Task 1–8; 0 regressioner),
+körda med Python312 på branch `spec/fas7-self-hosted-inference`. Task 1–8 committade var för sig
+(se git-log). Fas B (Vast.ai-provisionering + vLLM-deploy + levande endpoint-test) är ej påbörjad —
+görs separat efter pre-flight-checklistan nedan.
+
+Bygger på GODKÄND spec
 `docs/superpowers/specs/2026-08-17-fas7-self-hosted-inference-v01-design.md` (v7, Kimi-granskad
 `GODKÄND MED ANMÄRKNINGAR`, commit `4a6b854`; P1 åtgärdad, kvantiseringsvalet slutgiltigt
 beslutat — se spec Beslut 2; 4×P2 kvar som pre-flight-verifieringspunkter, ej blockerande för
