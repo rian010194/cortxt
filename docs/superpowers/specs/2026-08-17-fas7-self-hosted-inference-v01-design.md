@@ -1,13 +1,16 @@
 # Fas 7 — Egenhostad inference — design
 
-Status: **DRAFT v2 — väntar på operatörsgranskning.** Writer: Claude (orchestrator session),
+Status: **DRAFT v3 — väntar på operatörsgranskning.** Writer: Claude (orchestrator session),
 2026-08-17, branch `spec/fas7-self-hosted-inference` (grenad från `ci/adr-doc-currency-gate-clean`,
-senaste commit `3eda624`). **Revidering 2026-08-17:** Beslut 1 (deployment-väg) ersatt efter
-operatörsgranskning av en marknadsjämförelse — InferX ströks (opak GPU-prissättning + Fas 6:s
-idle-kostnadsincident), ersatt av ett tvåstegat val: lokal RTX 4060 (steg 1, gratis) sedan Vast.ai
-(steg 2, operatören föredrar pris över RunPod:s bekvämlighet). Beslut 2, 3 och 5 justerade i
-konsekvens. Ingen Kimi-granskning begärd ännu (kostnadskänsligt per operatörsinstruktion — begärs
-bara om operatören explicit ber om det). Inga kodändringar i produktionsvägar; bara denna spec.
+senaste commit `3eda624`). **Revideringshistorik 2026-08-17:** (v1) InferX som förslag →
+avvisat av operatören (opak GPU-prissättning + Fas 6:s idle-kostnadsincident). (v2) Ett
+lokal-RTX-4060-först-plus-Vast.ai-fallback-förslag → **operatören avvisade det lokala steget
+explicit** ("vill inte använda min egen GPU"). (v3, denna version) **Vast.ai är den enda
+deployment-vägen**, valt över RunPod eftersom operatören prioriterar pris ($0.20/hr L4-klass)
+över RunPod:s bekvämare färdigmall och accepterar det manuella vLLM/Docker-konfigurationsarbetet.
+Beslut 2, 3 och 5 justerade i konsekvens. Ingen Kimi-granskning begärd ännu (kostnadskänsligt per
+operatörsinstruktion — begärs bara om operatören explicit ber om det). Inga kodändringar i
+produktionsvägar; bara denna spec.
 Authority: architectural proposal for one bounded vertical slice; does not override
 `docs/agents/current-operating-model.md`.
 Related: `docs/architecture/cortxt-agent-platform-target-architecture.md` §14.1–14.3 (Inference
@@ -52,10 +55,10 @@ GPU med öppen modell" är steg 3 av 7, inte en omskrivning av gatewayn).
 | `EmbeddingPort` | Samma mönster för `/embeddings`. Fas 6: Voyage AI vald (extern), InferX-embeddings 404:ade. | Bevisar mönstret redan generaliserar till en andra endpoint-typ — precedent för att generalisera till en tredje deployment (egenhostad chat). |
 | `BudgetGate` | Systemhanterad SQLite-spend-tabell (`fas2a_inference_spend`), `route_id`/`selected_route_id`-kolumner redan finns. Fail-closed: attempt-rad skrivs FÖRE nätverksanrop. | Redan route-medveten — kräver ingen ny kolumn eller tabell för grundläggande cost-jämförelse (Beslut 6). |
 | `inference/provider_policy.py` (ADR-016) | Deterministisk dataklass→gate. L0 kräver bara `approved`. L1 kräver + ZDR + kryptering. L2 kräver + DPA/subprocessors/hosting-region/incident + **avslutad** oberoende assurance. | Avgör vilken task class som är laglig att köra på den nya routen (Beslut 3). |
-| ADR-016 Decision 4 | InferX är **experimentell, inte godkänd för konfidentiellt material**; endast dataklass **L0** tillåten hos InferX tills avslutad assurance. | Samma logik (assurance-gate per infrastruktur, inte per modell) appliceras i Beslut 3 på Vast.ai; lokal körning (steg 1) är ett annat fall eftersom ingen tredje part alls är inblandad. |
-| Fas 6-precedent (hyrd GPU, eget modellval) | 2026-08-17: Cortxt deployade **Qwen3-Embedding-0.6B** som en dedikerad InferX-instans (`/m3/v1`, egen modellval, inte InferX:s färdiga katalogmodell) innan Voyage valdes av kostnadsskäl. | Bevisar att InferX:s "hyr en GPU, deploya din egen öppna modell"-väg redan är en fungerande, krediterad relation — inte hypotetisk. |
-| §27 #9 (öppen fråga: affärsvärde egenhostad vs hyrd) | Obesvarad i arkitekturdokumentet. | Besvaras av denna spec för v1:s scope (Beslut 1): lokal RTX 4060 först (kostnad = 0), Vast.ai som hyrd fallback om lokalt inte räcker. |
-| Marknadsjämförelse GPU-hyra (research 2026-08-17) | InferX saknar transparent $/hr för GPU-hyra (bara per-token för katalogmodeller); RunPod har billigast bekvämlighet (färdig vLLM-mall, äkta scale-to-zero) men högre pris; Vast.ai billigast rakt av ($0.20/hr L4-klass) men manuell vLLM/Docker-konfiguration. | Operatören valde Vast.ai (pris > bekvämlighet) för steg 2, lokal RTX 4060 för steg 1 (Beslut 1). |
+| ADR-016 Decision 4 | InferX är **experimentell, inte godkänd för konfidentiellt material**; endast dataklass **L0** tillåten hos InferX tills avslutad assurance. | Samma logik (assurance-gate per infrastruktur, inte per modell) appliceras i Beslut 3 på Vast.ai — leverantörsbyte ändrar inte principen. |
+| Fas 6-precedent (hyrd GPU, eget modellval) | 2026-08-17: Cortxt deployade **Qwen3-Embedding-0.6B** som en dedikerad InferX-instans (`/m3/v1`, egen modellval, inte InferX:s färdiga katalogmodell) innan Voyage valdes av kostnadsskäl. | Bevisar att "hyr en GPU, deploya din egen öppna modell"-mönstret redan är prövat i detta projekt — bara leverantören byts (InferX → Vast.ai, Beslut 1). |
+| §27 #9 (öppen fråga: affärsvärde egenhostad vs hyrd) | Obesvarad i arkitekturdokumentet. | Besvaras av denna spec för v1:s scope (Beslut 1): hyrd GPU via Vast.ai, inte lokal hårdvara (operatören avvisade det) och inte InferX (opak prissättning). |
+| Marknadsjämförelse GPU-hyra (research 2026-08-17) | InferX saknar transparent $/hr för GPU-hyra (bara per-token för katalogmodeller); RunPod har billigast bekvämlighet (färdig vLLM-mall, äkta scale-to-zero) men högre pris; Vast.ai billigast rakt av ($0.20/hr L4-klass) men manuell vLLM/Docker-konfiguration. | Operatören valde Vast.ai (pris > bekvämlighet, manuellt arbete inget hinder) framför både InferX och RunPod (Beslut 1). |
 
 ## Purpose
 
@@ -72,52 +75,42 @@ operatören godkänt den specifika planen och kostnaden (hård grind, se "Blocke
 
 ## Scope decisions
 
-### 1. Deployment-väg: lokal RTX 4060 först (gratis), Vast.ai som hyrd fallback (operatörsbeslut 2026-08-17)
+### 1. Deployment-väg: Vast.ai (hyrd), inte operatörens egen GPU (operatörsbeslut 2026-08-17)
 
-**Beslut (operatörsgodkänt, ersätter tidigare InferX-rekommendation):** en marknadsjämförelse
-(RunPod, Vast.ai, Lambda Cloud, Together.ai, Fireworks.ai, Modal, InferX; se research-underlag
-2026-08-17) visade att InferX **inte** har transparent $/hr-prissättning för GPU-hyra (bara
-per-token för katalogmodeller) och att Fas 6 redan fick ett konkret idle-kostnadsproblem där en
-InferX-instans inte auto-decommissionerades snabbt nog. Beslutet blir därför **tvåstegat**:
+**Beslut (operatörsgodkänt, ersätter tidigare InferX-rekommendation och det tidigare
+lokal-först-utkastet):** operatören vill uttryckligen **inte** använda sin egen maskin (RTX 4060)
+för detta — inget lokalt steg. En marknadsjämförelse (RunPod, Vast.ai, Lambda Cloud, Together.ai,
+Fireworks.ai, Modal, InferX; se research-underlag 2026-08-17) visade att InferX **inte** har
+transparent $/hr-prissättning för GPU-hyra (bara per-token för katalogmodeller) och att Fas 6
+redan fick ett konkret idle-kostnadsproblem där en InferX-instans inte auto-decommissionerades
+snabbt nog. Mellan de återstående alternativen valde operatören **Vast.ai** framför **RunPod**:
+RunPod:s Serverless är bekvämare (färdig vLLM-mall, äkta scale-to-zero) men dyrare per GPU-timme;
+Vast.ai är billigare ($0.20/hr för en L4-klass GPU, källa: research-underlaget) men kräver manuell
+vLLM/Docker-konfiguration — operatören har uttryckligen prioriterat pris över bekvämlighet och
+bekräftat att det manuella arbetet inte är ett hinder.
 
-1. **Steg 1 (primärt, gratis):** kör exit-kriteriets task class **lokalt på operatörens RTX 4060**
-   (8 GB vRAM) med en kvantiserad öppen modell (Beslut 2). Detta bevisar hela leverabelkedjan
-   (port, policy, liveness, task class, cost/quality-jämförelse mot InferX-baslinjen) utan att
-   något GPU-leverantörsbeslut eller någon kostnad krävs alls.
-2. **Steg 2 (hyrd fallback, om steg 1 visar sig otillräckligt i hastighet/modellstorlek):**
-   **Vast.ai**, inte RunPod eller InferX. Operatören föredrar Vast.ai trots att det kräver manuell
-   vLLM/Docker-konfiguration (RunPod:s färdiga mall är bekvämare men inte ett krav) — pris ($0.20/hr
-   för en L4-klass GPU, källa: research-underlaget) väger tyngre än bekvämlighet här, och manuellt
-   arbete är uttryckligen inget hinder för operatören.
+**Varför inte InferX:** InferX:s prissättning för GPU-hyra är opak (ingen självbetjänad
+$/hr-sida hittades), och Fas 6:s idle-kostnadsincident visar att auto-decommissioning där inte kan
+litas på. Att fortsätta på samma leverantör "för att det redan finns credentials" vore att
+optimera för bekvämlighet över kostnadskontroll.
 
-**Varför inte InferX (avviker från Beslut 1 i tidigare utkast):** InferX:s prissättning för
-GPU-hyra är opak (ingen självbetjänad $/hr-sida hittades), och Fas 6:s idle-kostnadsincident visar
-att auto-decommissioning där inte kan litas på. Att fortsätta på samma leverantör "för att det
-redan finns credentials" vore att optimera för bekvämlighet över kostnadskontroll — precis det
-operatören bad om att undvika.
-
-**Varför Vast.ai och inte RunPod för steg 2:** RunPod:s Serverless är bekvämare (färdig
-vLLM-mall, äkta scale-to-zero) men dyrare per GPU-timme. Operatören har uttryckligen prioriterat
-pris över bekvämlighet och accepterat det manuella konfigurationsarbetet Vast.ai kräver — inget
-tekniskt skäl talar emot Vast.ai (marketplace-variabiliteten är en drifts-, inte
-arkitekturrisk: samma OpenAI-kompatibla vLLM-endpoint oavsett vilken Vast.ai-värd som vinner
-budet).
+**Varför inte lokal RTX 4060:** ett tidigare utkast av denna spec föreslog lokal körning som ett
+gratis första steg (tekniskt fullt möjligt — Q4-kvantiserad 7–8B ryms på 8 GB vRAM). Operatören
+avvisade det explicit: Vast.ai är den enda deployment-vägen i denna spec, inte en fallback efter
+ett lokalt steg.
 
 **Hård gräns (icke-delegerbar, se "Blockerade delar"):** den faktiska GPU-provisioneringen på
-Vast.ai (om steg 2 blir nödvändigt) kräver operatörens explicita godkännande av kostnadsram vid
-det tillfället — detta beslut fastställer bara *vilken* leverantör, inte att pengar spenderas nu.
-Port- och policyarkitekturen (Beslut 3/7) är identisk oavsett om modellen körs lokalt eller på
-Vast.ai — bara `base_url_env`/`api_key_env`-värdena skiljer.
+Vast.ai kräver operatörens explicita godkännande av kostnadsram innan den sker — detta beslut
+fastställer *vilken* leverantör, inte att pengar spenderas nu.
 
-### 2. Modellval: liten öppen instruct-modell, kvantiserad för lokal 8 GB-vRAM
+### 2. Modellval: liten öppen instruct-modell, budgetmedveten
 
-**Rekommendation:** en öppen instruct-modell i 7–8B-klassen (t.ex. Qwen3-8B-Instruct), körd
-**kvantiserad (Q4_K_M eller motsvarande, ~4.5–5 GB vRAM)** för att rymmas på RTX 4060:s 8 GB —
-research-underlaget bekräftar ~40 tokens/sek vid den kvantiseringsnivån, gångbart för en
-avgränsad eval-task-class. Qwen-familjen är redan bevisad i detta projekt (Qwen3-Coder-Next-FP8
-via InferX i Fas 5, Qwen3-Embedding-0.6B/Qwen3-35B testade i Fas 6) — att stanna i samma familj
-för den öppna instruct-modellen minskar operativ nyhet, oavsett att serveringsvägen nu är lokal/
-Vast.ai istället för InferX.
+**Rekommendation:** en öppen instruct-modell i 7–8B-klassen (t.ex. Qwen3-8B-Instruct) — ryms
+bekvämt på en L4-klass GPU (Beslut 1) utan aggressiv kvantisering, vilket ger bättre kvalitet än
+en lokal Q4-begränsad körning skulle gjort. Qwen-familjen är redan bevisad i detta projekt
+(Qwen3-Coder-Next-FP8 via InferX i Fas 5, Qwen3-Embedding-0.6B/Qwen3-35B testade i Fas 6) — att
+stanna i samma familj minskar operativ nyhet, oavsett att serveringsvägen nu är Vast.ai istället
+för InferX.
 
 **Varför liten, inte stor:** Fas 6 fick ett konkret kostnadsvarningsincident (35B-instansen kostade
 $0.066/min och auto-decommissionerades inte snabbt nog, "onödig kostnad" enligt sessionsloggen).
@@ -126,42 +119,34 @@ lågkomplex task class (Beslut 4), (c) kan skalas upp senare om exit-kriteriet v
 är den begränsande faktorn, inte kostnad.
 
 **Hård gräns:** exakt modell + instansstorlek + faktisk provisionering är ett operatörsgodkänt
-kostnadsbeslut (se "Blockerade delar"), inte fastlåst av denna spec.
+kostnadsbeslut (se "Blockerade delar"), inte fastlåst av denna spec. Operatören har låg
+förkunskap om modellval — denna rekommendation är en startpunkt att godkänna eller justera, inte
+ett fastslaget faktum.
 
-### 3. Dataklass-tak: skiljer sig mellan steg 1 (lokal, ZDR trivialt sant) och steg 2 (Vast.ai, L0-tak)
+### 3. Dataklass-tak: L0, ärvt av ADR-016 Decision 4:s princip — inte "trivialt ZDR"
 
-**Beslut (reviderat efter Beslut 1:s tvåstegsval):** dataklasstaket beror nu på vilket steg som
-körs, inte på en enda hyrd-infrastruktur som tidigare antaget:
-
-- **Steg 1 (lokal RTX 4060):** ingen data lämnar operatörens maskin — `zero_data_retention` **är**
-  trivialt sant här, precis den situation dispatch-uppdraget ursprungligen beskrev. Kombinerat med
-  `encryption` (trivialt uppfyllt — ingen nätverkstransport att avlyssna) räcker det tekniskt för
-  **L1** enligt `_REQUIREMENTS` i `inference/provider_policy.py`. **Rekommendation:** använd ändå
-  L0 för det första exit-beviset (Beslut 4) — enklast att jämföra mot den befintliga L0-baslinjen
-  och undviker att blanda ett nytt policy-läge med det första porttestet. L1 är en billig,
-  redan-uppfylld option att aktivera senare, inte en spärr.
-- **Steg 2 (Vast.ai, om det blir aktuellt):** data transiterar en tredje parts GPU-infrastruktur.
-  Samma logik som tidigare gällde InferX gäller nu Vast.ai: utan publicerad DPA/subprocessors/
-  hosting-region/incident-process/avslutad oberoende assurance för den specifika Vast.ai-värden är
-  `zero_data_retention` **inte** trivialt sant, och endast **L0** är tillåtet
-  (`inference/provider_policy.py`s `_REQUIREMENTS[DataClass.L1]` kräver `zero_data_retention` +
-  `encryption` som explicita, verifierade flaggor — inte antagna).
+**Beslut:** eftersom Vast.ai är en tredje parts marketplace-infrastruktur (data lämnar
+operatörens maskin och transiterar en Vast.ai-värd) är `zero_data_retention` **inte** trivialt
+sant — samma princip som redan begränsade InferX (ADR-016 Decision 4: experimentell
+infrastruktur, ej godkänd för konfidentiellt material, endast dataklass **L0** tills avslutad
+oberoende assurance) appliceras nu på Vast.ai. Utan publicerad DPA/subprocessors/hosting-region/
+incident-process/avslutad oberoende assurance för den specifika Vast.ai-värden som vinner budet
+är `inference/provider_policy.py`s `_REQUIREMENTS[DataClass.L1]` (`zero_data_retention` +
+`encryption` som explicita, verifierade flaggor) inte uppfyllt.
 
 En `ProviderEvidence`-rad konstrueras per anrop (samma mönster som `TextInferencePort`/
 `EmbeddingPort` redan använder — ingen central registry existerar, se `provider_policy_cli.py`):
-`provider_id="cortxt-selfhosted-local-<model>"` (steg 1, `zero_data_retention=True`,
-`encryption=True`) respektive `provider_id="cortxt-selfhosted-vastai-<host>-<model>"` (steg 2,
-`zero_data_retention=False` tills verifierat annorlunda).
+`provider_id="cortxt-selfhosted-vastai-<host>-<model>"`, `approved=True` (operatören godkänner
+deploymenten), `zero_data_retention=False` tills verifierat annorlunda, övriga L1+-flaggor
+`False`.
 
 **Varför detta är rätt, inte en genväg:** ADR-016:s dataklass→gate-princip appliceras ärligt per
-faktisk infrastruktur — en marketplace-GPU (Vast.ai) har inte automatiskt samma
-assurance-egenskaper som operatörens egen maskin bara för att modellvalet är detsamma. Steg 1:s
-trivialitet är en verklig arkitektonisk fördel av att välja lokal körning först (Beslut 1), inte
-ett antagande som slätas över.
+faktisk infrastruktur — en marketplace-GPU har inte automatiskt samma assurance-egenskaper bara
+för att Cortxt äger modellvalet. Policyn kringgås inte bara för att leverantören bytt namn från
+InferX till Vast.ai.
 
-**Konsekvens:** detta bestämmer vilken task class som är laglig (Beslut 4) — L0 räcker för att
-täcka båda stegen utan att behöva byta policy-läge mellan dem, och är direkt jämförbar med Fas
-5/6:s befintliga L0-baserade InferX/Voyage-baslinjer.
+**Konsekvens:** detta bestämmer vilken task class som är laglig (Beslut 4) — måste vara L0, direkt
+jämförbar med Fas 5/6:s befintliga L0-baserade InferX/Voyage-baslinjer.
 
 ### 4. Task class för exit-kriteriet: en avgränsad, L0-klassad, redan existerande fixture-klass
 
@@ -183,29 +168,19 @@ portabilitet vore att testa två saker samtidigt (ny uppgift + ny inferensväg).
 redan verifierad L0-fixture isolerar variabeln till "vilken modell svarar", vilket är exakt vad
 cost/quality-jämförelsen (Beslut 6) behöver.
 
-### 5. Liveness och capacity metrics: serverns inbyggda ytor, inget nytt protokoll — stack avgörs per steg
+### 5. Liveness och capacity metrics: vLLM:s inbyggda ytor, inget nytt protokoll
 
 **Beslut:**
-- **Liveness** = periodisk `GET` mot serverns hälso-endpoint, normaliserad till `{alive: bool,
-  checked_at: timestamp}`.
+- **Liveness** = periodisk `GET` mot serverns hälso-endpoint (vLLM exponerar `/health` inbyggt),
+  normaliserad till `{alive: bool, checked_at: timestamp}`.
 - **Capacity** = GPU-vRAM-utnyttjande (%), kö-djup/inflight-requests, tokens/sekund — skrapat från
-  serverns inbyggda metrics-yta.
+  vLLM:s inbyggda Prometheus-`/metrics`-endpoint (ships out of the box).
 
-**Serveringsstack skiljer sig mellan Beslut 1:s två steg, vilket påverkar den konkreta
-metrics-källan (plan-nivå-detalj, inte en spec-nivå-låsning):**
-- **Steg 1 (lokal RTX 4060, 8 GB):** Q4_K_M-kvantisering (Beslut 2) är ett GGUF-format, vilket är
-  llama.cpp/**Ollama**:s naturliga väg, inte vLLM:s (vLLM:s GGUF-stöd är omoget). Ollama exponerar
-  en OpenAI-kompatibel `/v1/chat/completions` (vad `TextInferencePort` behöver) plus enklare
-  status-ytor (`/api/ps` för laddad modell/vRAM-uppskattning) — ingen Prometheus-`/metrics` inbyggt.
-  Liveness/capacity-parsern skrivs mot Ollamas svarsform här.
-- **Steg 2 (Vast.ai, om nödvändigt):** en hyrd GPU med mer vRAM tål vLLM eller SGLang (redan
-  namngivna i §14.2/§14.3 som målserveringsstack) med inbyggd Prometheus-`/metrics` + `/health`.
-
-**Varför detta inte är en ny arkitektur:** oavsett stack är principen densamma —
-`parse_liveness(metrics_payload) -> LivenessSample` som en ren funktion, en enda I/O-gräns för
-skrapningen (Beslut 5:s determinism-krav nedan). Två tunna adaptrar (en per svarsform) delar samma
-rena parsningskontrakt; ingen ny arkitektur, bara två småformat att normalisera. Exakt vilken
-adapter som byggs först avgörs i TDD-planen av vilket steg som körs först (steg 1, lokalt).
+**Varför vLLM specifikt:** en Vast.ai-hyrd GPU (Beslut 1, typiskt L4/4090-klass) tål vLLM utan
+kvantiseringskompromisser, till skillnad från en tänkt lokal 8 GB-körning. vLLM är redan namngiven
+i §14.2/§14.3 som målserveringsstack ("Cortxt-hostad vLLM eller SGLang") och är den enda öppna
+server-lösning i arkitekturdokumentet med inbyggda liveness+metrics-ytor — minimerar ny kod till
+en tunn skrapnings-/normaliseringsfunktion, inte ett eget metrics-system.
 
 **Determinism/testbarhet (samma split-mönster som `embedding_port.py`):** en ren
 funktion (`parse_liveness(metrics_payload: dict) -> LivenessSample`) separeras från den enda
@@ -271,8 +246,8 @@ Inga ändringar i `agent-platform/runtime/text_inference_port.py` eller
 ## Data flow
 
 ```
-Egenhostad modell (OpenAI-kompatibel /chat/completions + hälso-/metrics-yta)
-  lokalt på RTX 4060 (steg 1) eller på Vast.ai (steg 2, om nödvändigt) — Beslut 1, operatörsgodkänd
+Egenhostad modell (vLLM, OpenAI-kompatibel /chat/completions + /health + /metrics)
+  på hyrd Vast.ai-GPU (Beslut 1, operatörsgodkänd)
   → TextInferencePort(model=..., base_url_env="CORTXT_SELFHOSTED_URL", ...)   (Beslut 7, oförändrad kod)
       → provider_policy.evaluate_provider("L0", ProviderEvidence(...))         (Beslut 3)
       → BudgetGate(...)                                                        (route_id="selfhosted-...")
@@ -319,10 +294,9 @@ Egenhostad modell (OpenAI-kompatibel /chat/completions + hälso-/metrics-yta)
   dispatch-uppdraget; denna spec rör bara inference-lagret.
 - **Multi-tenant-isolering, usage accounting, kundexponerat inference-API** — §14.3 steg 6–7,
   hör inte hemma i Fas 7:s "bevisa att en task class kan köra utan extern provider"-scope.
-- **L2-dataklasstöd på den självhostade routen** — L1 är tekniskt nåbart för steg 1 (Beslut 3) men
-  inte aktiverat i v1 (enklare att bevisa med L0 först); L2 kräver DPA/subprocessors/assurance som
-  varken lokal körning eller Vast.ai ger automatiskt. Ingen ny assurance-process initieras av
-  denna spec.
+- **L1/L2-dataklasstöd på den självhostade routen** — blockerat av Beslut 3 tills avslutad
+  oberoende assurance för den specifika Vast.ai-infrastrukturen finns. Ingen ny
+  assurance-process initieras av denna spec.
 - **Caching, batching, modellpool, lastbalansering** (§14.3 steg 4–5) — hör till en senare,
   bevisad-värde-driven iteration, inte v1:s bevis-att-porten-generaliserar-scope.
 - **Ny task class uppfunnen för detta ändamål** — Beslut 4 återanvänder befintlig L0-fixture
@@ -334,15 +308,13 @@ Följande **kräver operatörsbefattning** och blockerar plan/TDD-exekvering av 
 inte den deterministiska kärnans TDD — liveness-parsing, portinstansiering, policy-logik kan
 byggas och testas med fixtures innan GPU:n existerar):
 
-1. **Val av GPU-leverantör/hosting (Beslut 1).** **Operatörsgodkänt 2026-08-17:** lokal RTX 4060
-   (steg 1, gratis) först, Vast.ai (steg 2, ej RunPod/InferX) som hyrd fallback om lokalt inte
-   räcker. Faktisk provisionering på Vast.ai (om steg 2 blir aktuellt) kräver ett separat
-   godkännande vid det tillfället.
+1. **Val av GPU-leverantör/hosting (Beslut 1).** **Operatörsgodkänt 2026-08-17:** Vast.ai, inte
+   lokal hårdvara (avvisat explicit) och inte InferX/RunPod. Faktisk provisionering kräver ett
+   separat godkännande av kostnadsram vid det tillfället.
 2. **Modellval + instansstorlek + faktisk kostnad (Beslut 2).** Rekommendation: liten öppen
-   Qwen3-instruct-modell (~7–8B), Q4_K_M-kvantiserad för steg 1. Operatören har låg förkunskap om
-   modellval — denna spec föreslår en startpunkt, men exakt modell + ev. Vast.ai-instansstorlek
-   och kostnadsram kräver fortsatt explicit godkännande innan provisionering (kostnad = 0 för
-   steg 1, så detta gate är i praktiken bara skarpt om/när steg 2 blir aktuellt).
+   Qwen3-instruct-modell (~7–8B). Operatören har låg förkunskap om modellval — denna spec föreslår
+   en startpunkt, men exakt modell + Vast.ai-instansstorlek och kostnadsram kräver fortsatt
+   explicit godkännande innan provisionering.
 3. **Faktisk GPU-provisionering och credential-/providerkonfiguration** (`CORTXT_SELFHOSTED_URL`/
    `CORTXT_SELFHOSTED_API_KEY`) — skrivs aldrig ut/committas, sätts av operatören i miljön som kör
    riktiga anrop.
@@ -355,11 +327,9 @@ byggas och testas med fixtures innan GPU:n existerar):
 
 | Decision | Revisit when |
 |---|---|
-| Vast.ai-steget (steg 2) faktiskt provisionerat | Om lokal RTX 4060 (steg 1) visar sig för långsam eller för liten modell för exit-kriteriet. |
 | RunPod istället för Vast.ai | Om Vast.ai:s manuella konfiguration/marketplace-variabilitet visar sig vara ett verkligt driftsproblem i praktiken — RunPod:s färdiga vLLM-mall + äkta scale-to-zero är den kända, dyrare reservvägen. |
 | Uppskalning till större öppen modell | Om exit-kriteriets kvalitetsjämförelse (Beslut 6) visar att en liten modell är den begränsande faktorn, inte kostnad. |
-| L1 aktiverat för steg 1 (redan tekniskt nåbart, Beslut 3) | Om en task class med L1-data blir aktuell — ingen ny assurance-process behövs, bara `ProviderEvidence`-flaggorna sätts. |
-| L2-dataklasstöd på den självhostade routen | Avslutad oberoende assurance för den specifika infrastrukturen (steg 1 eller 2) — ingen väg dit finns ännu. |
+| L1/L2-dataklasstöd på den självhostade routen | Avslutad oberoende assurance för den specifika Vast.ai-infrastrukturen — ingen väg dit finns ännu. |
 | Fler task classes utan extern provider | Efter att den första (Beslut 4) är exit-bevisad — §24.3:s villkor ("quality floor uppfylld, latency/kostnad accepterad, dataskydd verifierat, fallback finns") avgör per klass. |
 | Caching/batching/modellpool/lastbalansering (§14.3 steg 4–5) | När v1:s enkla en-modell-en-route-bevis är klart och ett verkligt behov (kostnad eller genomströmning) motiverar det. |
 | §27 #9 (affärsvärde egenhostad vs hyrd) fullt besvarad | När cost/quality-jämförelsen (Beslut 6) ger faktiska tal från en riktig deployment — denna spec besvarar bara "vilken väg vi provar först", inte den ekonomiska slutsatsen. |
