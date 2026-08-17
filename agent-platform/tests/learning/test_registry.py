@@ -1,6 +1,8 @@
 """Fas 8 Task 2 — CandidateRegistry: SQLite persist, type@name@version key, active-pointer + promoted_from."""
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from learning.candidate import Candidate
@@ -19,17 +21,29 @@ def test_add_and_get_roundtrip():
     assert len(reg.all()) == 1
 
 
-def test_get_latest_without_version_returns_highest_semver():
+def test_add_is_idempotent_for_identical_manifest():
+    """Kimi P2.2: re-adding an identical candidate is a no-op (still one row)."""
+    reg = CandidateRegistry(":memory:")
+    reg.add(_pol("policy", "np", "v1", 0.1))
+    reg.add(_pol("policy", "np", "v1", 0.1))  # same key, identical manifest
+    assert len(reg.all()) == 1
+
+
+def test_get_latest_without_version_returns_highest_lexical_version():
+    """Kimi P1.2: 'latest' is currently LEXICAL (v1<v2); v10 would sort before v2 — documented v1 limit."""
     reg = CandidateRegistry(":memory:")
     reg.add(_pol("policy", "np", "v1", 0.1))
     reg.add(_pol("policy", "np", "v2", 0.3))
     assert reg.get("policy", "np").version == "v2"
+    # document the known lexical limitation (Kimi P2): v10 < v2 lexically in DESC order
+    reg.add(_pol("policy", "np", "v10", 0.5))
+    assert reg.get("policy", "np").version == "v2"  # lexical: "v2" > "v10" lexically — known v1 limit
 
 
 def test_key_conflict_different_payload_raises():
     reg = CandidateRegistry(":memory:")
     reg.add(_pol("policy", "np", "v1", 0.1))
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="hash mismatch"):
         reg.add(_pol("policy", "np", "v1", 0.9))  # same key, different manifest
 
 
@@ -42,6 +56,18 @@ def test_sqlite_roundtrip_persists_across_instances(tmp_path):
     reg2 = CandidateRegistry(str(db))
     assert reg2.get("policy", "np", "v1") is not None
     assert reg2.get_active("policy", "np") == "v1"
+
+
+def test_read_detects_tampered_manifest():
+    """Kimi P1.1: hash is verified on READ — a direct DB write that diverges from the stored hash raises."""
+    reg = CandidateRegistry(":memory:")
+    reg.add(_pol("policy", "np", "v1", 0.1))
+    # tamper the payload_json in the DB directly, leaving the manifest_hash unchanged
+    conn = reg._conn  # private access in test only — verifies the integrity invariant surface
+    conn.execute("UPDATE candidates SET payload_json='{\"w1\": 0.99}' WHERE name='np'")
+    conn.commit()
+    with pytest.raises(sqlite3.IntegrityError, match="hash mismatch"):
+        reg.get("policy", "np", "v1")
 
 
 def test_set_active_records_promoted_from():
