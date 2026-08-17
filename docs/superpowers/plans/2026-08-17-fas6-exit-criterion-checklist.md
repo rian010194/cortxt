@@ -38,7 +38,8 @@ spec (GODKÄND) och plan (GODKÄND-BAR) genomförd; alla fynd åtgärdade.
      (operatörsgrind — credentials skrivs aldrig ut/committas).
   2. Köra det empiriska Fas 6-exit-steget mot riktiga resonemangsproblem med embeddern
      (separat budgetgodkännande, systemhanterat).
-  Kärnan är redan drop-in-redo och grön (340 passed).
+  Kärnan är redan drop-in-redo och grön (345 passed, 3 skipped — verifierat med tre separata
+  körningar 2026-08-17: 331 Fas 6-kärna + 6 task 1-tester + 9 embedding-port-tester).
 
 ## Vad som kräver inference-budget (det empiriska exit-stegest) — ej i denna v1
 
