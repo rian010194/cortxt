@@ -85,3 +85,10 @@ def test_promoted_from_none_when_first_promotion():
     reg.add(_pol("policy", "np", "v1", 0.1))
     reg.set_active("policy", "np", "v1")
     assert reg.promoted_from("policy", "np") is None
+
+
+def test_set_active_unknown_candidate_raises():
+    """Kimi N-01: activating a version that does not exist must fail (no ghost active-pointer)."""
+    reg = CandidateRegistry(":memory:")
+    with pytest.raises(ValueError, match="unknown candidate"):
+        reg.set_active("policy", "ghost", "v1")
