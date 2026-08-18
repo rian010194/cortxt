@@ -65,7 +65,17 @@ widget-UI + enhetlig addon-mekanism.**
   process operatören redan kör.
 - **UI:t är en tunn widget**, inte en fullständig separat applikation — dess
   jobb är att visualisera och styra vad orkestratorn redan gör, inte äga egen
-  logik.
+  logik. Visuell referens (operatörens egen jämförelse): Windows
+  snabbinställningar/notisyta — litet, kompakt overlay-fönster som ligger
+  ovanpå annat arbete, inte ett eget fullskärmsfönster man växlar till.
+  **Innehåll (föreslaget):** ett levande flöde, inte statiska paneler —
+  ett "vattenfall" av vad som byggs just nu, löpande kostnad, fynd
+  orkestratorn själv gjort om vad som kan förbättras (kopplar till Fas
+  8:s learning-loop-kandidater, §18 i target-architecture.md), och en
+  översiktsvy över hela agentflottan. **Uttalat mål:** kunna hålla igång
+  en stor agentflotta som aldrig slutar arbeta, överblickbar via ett
+  mycket rent UI/UX — inte en yta man aktivt måste läsa i detalj för att
+  lita på att allt går rätt.
 - **Addons är en enhetlig mekanism, inte bara visuell:** en addon kan lika
   gärna vara en ny agent-adapter (backend, t.ex. stöd för ett nytt
   agent-runtime) som en ny UI-panel (frontend) — samma
@@ -131,6 +141,14 @@ adminytan (§3).
   betyder det ändå att ADR-015:s "webb pausad"-beslut formellt behöver
   upphävas/kompletteras med en ny ADR, eftersom "widget-UI" ändå är en
   visuell yta ADR-015 inte förutsåg?
+- **"En agentflotta som aldrig slutar jobba"** — målet i §3 om en stor,
+  ständigt aktiv agentflotta måste stämmas av mot befintliga invarianter
+  (§28: operatören behåller mandat över irreversibla beslut; §11:
+  RLM-motorns hårda gränser för budget/djup/stopp) INNAN det byggs, inte
+  efteråt. Att göra flottan "överblickbar via rent UI" löser inte
+  runaway-cost- eller runaway-scope-risken i sak, bara hur den syns.
+  Behöver ett eget kostnads-/gränsavsnitt, inte antas vara löst av att
+  widgeten visar kostnad.
 - Var addon-mekanismen ska specas: är addons formellt samma sak som
   §31/§32:s skills/tools (troligt, men inte beslutat), eller ett eget
   fjärde begrepp? Om addons kan installera körbar logik (inte bara UI)
