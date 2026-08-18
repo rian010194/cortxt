@@ -5,6 +5,7 @@ from .candidate import Candidate
 from .evidence import EvidenceClassifier
 from .evaluator import EvidenceRow, Evaluator, cached_embedder
 from .promotion_gate import MANDATORY_OPERATOR_GATES, PromotionGate, PromotionRule
+from .policy_candidate import PolicyCandidateAdapter, add_weights_constraint_rules, normalized
 from .registry import CandidateRegistry
 from .rollback import rollback
 from .submit import submit_candidate
@@ -13,5 +14,6 @@ __all__ = [
     "Candidate", "CandidateRegistry", "EvidenceClassifier",
     "Evaluator", "EvidenceRow", "cached_embedder",
     "PromotionGate", "PromotionRule", "MANDATORY_OPERATOR_GATES",
+    "PolicyCandidateAdapter", "add_weights_constraint_rules", "normalized",
     "rollback", "submit_candidate",
 ]
