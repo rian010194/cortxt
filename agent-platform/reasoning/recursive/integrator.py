@@ -1,25 +1,26 @@
-"""Result integration — fold child results into the parent."""
-
+"""Result integration — fold child results into the parent, excluding any
+child known to be lost (design spec error-handling table: a lost child is
+"ofullständig evidens", not silently summed as if its content were the result).
+"""
 from __future__ import annotations
 
 from ..kernel import ProblemState
 
 
-def integrate_results(state: ProblemState) -> int:
-    """Consolidate child results into the parent.
-
-    Each child must carry ``._computed`` (an int). Returns the folded total and
-    stores it on the parent. Raises if a child has no computed result yet.
-    """
+def integrate_results(state: ProblemState, lost_children: frozenset[str] = frozenset()) -> int:
     total = 0
+    incomplete = False
     for child in state.children:
+        if child.id in lost_children:
+            incomplete = True
+            continue
         val = getattr(child, "_computed", None)
         if val is None:
-            # child was evaluated but its result not stored -> treat content sum
             val = _content_sum(child.content)
             child._computed = val  # type: ignore[attr-defined]
         total += val
     state._computed = total  # type: ignore[attr-defined]
+    state._incomplete = incomplete  # type: ignore[attr-defined]
     return total
 
 

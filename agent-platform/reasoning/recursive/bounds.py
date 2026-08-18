@@ -9,9 +9,9 @@ from dataclasses import dataclass
 class RLMConfig:
     """Every RLM run must carry these hard limits (fail-closed when exceeded)."""
 
-    max_depth: int = 4
+    max_depth: int = 2                 # was 4 — dispatch contract §19.1
     max_branches_per_node: int = 3
-    max_total_children: int = 12
+    max_total_children: int = 6        # was 12 — dispatch contract §19.1
     max_model_invocations: int = 20
     max_context_reads: int = 30
     max_runtime_seconds: float = 60.0

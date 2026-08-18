@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import shutil
@@ -12,11 +13,17 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from context_store.slicer import slice_for_children, SliceBudgetExhausted
+from context_store.store import ContextReference
+from reasoning.recursive.bounds import RLMConfig
 from runtime import session_state as state
 from runtime.execution.write_policy import WriteCaps
-from supervisor.budget import next_child_budget, reclaimable_surplus
-from supervisor.process_spawner import ChildProcess, ProcessSpawner
-from supervisor.run_tree import build_index
+from runtime.rlm_child_cli import decide_child_refs
+from runtime.tools.gate import ToolAdmissionError
+from supervisor.budget import next_child_budget, reclaimable_surplus, split_rlm_config
+from supervisor.process_spawner import (ChildProcess, ProcessSpawnError,
+                                        ProcessSpawner)
+from supervisor.run_tree import NodeDocs, RunTreeIndex, build_index
 from supervisor.workspace_handoff import apply_incoming_changes
 
 
@@ -50,6 +57,56 @@ def _is_heartbeat_stale(doc: dict, heartbeat_interval: float, stale_multiplier: 
         return False
     age = (datetime.now(timezone.utc) - _parse_event_timestamp(reference)).total_seconds()
     return age > heartbeat_interval * stale_multiplier
+
+
+# module-level, deterministic decompose_fn used by decide_child_refs (Task 5)
+# and duplicated (intentionally, see conftest.py's _fake_decompose docstring)
+# by the test fakes — structural only, matches decomposer.py's fail-closed
+# truncation discipline
+def _decompose_context(ref: ContextReference, config: RLMConfig) -> list[ContextReference]:
+    n = min(config.max_branches_per_node, config.max_total_children)
+    if n <= 0:
+        return []
+    try:
+        return slice_for_children(ref, n)
+    except (SliceBudgetExhausted, ValueError):
+        return []
+
+
+def _index_to_result(index: RunTreeIndex, node: NodeDocs | None = None) -> dict:
+    """Flatten a RunTreeIndex subtree into the plain nested dict shape
+    run_node returns. Recurses — a grandchild that itself decomposed further
+    is reflected here too, not discarded.
+
+    If ``node`` is provided, metrics from the session log's ``result.available``
+    event (model_invocations, context_reads, cost, output_size) are included so
+    that parent-level post-hoc bounds aggregation (Task 9) can sum them.
+    """
+    extras: dict[str, int | float] = {}
+    if node is not None:
+        for event in node.session_doc.get("events", []):
+            if event["event_type"] == "result.available":
+                p = event["payload"]
+                extras = {
+                    "model_invocations": p.get("model_invocations", 0),
+                    "context_reads": p.get("context_reads", 0),
+                    "cost": p.get("cost", 0.0),
+                    "output_size": p.get("output_size", 0),
+                }
+                break
+    children: list[dict] = []
+    if node is not None:
+        children = [_index_to_result(c, node.children.get(c.session_id)) for c in index.children]
+    else:
+        children = [_index_to_result(c) for c in index.children]
+    return {"session_id": index.session_id, "status": index.root_status,
+            "children": children, **extras}
+
+
+def _max_nested_depth(node: dict, current_depth: int) -> int:
+    if not node["children"]:
+        return current_depth
+    return max(_max_nested_depth(c, current_depth + 1) for c in node["children"])
 
 
 class Coordinator:
@@ -162,16 +219,13 @@ class Coordinator:
             results.append({"session_id": session_id, "status": terminal["payload"]["status"],
                              "reason": terminal["payload"].get("reason")})
 
-        root_doc = state.load(self._store, root_session_id)
-        child_docs = {sid: state.load(self._store, sid) for sid, _, _ in child_processes if sid is not None}
-        index = build_index(root_doc, child_docs, total_budget=total_budget)
-
         overall_status = "succeeded" if all(c["status"] == "succeeded" for c in results) else "blocked"
         seq = state.latest_sequence(state.load(self._store, root_session_id))
         state.append(self._store, root_session_id, seq, "session.terminal", {"status": overall_status})
 
+        allocated = sum(spec["allocated_budget"] for spec in child_specs)
         return {"run_id": root_session_id, "status": overall_status, "children": results,
-                "budget": {"total": index.total_budget, "allocated": index.allocated_budget}}
+                "budget": {"total": total_budget, "allocated": allocated}}
 
     def run_m2(self, task_id: str, child1_spec: dict, child2_spec: dict, total_budget: int,
                poll_interval: float = 0.5, timeout: float = 120.0) -> dict:
@@ -339,22 +393,54 @@ class Coordinator:
         if not self._store.is_dir():
             return summaries
 
+        all_docs: dict[str, dict] = {}
         for session_dir in self._store.iterdir():
             if not session_dir.is_dir():
                 continue
-            session_id = session_dir.name
             try:
-                doc = state.load(self._store, session_id)
-            except state.SessionError:  # root session file missing/corrupt
+                all_docs[session_dir.name] = state.load(self._store, session_dir.name)
+            except state.SessionError:
                 continue
 
-            is_root = any(e["event_type"] == "child.spawned" for e in doc["events"])
-            if not is_root:
+        # Build parent -> [children] edges from child.spawned events; process
+        # children before parents (reverse topological / depth-first
+        # post-order) so a parent's any_lost check sees its child's just-updated
+        # status.
+        children_of: dict[str, list[str]] = {}
+        for sid, doc in all_docs.items():
+            for event in doc["events"]:
+                if event["event_type"] == "child.spawned":
+                    child_sid = event["payload"].get("session_id")
+                    if child_sid:
+                        children_of.setdefault(sid, []).append(child_sid)
+
+        visited: set[str] = set()
+        order: list[str] = []
+
+        def _visit(sid: str) -> None:
+            if sid in visited or sid not in all_docs:
+                return
+            visited.add(sid)
+            for child_sid in children_of.get(sid, []):
+                _visit(child_sid)
+            order.append(sid)  # post-order: children land in `order` before this sid
+
+        for sid in list(all_docs):
+            _visit(sid)
+
+        for session_id in order:
+            doc = all_docs[session_id]
+            is_root_like = session_id in children_of  # has at least one child.spawned event
+            if not is_root_like:
                 continue
             already_terminal = any(e["event_type"] == "session.terminal" for e in doc["events"])
             if already_terminal:
                 continue
 
+            # re-read fresh: a child processed earlier in `order` may have just
+            # been marked terminal/lost, and this session's own doc must
+            # reflect that before its any_lost check runs
+            doc = state.load(self._store, session_id)
             any_lost = False
             for event in doc["events"]:
                 if event["event_type"] != "child.spawned":
@@ -366,39 +452,24 @@ class Coordinator:
                     state.append(self._store, session_id, seq, "session.terminal",
                                  {"status": "blocked", "reason": "child session record is malformed"})
                     continue
-                
-                # Try to load child session - handle corrupt/missing records
                 try:
                     child_doc = state.load(self._store, child_session_id)
                 except state.SessionError as error:
-                    # child session record corrupt/missing - mark as lost
                     any_lost = True
                     seq = state.latest_sequence(state.load(self._store, session_id))
                     state.append(self._store, session_id, seq, "session.terminal",
                                  {"status": "blocked", "reason": f"child session record is corrupt or missing: {error}"})
                     continue
-                
-                # Check for terminal event - handle malformed payload
-                try:
-                    terminal_events = any(e.get("event_type") == "session.terminal" for e in child_doc.get("events", []))
-                except (KeyError, TypeError, AttributeError) as error:
-                    any_lost = True
-                    seq = state.latest_sequence(state.load(self._store, session_id))
-                    state.append(self._store, session_id, seq, "session.terminal",
-                                 {"status": "blocked", "reason": f"child session event payload is malformed: {error}"})
-                    continue
-                
-                if terminal_events:
+
+                terminal_event = next((e for e in child_doc["events"] if e.get("event_type") == "session.terminal"), None)
+                if terminal_event is not None:
+                    if terminal_event["payload"]["status"] in ("lost", "blocked", "failed"):
+                        any_lost = True
                     continue
 
-                # Check liveness - handle malformed payload
                 try:
-                    child = ChildProcess(
-                        pid=event["payload"]["pid"], 
-                        pgid=event["payload"]["pgid"],
-                        session_id=child_session_id, 
-                        start_time=event["payload"]["start_time"]
-                    )
+                    child = ChildProcess(pid=event["payload"]["pid"], pgid=event["payload"]["pgid"],
+                                          session_id=child_session_id, start_time=event["payload"]["start_time"])
                     if self._spawner.is_alive(child):
                         seq = state.latest_sequence(state.load(self._store, child_session_id))
                         state.append(self._store, child_session_id, seq, "session.reattached", {})
@@ -420,3 +491,175 @@ class Coordinator:
 
             summaries.append({"root_session_id": session_id, "any_lost": any_lost})
         return summaries
+
+    def _load_node_docs_tree(self, session_id: str) -> NodeDocs:
+        """Recursively walk child.spawned events, reading each descendant's
+        own session log, so the caller can build a real RunTreeIndex over
+        however deep this subtree actually went — not just this node's own
+        direct terminal event."""
+        doc = state.load(self._store, session_id)
+        children: dict[str, NodeDocs] = {}
+        for event in doc["events"]:
+            if event["event_type"] == "child.spawned":
+                child_sid = event["payload"]["session_id"]
+                try:
+                    children[child_sid] = self._load_node_docs_tree(child_sid)
+                except state.SessionError:
+                    continue  # missing/corrupt — Task 7's recovery handles
+                    # this case; here it is simply excluded from the tree
+        return NodeDocs(session_doc=doc, children=children)
+
+    def run_node(self, task_id: str, context_ref: ContextReference, config: RLMConfig,
+                 depth: int = 0,
+                 allowed_data_classes: frozenset[str] = frozenset({"L0", "internal"}),
+                 poll_interval: float = 0.5, timeout: float | None = None) -> dict:
+        if timeout is None:
+            timeout = config.max_runtime_seconds
+        session = state.create(self._store, task_id=task_id)
+        session_id = session["session_id"]
+
+        # in-process decision: leaf vs decompose — Coordinator never calls a
+        # model itself (Fas 3 §32.1); decide_child_refs needs no inference
+        # port at all, unlike the original draft's run_node_body+_NullInference
+        try:
+            child_refs = decide_child_refs(
+                context_ref, config, depth, _decompose_context,
+                data_class_check=lambda dc: dc in allowed_data_classes)
+        except ToolAdmissionError as error:
+            # fail-closed: an out-of-scope data class is denied before ANY
+            # process is created — surface it as a controlled blocked result,
+            # not an unhandled crash (Kimi review, Stage A checkpoint).
+            seq = state.latest_sequence(state.load(self._store, session_id))
+            state.append(self._store, session_id, seq, "session.terminal",
+                         {"status": "blocked", "reason": f"admission denied: {error}"})
+            return {"run_id": session_id, "status": "blocked", "children": [],
+                    "depth_reached": depth,
+                    "termination_reason": "admission_denied",
+                    "branches_explored": 0, "model_invocations": 0,
+                    "contradictions_found": 0}
+
+        if not child_refs:
+            child_session_id, child_process, config_path, ref_path = self._spawn_rlm_node(
+                session_id, task_id, context_ref, config, depth, allowed_data_classes)
+            deadline = time.monotonic() + timeout
+            doc = self._wait_for_terminal(child_session_id, child_process, poll_interval, deadline)
+            for p in (config_path, ref_path):
+                if p and p.is_file():
+                    p.unlink()
+            terminal = next(e for e in doc["events"] if e["event_type"] == "session.terminal")
+            status = terminal["payload"]["status"]
+            seq = state.latest_sequence(state.load(self._store, session_id))
+            state.append(self._store, session_id, seq, "session.terminal", {"status": status})
+            return {"run_id": session_id, "status": status, "children": [],
+                    "depth_reached": depth, "termination_reason": terminal["payload"].get("reason"),
+                    "branches_explored": 0, "model_invocations": 1, "contradictions_found": 0}
+
+        child_configs = split_rlm_config(config, len(child_refs))
+        results = []
+        for ref in child_refs:
+            seq = state.latest_sequence(state.load(self._store, session_id))
+            state.append(self._store, session_id, seq, "context.sliced", {
+                "locator": ref.locator, "range": list(ref.range), "data_class": ref.data_class})
+        for ref, cfg in zip(child_refs, child_configs):
+            child_session_id, child_process, config_path, ref_path = self._spawn_rlm_node(
+                session_id, task_id, ref, cfg, depth + 1, allowed_data_classes)
+            deadline = time.monotonic() + timeout
+            doc = self._wait_for_terminal(child_session_id, child_process, poll_interval, deadline)
+            for p in (config_path, ref_path):
+                if p and p.is_file():
+                    p.unlink()
+            # the child may have decomposed further inside its own process —
+            # project its full subtree (Task 4's NodeDocs/build_index), not
+            # just its own direct terminal event, so results reflect the
+            # real depth-2 structure instead of a flattened "children": []
+            child_tree = self._load_node_docs_tree(child_session_id)
+            child_index = build_index(child_tree, total_budget=cfg)
+            results.append(_index_to_result(child_index, child_tree))
+
+        # Remaining five §11.2 bounds are enforced post-hoc (same philosophy as
+        # the cost cap): max_model_invocations/max_context_reads/max_cost/
+        # max_output_size are aggregated from the projected subtree and checked
+        # against this node's own (disjointly allocated) budget share.
+        total_model_invocations = sum(r.get("model_invocations", 0) for r in results)
+        total_context_reads = sum(r.get("context_reads", 0) for r in results)
+        total_cost = sum(r.get("cost", 0.0) for r in results)
+        total_output_size = sum(r.get("output_size", 0) for r in results)
+        bounds_exceeded = (
+            total_model_invocations > config.max_model_invocations
+            or total_context_reads > config.max_context_reads
+            or total_cost > config.max_cost
+            or total_output_size > config.max_output_size
+        )
+        all_children_ok = all(r["status"] == "succeeded" for r in results)
+        if all_children_ok and not bounds_exceeded:
+            overall_status = "succeeded"
+            termination_reason = None
+        elif all_children_ok and bounds_exceeded:
+            overall_status = "blocked"
+            termination_reason = "budget_exhausted"
+        else:
+            overall_status = "blocked"
+            termination_reason = None
+        seq = state.latest_sequence(state.load(self._store, session_id))
+        state.append(self._store, session_id, seq, "session.terminal", {"status": overall_status})
+
+        depth_reached = max((_max_nested_depth(r, depth + 1) for r in results), default=depth + 1)
+        return {"run_id": session_id, "status": overall_status, "children": results,
+                "depth_reached": depth_reached, "termination_reason": termination_reason,
+                "branches_explored": len(results),
+                "model_invocations": total_model_invocations,
+                "contradictions_found": sum(r.get("contradictions_found", 0) for r in results)}
+
+    def _spawn_rlm_node(self, parent_session_id, task_id, context_ref, config, depth,
+                        allowed_data_classes: frozenset[str]):
+        """Shared spawn plumbing for both leaf and recursive RLM children —
+        the child process's own main() (rlm_child_cli.py) decides, on its
+        side, whether it is itself a leaf or a further decomposer. This
+        mirrors _spawn_child (Fas 4) but targets rlm_child_cli instead of
+        coding_loop_cli, and passes a context-ref file alongside the config.
+        """
+        child_session = state.create(self._store, task_id=task_id)
+        child_session_id = child_session["session_id"]
+
+        fd, config_path_str = tempfile.mkstemp(prefix="fas5-rlm-config-", suffix=".json")
+        config_path = Path(config_path_str)
+        fd2, ref_path_str = tempfile.mkstemp(prefix="fas5-rlm-ctxref-", suffix=".json")
+        ref_path = Path(ref_path_str)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                # {"rlm": ...} wraps the RLMConfig fields so rlm_child_cli.py's
+                # main() can read model/provider_evidence/data_class as sibling
+                # keys in the same file, instead of a bare RLMConfig dict that
+                # left no room for inference wiring.
+                # allowed_data_classes is also written as a sibling key so the
+                # child inherits its parent's policy instead of re-hardcoding
+                # the default set.
+                handle.write(json.dumps({
+                    "rlm": dataclasses.asdict(config),
+                    "allowed_data_classes": sorted(allowed_data_classes),
+                }))
+            with os.fdopen(fd2, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(dataclasses.asdict(context_ref)))
+
+            args = [sys.executable, "-m", "runtime.rlm_child_cli",
+                    "--session-id", child_session_id, "--store", str(self._store),
+                    "--config-json", str(config_path), "--context-ref-json", str(ref_path),
+                    "--depth", str(depth)]
+            child_process = self._spawner.spawn(session_id=child_session_id, args=args)
+
+            seq = state.latest_sequence(state.load(self._store, parent_session_id))
+            state.append(self._store, parent_session_id, seq, "child.spawned", {
+                "session_id": child_session_id, "pid": child_process.pid, "pgid": child_process.pgid,
+                "start_time": child_process.start_time,
+                "allocated_budget": config.max_total_children,
+            })
+            return child_session_id, child_process, config_path, ref_path
+        except ProcessSpawnError as error:
+            for p in (config_path, ref_path):
+                if p.is_file():
+                    p.unlink()
+            seq = state.latest_sequence(state.load(self._store, parent_session_id))
+            state.append(self._store, parent_session_id, seq, "spawn_failed", {
+                "error": str(error), "error_reason": getattr(error, "reason", "unknown"),
+            })
+            raise

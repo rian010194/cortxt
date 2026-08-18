@@ -57,3 +57,18 @@ class WriteGate(ToolGate):
         if not resolved.is_file():
             raise ToolAdmissionError(f"{tool_name}: path is not a regular file: {resolved}")
         return resolved
+
+
+class DataClassGate:
+    """Admission gate for RLM context reads, keyed on data_class rather than
+    filesystem path (unlike ToolGate/WriteGate above). First data-class-aware
+    gate in the codebase — target architecture §11.4 requires this check but
+    no prior phase implemented it.
+    """
+    def __init__(self, allowed_data_classes: set[str] | frozenset[str]) -> None:
+        self._allowed = set(allowed_data_classes)
+
+    def admit(self, tool_name: str, data_class: str) -> None:
+        if data_class not in self._allowed:
+            raise ToolAdmissionError(
+                f"{tool_name}: data_class={data_class!r} not in allowed set {sorted(self._allowed)}")
