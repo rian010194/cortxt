@@ -1,6 +1,6 @@
 # ADR-022: Fas 3 v0.1 — capability manifest shape and engine-selection criteria
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-18
 **Deciders:** Rikard (operatör), Claude Code (utkast)
 **Technical Story:** rian010194/cortxt#166 (Fas 2, klar), v.02-milstolpens Fas 3 (`.hermes/plans/2026-08-18-v02-milestone-wayfinder.md`)
@@ -29,6 +29,18 @@ kan vila på föråldrade antaganden.
 Detta ADR beslutar **inte** den fullständiga visionen (kedjad multi-motor-orkestrering).
 Det beslutar den smala v0.1-skiva som Fas 3 kan bygga nu, utan att låsa in en design som
 måste rivas upp när kedjning/inlärd tillförlitlighet läggs till senare.
+
+**Viktigt att inte tappa bort:** target-architecture.md §29 punkt 5 slår redan fast att
+"RLM och geometric reasoning ägs av Cortxt Agent Core" — orkestratorns routingbeslut är
+alltså inte tänkt att för alltid vara den deterministiska `route()`-funktionen nedan.
+Fas 5 (RLM v1) och Fas 6 (Geometric Reasoning v1) har redan design/implementation i
+`agent-platform/reasoning/geometric/` och motsvarande specs
+(`docs/superpowers/specs/2026-08-17-fas5-rlm-v1-design.md`,
+`...fas6-geometric-reasoning-v01-design.md`). När v0.1:s statiska
+mönstermatchning visar sig otillräcklig är den avsedda efterträdaren *den befintliga*
+Geometric Reasoning-motorn i den här kodbasen — inte en ny, ouppfunnen ML-mekanism. Det
+här ADR:et bygger v0.1 som en medveten bootstrap mot det målet, inte som en konkurrerande
+permanent lösning.
 
 ## Decision
 
@@ -119,4 +131,6 @@ måste rivas upp när kedjning/inlärd tillförlitlighet läggs till senare.
 - Review by: 2026-09-18
 - Trigger: en tredje motor (Pi, Codex, eller Copilot) faktiskt kopplas in och behöver ett
   verkligt manifest, ELLER track record-data visar att statisk `reliability_class` inte
-  räcker och en inlärningsmekanism (Fas 8-mönster) behövs.
+  räcker och en inlärningsmekanism (Fas 8-mönster) behövs, ELLER Geometric
+  Reasoning-motorn (Fas 5/6) är redo att ta över `route()`:s roll — se Context-notisen
+  om target-architecture.md §29 punkt 5.
