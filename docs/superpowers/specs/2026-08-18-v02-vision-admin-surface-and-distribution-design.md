@@ -211,6 +211,36 @@ adminytan (§3).
   riktigt validerad (inte bara formellt stämplad), eller byggas parallellt?
 - Om/när ADR-015 formellt behöver en ny ADR som ändrar/kompletterar den.
 
+- **Orkestratorn bör känna till varje anslutet verktygs faktiska kommando-/
+  skill-yta** (t.ex. Claude Codes slash-kommandon, Hermes egna kommandon,
+  Codex-flaggor) — inte bara att verktyget finns, utan vad det specifikt
+  kan anropas med. Annars riskerar orkestratorn att uppfinna en omväg när
+  ett redan implementerat kommando löser uppgiften bättre. Sannolikt en
+  strukturerad capability-manifest per adapter (utökning av
+  `ADAPTER_REGISTRY`-mönstret), inte fri dokument-RAG — men om manifestet
+  blir stort/fritextigt kan Voyage-embeddings från Fas 6 återanvändas för
+  sökning inom det. Inte beslutat: var manifestet hämtas ifrån (statisk,
+  eller live `--help`-introspektion), och hur det hålls i synk när ett
+  verktyg uppdateras.
+  **Vidareutveckling av samma punkt:** detta gäller inte bara agent-val
+  utan **skill-val inom agenten** — t.ex. orkestratorn känner igen att en
+  uppgift matchar `mattpocock-skills:tdd` och väljer Claude för den
+  specifika uppgiften, medan en dokumentationstung uppgift routas till
+  Codex, eller att ett Hermes-specifikt verktyg är bäst i klassen för en
+  deluppgift och kan kedjas med en `superpowers`-skill som körs någon
+  annanstans. Routing bör alltså kunna ske på skill-nivå, inte bara
+  agent-nivå, och skills bör kunna kombineras/kedjas över agentgränser och
+  i flera nivåer — samma komposition som barn/barnbarn-frågan ovan
+  (Fas 5:s RLM recursive Supervisor-design), fast applicerad på skill-val
+  snarare än agent-spawning. Inte beslutat: hur "känner igen uppgiftens
+  form" konkret avgörs (mönstermatchning, embedding-likhet via Voyage,
+  eller en enklare regelbaserad triage), och var gränsen går mellan
+  orkestratorns egen routing-logik och att bara delegera valet till
+  respektive agents egen skill-triggering (Claude Codes egen
+  `using-superpowers`-mekanism gör redan denna typ av matchning internt —
+  dubblerar orkestratorn det arbetet, eller läser den av vad agenten redan
+  valde?).
+
 ## 7. Rekommenderat nästa steg
 
 Detta dokument beskriver riktning, inte en implementationsplan. Rekommenderat
