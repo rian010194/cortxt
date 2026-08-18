@@ -75,7 +75,9 @@ class PolicyCandidateAdapter:
         return Candidate(type="policy", name=name, version=version, payload=payload)
 
     def rules(self) -> list[PromotionRule]:
-        """§31-equivalent for a policy candidate: constraint safety + strictly-better eval (auto-promotable)."""
+        """§31-equivalent for a policy candidate: constraint safety + no-regression + strictly-better eval
+        (auto-promotable). Includes no_regression safety rule so the matrix field is not dead data (Kimi N1)."""
         return add_weights_constraint_rules() + [
+            PromotionRule("policy", kind="safety", metric="no_regression"),
             PromotionRule("policy", kind="eval", metric="baseline_delta", threshold=0.0, comparator="gt")
         ]
