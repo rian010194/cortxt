@@ -63,11 +63,26 @@ class ResultEnvelope:
         return json.dumps(self.to_dict(), indent=2, default=str)
 
 
+def _get_agent_platform_path() -> Path:
+    """Get the agent-platform directory path for dynamic imports."""
+    return Path(__file__).parent.parent
+
+
 def _run_provider_policy(args: argparse.Namespace) -> ResultEnvelope:
     """Run provider policy evaluation."""
     try:
-        from inference.provider_policy_cli import run as policy_run
-        code = policy_run(args.request)
+        ap_path = _get_agent_platform_path()
+        inference_path = ap_path / "inference"
+        import sys
+        if str(inference_path) not in sys.path:
+            sys.path.insert(0, str(inference_path))
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "provider_policy_cli", inference_path / "provider_policy_cli.py"
+        )
+        provider_cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(provider_cli)
+        code = provider_cli.run(args.request)
         return ResultEnvelope(status="succeeded" if code == 0 else "failed", artifacts=[f"provider_policy:{args.request}"])
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
@@ -76,10 +91,15 @@ def _run_provider_policy(args: argparse.Namespace) -> ResultEnvelope:
 def _run_state(args: argparse.Namespace) -> ResultEnvelope:
     """Run state ledger operations."""
     try:
+        ap_path = _get_agent_platform_path()
+        state_path = ap_path / "state"
+        import sys
+        if str(state_path) not in sys.path:
+            sys.path.insert(0, str(state_path))
         # Import and call state_cli.main()
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "state_cli", Path(__file__).parent.parent / "state" / "state_cli.py"
+            "state_cli", state_path / "state_cli.py"
         )
         state_cli = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(state_cli)
@@ -116,22 +136,21 @@ def _run_state(args: argparse.Namespace) -> ResultEnvelope:
 def _run_profile(args: argparse.Namespace) -> ResultEnvelope:
     """Run profile management operations."""
     try:
-        # Import and call profile_cli.main()
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "profile_cli", Path(__file__).parent.parent.parent / "scripts" / "profile_cli.py"
-        )
-        profile_cli = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(profile_cli)
-
-        argv = [args.command]
+        import subprocess
+        import shutil
+        python_exe = shutil.which("python") or sys.executable
+        profile_cli_path = Path(__file__).parent.parent.parent / "scripts" / "profile_cli.py"
+        argv = [python_exe, str(profile_cli_path), args.command]
         if hasattr(args, 'name') and args.name:
             argv.append(args.name)
         if hasattr(args, 'json') and args.json:
             argv.append("--json")
 
-        code = profile_cli.main()
-        return ResultEnvelope(status="succeeded" if code == 0 else "failed", artifacts=[f"profile:{args.command}"])
+        result = subprocess.run(argv, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+        if result.returncode == 0:
+            return ResultEnvelope(status="succeeded", artifacts=[f"profile:{args.command}"], evidence=[{"stdout": result.stdout}])
+        else:
+            return ResultEnvelope(status="failed", error={"category": "cli_error", "message": result.stderr or f"exit code {result.returncode}"})
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
@@ -139,6 +158,10 @@ def _run_profile(args: argparse.Namespace) -> ResultEnvelope:
 def _run_supervisor(args: argparse.Namespace) -> ResultEnvelope:
     """Run supervisor operations."""
     try:
+        ap_path = _get_agent_platform_path()
+        import sys
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
         from supervisor.supervisor_cli import main as supervisor_main
         argv = []
         if args.command == "status":
@@ -155,10 +178,14 @@ def _run_supervisor(args: argparse.Namespace) -> ResultEnvelope:
 def _run_coding(args: argparse.Namespace) -> ResultEnvelope:
     """Run coding loop execution."""
     try:
+        ap_path = _get_agent_platform_path()
+        import sys
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
         # Import and call coding_loop_cli.main()
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "coding_loop_cli", Path(__file__).parent.parent / "runtime" / "coding_loop_cli.py"
+            "coding_loop_cli", ap_path / "runtime" / "coding_loop_cli.py"
         )
         coding_cli = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(coding_cli)
@@ -177,10 +204,14 @@ def _run_coding(args: argparse.Namespace) -> ResultEnvelope:
 def _run_rlm(args: argparse.Namespace) -> ResultEnvelope:
     """Run RLM node execution."""
     try:
+        ap_path = _get_agent_platform_path()
+        import sys
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
         # Import and call rlm_child_cli.main()
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "rlm_child_cli", Path(__file__).parent.parent / "runtime" / "rlm_child_cli.py"
+            "rlm_child_cli", ap_path / "runtime" / "rlm_child_cli.py"
         )
         rlm_cli = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(rlm_cli)
