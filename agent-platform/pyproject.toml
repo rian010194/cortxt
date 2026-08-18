@@ -15,7 +15,7 @@ cortxt = "cli.unified_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["reasoning*", "portability*", "runtime*", "routing*", "security*", "cli*", "widget*"]
+include = ["reasoning*", "portability*", "runtime*", "routing*", "security*", "cli*", "widget*", "learning*", "supervisor*", "context_store*", "harness*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
