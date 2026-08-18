@@ -17,7 +17,15 @@ from typing import Any, Mapping
 
 from learning.promotion_gate import PromotionGate
 
-ADDON_PREFIX = "addon@"
+ADDON_TYPE = "addon"
+
+
+def _candidate_type(candidate_id: str) -> str:
+    # Same normalization PromotionGate.evaluate() applies internally, so
+    # this precondition can't be bypassed by a case/whitespace variant
+    # that PromotionGate would still resolve to "addon" (e.g. "Addon@x",
+    # " addon@x") -- the two must agree on what counts as an addon.
+    return candidate_id.split("@", 1)[0].strip().lower()
 
 
 class AddonReviewGate:
@@ -27,7 +35,7 @@ class AddonReviewGate:
         self._promotion_gate = promotion_gate
 
     def submit(self, matrix: Mapping[str, Any], candidate_id: str) -> str:
-        if candidate_id.startswith(ADDON_PREFIX) and matrix.get("codex_security_passed") is not True:
+        if _candidate_type(candidate_id) == ADDON_TYPE and matrix.get("codex_security_passed") is not True:
             # Fail closed: missing, False, or any non-True value all reject.
             # The operator never sees an addon Codex hasn't cleared.
             return "REJECT"

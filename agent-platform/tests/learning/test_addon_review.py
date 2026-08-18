@@ -47,6 +47,18 @@ def test_addon_rejected_when_matrix_incomplete_even_if_security_passed():
     assert gate.submit(matrix, "addon@example-addon") == "REJECT"
 
 
+def test_case_and_whitespace_variants_cannot_bypass_the_security_precondition():
+    """PromotionGate.evaluate() normalizes candidate_type via
+    .split('@',1)[0].strip().lower() -- AddonReviewGate must recognize the
+    exact same variants as "addon", or a differently-cased/whitespaced
+    candidate_id skips this precondition entirely while still landing in
+    PromotionGate's MANDATORY_OPERATOR_GATES set as "addon"."""
+    gate = AddonReviewGate(PromotionGate())
+    matrix = {"complete": True}  # no codex_security_passed -- must still reject
+    for candidate_id in ("Addon@evil-addon", "ADDON@evil-addon", " addon@evil-addon"):
+        assert gate.submit(matrix, candidate_id) == "REJECT"
+
+
 def test_non_addon_candidate_types_are_unaffected():
     """AddonReviewGate only intercepts 'addon@...' candidates; anything
     else passes straight through to the wrapped PromotionGate unchanged."""
