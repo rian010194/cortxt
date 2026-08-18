@@ -47,3 +47,4 @@ Avancerade
 # ---- Lock/scratch ----
 *.dispatch.lock
 *.init.lock
+.worktrees/
