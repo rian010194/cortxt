@@ -43,7 +43,7 @@ The current product decisions are:
 
 | Path | Role today |
 | --- | --- |
-| `agent-platform/` | Proposed future Cortxt-owned platform boundary; not yet part of this branch or an accepted full implementation plan. `agent-platform/reasoning/` is the exception — Accepted/tracked per ADR-017. |
+| `agent-platform/` | Cortxt-owned platform boundary implemented in Fas 2-4 (PR #150, `agent/fas2a-inference-port`, `agent/fas2b-agent-platform-tracked`, `agent/fas3-coding-agent-plan`, `agent/fas3-task8`). `agent-platform/reasoning/` is accepted per ADR-017. Fas 5-8 (learning loop, geometric reasoning, self-hosted inference, controlled learning) exist on `spec/fas8-controlled-learning-loop` branch and are not yet merged to main. |
 | `adapters/` | Proposed future provider and runtime adapters behind Cortxt-owned ports; not yet part of this branch. Exercised by `agent-platform/tests/adapters/` in CI, so it stays in place even though untracked. |
 | [`verticals/`](verticals/README.md) | Domain packages loaded by the harness — live, not historical (e.g. `provider-resilient-execution`, `vertical-01-ai-act`). |
 | [`web/`](web/README.md) | Operator Cockpit prototype. Its own README says "current implementation"; ADR-015 says the web surface is paused legacy. That conflict is unresolved — don't treat either claim as settled. |
