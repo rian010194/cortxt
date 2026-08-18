@@ -74,6 +74,32 @@ def post_comment(repo, issue_num, body_text):
     print(f"OK: posted to {repo}#{issue_num}")
     return True
 
+def advance_workflow_label(repo, issue_num):
+    """workflow:ready -> workflow:review on task completion (dispatch-contract
+    state machine: 'a complete result with required evidence moves it to
+    Review'). Only touches the label if workflow:ready is actually present --
+    never assumes, never overwrites a manually-set workflow:blocked etc."""
+    check = subprocess.run(
+        ["gh", "issue", "view", str(issue_num), "--repo", repo, "--json", "labels"],
+        capture_output=True, text=True,
+    )
+    if check.returncode != 0:
+        print(f"ERROR checking labels on {repo}#{issue_num}: {check.stderr}")
+        return False
+    labels = {l["name"] for l in json.loads(check.stdout)["labels"]}
+    if "workflow:ready" not in labels:
+        return True  # nothing to advance -- not an error
+    cmd = [
+        "gh", "issue", "edit", str(issue_num), "--repo", repo,
+        "--remove-label", "workflow:ready", "--add-label", "workflow:review",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"ERROR advancing label on {repo}#{issue_num}: {result.stderr}")
+        return False
+    print(f"OK: {repo}#{issue_num} workflow:ready -> workflow:review")
+    return True
+
 def format_comment(task):
     result = task.get("result") or "(no result)"
     summary = task.get("summary") or ""
@@ -132,6 +158,7 @@ def main():
         repo, issue_num = ref
         comment_body = format_comment(task)
         if post_comment(repo, issue_num, comment_body):
+            advance_workflow_label(repo, issue_num)
             mirrored.add(tid)
             new_mirrors += 1
         else:
