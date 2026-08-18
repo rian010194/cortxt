@@ -10,6 +10,8 @@
 .hermes/
 .kanban/
 .codex-tmp/
+.claude/
+.remember/
 archive/
 *.trace
 agent-platform/runs/
