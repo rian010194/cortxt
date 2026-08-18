@@ -56,14 +56,29 @@ inte en genväg runt ADR-015.
 
 **Arbetsnamn:** Cortxt Control Surface (namn inte beslutat).
 
-**Kärnfunktion (föreslagen, inte specad i detalj ännu):**
-- Skannar operatörens miljö för kända agent-runtimes (Hermes, Buzz, Claude
-  Code, Codex, Pi, …) — motsvarande det redan existerande mönstret i
-  `scripts/worker_adapters.py`:s `ADAPTER_REGISTRY`, men som en yta istället
-  för kod.
-- Låter operatören koppla på/av varje upptäckt runtime.
-- Hanterar credentials/nycklar centralt och skjuter in dem i respektive
-  systems egen konfiguration ("1-klicksinstallation").
+**Reviderad form (efter vidare samtal samma session): orkestrator-i-CLI +
+widget-UI + enhetlig addon-mekanism.**
+
+- **Orkestratoragenten kör i/via CLI:t** — den lokala processen, inte en
+  hostad backend. Detta löser en av §6:s ursprungliga öppna frågor: adminytan
+  är lokal, inte SaaS, eftersom den bara är ett visuellt skal ovanpå en
+  process operatören redan kör.
+- **UI:t är en tunn widget**, inte en fullständig separat applikation — dess
+  jobb är att visualisera och styra vad orkestratorn redan gör, inte äga egen
+  logik.
+- **Addons är en enhetlig mekanism, inte bara visuell:** en addon kan lika
+  gärna vara en ny agent-adapter (backend, t.ex. stöd för ett nytt
+  agent-runtime) som en ny UI-panel (frontend) — samma
+  tilläggsmekanism för båda. Detta är i praktiken samma mönster som §31/§32
+  i target-architecture.md redan beskriver för Skill Platform/Tool
+  Platform — addons bör troligen VARA skills/tools i den meningen, inte ett
+  tredje, parallellt tilläggssystem.
+- Kärnfunktion (fortfarande föreslagen, inte specad i detalj): skannar
+  operatörens miljö för kända agent-runtimes (Hermes, Buzz, Claude Code,
+  Codex, Pi, …) — motsvarande det redan existerande mönstret i
+  `scripts/worker_adapters.py`:s `ADAPTER_REGISTRY` — låter operatören koppla
+  på/av varje upptäckt runtime, och hanterar credentials/nycklar centralt
+  ("1-klicksinstallation").
 - Detta **är** den tidigare sparade "credential broker"-idén
   (`project_credential_broker_idea` i minnet), nu upphöjd från
   roadmap-anteckning till en konkret del av v.02-scope.
@@ -73,9 +88,15 @@ inte en genväg runt ADR-015.
   (§6 i target-architecture.md) — inte en ny kärna. Invarianterna i §28
   gäller oförändrat: Control Plane äger mandat, agenten äger inte sitt eget
   scope, self-approval är förbjudet.
+- Om addons kan utöka orkestratorns förmågor (ny agent-adapter, nytt
+  verktyg), gäller §31/§32:s evolutions-/versioneringsregler även för
+  addons — en addon som utökar logik är inte undantagen granskning bara för
+  att den kom in via UI:t istället för via kod.
 - Nyckelhantering över flera externa system är ett **säkerhetskänsligt**
   ytterligare ansvar Control Plane idag inte har. Kräver ett eget
-  threat-model-avsnitt innan implementation — se öppna frågor nedan.
+  threat-model-avsnitt innan implementation — se öppna frågor nedan. Detta
+  väger tyngre nu: en addon-mekanism som kan installera ny körbar logik
+  (inte bara UI) är en bredare attackyta än en ren visualiseringswidget.
 
 ## 4. Förslag: Distribution och open-core
 
@@ -104,14 +125,22 @@ adminytan (§3).
 
 ## 6. Öppna frågor (flaggade, inte gissade)
 
-- Namn på adminytan och på det installerbara paketet.
-- Hosted (SaaS-liknande adminyta) kontra lokalt körd adminyta — påverkar
-  om ADR-015:s "webb pausad"-beslut behöver formellt upphävas eller bara
-  kompletteras.
+- Namn på adminytan, orkestratoragenten och det installerbara paketet.
+- ~~Hosted kontra lokal adminyta~~ — löst i samtalet: orkestratorn kör
+  lokalt i/via CLI:t, UI:t är en widget ovanpå den. Kvarstående fråga:
+  betyder det ändå att ADR-015:s "webb pausad"-beslut formellt behöver
+  upphävas/kompletteras med en ny ADR, eftersom "widget-UI" ändå är en
+  visuell yta ADR-015 inte förutsåg?
+- Var addon-mekanismen ska specas: är addons formellt samma sak som
+  §31/§32:s skills/tools (troligt, men inte beslutat), eller ett eget
+  fjärde begrepp? Om addons kan installera körbar logik (inte bara UI)
+  gäller samma granskningskrav som för skills/tools — vem godkänner en
+  addon innan den får köra?
 - Säkerhetsmodell för att lagra tredjepartsnycklar (Hermes/Claude/Codex-API-
   nycklar) centralt: kryptering i vila, åtkomstkontroll, vad händer vid
   intrång i adminytan (blast radius om en nyckel-broker komprometteras är
-  större än om ett enskilt verktyg gör det).
+  större än om ett enskilt verktyg gör det). Väger tyngre nu: en addon som
+  kan installera ny logik är en bredare attackyta än en ren widget.
 - Exakt gräns mellan gratis kärnlager och monetiserat adminlager.
 - Tidsförhållande till T2–T5: ska adminytan vänta tills wedge B är på
   riktigt validerad (inte bara formellt stämplad), eller byggas parallellt?
