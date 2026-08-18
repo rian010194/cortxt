@@ -50,7 +50,10 @@ def real_inference_port():
     pytest.importorskip("adapters.inference")
     from adapters.inference import ResilientInferencePort
 
-    port = ResilientInferencePort()
+    try:
+        port = ResilientInferencePort()
+    except RuntimeError:
+        pytest.skip("cortxt-resilient-inference not installed")
     if not port.available():
         pytest.skip("real inference not configured (CORTXT_INFERENCE_* env) — using mock is fine")
     return port

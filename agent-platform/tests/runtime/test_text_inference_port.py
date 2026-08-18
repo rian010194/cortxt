@@ -178,6 +178,7 @@ def test_route_id_defaults_to_l0_default(tmp_path, monkeypatch):
         return {"status": "succeeded", "response": {"content": "{}"}}
     monkeypatch.setattr("runtime.text_inference_port._resilient_execute", fake_execute)
     monkeypatch.setattr("runtime.text_inference_port._RI_AVAILABLE", True)
+    monkeypatch.setattr("runtime.text_inference_port._HttpAdapter", lambda messages: object())
     monkeypatch.setenv("CORTXT_INFERENCE_URL", "https://example.invalid")
     monkeypatch.setenv("CORTXT_INFERENCE_API_KEY", "k")
     port = TextInferencePort(
@@ -194,6 +195,7 @@ def test_route_id_is_configurable(tmp_path, monkeypatch):
         return {"status": "succeeded", "response": {"content": "{}"}}
     monkeypatch.setattr("runtime.text_inference_port._resilient_execute", fake_execute)
     monkeypatch.setattr("runtime.text_inference_port._RI_AVAILABLE", True)
+    monkeypatch.setattr("runtime.text_inference_port._HttpAdapter", lambda messages: object())
     monkeypatch.setenv("CORTXT_SELFHOSTED_URL", "https://example.invalid")
     monkeypatch.setenv("CORTXT_SELFHOSTED_API_KEY", "k")
     port = TextInferencePort(
@@ -210,6 +212,7 @@ def test_two_routes_produce_isolated_spend_rows(tmp_path, monkeypatch):
     monkeypatch.setattr("runtime.text_inference_port._resilient_execute",
                          lambda request, adapters: {"status": "succeeded", "response": {"content": "{}"}})
     monkeypatch.setattr("runtime.text_inference_port._RI_AVAILABLE", True)
+    monkeypatch.setattr("runtime.text_inference_port._HttpAdapter", lambda messages: object())
     monkeypatch.setenv("CORTXT_INFERENCE_URL", "https://example.invalid")
     monkeypatch.setenv("CORTXT_INFERENCE_API_KEY", "k")
     monkeypatch.setenv("CORTXT_SELFHOSTED_URL", "https://example.invalid")

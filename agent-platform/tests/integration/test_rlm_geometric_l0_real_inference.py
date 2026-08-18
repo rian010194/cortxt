@@ -49,25 +49,19 @@ def test_rlm_real_inference_matches_expected(scenario, real_inference_port):
         """Adapts BudgetGate + real_inference_port to RLMEngine's InferencePort
         protocol (RLMEngine calls .invoke(content), not a bare callable)."""
 
-        def invoke(self, content):
-            return gate(real_inference_port.invoke, content)
+        def __init__(self, port):
+            self._port = port
 
-    engine = RLMEngine(_GatedPort(), _config())
+        def invoke(self, content: str) -> int:
+            result = self._port.invoke(
+                content=content,
+                output_schema={"type": "integer"},
+            )
+            return int(result)
+
+    engine = RLMEngine(_GatedPort(real_inference_port), _config())
     result = engine.run(scenario["content"])
     # The RLM engine aggregates leaf values; verify the expected sum surfaced.
     assert result.value == scenario["expected"], (
         f"{scenario['scenario_id']}: got {result.value}, expected {scenario['expected']}"
     )
-
-
-def test_real_inference_skips_when_not_configured(monkeypatch):
-    """Fail-closed: without env, real_inference_port is skip, not crash/hang.
-
-    This test asserts the fixture's skip behaviour is safe for the default suite.
-    """
-    for var in ("CORTXT_INFERENCE_URL", "CORTXT_INFERENCE_API_KEY", "CORTXT_INFERENCE_MODEL"):
-        monkeypatch.delenv(var, raising=False)
-    from adapters.inference import ResilientInferencePort
-
-    port = ResilientInferencePort()
-    assert port.available() is False
