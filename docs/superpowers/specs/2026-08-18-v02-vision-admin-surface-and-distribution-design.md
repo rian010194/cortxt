@@ -1,0 +1,126 @@
+# Cortxt v.02-vision: adminyta, distribution och open-core
+
+Status: **FÖRSLAG — inte beslutat.** Detta dokument följer samma disciplin som
+`cortxt-agent-platform-target-architecture.md` §29: det föreslår riktningar
+för repositoryts beslutsprocess, det beslutar dem inte. Inget här är
+auktoritativt förrän det går genom en ADR.
+
+Skriven efter en session (2026-08-18) som (1) verifierade wedge B-valideringens
+verkliga status, (2) städade repot (mergade Fas 5–8, stängde döda
+issues/grenar), och (3) förde ett brainstorming-samtal om vad som kommer
+efter Fas 8. Detta dokument är resultatet av del 3.
+
+## 1. Utgångsläge (verifierat, inte antaget)
+
+- **Fas 0–8 i target-architecture.md är klara.** `main` är grönt (441 tester
+  passerar), Fas 5–8 (RLM, geometric reasoning, self-hosted inference,
+  learning loop) är mergat.
+- **Wedge B (ADR-015) är formellt stämplad validerad (#101/#116) men svagare
+  i praktiken än stämpeln säger.** T2 ("annan utvecklare klarar handover")
+  var bara delvis bevisad — en riktig person testade en liten del, resten
+  var en simulerad agent. T3–T5 ströks inte om under den här sessionen.
+- **Ingen sammanhängande "börja här"-väg fanns** genom wedge B förrän den här
+  sessionen byggde `agent-platform/cli/unified_cli.py` — en gemensam
+  entry point som kedjar de tidigare 6 separata CLI:erna. Detta landade
+  direkt på `main` utan PR/review (processavsteg, inte kvalitetsproblem —
+  koden är testad).
+- **README:s licensrad står fast:** "viewable, not open source." Rikard är
+  formellt fortfarande första och enda användaren (ADR-014).
+
+## 2. Vad som förändrades i det här samtalet
+
+Operatören uttryckte, i tur och ordning:
+1. Han vill fler användare på sikt, men det är inte beslutat ännu (ADR-014
+   står fast: en användare, ej OSS).
+2. Cortxts differentiering är fyrfaldig: multi-engine routing,
+   portabilitet/leverantörsoberoende, kontrollplattan som vallgrav,
+   reasoning-lagret som långsiktig fördel över tid.
+3. **Ett pip-installerbart CLI-paket räcker inte.** Han vill ha en yta där
+   han administrerar sina agenter och verktyg — inte bara ett kommando.
+4. **Ytan ska automatiskt upptäcka vilka agenter/verktyg som finns
+   installerade** (Buzz, Hermes, Claude, Codex, m.fl.), låta operatören
+   koppla på dem, och hantera en nyckel som sätts in i respektive system —
+   "1-klicksinstallation" för hela stacken.
+5. **Monetisering: open-core.** Det som ligger i det här repot kan vara
+   gratis/öppet lager; adminytan/plattformslagret är det som eventuellt
+   monetiseras. Exakt modell är inte beslutad.
+
+Punkt 3–4 river uttryckligen upp **ADR-015**, som pausade webb/Operator
+Cockpit som produktyta till förmån för "repository-native + CLI (primärt)".
+ADR-015 har en explicit review trigger: *"en observerad
+användarefterfrågan pekar på en annan wedge."* Operatörens egen växande
+behov av en adminyta är den signalen — det är därför detta dokument finns,
+inte en genväg runt ADR-015.
+
+## 3. Förslag: Admin-/Discovery-yta
+
+**Arbetsnamn:** Cortxt Control Surface (namn inte beslutat).
+
+**Kärnfunktion (föreslagen, inte specad i detalj ännu):**
+- Skannar operatörens miljö för kända agent-runtimes (Hermes, Buzz, Claude
+  Code, Codex, Pi, …) — motsvarande det redan existerande mönstret i
+  `scripts/worker_adapters.py`:s `ADAPTER_REGISTRY`, men som en yta istället
+  för kod.
+- Låter operatören koppla på/av varje upptäckt runtime.
+- Hanterar credentials/nycklar centralt och skjuter in dem i respektive
+  systems egen konfiguration ("1-klicksinstallation").
+- Detta **är** den tidigare sparade "credential broker"-idén
+  (`project_credential_broker_idea` i minnet), nu upphöjd från
+  roadmap-anteckning till en konkret del av v.02-scope.
+
+**Relation till befintlig arkitektur:**
+- Detta är en ny produktyta ovanpå samma Control Plane-kärna
+  (§6 i target-architecture.md) — inte en ny kärna. Invarianterna i §28
+  gäller oförändrat: Control Plane äger mandat, agenten äger inte sitt eget
+  scope, self-approval är förbjudet.
+- Nyckelhantering över flera externa system är ett **säkerhetskänsligt**
+  ytterligare ansvar Control Plane idag inte har. Kräver ett eget
+  threat-model-avsnitt innan implementation — se öppna frågor nedan.
+
+## 4. Förslag: Distribution och open-core
+
+**Två lager, inte ett:**
+1. **Öppet/gratis kärnlager** — det som redan finns i det här repot: CLI,
+   Agent Runtime, InferencePort, adapters. Distribueras som ett
+   pip-installerbart paket (`pip install cortxt` eller motsvarande namn),
+   inte som repo-klon. Kunden ser aldrig det här repots interna historik,
+   ADRs, eller grenar.
+2. **Adminyta/plattformslager** — den yta som beskrivs i §3. Det är denna
+   som eventuellt monetiseras. Exakt gräns mellan gratis och betalt är
+   **inte beslutad** — se öppna frågor.
+
+Detta är en **utökning** av ADR-015:s "repository-native + CLI"-beslut, inte
+en ersättning: CLI:t förblir den primära, gratis ingången. Adminytan är ett
+nytt, andra lager ovanpå.
+
+## 5. Relation till repo-hygien (denna sessions andra spår)
+
+Den städning som redan gjorts (mergat Fas 5–8, stängda döda issues, döda
+grenar identifierade för radering) är oberoende av v.02-visionen och
+behöver inte vänta på den. Men den bekräftar samma distinktion som §2:
+**kollegor/portfolio-publik** kan se det här repot (rensat), **kundpublik**
+ska aldrig behöva det — de möter bara det installerbara paketet (§4.1) eller
+adminytan (§3).
+
+## 6. Öppna frågor (flaggade, inte gissade)
+
+- Namn på adminytan och på det installerbara paketet.
+- Hosted (SaaS-liknande adminyta) kontra lokalt körd adminyta — påverkar
+  om ADR-015:s "webb pausad"-beslut behöver formellt upphävas eller bara
+  kompletteras.
+- Säkerhetsmodell för att lagra tredjepartsnycklar (Hermes/Claude/Codex-API-
+  nycklar) centralt: kryptering i vila, åtkomstkontroll, vad händer vid
+  intrång i adminytan (blast radius om en nyckel-broker komprometteras är
+  större än om ett enskilt verktyg gör det).
+- Exakt gräns mellan gratis kärnlager och monetiserat adminlager.
+- Tidsförhållande till T2–T5: ska adminytan vänta tills wedge B är på
+  riktigt validerad (inte bara formellt stämplad), eller byggas parallellt?
+- Om/när ADR-015 formellt behöver en ny ADR som ändrar/kompletterar den.
+
+## 7. Rekommenderat nästa steg
+
+Detta dokument beskriver riktning, inte en implementationsplan. Rekommenderat
+nästa steg är att lösa öppna frågor i §6 tillräckligt för att skriva en ny
+ADR som formellt adresserar ADR-015:s review-trigger, innan admin-ytan
+specas i detalj eller kod skrivs. Inte skriva kod mot denna vision innan
+den ADR:en finns.
