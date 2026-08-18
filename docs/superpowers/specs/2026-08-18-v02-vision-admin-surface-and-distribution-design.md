@@ -241,6 +241,26 @@ adminytan (§3).
   dubblerar orkestratorn det arbetet, eller läser den av vad agenten redan
   valde?).
 
+- **Artefakter/dokument hamnar redan idag på olika ställen utan ett
+  gemensamt register** — samma session som skrev det här dokumentet är
+  ett levande exempel: visionsdokumentet pushades till en gren (synligt
+  via PR #156), medan Wayfinder-planen för v.02-milstolpen landade enbart
+  lokalt i `.hermes/plans/` (gitignorat, aldrig synligt på GitHub). Det är
+  inte ett enskilt misstag utan repots befintliga konvention som redan är
+  inkonsekvent: vissa artefakttyper är avsiktligt versionerade och synliga
+  (specs, ADR:er), andra avsiktligt lokala och osynliga (Hermes-scratch).
+  Orkestratorn (§3) behöver kunna svara på "var finns X" oavsett om X
+  hamnade i en Claude-session, en GitHub-gren/PR, eller Hermes lokala
+  scratch — sannolikt ett litet **index/register över var artefakter bor**
+  (inte en kopia av innehållet, bara plats + typ + senast synkad), inte en
+  ny lagringsplats. Nära besläktat med capability-manifestet ovan men för
+  dokument/planer istället för verktygskommandon — möjligen samma
+  mekanism kan bära båda. Inte beslutat: om lösningen är lika enkel som
+  att sluta gitignora vissa `.hermes/`-artefakter (t.ex. wayfinders bör
+  kanske vara versionerade eftersom de är beslutsunderlag, medan annat
+  Hermes-scratch inte bör vara det), eller om det kräver ett aktivt
+  register orkestratorn själv underhåller och håller synkat.
+
 ## 7. Rekommenderat nästa steg
 
 Detta dokument beskriver riktning, inte en implementationsplan. Rekommenderat
