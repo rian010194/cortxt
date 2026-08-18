@@ -38,6 +38,21 @@ def test_credentials_store_without_confirm_fails_and_writes_nothing(tmp_path, mo
             assert b"sk-should-not-land" not in path.read_bytes()
 
 
+def test_credentials_store_without_confirm_is_audited_as_denied(tmp_path, monkeypatch):
+    """Review finding: the CLI must not bypass CredentialBroker's own audit
+    log by short-circuiting before store() is ever called -- a denied
+    attempt through this admin surface must still be traceable."""
+    from security.credential_broker import CredentialBroker
+
+    store_dir = tmp_path / "creds"
+    monkeypatch.setattr("sys.stdin", type("_S", (), {"read": staticmethod(lambda: "sk-x")})())
+    main(["credentials", "store", "--id", "test-cred", "--store-dir", str(store_dir)])
+
+    broker = CredentialBroker(store_dir, encrypt=_fake_encrypt, decrypt=_fake_decrypt)
+    records = broker.audit_log()
+    assert any(r.action == "store" and r.result == "denied" for r in records)
+
+
 def test_credentials_store_and_inject_roundtrip_the_real_value(tmp_path, monkeypatch, capsys):
     store_dir = tmp_path / "creds"
     with patch("security.credential_broker.CredentialBroker.with_dpapi") as fake_with_dpapi:

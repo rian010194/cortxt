@@ -9,3 +9,4 @@ build/
 dist/
 .sessions/
 widget/snapshot.json
+.credentials/

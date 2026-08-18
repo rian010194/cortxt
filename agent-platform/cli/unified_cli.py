@@ -389,13 +389,13 @@ def _run_credentials(args: argparse.Namespace) -> ResultEnvelope:
         broker = CredentialBroker.with_dpapi(store_dir)
 
         if args.credentials_command == "store":
-            if not args.confirm:
-                return ResultEnvelope(
-                    status="failed",
-                    error={"category": "not_confirmed", "message": "pass --confirm to store a credential"},
-                )
+            # Pass --confirm straight through to broker.store() rather than
+            # short-circuiting here: the broker's own audit log is required
+            # to record every attempt, granted or denied (credential_broker.py's
+            # own documented invariant) -- a CLI-side pre-check bypassed that
+            # for every unconfirmed attempt made through this admin surface.
             value = sys.stdin.read().rstrip("\n")
-            broker.store(args.id, value, operator_confirmed=True)
+            broker.store(args.id, value, operator_confirmed=args.confirm)
             return ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
 
         # inject
