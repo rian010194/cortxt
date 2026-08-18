@@ -48,13 +48,14 @@ class EvidenceClassifier:
             events["provenance"] = provenance
         return {"facts": facts, "events": events, "instructions": instructions, "tasks": tasks}
 
-    def verify(self, candidate, matrix: Mapping[str, Any]) -> bool:
+    def verify(self, matrix: Mapping[str, Any]) -> bool:
         """Phase (b) — verifier-checks over the EvidenceMatrix (Kimi P2.6).
 
         Evidence may NOT carry promotion weight unless the matrix is complete, has no regression, and
-        covers a sufficient fraction of the fixture set. Fail-closed: any doubt returns False.
+        covers a sufficient fraction of the fixture set. Fail-closed (Kimi F-01: 'complete' defaults to
+        False, not True): any doubt returns False.
         """
-        if not matrix.get("complete", True):
+        if not matrix.get("complete", False):
             return False
         if matrix.get("no_regression") is not True:
             return False
