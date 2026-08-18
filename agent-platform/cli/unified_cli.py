@@ -259,6 +259,22 @@ def _run_sessions(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
+def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
+    """Serve the sessions widget (loopback-only static server, widget/serve.py).
+
+    Blocks in the foreground until interrupted, same shape as any other
+    local dev-server CLI command. No new logic here -- this just calls the
+    existing, already-tested serve.main().
+    """
+    try:
+        from widget import serve as widget_serve
+
+        widget_serve.main()
+        return ResultEnvelope(status="succeeded", artifacts=["widget:stopped"])
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
 def main(argv: list[str] | None = None) -> int:
     """Unified CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -321,6 +337,10 @@ def main(argv: list[str] | None = None) -> int:
     sessions_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
     sessions_parser.add_argument("--snapshot", type=Path, help="Snapshot output path (default: agent-platform/widget/snapshot.json)")
     sessions_parser.set_defaults(func=_run_sessions)
+
+    # widget subcommand
+    widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
+    widget_parser.set_defaults(func=_run_widget)
 
     args = parser.parse_args(argv)
 
