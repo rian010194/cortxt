@@ -108,17 +108,33 @@ widget-UI + enhetlig addon-mekanism.**
   väger tyngre nu: en addon-mekanism som kan installera ny körbar logik
   (inte bara UI) är en bredare attackyta än en ren visualiseringswidget.
 
-## 4. Förslag: Distribution och open-core
+## 4. Förslag: Distribution och prissättning
 
-**Två lager, inte ett:**
-1. **Öppet/gratis kärnlager** — det som redan finns i det här repot: CLI,
-   Agent Runtime, InferencePort, adapters. Distribueras som ett
-   pip-installerbart paket (`pip install cortxt` eller motsvarande namn),
-   inte som repo-klon. Kunden ser aldrig det här repots interna historik,
-   ADRs, eller grenar.
-2. **Adminyta/plattformslager** — den yta som beskrivs i §3. Det är denna
-   som eventuellt monetiseras. Exakt gräns mellan gratis och betalt är
-   **inte beslutad** — se öppna frågor.
+**Reviderad (efter vidare samtal): inte ett lager-baserat gratis/betalt-snitt
+utan en användningsbaserad modell.** Operatörens formulering: CLI, UI och
+orkestrering kan vara gratis rakt av — värdet som motiverar betalning är att
+rätt modell-/agent-/runtime-val (routing) sparar användaren pengar i
+tokenkostnad, inte att UI:t eller CLI:t i sig är låsta bakom en betalvägg.
+
+**Föreslagen form (hypotes, inte beslutad, siffror indikativa):**
+- Gratis, obegränsat av tid initialt eller en tidsbegränsad trial (~2
+  veckor nämnt) — full tillgång till CLI, widget-UI, orkestrering och
+  routing mot förkonfigurerade gratismodeller.
+- Därefter en låg månadsavgift (~49 kr/månad nämnt som riktmärke, **inte
+  en beräknad siffra** — se öppen fråga nedan) för fortsatt full
+  användning.
+- **Den specifika betaldifferentieraren kan vara embedding-/
+  routingmotorn** — d.v.s. exakt den mekanism som kontinuerligt förbättrar
+  effektiviteten över tid (Fas 6:s geometric reasoning/Voyage-embeddings,
+  Fas 8:s learning loop). Det är motorn som gör routingen bättre än ett
+  statiskt val, inte CLI:t/UI:t som är produkten man betalar för.
+- **Positioneringsreferens operatören själv drog:** likt OpenRouter/
+  liknande modell-aggregatorer, men med ett orkestreringslager och UI
+  ovanpå — inte bara ren modell-proxy.
+
+Detta ändrar inte grundprincipen i §5 (kollegor ser repot, kunder ser bara
+paketet/widgeten) men **ersätter** den tidigare idén om ett strikt
+lager-baserat gratis/betalt-snitt.
 
 Detta är en **utökning** av ADR-015:s "repository-native + CLI"-beslut, inte
 en ersättning: CLI:t förblir den primära, gratis ingången. Adminytan är ett
@@ -159,7 +175,19 @@ adminytan (§3).
   intrång i adminytan (blast radius om en nyckel-broker komprometteras är
   större än om ett enskilt verktyg gör det). Väger tyngre nu: en addon som
   kan installera ny logik är en bredare attackyta än en ren widget.
-- Exakt gräns mellan gratis kärnlager och monetiserat adminlager.
+- **Prissättningen är ännu en hypotes, inte en beräkning.** ~49 kr/månad
+  och "2 veckor gratis" är riktmärken operatören nämnde, inte
+  räknade fram — enligt egen arbetsregel ska inget kostnadspåstående
+  stå som fakta förrän det finns en verklig uträkning (t.ex. faktisk
+  Inference Gateway-kostnad per genomsnittsanvändare mot vad routing
+  sparar). Innan prissättning skrivs in i en ADR: räkna på faktiska
+  provider-/embedding-kostnader mot vad routing verkligen sparar, för
+  minst ett realistiskt användningsmönster.
+- Var exakt gränsen går mellan "gratis rakt av" och "kräver betalning" om
+  det inte är ett lager-snitt längre utan tid/användning — trial-period,
+  kvot, eller båda?
+- Hur mäts/bevisas "sparar tokens genom rätt val" konkret för en
+  användare (vad är baslinjen routing jämförs mot)?
 - Tidsförhållande till T2–T5: ska adminytan vänta tills wedge B är på
   riktigt validerad (inte bara formellt stämplad), eller byggas parallellt?
 - Om/när ADR-015 formellt behöver en ny ADR som ändrar/kompletterar den.
