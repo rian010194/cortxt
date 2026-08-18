@@ -63,6 +63,29 @@ def test_load_sessions_skips_and_logs_malformed_session(tmp_path, caplog):
     assert any(bad_id in record.message for record in caplog.records)
 
 
+def test_load_sessions_skips_and_logs_a_session_with_no_events(tmp_path, caplog):
+    """A session.json with events: [] has a trivially valid (empty) hash
+    chain -- state.load() doesn't reject it -- but there's no
+    session.created event to read an identity from. Must be skipped like
+    any other unusable session, not crash the whole listing.
+    """
+    store = tmp_path / "sessions"
+    session = state.create(store, task_id="good-session")
+    good_id = session["session_id"]
+
+    empty_id = "session_" + "1" * 32
+    empty_dir = store / empty_id
+    empty_dir.mkdir(parents=True)
+    doc = {"schema_version": 1, "session_id": empty_id, "events": []}
+    (empty_dir / "session.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING):
+        sessions = status.load_sessions(store)
+
+    assert [s["session_id"] for s in sessions] == [good_id]
+    assert any(empty_id in record.message for record in caplog.records)
+
+
 def test_render_table_reports_no_sessions_when_empty():
     assert status.render_table([]) == "No sessions found."
 

@@ -116,11 +116,24 @@ function render(doc) {
   }
   for (const s of doc.sessions) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${s.task_id}</td>
-      <td><span class="badge ${s.severity}">${s.status}</span></td>
-      <td>${s.updated_at}</td>
-    `;
+
+    const taskCell = document.createElement("td");
+    taskCell.textContent = s.task_id;
+
+    const statusCell = document.createElement("td");
+    const badge = document.createElement("span");
+    // severity is one of status.py's own STATUS_SEVERITY values, not
+    // user-controlled, so it's safe as a class token; task_id/status/
+    // updated_at come from session payloads a caller can set freely, so
+    // those go through textContent, never innerHTML.
+    badge.className = `badge ${s.severity}`;
+    badge.textContent = s.status;
+    statusCell.appendChild(badge);
+
+    const updatedCell = document.createElement("td");
+    updatedCell.textContent = s.updated_at;
+
+    tr.append(taskCell, statusCell, updatedCell);
     rows.appendChild(tr);
   }
 }

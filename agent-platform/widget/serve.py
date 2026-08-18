@@ -19,11 +19,17 @@ HOST = "127.0.0.1"
 PORT = 8765
 
 
+class _ReusableTCPServer(socketserver.TCPServer):
+    # Without this, restarting the widget within the OS's TIME_WAIT window
+    # fails with "address already in use" on a routine Ctrl+C + rerun.
+    allow_reuse_address = True
+
+
 def main() -> int:
     handler = functools.partial(
         http.server.SimpleHTTPRequestHandler, directory=str(WIDGET_DIR)
     )
-    with socketserver.TCPServer((HOST, PORT), handler) as httpd:
+    with _ReusableTCPServer((HOST, PORT), handler) as httpd:
         print(f"Cortxt sessions widget: http://{HOST}:{PORT}/index.html")
         try:
             httpd.serve_forever()

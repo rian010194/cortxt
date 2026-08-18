@@ -74,6 +74,12 @@ def load_sessions(store: Path) -> list[dict[str, Any]]:
                 "skipping session %s: %s (%s)", session_id, error.message, error.category
             )
             continue
+        if not doc["events"]:
+            # Valid JSON, valid hash chain (there's nothing to break), but
+            # no session.created event to read an identity from -- same
+            # "can't use this" bucket as a SessionError, so skip+log it too.
+            logger.warning("skipping session %s: no events", session_id)
+            continue
 
         task_id = doc["events"][0]["payload"].get("task_id", session_id)
         status, updated_at = _session_status(doc)
@@ -113,6 +119,8 @@ def write_snapshot(sessions: list[dict[str, Any]], snapshot_path: Path) -> None:
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(doc, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(tmp, snapshot_path)
     finally:
         if os.path.exists(tmp):
