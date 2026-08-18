@@ -36,6 +36,7 @@ STATUS_SEVERITY = {
     "succeeded": "ok",
     "blocked": "warn",
     "failed": "error",
+    "timed_out": "error",
 }
 
 
