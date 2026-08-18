@@ -18,7 +18,7 @@ Uppdaterat: 2026-08-16 (ADR-020, terminologiredaktion proof environment-namn).
 | 018 | Workflow-state carrier — GitHub Issue labels | **Accepted** | `workflow:*`-labels är tillståndsbärare (ADR-018); Project 4 frusen legacy |
 | 019 | Coding execution — permanent multi-engine routing, not Pi/Hermes replacement | **Accepted** | Pi/Hermes/Codex (+ framtida Copilot) permanenta routingval jämte egen Coding Agent; upphäver §24.2-ersättningskriterier i target-architecture.md |
 | 020 | Proof environment naming — redact product/partner name from public surface | **Accepted** | Terminologiredaktion: "Norcom/CSL" → "proof environment B" framåt; ADR-014/015 oredigerade och kvar Accepted för sakinnehållet |
-| 021 | Reopen ADR-015 for v.02 admin surface + widget UI (F2 treatment) | **Proposed** (pending Rikard Accepted) | ADR-015 review-trigger observerad; beslutar endast produktyta-komplement (widget + adminyta ovanpå CLI), inte wedge, naming, säkerhetsmodell, pris eller addon-granskning; Fas 2+ auktoritativt först efter Accepted |
+| 021 | Reopen ADR-015 for v.02 admin surface + widget UI (F2 treatment) | **Accepted** | ADR-015 review-trigger observerad; beslutar endast produktyta-komplement (widget + adminyta ovanpå CLI), inte wedge, naming, säkerhetsmodell, pris eller addon-granskning; Fas 2+ i v.02-wayfindern nu auktoritativt |
 
 ## Beslut och auktoritet
 

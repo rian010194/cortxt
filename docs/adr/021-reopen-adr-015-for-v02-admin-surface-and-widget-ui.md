@@ -1,8 +1,8 @@
 # ADR-021: Reopen ADR-015 for v.02 Admin Surface + Widget UI (F2 treatment)
 
-**Status:** Proposed  
+**Status:** Accepted  
 **Date:** 2026-08-18  
-**Deciders:** Rikard (operatör) — pending Accepted decision  
+**Deciders:** Rikard (operatör)  
 **Technical Story:** GitHub issue rian010194/cortxt#157; v.02-milestone-wayfinder Fas 0 (`.hermes/plans/2026-08-18-v02-milestone-wayfinder.md`)
 
 ## Context
@@ -61,11 +61,11 @@ This ADR is therefore **necessary but not sufficient** for Fas 2+ implementation
 
 ## Validation
 
-- [ ] ADR-021 exists at `docs/adr/021-....md` with Status: Proposed, referencing ADR-015 and issue rian010194/cortxt#157.
-- [ ] Consequences/Risks explicitly addresses target-architecture.md §28 (operator mandate over irreversible decisions) and §11 (RLM hard limits on budget/depth/stop) — the vision doc §6 "always-working fleet" assumption is flagged as requiring check against these invariants before build, not assumed safe from UI affordances.
-- [ ] ADR does not decide naming, credential-storage security model, pricing, or addon review process — those remain open per vision doc §6 and are deferred to later wayfinder phases.
-- [ ] ADR does not itself authorize starting Fas 2+ of the wayfinder — only Rikard setting Status: Accepted does that.
-- [ ] Review: Claude Code reviews the draft before it goes to the operator for the Accepted decision (not Codex, per explicit operator instruction — deviates from this repo's usual review-agent default for this one ADR only).
+- [x] ADR-021 exists at `docs/adr/021-....md` with Status: Proposed, referencing ADR-015 and issue rian010194/cortxt#157.
+- [x] Consequences/Risks explicitly addresses target-architecture.md §28 (operator mandate over irreversible decisions) and §11 (RLM hard limits on budget/depth/stop) — the vision doc §6 "always-working fleet" assumption is flagged as requiring check against these invariants before build, not assumed safe from UI affordances.
+- [x] ADR does not decide naming, credential-storage security model, pricing, or addon review process — those remain open per vision doc §6 and are deferred to later wayfinder phases.
+- [x] ADR does not itself authorize starting Fas 2+ of the wayfinder — only Rikard setting Status: Accepted does that.
+- [x] Review: Claude Code reviews the draft before it goes to the operator for the Accepted decision (not Codex, per explicit operator instruction — deviates from this repo's usual review-agent default for this one ADR only).
 
 ## Expiry/Review Trigger
 
