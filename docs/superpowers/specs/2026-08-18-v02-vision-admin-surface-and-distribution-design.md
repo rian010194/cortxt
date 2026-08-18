@@ -110,6 +110,47 @@ widget-UI + enhetlig addon-mekanism.**
 
 ## 4. Förslag: Distribution och prissättning
 
+### 4.1 Det installerbara paketet
+
+**Tillagd 2026-08-18 (Fas 6 v0.1) — fyller en referens som fanns i det här
+dokumentet sen tidigare (§5) utan att sektionen någonsin skrevs.** Operatörens
+ord när Fas 6 skulle avslutas: *"Innan prissättning måste vi ha paketerat
+produkten."* Prissättning (nedan) är fortfarande inte beslutad — det här
+avsnittet beskriver bara vad som byggdes för att göra paketering möjlig att
+resonera om, inte ett pris.
+
+**v0.1, byggt och verifierat (inte bara ihopskrivet):** `agent-platform/`
+har nu en riktig `pip install -e .`-yta, inte bara ett gitignorerat
+CLI-skript. `pyproject.toml` deklarerar `[project.scripts] cortxt =
+"cli.unified_cli:main"`. Verifierat i en isolerad venv (inte operatörens
+egen miljö): `pip install -e agent-platform` följt av `cortxt --help` och
+`cortxt sessions` fungerar som riktiga installerade kommandon, inte som
+`python agent-platform/cli/unified_cli.py ...`. `cortxt widget` startar
+samma loppback-widget-server som fanns sen Fas 2 (`widget/serve.py`), nu
+nåbar som ett underkommando istället för ett separat skript.
+
+**Vad paketet innehåller idag:** CLI:t (`cortxt sessions`, `cortxt widget`,
+plus de äldre `provider-policy`/`state`/`profile`/`supervisor`/`coding`/`rlm`-
+underkommandona) och widgeten. Orkestrator-routingen (Fas 3,
+`routing/engine_manifest.py`), credential-brokern (Fas 4,
+`security/credential_broker.py`) och addon-granskningsgrinden (Fas 5,
+`learning/addon_review.py`) är alla importerbara moduler i samma paket —
+de har ingen egen CLI-yta än, det är inte v0.1:s omfattning.
+
+**Vad som uttryckligen INTE är löst av detta:**
+- Namn på paketet/CLI:t/orkestratoragenten (§6:s öppna fråga kvarstår —
+  `cortxt` används här som arbetsnamn, inte ett beslutat produktnamn).
+- Distribution utanför `pip install -e` från en git-checkout — ett riktigt
+  PyPI-paket, en wheel-byggprocess, eller en Windows-installer är inte
+  byggt. Det här är "paketerat" i meningen "har en installationsyta att
+  resonera kring", inte "redo att skickas till en extern användare."
+- Widgetens framtida form som ett fristående skrivbordsprogram (operatören
+  har nämnt Rust som möjlig del av den vägen) — v0.1:s widget är fortfarande
+  HTML/JS serverad lokalt, inte en packaged desktop-app. Det är en separat,
+  större beslutspunkt än vad Fas 6 v0.1 skulle lösa ikväll.
+- Prissättning (se nedan) — det här avsnittet är uttryckligen bara
+  förutsättningen, inte svaret.
+
 **Reviderad (efter vidare samtal): inte ett lager-baserat gratis/betalt-snitt
 utan en användningsbaserad modell.** Operatörens formulering: CLI, UI och
 orkestrering kan vara gratis rakt av — värdet som motiverar betalning är att
