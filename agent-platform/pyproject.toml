@@ -10,9 +10,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["pyyaml>=6", "jsonschema>=4"]
 
+[project.scripts]
+cortxt = "cli.unified_cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["reasoning*", "portability*", "runtime*", "routing*", "security*"]
+include = ["reasoning*", "portability*", "runtime*", "routing*", "security*", "cli*", "widget*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
