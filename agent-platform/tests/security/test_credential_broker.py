@@ -6,6 +6,7 @@ from security.credential_broker import (
     CredentialBroker,
     CredentialNotFoundError,
     IntegrityError,
+    InvalidCredentialIdError,
     NotOperatorConfirmedError,
 )
 
@@ -88,6 +89,35 @@ def test_inject_unknown_credential_id_raises_not_found(tmp_path):
     broker = _broker(tmp_path)
     with pytest.raises(CredentialNotFoundError):
         broker.inject("does-not-exist", requesting_runtime="hermes", purpose="x")
+
+
+# --- path traversal via credential_id must be rejected (threat model §3.2.4) ---
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "../../outside_secret",
+        "..\\..\\outside_secret",
+        "records/../../outside",
+        "/etc/passwd",
+        "",
+    ],
+)
+def test_store_rejects_path_traversal_credential_ids(tmp_path, bad_id):
+    broker = _broker(tmp_path)
+    with pytest.raises(InvalidCredentialIdError):
+        broker.store(bad_id, "sk-evil", operator_confirmed=True)
+    # nothing must have been written outside the store dir
+    for path in tmp_path.rglob("*"):
+        if path.is_file():
+            assert b"sk-evil" not in path.read_bytes()
+
+
+def test_inject_rejects_path_traversal_credential_ids(tmp_path):
+    broker = _broker(tmp_path)
+    with pytest.raises(InvalidCredentialIdError):
+        broker.inject("../../outside_secret", requesting_runtime="hermes", purpose="x")
 
 
 # --- no credential enumeration (threat model §3.2.3) ---

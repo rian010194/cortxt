@@ -33,11 +33,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+
+_CREDENTIAL_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _utc_now() -> str:
@@ -56,6 +59,14 @@ class IntegrityError(RuntimeError):
     """Raised when a stored record cannot be trusted -- decrypt failure or
     corrupted ciphertext. The broker fails closed: no plaintext, no retry
     with a weaker check, no partial value."""
+
+
+class InvalidCredentialIdError(ValueError):
+    """Raised when credential_id contains anything other than
+    [A-Za-z0-9_-]. credential_id becomes a filename component
+    (`_record_path`); without this check, an id like "../../x" escapes
+    store_dir entirely -- this is a path-traversal guard, not cosmetic
+    validation."""
 
 
 @dataclass(frozen=True)
@@ -102,6 +113,7 @@ class CredentialBroker:
             raise NotOperatorConfirmedError(
                 f"refusing to store credential {credential_id!r} without operator_confirmed=True"
             )
+        self._validate_credential_id("store", credential_id, None, None)
         ciphertext = self._encrypt(plaintext.encode("utf-8"))
         self._atomic_write(self._record_path(credential_id), ciphertext)
         self._audit("store", credential_id, None, None, "ok")
@@ -109,6 +121,7 @@ class CredentialBroker:
     def inject(self, credential_id: str, *, requesting_runtime: str, purpose: str) -> str:
         """Return one credential's plaintext for immediate use. Requires an
         explicit runtime identity and purpose -- there is no unscoped read."""
+        self._validate_credential_id("inject", credential_id, requesting_runtime, purpose)
         path = self._record_path(credential_id)
         if not path.is_file():
             self._audit("inject", credential_id, requesting_runtime, purpose, "error")
@@ -134,6 +147,19 @@ class CredentialBroker:
             data = json.loads(line)
             records.append(AuditRecord(**data))
         return records
+
+    def _validate_credential_id(
+        self,
+        action: str,
+        credential_id: str,
+        requesting_runtime: str | None,
+        purpose: str | None,
+    ) -> None:
+        if not _CREDENTIAL_ID_RE.fullmatch(credential_id):
+            self._audit(action, credential_id, requesting_runtime, purpose, "error")
+            raise InvalidCredentialIdError(
+                f"credential_id {credential_id!r} must match [A-Za-z0-9_-]+"
+            )
 
     def _record_path(self, credential_id: str) -> Path:
         return self._store_dir / "records" / f"{credential_id}.cred"
