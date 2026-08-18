@@ -40,7 +40,11 @@ def get_done_tasks(db_path):
                t.completed_at, t.result,
                r.summary, r.metadata, r.started_at, r.ended_at
         FROM tasks t
-        LEFT JOIN task_runs r ON t.current_run_id = r.id
+        LEFT JOIN task_runs r ON r.id = (
+            SELECT id FROM task_runs
+            WHERE task_id = t.id
+            ORDER BY id DESC LIMIT 1
+        )
         WHERE t.status = 'done'
         ORDER BY t.completed_at
     """)
