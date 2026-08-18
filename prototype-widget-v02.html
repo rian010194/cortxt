@@ -1,0 +1,228 @@
+<!--
+PROTOTYPE — throwaway, not production. Answers: "what should the Cortxt
+Control Surface widget look like?" Three structurally different variants of
+the same fake data (connected agents, live build waterfall, cost, orchestrator
+findings), switchable via the floating bottom bar or ?variant=/#variant=.
+No backend — everything below is static fake data. See docs/superpowers/specs/
+2026-08-18-v02-vision-admin-surface-and-distribution-design.md for context.
+Sub-shape B (no existing page to host this widget in).
+-->
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<title>Cortxt widget prototype</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --panel: #1a1d24;
+    --panel2: #22262f;
+    --border: #2c313c;
+    --text: #e6e8ec;
+    --text-dim: #8b90a0;
+    --accent: #5b9dff;
+    --good: #3ecf8e;
+    --warn: #f0b23c;
+    --bad: #f0553c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 30% 20%, #1c2230 0%, #0a0b0d 60%);
+    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stage { position: relative; width: 420px; }
+  .hint {
+    position: fixed; top: 16px; left: 16px; font-size: 12px; color: var(--text-dim);
+    max-width: 300px; line-height: 1.4;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    overflow: hidden;
+  }
+  .tile {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .dot.active { background: var(--good); box-shadow: 0 0 6px var(--good); }
+  .dot.idle { background: var(--text-dim); }
+  .dot.warn { background: var(--warn); }
+  .muted { color: var(--text-dim); }
+  .small { font-size: 11px; }
+  .cost { font-variant-numeric: tabular-nums; }
+
+  /* ---- Variant A: quick-settings tile grid (Windows-style reference) ---- */
+  #variantA .card { padding: 14px; }
+  #variantA .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+  #variantA .grid .tile { display: flex; flex-direction: column; gap: 6px; }
+  #variantA .grid .tile .name { font-size: 13px; font-weight: 600; }
+  #variantA .waterfall { max-height: 130px; overflow: hidden; border-top: 1px solid var(--border); padding-top: 8px; }
+  #variantA .waterfall .ev { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
+  #variantA .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+
+  /* ---- Variant B: vertical chronological feed ---- */
+  #variantB .card { padding: 0; }
+  #variantB .head { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  #variantB .feed { max-height: 320px; overflow: hidden; }
+  #variantB .item { display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  #variantB .avatar { width: 28px; height: 28px; border-radius: 8px; flex: none; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+  #variantB .item .body { flex: 1; min-width: 0; }
+  #variantB .item .top { display: flex; justify-content: space-between; font-size: 12.5px; }
+  #variantB .item .msg { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+
+  /* ---- Variant C: mission control split ---- */
+  #variantC .card { padding: 0; }
+  #variantC .topbar { display:flex; justify-content: space-between; align-items:center; padding: 10px 14px; background: var(--panel2); border-bottom: 1px solid var(--border); }
+  #variantC .badge { background: rgba(62,207,142,.12); color: var(--good); border: 1px solid rgba(62,207,142,.3); border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 600; }
+  #variantC .lanes { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+  #variantC .lane { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 8px; font-size: 11.5px; }
+  #variantC .lane .track { height: 16px; background: var(--panel2); border-radius: 4px; position: relative; overflow: hidden; }
+  #variantC .lane .bar { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 4px; }
+  #variantC .agents { display: flex; gap: 8px; padding: 10px 14px 14px; border-top: 1px solid var(--border); }
+  #variantC .agents .tile { flex: 1; text-align: center; padding: 8px 4px; }
+  #variantC .agents .tile .name { font-size: 11px; margin-top: 4px; }
+
+  /* switcher bar (per prototype skill spec) */
+  .switcher {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    background: #000; color: #fff; border-radius: 999px;
+    padding: 8px 6px 8px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.6);
+    font-size: 13px; z-index: 10; user-select: none;
+  }
+  .switcher button {
+    background: #2a2a2a; color: #fff; border: none; border-radius: 999px;
+    width: 30px; height: 30px; cursor: pointer; font-size: 15px;
+  }
+  .switcher button:hover { background: #3a3a3a; }
+  .switcher .label { min-width: 190px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="hint">Prototype — svarar på: hur ska Cortxt Control Surface-widgeten se ut? Tre strukturellt olika varianter, samma fejkade data. Byt med pilarna nedan eller ←/→.</div>
+
+  <div class="stage">
+
+    <div id="variantA" class="card" style="display:none">
+      <div style="font-weight:700; font-size:14px;">Cortxt</div>
+      <div class="muted small">6 agenter anslutna · 3 aktiva nu</div>
+      <div class="grid">
+        <div class="tile"><div class="row"><span class="dot active"></span><span class="name">Hermes</span></div><div class="small muted">2 jobb igång</div></div>
+        <div class="tile"><div class="row"><span class="dot active"></span><span class="name">Claude Code</span></div><div class="small muted">refaktorerar</div></div>
+        <div class="tile"><div class="row"><span class="dot idle"></span><span class="name">Codex</span></div><div class="small muted">vilande</div></div>
+        <div class="tile"><div class="row"><span class="dot warn"></span><span class="name">Buzz</span></div><div class="small muted">väntar på nyckel</div></div>
+      </div>
+      <div class="waterfall">
+        <div class="ev"><span>Hermes → testa PromotionGate</span><span class="muted">nu</span></div>
+        <div class="ev"><span>Claude → merge Fas 5–8</span><span class="muted">2 min</span></div>
+        <div class="ev"><span class="muted">Fynd: routing kan spara ~18% tokens</span><span class="muted">6 min</span></div>
+        <div class="ev"><span>Codex → review PR #156</span><span class="muted">11 min</span></div>
+      </div>
+      <div class="footer">
+        <span class="small muted">Idag</span>
+        <span class="cost small">142,30 kr <span class="muted">spend</span></span>
+      </div>
+    </div>
+
+    <div id="variantB" class="card" style="display:none">
+      <div class="head">
+        <div style="font-weight:700; font-size:14px;">Agentflotta</div>
+        <div class="small"><span class="cost">142,30 kr</span> <span class="muted">idag</span></div>
+      </div>
+      <div class="feed">
+        <div class="item">
+          <div class="avatar" style="background:#5b9dff22;color:#5b9dff;">H</div>
+          <div class="body"><div class="top"><b>Hermes</b><span class="muted">nu</span></div><div class="msg">Kör PromotionGate-tester för candidate #14</div></div>
+        </div>
+        <div class="item">
+          <div class="avatar" style="background:#f0b23c22;color:#f0b23c;">⚡</div>
+          <div class="body"><div class="top"><b>Orkestrator-fynd</b><span class="muted">6 min</span></div><div class="msg">Routing till lokal modell hade sparat ~18% tokens senaste timmen</div></div>
+        </div>
+        <div class="item">
+          <div class="avatar" style="background:#3ecf8e22;color:#3ecf8e;">C</div>
+          <div class="body"><div class="top"><b>Claude Code</b><span class="muted">2 min</span></div><div class="msg">Mergade Fas 5–8 till main, 441 tester gröna</div></div>
+        </div>
+        <div class="item">
+          <div class="avatar" style="background:#8b90a022;color:#8b90a0;">X</div>
+          <div class="body"><div class="top"><b>Codex</b><span class="muted">11 min</span></div><div class="msg">Granskar PR #156</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="variantC" class="card" style="display:none">
+      <div class="topbar">
+        <div style="font-weight:700; font-size:14px;">Mission control</div>
+        <span class="badge">↓ 18% tokens sparat</span>
+      </div>
+      <div class="lanes">
+        <div class="lane"><span class="muted">Hermes</span><div class="track"><div class="bar" style="background:#5b9dff; width:70%;"></div></div></div>
+        <div class="lane"><span class="muted">Claude</span><div class="track"><div class="bar" style="background:#3ecf8e; width:45%;"></div></div></div>
+        <div class="lane"><span class="muted">Codex</span><div class="track"><div class="bar" style="background:#f0b23c; width:20%;"></div></div></div>
+        <div class="lane"><span class="muted">Buzz</span><div class="track"><div class="bar" style="background:#f0553c; width:5%;"></div></div></div>
+      </div>
+      <div class="agents">
+        <div class="tile"><div class="dot active" style="margin:0 auto;"></div><div class="name">Hermes</div></div>
+        <div class="tile"><div class="dot active" style="margin:0 auto;"></div><div class="name">Claude</div></div>
+        <div class="tile"><div class="dot idle" style="margin:0 auto;"></div><div class="name">Codex</div></div>
+        <div class="tile"><div class="dot warn" style="margin:0 auto;"></div><div class="name">Buzz</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="switcher">
+    <button id="prev">←</button>
+    <div class="label" id="label">A — Quick-settings grid</div>
+    <button id="next">→</button>
+  </div>
+
+<script>
+  const variants = [
+    { key: 'A', name: 'Quick-settings grid (Windows-referens)' },
+    { key: 'B', name: 'Vertikalt kronologiskt flöde' },
+    { key: 'C', name: 'Mission control (waterfall-lanes + agentrad)' },
+  ];
+  function currentIndex() {
+    const v = (location.hash.replace('#variant=', '') || new URLSearchParams(location.search).get('variant') || 'A').toUpperCase();
+    const i = variants.findIndex(x => x.key === v);
+    return i === -1 ? 0 : i;
+  }
+  function render() {
+    const i = currentIndex();
+    variants.forEach((v, idx) => {
+      document.getElementById('variant' + v.key).style.display = idx === i ? 'block' : 'none';
+    });
+    document.getElementById('label').textContent = variants[i].key + ' — ' + variants[i].name;
+    history.replaceState(null, '', '#variant=' + variants[i].key);
+  }
+  function go(delta) {
+    const i = (currentIndex() + delta + variants.length) % variants.length;
+    location.hash = '#variant=' + variants[i].key;
+    render();
+  }
+  document.getElementById('prev').onclick = () => go(-1);
+  document.getElementById('next').onclick = () => go(1);
+  document.addEventListener('keydown', (e) => {
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (['INPUT','TEXTAREA'].includes(tag) || document.activeElement.isContentEditable) return;
+    if (e.key === 'ArrowLeft') go(-1);
+    if (e.key === 'ArrowRight') go(1);
+  });
+  render();
+</script>
+</body>
+</html>
