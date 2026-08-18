@@ -24,7 +24,7 @@ EmbeddingFn = Callable[[str], list[float]]
 @dataclass(frozen=True)
 class EvidenceRow:
     candidate_id: str
-    baseline_delta: float
+    baseline_delta: float | None  # None when nothing could be evaluated (not a tie, Kimi F-04)
     no_regression: bool
     complete: bool
     fixture_coverage: float
@@ -84,12 +84,12 @@ class Evaluator:
                 base_avg = sum(baseline_scores[f] for f in evaluated) / len(evaluated)
                 delta = cand_avg - base_avg
             else:
-                delta = 0.0
+                delta = None  # Kimi F-04: nothing evaluated is NOT a tie
             complete = complete_by_cand[cand.id] and baseline_complete
             rows.append(EvidenceRow(
                 candidate_id=cand.id,
                 baseline_delta=delta,
-                no_regression=delta >= 0 and complete,
+                no_regression=(delta is not None and delta >= 0 and complete),
                 complete=complete,
                 fixture_coverage=coverage,
             ))

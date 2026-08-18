@@ -18,6 +18,13 @@ from datetime import datetime, timezone
 
 from .candidate import Candidate
 
+
+def _version_key(v: str) -> tuple[int, ...]:
+    """Semver 'v1.2.3' -> (1,2,3) tuple for ordering (Kimi F-05: v10 > v2)."""
+    parts = [p for p in v.lstrip("v").split(".") if p.isdigit()]
+    return tuple(int(p) for p in parts) or (0,)
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS candidates (
     type TEXT NOT NULL,
@@ -81,12 +88,13 @@ class CandidateRegistry:
                 (type_, name, version),
             ).fetchone()
         else:
-            row = self._conn.execute(
+            # Kimi F-05: semver-order (not lexical) so v10 > v2; small fixture sets -> fetch + max in Python.
+            rows = self._conn.execute(
                 "SELECT type,name,version,manifest_hash,status,payload_json,proposed_at,promoted_by,"
-                "promoted_at,rolled_back_at FROM candidates WHERE type=? AND name=? "
-                "ORDER BY version DESC LIMIT 1",
+                "promoted_at,rolled_back_at FROM candidates WHERE type=? AND name=?",
                 (type_, name),
-            ).fetchone()  # v1 < v2, but v10 < v2 lexically; acceptable for short semver in v1
+            ).fetchall()
+            row = max(rows, key=lambda r: _version_key(r[2])) if rows else None
         return self._row_to_candidate(row) if row else None
 
     def all(self) -> list[Candidate]:
@@ -125,23 +133,21 @@ class CandidateRegistry:
         ).fetchone()
         return row[0] if row else None
 
-    def restore_active(self, type_: str, name: str, version: str) -> None:
-        """Atomically restore the active pointer to ``version`` (used by rollback)."""
-        self._conn.execute(
-            "UPDATE active_candidates SET active_version=?, promoted_from=NULL, "
-            "updated_at=datetime('now') WHERE type=? AND name=?",
-            (version, type_, name),
-        )
-        self._conn.commit()
-
-    def mark_rolled_back(self, type_: str, name: str, version: str) -> None:
-        """Audit-mark a candidate as rolled_back (used by rollback)."""
-        self._conn.execute(
-            "UPDATE candidates SET status='rolled_back', rolled_back_at=? "
-            "WHERE type=? AND name=? AND version=?",
-            (datetime.now(timezone.utc).isoformat(), type_, name, version),
-        )
-        self._conn.commit()
+    def apply_rollback(self, type_: str, name: str, previous: str, current: str) -> None:
+        """Atomically restore the active pointer to ``previous`` AND audit-mark ``current`` as rolled_back
+        in ONE transaction (Kimi F-02: no crash-window between the two)."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn:  # single transaction — rolls back wholesale on any failure
+            self._conn.execute(
+                "UPDATE active_candidates SET active_version=?, promoted_from=NULL, "
+                "updated_at=datetime('now') WHERE type=? AND name=?",
+                (previous, type_, name),
+            )
+            self._conn.execute(
+                "UPDATE candidates SET status='rolled_back', rolled_back_at=? "
+                "WHERE type=? AND name=? AND version=?",
+                (now, type_, name, current),
+            )
 
     @staticmethod
     def _row_to_candidate(row) -> Candidate | None:

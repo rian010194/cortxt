@@ -29,15 +29,14 @@ def test_add_is_idempotent_for_identical_manifest():
     assert len(reg.all()) == 1
 
 
-def test_get_latest_without_version_returns_highest_lexical_version():
-    """Kimi P1.2: 'latest' is currently LEXICAL (v1<v2); v10 would sort before v2 — documented v1 limit."""
+def test_get_latest_without_version_returns_highest_semver():
+    """Kimi F-05: 'latest' is SEMVER-ordered (v10 > v2), not lexical."""
     reg = CandidateRegistry(":memory:")
     reg.add(_pol("policy", "np", "v1", 0.1))
     reg.add(_pol("policy", "np", "v2", 0.3))
     assert reg.get("policy", "np").version == "v2"
-    # document the known lexical limitation (Kimi P2): v10 < v2 lexically in DESC order
     reg.add(_pol("policy", "np", "v10", 0.5))
-    assert reg.get("policy", "np").version == "v2"  # lexical: "v2" > "v10" lexically — known v1 limit
+    assert reg.get("policy", "np").version == "v10"  # semver: 10 > 2
 
 
 def test_key_conflict_different_payload_raises():
