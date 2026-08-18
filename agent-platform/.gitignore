@@ -7,3 +7,5 @@ __pycache__/
 htmlcov/
 build/
 dist/
+.sessions/
+widget/snapshot.json

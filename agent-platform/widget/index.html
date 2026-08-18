@@ -1,0 +1,141 @@
+<!--
+Cortxt sessions widget -- Fas 2 real implementation.
+
+Renders exactly what agent-platform/cli/status.py's `sessions` subcommand
+wrote to snapshot.json (session_id, task_id, status, severity, updated_at).
+No independent status logic here (per v.02 vision §3): severity and status
+are read straight from the snapshot, not recomputed from raw session
+events, so the widget can never drift from what the CLI shows.
+
+Fluent/Win11 dark-chrome look carried over from prototype-widget-v02.html
+(operator-approved direction), stripped of its hardcoded fake pipeline data.
+
+Served by serve.py (loopback-only static file server) -- fetch() of a
+file:// snapshot.json is blocked by browser security, so a static server
+is the minimal way to let this poll, per the issue's "no network server
+unless polling genuinely can't work" guidance.
+-->
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<title>Cortxt — sessions</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --mica-1: #1c1c1c;
+    --mica-2: #232323;
+    --layer: rgba(255,255,255,.05);
+    --layer-hover: rgba(255,255,255,.08);
+    --stroke: rgba(255,255,255,.09);
+    --stroke-strong: rgba(255,255,255,.15);
+    --text: rgba(255,255,255,.92);
+    --text-2: rgba(255,255,255,.62);
+    --text-3: rgba(255,255,255,.42);
+    --ok: #6ccb5f;
+    --warn: #ffb900;
+    --error: #ff99a4;
+    --info: #60cdff;
+    --sans: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Cascadia Mono", "Consolas", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    background: radial-gradient(circle at 25% 20%, #262b33 0%, #121212 55%);
+    font-family: var(--sans); color: var(--text);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 32px 16px;
+  }
+  .window {
+    width: 520px; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--stroke-strong);
+    background: var(--mica-1);
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  .titlebar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; background: var(--mica-2);
+    border-bottom: 1px solid var(--stroke);
+    font-size: 12px; color: var(--text-2);
+  }
+  .titlebar .caption { display: flex; gap: 8px; }
+  .titlebar .caption span {
+    width: 12px; height: 12px; border-radius: 50%; background: var(--layer);
+  }
+  .body { padding: 16px; }
+  .meta { font-size: 12px; color: var(--text-3); margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; font-weight: 600; color: var(--text-2);
+    padding: 6px 8px; border-bottom: 1px solid var(--stroke);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  td {
+    padding: 8px; border-bottom: 1px solid var(--stroke);
+    font-family: var(--mono);
+  }
+  tr:last-child td { border-bottom: none; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-family: var(--sans); font-size: 11px; font-weight: 600;
+  }
+  .badge.ok { background: rgba(108,203,95,.15); color: var(--ok); }
+  .badge.warn { background: rgba(255,185,0,.15); color: var(--warn); }
+  .badge.error { background: rgba(255,153,164,.15); color: var(--error); }
+  .badge.info { background: rgba(96,205,255,.15); color: var(--info); }
+  .empty { color: var(--text-3); font-size: 13px; padding: 8px; }
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <span>Cortxt — sessions</span>
+      <span class="caption"><span></span><span></span><span></span></span>
+    </div>
+    <div class="body">
+      <div class="meta" id="meta">loading…</div>
+      <table>
+        <thead><tr><th>Task</th><th>Status</th><th>Updated</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+const POLL_MS = 3000;
+
+function render(doc) {
+  document.getElementById("meta").textContent =
+    `${doc.sessions.length} session(s) — snapshot ${doc.generated_at}`;
+  const rows = document.getElementById("rows");
+  rows.innerHTML = "";
+  if (doc.sessions.length === 0) {
+    rows.innerHTML = '<tr><td colspan="3" class="empty">No sessions found.</td></tr>';
+    return;
+  }
+  for (const s of doc.sessions) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${s.task_id}</td>
+      <td><span class="badge ${s.severity}">${s.status}</span></td>
+      <td>${s.updated_at}</td>
+    `;
+    rows.appendChild(tr);
+  }
+}
+
+async function poll() {
+  try {
+    const res = await fetch("snapshot.json", { cache: "no-store" });
+    render(await res.json());
+  } catch (err) {
+    document.getElementById("meta").textContent = "waiting for snapshot.json (run `cortxt sessions`)…";
+  }
+}
+
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>
