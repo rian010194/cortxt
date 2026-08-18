@@ -181,6 +181,14 @@ adminytan (§3).
   utför granskningen i praktiken (Rikard manuellt, Codex-review, automatisk
   policy-check, eller en kombination), och vad som händer vid en addon som
   visar sig skadlig efter att den redan fått badge.
+- **Konkretiserar kopplingen till Fas 8 ytterligare:** en learning-kandidat
+  (`agent-platform/learning/candidate.py`) som visar sig användas mycket
+  ska med ett knapptryck kunna publiceras som en addon på "marknaden" —
+  d.v.s. PromotionGate-flödet (redan byggt, testat, 441 gröna tester)
+  utökas till att sluta med "publicera som addon" som ett möjligt utfall,
+  inte bara "aktivera internt." Detta stärker rekommendationen ovan att
+  addon-mekanismen bör byggas som en förlängning av PromotionGate, inte
+  som ett separat system.
 - Säkerhetsmodell för att lagra tredjepartsnycklar (Hermes/Claude/Codex-API-
   nycklar) centralt: kryptering i vila, åtkomstkontroll, vad händer vid
   intrång i adminytan (blast radius om en nyckel-broker komprometteras är
