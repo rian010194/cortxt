@@ -347,6 +347,97 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
+def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
+    """List known agent runtimes and whether each is on PATH (Fas 4 admin surface)."""
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from routing.discovery import discover_installed_runtimes
+
+        statuses = discover_installed_runtimes()
+        print(f"{'RUNTIME':<14} {'INSTALLED':<10} PATH")
+        print("-" * 60)
+        for s in statuses:
+            print(f"{s.runtime_id:<14} {'yes' if s.installed else 'no':<10} {s.path or ''}")
+
+        return ResultEnvelope(
+            status="succeeded",
+            evidence=[{"runtimes": [
+                {"runtime_id": s.runtime_id, "installed": s.installed, "path": s.path} for s in statuses
+            ]}],
+        )
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
+def _run_credentials(args: argparse.Namespace) -> ResultEnvelope:
+    """Admin surface over security.credential_broker.CredentialBroker (Fas 4).
+
+    `store` reads the secret from stdin, never a CLI argument -- an
+    argument would leak into shell history and the process list. `inject`
+    prints only the plaintext value to stdout; the envelope's own
+    evidence/artifacts never carry it, only the credential_id.
+    """
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from security.credential_broker import CredentialBroker, NotOperatorConfirmedError
+
+        store_dir = args.store_dir or (ap_path / ".credentials")
+        broker = CredentialBroker.with_dpapi(store_dir)
+
+        if args.credentials_command == "store":
+            # Pass --confirm straight through to broker.store() rather than
+            # short-circuiting here: the broker's own audit log is required
+            # to record every attempt, granted or denied (credential_broker.py's
+            # own documented invariant) -- a CLI-side pre-check bypassed that
+            # for every unconfirmed attempt made through this admin surface.
+            value = sys.stdin.read().rstrip("\n")
+            broker.store(args.id, value, operator_confirmed=args.confirm)
+            return ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
+
+        # inject
+        value = broker.inject(args.id, requesting_runtime=args.runtime, purpose=args.purpose)
+        print(value)
+        return ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
+    except NotOperatorConfirmedError as e:
+        return ResultEnvelope(status="failed", error={"category": "not_confirmed", "message": str(e)})
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
+def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
+    """Admin surface over learning.addon_review.AddonReviewGate (Fas 5).
+
+    Only the `submit` action: run one candidate through the review gate
+    and print the verdict. No addon registry/list here -- none exists yet
+    (see .hermes/plans/2026-08-19-orchestrator-dispatch-v01.md); inventing
+    one is a separate, larger decision, not CLI plumbing over already-tested code.
+    """
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from learning.addon_review import AddonReviewGate
+        from learning.promotion_gate import PromotionGate
+
+        matrix = {
+            "complete": not args.incomplete,
+            "codex_security_passed": args.codex_security_passed,
+        }
+        verdict = AddonReviewGate(PromotionGate()).submit(matrix, args.candidate_id)
+        print(verdict)
+
+        return ResultEnvelope(
+            status="succeeded" if verdict != "REJECT" else "failed",
+            evidence=[{"candidate_id": args.candidate_id, "verdict": verdict, "matrix": matrix}],
+        )
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
 def main(argv: list[str] | None = None) -> int:
     """Unified CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -425,6 +516,33 @@ def main(argv: list[str] | None = None) -> int:
     dispatch_parser.add_argument("--model", help="Model override passed to hermes -m (optional)")
     dispatch_parser.add_argument("--provider", help="Provider override passed to hermes --provider (optional)")
     dispatch_parser.set_defaults(func=_run_dispatch)
+
+    # runtimes subcommand
+    runtimes_parser = sub.add_parser("runtimes", help="List known agent runtimes and whether each is on PATH")
+    runtimes_parser.set_defaults(func=_run_runtimes)
+
+    # credentials subcommand
+    credentials_parser = sub.add_parser("credentials", help="Admin surface over the credential broker")
+    credentials_sub = credentials_parser.add_subparsers(dest="credentials_command", required=True)
+    cred_store_parser = credentials_sub.add_parser("store", help="Store a credential (value read from stdin)")
+    cred_store_parser.add_argument("--id", required=True, help="Credential id")
+    cred_store_parser.add_argument("--confirm", action="store_true", help="Required to actually persist the credential")
+    cred_store_parser.add_argument("--store-dir", type=Path, help="Credential store dir (default: agent-platform/.credentials)")
+    cred_inject_parser = credentials_sub.add_parser("inject", help="Print a credential's value (purpose-bound)")
+    cred_inject_parser.add_argument("--id", required=True, help="Credential id")
+    cred_inject_parser.add_argument("--runtime", required=True, help="Requesting runtime identity")
+    cred_inject_parser.add_argument("--purpose", required=True, help="Why this credential is being requested")
+    cred_inject_parser.add_argument("--store-dir", type=Path, help="Credential store dir (default: agent-platform/.credentials)")
+    credentials_parser.set_defaults(func=_run_credentials)
+
+    # addons subcommand
+    addons_parser = sub.add_parser("addons", help="Admin surface over the addon review gate")
+    addons_sub = addons_parser.add_subparsers(dest="addons_command", required=True)
+    addons_submit_parser = addons_sub.add_parser("submit", help="Submit one candidate through the addon review gate")
+    addons_submit_parser.add_argument("--candidate-id", required=True, help="e.g. addon@my-addon")
+    addons_submit_parser.add_argument("--codex-security-passed", action="store_true", help="Codex security review passed")
+    addons_submit_parser.add_argument("--incomplete", action="store_true", help="Mark the evidence matrix incomplete (fails closed)")
+    addons_parser.set_defaults(func=_run_addons)
 
     args = parser.parse_args(argv)
 
