@@ -29,7 +29,7 @@ class PromotionRule:
     kind: str  # "eval" | "safety" | "operator_gate"
     metric: str | None = None
     threshold: float | None = None
-    comparator: str = "gte"  # "gte" | "gt" | "lte" | "eq"
+    comparator: str = "gt"  # default "gt" = strictly-better required (Kimi Task4 P1: "gte" auto-promoted ties)
     operator_scope: str | None = None
 
 
@@ -53,7 +53,8 @@ class PromotionGate:
 
     def evaluate(self, matrix: Mapping[str, Any], candidate_id: str) -> str:
         """Return PROMOTE | AWAIT_OPERATOR | REJECT. Fail-closed on any doubt (P0.2/P0.3/P1.7)."""
-        candidate_type = candidate_id.split("@", 1)[0]
+        # Kimi Task4 P2.1: normalize type prefix (strip/lower) so "Tool@..." can't bypass the gate.
+        candidate_type = candidate_id.split("@", 1)[0].strip().lower()
         rules = list(self._rules.get(candidate_type, []))
         # union the unbreakable operator gates for this type (P0.2) — cannot be removed.
         if candidate_type in MANDATORY_OPERATOR_GATES:
@@ -74,7 +75,11 @@ class PromotionGate:
                 v = matrix.get(rule.metric)
                 if v is None:
                     return "REJECT"  # missing metric -> cannot decide -> fail-closed
-                if _compare(v, rule.threshold or 0.0, rule.comparator):
+                try:
+                    passes = _compare(v, rule.threshold or 0.0, rule.comparator)
+                except ValueError:
+                    return "REJECT"  # Kimi Task4 P2.3: unknown comparator -> fail-closed, not an exception
+                if passes:
                     continue  # this rule passes (strictly better / threshold met)
                 if v == (rule.threshold or 0.0):
                     return "AWAIT_OPERATOR"  # tie: not worse, not strictly better (P1.7)

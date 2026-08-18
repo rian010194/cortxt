@@ -79,6 +79,37 @@ def test_neutral_tie_not_promoted():
 
 
 def test_incomplete_matrix_fail_closed():
-    """Plan-review P1.2: incomplete EvidenceMatrix -> never PROMOTE (fail-closed)."""
+    """Plan-review P1.2: incomplete EvidenceMatrix is ALWAYS REJECT (never a weaker AWAIT either)."""
     gate = PromotionGate(_rules(_POLICY_RULE))
-    assert gate.evaluate(_matrix(0.1, complete=False), "policy@np@v1") != "PROMOTE"
+    assert gate.evaluate(_matrix(0.1, complete=False), "policy@np@v1") == "REJECT"
+
+
+def test_default_comparator_is_strict_better():
+    """Kimi Task4 P1: with the DEFAULT comparator (now 'gt'), a tie (delta=0) must NOT auto-promote."""
+    default_rule = PromotionRule("policy", kind="eval", metric="baseline_delta", threshold=0.0)
+    assert default_rule.comparator == "gt"  # default is strictly-better
+    gate = PromotionGate(_rules(default_rule))
+    assert gate.evaluate(_matrix(0.1), "policy@np@v1") == "PROMOTE"
+    assert gate.evaluate(_matrix(0.0), "policy@np@v1") == "AWAIT_OPERATOR"  # tie not promoted
+
+
+def test_mixed_case_type_prefix_normalized():
+    """Kimi Task4 P2.1: 'Tool@...' / ' tool@...' must still hit MANDATORY_OPERATOR_GATES (no bypass)."""
+    gate = PromotionGate({})
+    assert gate.evaluate(_matrix(0.9), "Tool@script@v1") == "AWAIT_OPERATOR"
+    assert gate.evaluate(_matrix(0.9), " tool@script@v1") == "AWAIT_OPERATOR"
+
+
+def test_registered_operator_gate_rule_forces_await():
+    """Kimi Task4 P2.2: a PromotionRule(kind='operator_gate') in the registry also forces AWAIT (not just tool)."""
+    custom_gate = PromotionRule("sandbox-exec", kind="operator_gate", operator_scope="sandbox-exec")
+    gate = PromotionGate(_rules(custom_gate))
+    assert gate.evaluate(_matrix(0.9), "sandbox-exec@run@v1") == "AWAIT_OPERATOR"
+
+
+def test_unknown_comparator_fails_closed():
+    """Kimi Task4 P2.3: an unknown comparator in a rule -> REJECT (fail-closed), not an exception leak."""
+    bad_rule = PromotionRule("policy", kind="eval", metric="baseline_delta", threshold=0.0, comparator="??")
+    gate = PromotionGate(_rules(bad_rule))
+    assert gate.evaluate(_matrix(0.1), "policy@np@v1") == "REJECT"
+
