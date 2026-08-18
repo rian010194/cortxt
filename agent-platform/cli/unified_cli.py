@@ -267,10 +267,69 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
     existing, already-tested serve.main().
     """
     try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
         from widget import serve as widget_serve
 
         widget_serve.main()
         return ResultEnvelope(status="succeeded", artifacts=["widget:stopped"])
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
+def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
+    """Orchestrator Dispatch v0.1: route a tagged task to an engine, invoke
+    it, and record the outcome in the same session_state Fas 2 already
+    tracks. See .hermes/plans/2026-08-19-orchestrator-dispatch-v01.md.
+
+    "claude-direct" has no headless invocation here -- there is no
+    confirmed one-shot Claude Code CLI entry point in this repo, and
+    guessing one would repeat the exact mistake ADR-022 was written to
+    avoid (coding in an assumption nothing verified). Routed-to-claude-direct
+    tasks are recorded as "blocked" -- picked up by a human/Claude Code
+    session, not auto-executed.
+    """
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from routing import hermes_invoker
+        from routing.engine_manifest import DEFAULT_MANIFESTS, route
+        from runtime import session_state as state
+
+        tags = [t.strip() for t in args.tags.split(",") if t.strip()]
+        choice = route(tags, DEFAULT_MANIFESTS)
+
+        store = args.store or (_get_agent_platform_path() / ".sessions")
+        session = state.create(store, task_id=args.task_id)
+        session_id = session["session_id"]
+
+        evidence = {
+            "engine": choice.engine_id,
+            "routing_reason": choice.reason,
+            "matched_tag": choice.matched_tag,
+            "excluded": list(choice.excluded),
+        }
+
+        if choice.engine_id == "hermes":
+            result = hermes_invoker.invoke_hermes(
+                args.hermes_profile, args.prompt, timeout_seconds=args.timeout,
+                model=args.model, provider=args.provider,
+            )
+            state.append(store, session_id, 0, "session.terminal", {"status": result["status"]})
+            evidence["hermes_result"] = {k: v for k, v in result.items() if k != "stdout"}
+            status = "succeeded" if result["status"] == "succeeded" else "failed"
+        else:
+            reason = f"routed to {choice.engine_id}: no invoker wired for this engine yet"                 if choice.engine_id != "claude-direct"                 else "routed to claude-direct: pick this up in a Claude Code session"
+            state.append(store, session_id, 0, "session.terminal", {"status": "blocked", "reason": reason})
+            status = "succeeded"  # dispatch itself succeeded: routing + recording worked
+
+        return ResultEnvelope(
+            status=status,
+            artifacts=[f"session:{session_id}", f"engine:{choice.engine_id}"],
+            evidence=[evidence],
+        )
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
@@ -341,6 +400,18 @@ def main(argv: list[str] | None = None) -> int:
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
     widget_parser.set_defaults(func=_run_widget)
+
+    # dispatch subcommand
+    dispatch_parser = sub.add_parser("dispatch", help="Route a tagged task to an engine and invoke it (Orchestrator Dispatch v0.1)")
+    dispatch_parser.add_argument("--tags", required=True, help="Comma-separated task-shape tags (e.g. research,background-task)")
+    dispatch_parser.add_argument("--task-id", required=True, help="Task identity recorded in session state")
+    dispatch_parser.add_argument("--prompt", required=True, help="Prompt to send if routed to an LLM-backed engine")
+    dispatch_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
+    dispatch_parser.add_argument("--hermes-profile", default="builder", help="Hermes profile to use if routed to hermes (default: builder)")
+    dispatch_parser.add_argument("--timeout", type=int, default=120, help="Timeout in seconds for an engine invocation (default: 120)")
+    dispatch_parser.add_argument("--model", help="Model override passed to hermes -m (optional)")
+    dispatch_parser.add_argument("--provider", help="Provider override passed to hermes --provider (optional)")
+    dispatch_parser.set_defaults(func=_run_dispatch)
 
     args = parser.parse_args(argv)
 

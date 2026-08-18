@@ -46,6 +46,15 @@ def test_load_sessions_reflects_terminal_status_and_severity(tmp_path):
     assert sessions[0]["severity"] != status.STATUS_SEVERITY["blocked"]
 
 
+def test_load_sessions_maps_timed_out_status_to_error_severity(tmp_path):
+    store = tmp_path / "sessions"
+    session = state.create(store, task_id="orchestrator-dispatch-timeout")
+    state.append(store, session["session_id"], 0, "session.terminal", {"status": "timed_out"})
+    sessions = status.load_sessions(store)
+    assert sessions[0]["status"] == "timed_out"
+    assert sessions[0]["severity"] == "error"
+
+
 def test_load_sessions_skips_and_logs_malformed_session(tmp_path, caplog):
     store = tmp_path / "sessions"
     session = state.create(store, task_id="good-session")
