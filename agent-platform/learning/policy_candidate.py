@@ -52,6 +52,18 @@ def add_weights_constraint_rules() -> list[PromotionRule]:
     ]
 
 
+def constraint_matrix(weights: Mapping[str, float]) -> dict[str, bool]:
+    """Populate the matrix with the constraint-metric values so the gate's safety rules are actually
+    exercised (Kimi Task8-11 P1: `normalized()` was never wired in — a violating weight set passed the gate
+    by accident because the metric key was absent and `None is not False`)."""
+    vals = {k: float(v) for k, v in weights.items()}
+    return {
+        "normalized_weights": normalized(weights),
+        "non_negative_weights": all(v >= 0.0 for v in vals.values()),
+        "bounded_weights": all(0.0 <= v <= 1.0 for v in vals.values()),
+    }
+
+
 class PolicyCandidateAdapter:
     """Maps a CandidatePathScore-style weight set to a versioned policy Candidate."""
 
@@ -61,3 +73,11 @@ class PolicyCandidateAdapter:
             slot = _FIELD_TO_W.get(field, field)  # accept both human names and raw w1..w7
             payload[slot] = float(value)
         return Candidate(type="policy", name=name, version=version, payload=payload)
+
+    def rules(self) -> list[PromotionRule]:
+        """§31-equivalent for a policy candidate: constraint safety + no-regression + strictly-better eval
+        (auto-promotable). Includes no_regression safety rule so the matrix field is not dead data (Kimi N1)."""
+        return add_weights_constraint_rules() + [
+            PromotionRule("policy", kind="safety", metric="no_regression"),
+            PromotionRule("policy", kind="eval", metric="baseline_delta", threshold=0.0, comparator="gt")
+        ]
