@@ -18,7 +18,12 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 # candidate types whose effect class mandates a human gate (§31/§32.2) — never bypassable.
-MANDATORY_OPERATOR_GATES = {"tool"}
+# "addon" added for Fas 5 (v.02 wayfinder): a community addon can install
+# executable logic (vision doc §6), same self-approval-impossible guarantee
+# as "tool". See learning/addon_review.py for the Codex-security precondition
+# gate this alone does not express (MANDATORY_OPERATOR_GATES short-circuits
+# to AWAIT_OPERATOR before any other rule is evaluated, by design).
+MANDATORY_OPERATOR_GATES = {"tool", "addon"}
 
 VERDICTS = ("PROMOTE", "AWAIT_OPERATOR", "REJECT")
 
