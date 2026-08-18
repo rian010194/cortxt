@@ -12,7 +12,7 @@ dependencies = ["pyyaml>=6", "jsonschema>=4"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["reasoning*", "portability*", "runtime*", "routing*"]
+include = ["reasoning*", "portability*", "runtime*", "routing*", "security*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
