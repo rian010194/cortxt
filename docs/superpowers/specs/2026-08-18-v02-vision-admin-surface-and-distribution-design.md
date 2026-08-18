@@ -170,6 +170,17 @@ adminytan (§3).
   fjärde begrepp? Om addons kan installera körbar logik (inte bara UI)
   gäller samma granskningskrav som för skills/tools — vem godkänner en
   addon innan den får köra?
+  **Delvis besvarat:** Rikard äger/underhåller kärn-addons, men
+  **community-addons tillåts** — modellen är Obsidian-plugins: en
+  "granskad av oss"-badge markerar vad som gått igenom review, ogranskade
+  community-addons finns kvar men syns som just ogranskade. Detta är i
+  praktiken samma form som Fas 8:s PromotionGate (kandidat → evidens →
+  verifierad befordran, §18/plan `2026-08-18-fas8-...`), fast applicerad
+  på addons istället för learning-kandidater — sannolikt samma mekanism
+  bör återanvändas, inte byggas parallellt. Fortfarande öppet: vem/vad
+  utför granskningen i praktiken (Rikard manuellt, Codex-review, automatisk
+  policy-check, eller en kombination), och vad som händer vid en addon som
+  visar sig skadlig efter att den redan fått badge.
 - Säkerhetsmodell för att lagra tredjepartsnycklar (Hermes/Claude/Codex-API-
   nycklar) centralt: kryptering i vila, åtkomstkontroll, vad händer vid
   intrång i adminytan (blast radius om en nyckel-broker komprometteras är
