@@ -32,6 +32,40 @@ def test_dispatch_routes_research_tag_to_hermes_and_invokes_it(tmp_path):
     assert terminal["payload"]["status"] == "succeeded"
 
 
+def test_dispatch_defaults_research_tag_to_researcher_hermes_profile(tmp_path):
+    """Tonight's evidence: the `builder` profile is where both Fas 2
+    Kanban-dispatch failures (#165, #166) and both admin-surface-CLI
+    failures (#174, #175) happened. A research-shaped task defaulting to
+    `builder` just because that was --hermes-profile's flag default,
+    regardless of what actually matched, was never a deliberate choice."""
+    store = tmp_path / "sessions"
+    fake_result = {"status": "succeeded", "profile": "researcher", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake_invoke:
+        main([
+            "dispatch",
+            "--tags", "research",
+            "--task-id", "survey-something-else",
+            "--prompt", "survey the landscape",
+            "--store", str(store),
+        ])
+    assert fake_invoke.call_args.args[0] == "researcher"
+
+
+def test_dispatch_explicit_hermes_profile_overrides_the_tag_default(tmp_path):
+    store = tmp_path / "sessions"
+    fake_result = {"status": "succeeded", "profile": "coordinator", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake_invoke:
+        main([
+            "dispatch",
+            "--tags", "research",
+            "--task-id", "survey-with-override",
+            "--prompt", "survey the landscape",
+            "--store", str(store),
+            "--hermes-profile", "coordinator",
+        ])
+    assert fake_invoke.call_args.args[0] == "coordinator"
+
+
 def test_dispatch_leaves_no_orphaned_running_session_when_invoke_raises(tmp_path):
     """A session is created, then hermes_invoker raises (e.g.
     HermesInvocationError) before the terminal event is written. Must not
