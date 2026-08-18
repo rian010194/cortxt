@@ -304,7 +304,16 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
         store = args.store or (_get_agent_platform_path() / ".sessions")
         session = state.create(store, task_id=args.task_id)
         session_id = session["session_id"]
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
+    # From here on, a session exists on disk. Any exception below must
+    # still leave it with a terminal event -- otherwise it's stuck showing
+    # "running" forever even though the CLI already reported failure
+    # (caught by review: a whitespace-only --prompt or a missing hermes
+    # binary raised between session creation and the terminal append,
+    # orphaning the session).
+    try:
         evidence = {
             "engine": choice.engine_id,
             "routing_reason": choice.reason,
@@ -321,7 +330,10 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
             evidence["hermes_result"] = {k: v for k, v in result.items() if k != "stdout"}
             status = "succeeded" if result["status"] == "succeeded" else "failed"
         else:
-            reason = f"routed to {choice.engine_id}: no invoker wired for this engine yet"                 if choice.engine_id != "claude-direct"                 else "routed to claude-direct: pick this up in a Claude Code session"
+            if choice.engine_id == "claude-direct":
+                reason = "routed to claude-direct: pick this up in a Claude Code session"
+            else:
+                reason = f"routed to {choice.engine_id}: no invoker wired for this engine yet"
             state.append(store, session_id, 0, "session.terminal", {"status": "blocked", "reason": reason})
             status = "succeeded"  # dispatch itself succeeded: routing + recording worked
 
@@ -331,6 +343,7 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
             evidence=[evidence],
         )
     except Exception as e:
+        state.append(store, session_id, 0, "session.terminal", {"status": "failed", "reason": str(e)})
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 

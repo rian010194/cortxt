@@ -32,6 +32,25 @@ def test_dispatch_routes_research_tag_to_hermes_and_invokes_it(tmp_path):
     assert terminal["payload"]["status"] == "succeeded"
 
 
+def test_dispatch_leaves_no_orphaned_running_session_when_invoke_raises(tmp_path):
+    """A session is created, then hermes_invoker raises (e.g.
+    HermesInvocationError) before the terminal event is written. Must not
+    be left stuck showing "running" forever -- caught by review."""
+    store = tmp_path / "sessions"
+    with patch("routing.hermes_invoker.invoke_hermes", side_effect=RuntimeError("hermes not found")):
+        exit_code = main([
+            "dispatch",
+            "--tags", "research",
+            "--task-id", "invoker-raises",
+            "--prompt", "survey the landscape",
+            "--store", str(store),
+        ])
+    assert exit_code == 1
+    terminal = _sessions(store)[0]["events"][-1]
+    assert terminal["event_type"] == "session.terminal"
+    assert terminal["payload"]["status"] == "failed"
+
+
 def test_dispatch_reports_failure_when_hermes_invocation_fails(tmp_path):
     store = tmp_path / "sessions"
     fake_result = {"status": "failed", "profile": "researcher", "stdout": "", "stderr": "boom", "elapsed_seconds": 0.5}
