@@ -38,3 +38,29 @@ def test_content_sum_cyclic_list_terminates():
     a.append(a)  # cyclic
     a.append(5)
     assert _content_sum(a) == 5
+
+
+def test_integrate_excludes_lost_child_and_marks_incomplete():
+    parent = ProblemState(content={"branches": []})
+    ok_child = ProblemState(content=5)
+    ok_child._computed = 5
+    lost_child = ProblemState(content=99)  # no ._computed — simulates a lost child
+    parent.add_child(ok_child)
+    parent.add_child(lost_child)
+
+    total = integrate_results(parent, lost_children={lost_child.id})
+
+    assert total == 5  # lost_child excluded, not summed via _content_sum fallback
+    assert parent._incomplete is True
+
+
+def test_integrate_stays_complete_when_no_children_lost():
+    parent = ProblemState(content={"branches": []})
+    child = ProblemState(content=5)
+    child._computed = 5
+    parent.add_child(child)
+
+    total = integrate_results(parent)
+
+    assert total == 5
+    assert parent._incomplete is False

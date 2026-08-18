@@ -17,6 +17,11 @@ class ReasoningNode:
     contradiction: float = 0.0  # motsägelsegrad [0,1]
     confidence: float = 0.5
     visited_count: int = 0     # for återbesök/attractor detection
+    # §9 typing (target architecture §9.1/§9.3) — added for Fas 6, backward-compatible
+    node_type: Optional[str] = None      # goal|constraint|concept|claim|... (§9.1)
+    metadata: Optional[dict] = None      # minsta metadata: provenance, confidence_source,
+                                         # evidence_refs, data_class, reasoning_step_id,
+                                         # created/updated, status, version (§9.3)
 
     def touch(self) -> None:
         self.visited_count += 1
@@ -28,16 +33,19 @@ class ProblemSpace:
     def __init__(self) -> None:
         self._nodes: dict[str, ReasoningNode] = {}
         self._edges: dict[str, set[str]] = {}
+        self._edge_types: dict[tuple[str, str], set[str]] = {}  # (src, dst) -> set(rel_type)
 
     # -- construction ----------------------------------------------------- #
     def add_node(self, node: ReasoningNode) -> None:
         self._nodes[node.id] = node
         self._edges.setdefault(node.id, set())
 
-    def add_edge(self, src: str, dst: str) -> None:
+    def add_edge(self, src: str, dst: str, rel_type: Optional[str] = None) -> None:
         self.add_node_id(src)
         self.add_node_id(dst)
         self._edges[src].add(dst)
+        if rel_type is not None:
+            self._edge_types.setdefault((src, dst), set()).add(rel_type)
 
     def add_node_id(self, nid: str) -> None:
         if nid not in self._nodes:
@@ -54,6 +62,22 @@ class ProblemSpace:
 
     def successors(self, nid: str) -> list[str]:
         return sorted(self._edges.get(nid, set()))
+
+    # -- §9 typing accessors (Fas 6, backward-compatible) ----------------- #
+    def edge_types(self, src: str, dst: str) -> list[str]:
+        """Relation types on edge (src,dst); [] when the edge is untyped."""
+        return sorted(self._edge_types.get((src, dst), set()))
+
+    def node_type(self, nid: str) -> Optional[str]:
+        """Authoritative node type, derived from the node itself (P2.1: node is master)."""
+        n = self._nodes.get(nid)
+        return n.node_type if n else None
+
+    def iter_edges(self):
+        """Yield (src, dst, [types]) over all edges (typed or not)."""
+        for src in self._nodes:
+            for dst in self._edges.get(src, set()):
+                yield src, dst, self.edge_types(src, dst)
 
     # -- graph algorithms ------------------------------------------------- #
     def neighbors(self, nid: str, hops: int = 1) -> set[str]:

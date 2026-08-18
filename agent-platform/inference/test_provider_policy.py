@@ -39,3 +39,18 @@ class ProviderPolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_vastai_selfhosted_route_allowed_at_l0():
+    evidence = ProviderEvidence(provider_id="cortxt-selfhosted-vastai-qwen3-8b", approved=True)
+    decision = evaluate_provider("L0", evidence)
+    assert decision.allowed is True
+
+def test_vastai_selfhosted_route_denied_at_l1_without_zdr():
+    evidence = ProviderEvidence(
+        provider_id="cortxt-selfhosted-vastai-qwen3-8b", approved=True,
+        zero_data_retention=False,
+    )
+    decision = evaluate_provider("L1", evidence)
+    assert decision.allowed is False
+    assert "missing_zero_data_retention" in decision.reasons

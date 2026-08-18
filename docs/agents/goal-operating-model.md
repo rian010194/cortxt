@@ -22,7 +22,7 @@ schedule or a commitment with dates — it describes shape, not timing.
 
 The nearer milestone. Reached when the validation plan in ADR-015 (T1–T5) is
 complete: Rikard uses it, a second developer uses it, it generalizes beyond
-Norcom/CSL, it demonstrates provider neutrality, and provider assurance is
+proof environment B, it demonstrates provider neutrality, and provider assurance is
 verified for the data classes it actually handles.
 
 **What the product does:** delivers a provider-/data-class-governed,
@@ -86,7 +86,7 @@ by any single profile's problem domain.
 
 ## Open question: the wedge after B
 
-ADR-015 names compliance/gap-analysis (wedge C, via Norcom/CSL) as "a
+ADR-015 names compliance/gap-analysis (wedge C, via proof environment B) as "a
 natural second step," but this is explicitly **not decided**. The next
 wedge is chosen by what T1–T5 actually prove about Milestone 1, not
 pre-committed now. Do not treat wedge C as roadmap until a new ADR says so.
