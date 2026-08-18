@@ -105,6 +105,13 @@ class CandidateRegistry:
         return [c for c in (self._row_to_candidate(r) for r in rows) if c is not None]
 
     def set_active(self, type_: str, name: str, version: str) -> None:
+        # Kimi N-01: a candidate must EXIST before it can become active (no ghost active-pointer).
+        exists = self._conn.execute(
+            "SELECT 1 FROM candidates WHERE type=? AND name=? AND version=?",
+            (type_, name, version),
+        ).fetchone()
+        if exists is None:
+            raise ValueError(f"cannot set active: unknown candidate {type_}@{name}@{version}")
         promoted_from = self.get_active(type_, name)
         self._conn.execute(
             "INSERT INTO active_candidates (type,name,active_version,promoted_from,updated_at) "
