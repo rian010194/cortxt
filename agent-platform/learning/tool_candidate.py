@@ -25,10 +25,8 @@ class ToolCandidateAdapter:
         )
 
     def rules(self, candidate: Candidate) -> list[PromotionRule]:
+        # Honest fail-closed (Kimi Task8-11 P1): MANDATORY_OPERATOR_GATES = {"tool"} makes EVERY tool
+        # candidate AWAIT_OPERATOR regardless of effect class, so the adapter's rule set is always the
+        # operator gate — an [eval,safety] branch here would be dead code the gate permanently overrules.
         effect = (candidate.payload or {}).get("effect_class", "")
-        if effect in _EXTERNAL_EFFECTS:
-            return [PromotionRule("tool", kind="operator_gate", operator_scope=effect)]
-        return [
-            PromotionRule("tool", kind="eval", metric="baseline_delta", threshold=0.0, comparator="gt"),
-            PromotionRule("tool", kind="safety", metric="no_regression"),
-        ]
+        return [PromotionRule("tool", kind="operator_gate", operator_scope=effect or "tool")]
