@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import Iterable
+from datetime import datetime, timezone
 
 from .candidate import Candidate
 
@@ -124,6 +124,24 @@ class CandidateRegistry:
             "SELECT promoted_from FROM active_candidates WHERE type=? AND name=?", (type_, name)
         ).fetchone()
         return row[0] if row else None
+
+    def restore_active(self, type_: str, name: str, version: str) -> None:
+        """Atomically restore the active pointer to ``version`` (used by rollback)."""
+        self._conn.execute(
+            "UPDATE active_candidates SET active_version=?, promoted_from=NULL, "
+            "updated_at=datetime('now') WHERE type=? AND name=?",
+            (version, type_, name),
+        )
+        self._conn.commit()
+
+    def mark_rolled_back(self, type_: str, name: str, version: str) -> None:
+        """Audit-mark a candidate as rolled_back (used by rollback)."""
+        self._conn.execute(
+            "UPDATE candidates SET status='rolled_back', rolled_back_at=? "
+            "WHERE type=? AND name=? AND version=?",
+            (datetime.now(timezone.utc).isoformat(), type_, name, version),
+        )
+        self._conn.commit()
 
     @staticmethod
     def _row_to_candidate(row) -> Candidate | None:

@@ -18,6 +18,9 @@ from typing import Any, Mapping
 class EvidenceClassifier:
     """Typifies candidate evidence into the four Agent-Memory-inspired groups."""
 
+    # minimum fraction of the fixture set that must be covered for evidence to carry weight (Kimi P2.6)
+    _MIN_FIXTURE_COVERAGE = 0.5
+
     def phase_a(self, payload: Mapping[str, Any], provenance: str | None) -> dict[str, Any]:
         """Initial classification of a candidate's payload at submit (Kimi P2.6 phase a).
 
@@ -44,3 +47,18 @@ class EvidenceClassifier:
         if provenance:
             events["provenance"] = provenance
         return {"facts": facts, "events": events, "instructions": instructions, "tasks": tasks}
+
+    def verify(self, candidate, matrix: Mapping[str, Any]) -> bool:
+        """Phase (b) — verifier-checks over the EvidenceMatrix (Kimi P2.6).
+
+        Evidence may NOT carry promotion weight unless the matrix is complete, has no regression, and
+        covers a sufficient fraction of the fixture set. Fail-closed: any doubt returns False.
+        """
+        if not matrix.get("complete", True):
+            return False
+        if matrix.get("no_regression") is not True:
+            return False
+        coverage = matrix.get("fixture_coverage", 1.0)
+        if coverage is None or coverage < self._MIN_FIXTURE_COVERAGE:
+            return False
+        return True
