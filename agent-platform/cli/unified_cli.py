@@ -10,6 +10,7 @@ Commands:
   supervisor       — Supervisor operations (supervisor_cli.py)
   coding           — Coding loop execution (coding_loop_cli.py)
   rlm              — RLM node execution (rlm_child_cli.py)
+  sessions         — List real session state, write widget snapshot (status.py)
 """
 
 from __future__ import annotations
@@ -229,6 +230,35 @@ def _run_rlm(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
+def _run_sessions(args: argparse.Namespace) -> ResultEnvelope:
+    """List sessions from real session state; write the widget's snapshot.
+
+    Normal import (`cli` sibling module `status.py`, `runtime.session_state`
+    underneath it) -- unlike the other subcommands here, there's no reason
+    this one needs importlib.util dynamic loading.
+    """
+    try:
+        cli_dir = Path(__file__).parent
+        if str(cli_dir) not in sys.path:
+            sys.path.insert(0, str(cli_dir))
+        import status as status_cli
+
+        store = args.store or (_get_agent_platform_path() / ".sessions")
+        snapshot = args.snapshot or (_get_agent_platform_path() / "widget" / "snapshot.json")
+
+        sessions = status_cli.load_sessions(store)
+        status_cli.write_snapshot(sessions, snapshot)
+        print(status_cli.render_table(sessions))
+
+        return ResultEnvelope(
+            status="succeeded",
+            artifacts=[f"sessions:{len(sessions)}", f"snapshot:{snapshot}"],
+            evidence=[{"sessions": sessions}],
+        )
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
 def main(argv: list[str] | None = None) -> int:
     """Unified CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -285,6 +315,12 @@ def main(argv: list[str] | None = None) -> int:
     rlm_parser.add_argument("--context-ref-json", type=Path, required=True, help="Context ref JSON path")
     rlm_parser.add_argument("--depth", type=int, required=True, help="Depth")
     rlm_parser.set_defaults(func=_run_rlm)
+
+    # sessions subcommand
+    sessions_parser = sub.add_parser("sessions", help="List real session state, write widget snapshot")
+    sessions_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
+    sessions_parser.add_argument("--snapshot", type=Path, help="Snapshot output path (default: agent-platform/widget/snapshot.json)")
+    sessions_parser.set_defaults(func=_run_sessions)
 
     args = parser.parse_args(argv)
 
