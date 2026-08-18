@@ -113,3 +113,10 @@ def test_unknown_comparator_fails_closed():
     gate = PromotionGate(_rules(bad_rule))
     assert gate.evaluate(_matrix(0.1), "policy@np@v1") == "REJECT"
 
+
+def test_unknown_rule_kind_fails_closed():
+    """Kimi Task4 P3: an unknown rule.kind must NOT be silently fail-open — REJECT."""
+    bad_rule = PromotionRule("policy", kind="evel", metric="baseline_delta", threshold=0.0)  # typo
+    gate = PromotionGate(_rules(bad_rule))
+    assert gate.evaluate(_matrix(0.1), "policy@np@v1") == "REJECT"
+

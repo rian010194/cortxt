@@ -90,5 +90,8 @@ class PromotionGate:
                         return "REJECT"  # safety constraint violated
                 elif matrix.get("no_regression") is not True:
                     return "REJECT"
+            else:
+                # Kimi Task4 P3: unknown rule kind is fail-OPEN-prone — treat as fail-closed (REJECT).
+                return "REJECT"
         # All configured rules passed for a registered type with an auto-promotable rule.
         return "PROMOTE"
