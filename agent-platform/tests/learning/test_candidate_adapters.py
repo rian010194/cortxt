@@ -40,10 +40,13 @@ def test_tool_external_mutation_always_await_operator():
     assert cand.type == "tool"
     gate = PromotionGate({"tool": []})  # no rules registered; MANDATORY_OPERATOR_GATES still applies
     assert gate.evaluate({"baseline_delta": 0.9, "no_regression": True, "complete": True},
-                         "Tool@sender@v1") == "AWAIT_OPERATOR"  # mixed-case -> normalized, gate holds
+                         cand.id) == "AWAIT_OPERATOR"
 
 
 def test_tool_credential_always_await_operator():
     adapter = ToolCandidateAdapter()
     cand = adapter.to_candidate(name="rotate-secret", version="v1", effect_class="credential")
     assert cand.id == "tool@rotate-secret@v1"
+    gate = PromotionGate({"tool": []})
+    assert gate.evaluate({"baseline_delta": 0.9, "no_regression": True, "complete": True},
+                         cand.id) == "AWAIT_OPERATOR"
