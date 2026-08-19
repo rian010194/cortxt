@@ -156,7 +156,7 @@ concretely-named consumers — Pi and the operator's own coding agent — are
 MCP-capable agent runtimes already, by construction of what they are (coding
 agents in the current MCP-centric tooling ecosystem). LangGraph, CrewAI, and
 the Vercel AI SDK — the three frameworks ADR-023's Context section names —
-all ship first-class MCP client support as of the current tooling landscape.
+all ship first-class MCP client support as of the current tooling landscape (not independently verified for this spike).
 Choosing MCP means these consumers need **zero new protocol-adapter code** on
 their side to call Cortxt; choosing SDK or REST means Cortxt (or the
 consumer) writes bespoke integration code per consumer, every time.
@@ -179,7 +179,7 @@ consumer) writes bespoke integration code per consumer, every time.
 3. **Zero-integration-cost for the consumers that are actually named**, not
    hypothetical ones: Pi and the operator's own coding agent already speak
    MCP as agent runtimes; the major external orchestration frameworks named
-   in ADR-023 (LangGraph, CrewAI, Vercel AI SDK) already ship MCP clients.
+   in ADR-023 (LangGraph, CrewAI, Vercel AI SDK) already ship MCP clients (not independently verified for this spike).
    SDK would mean writing and maintaining N language-specific packages
    forever; REST would mean every consumer hand-rolling HTTP-calling glue
    against a bespoke schema. MCP is the one form where "polyglot" is solved
