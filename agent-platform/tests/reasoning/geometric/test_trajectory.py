@@ -2,7 +2,10 @@
 
 import json
 
+import pytest
+
 from reasoning.geometric import ProblemSpace, ReasoningNode, TrajectoryReport
+from reasoning.geometric.trajectory import apply_confidence_update
 
 
 def _report():
@@ -54,3 +57,30 @@ def test_render_text_contains_path_and_score():
     text = _report().render_text()
     assert "a" in text and "goal" in text
     assert "0.75" in text
+
+
+def test_apply_confidence_update_returns_measured_gain_and_mutates_node():
+    s = ProblemSpace()
+    s.add_node(ReasoningNode(id="a", confidence=0.4))
+    gain = apply_confidence_update(s, "a", 0.9)
+    assert gain == pytest.approx(0.5)  # real |after - before|, not a proxy
+    assert s.node("a").confidence == 0.9  # mutated in place
+
+
+def test_apply_confidence_update_unknown_node_is_noop_zero_gain():
+    s = ProblemSpace()
+    assert apply_confidence_update(s, "missing", 0.9) == 0.0
+
+
+def test_trajectory_report_records_information_gains():
+    s = ProblemSpace()
+    s.add_node(ReasoningNode(id="a", confidence=0.4))
+    s.add_node(ReasoningNode(id="goal", confidence=0.5))
+    s.add_edge("a", "goal", rel_type="supports")
+    report = TrajectoryReport(space=s, path=["a", "goal"], goal="goal")
+    gain = apply_confidence_update(s, "a", 0.9)
+    report.information_gains["a"] = gain
+
+    data = json.loads(report.to_json())
+    assert data["information_gains"] == {"a": pytest.approx(0.5)}
+    assert "information_gains" in report.render_text()

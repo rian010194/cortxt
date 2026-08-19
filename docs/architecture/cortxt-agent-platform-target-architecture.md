@@ -1219,7 +1219,15 @@ Följande ska avgöras innan respektive implementation:
    kodningsmotorer ersätts inte per ADR-019, så "ersättning" gäller bara (a).
 7. Om Agent Platform initialt ligger i detta repo eller i ett eget package med
    separat releasecykel.
-8. Vilka geometric metrics som är beslutande respektive endast diagnostiska.
+8. ~~Vilka geometric metrics som är beslutande respektive endast diagnostiska.~~
+   Löst (ADR-025, `docs/adr/025-geometric-reasoning-decisive-vs-diagnostic-
+   metrics.md`, 2026-08-19): fem mått är beslutande (redan konsumerade av
+   `score_path`/`guidance`/`AttractorDetector` — graf-avstånd till mål,
+   evidenstäckning, motsägelsegrad, novelty, stability); fem förblir
+   diagnostiska (semantic_closeness, centrality, revisit_ratio,
+   path_diversity, information_gain) tills en ny, explicit versionerad
+   policy promoverar dem. `information_gain` fick en riktig call site
+   (`reasoning.geometric.apply_confidence_update`) för första gången.
 9. När egenhostad inference har affärsvärde jämfört med hyrd kapacitet.
 10. Embeddings-provider för Fas 6 (§12.2 semantisk närhet). InferencePort
     (§14.1) normaliserar idag inte embeddings, och ingen fas levererar det.

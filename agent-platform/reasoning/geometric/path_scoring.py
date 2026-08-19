@@ -21,7 +21,10 @@ class CandidatePathScore:
 
     version: str = "v1"
     # additive (positive) weights — sum to 1.0
-    w1: float = 0.15  # expected_information_gain
+    w1: float = 0.15  # expected_information_gain (prospective proxy: cosine to goal —
+    # NOT GraphMetrics.information_gain, which measures a realized before/after confidence
+    # delta and cannot be computed for a candidate path that has not been walked yet; see
+    # ADR-025 / target-architecture.md §27 #8 and reasoning.geometric.apply_confidence_update)
     w2: float = 0.40  # goal_relevance
     w3: float = 0.30  # evidence_coverage
     w4: float = 0.15  # path_novelty

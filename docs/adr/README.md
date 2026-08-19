@@ -4,7 +4,7 @@ Auktoritativt index över arkitekturbesluten i detta repo. Status per decision-s
 `docs/style-guide.md` / ADR-mönstret: **Accepted** = normativt inom sitt scope; **Proposal** = reviewbart
 förslag, inte implementeringsauktoritet; **Superseded** = historisk referens, ersatt av nyare beslut.
 
-Uppdaterat: 2026-08-19 (ADR-022, ADR-023, ADR-024 tillagda).
+Uppdaterat: 2026-08-19 (ADR-022, ADR-023, ADR-024, ADR-025 tillagda).
 
 | # | Titel | Status | Notis |
 | --- | --- | --- | --- |
@@ -22,6 +22,7 @@ Uppdaterat: 2026-08-19 (ADR-022, ADR-023, ADR-024 tillagda).
 | 022 | Fas 3 v0.1 — capability manifest shape and engine-selection criteria | **Accepted** | Motoragnostiskt capability-manifest + deterministisk `route()`; löser ADR-019:s öppna urvalskriterie-punkt |
 | 023 | Cortxt supports both bottom-up and top-down integration, not one exclusively | **Accepted** | Top-down internt permanent + avsiktligt bottom-up-konsumerbar utåt; beslutar riktningen, inte ytan (deferrat till Fas 6) |
 | 024 | External integration surface takes the form of an MCP server | **Accepted** | Beslutar ADR-023:s deferrade ytform: MCP-server, inte SDK/REST, för initial skiva |
+| 025 | Geometric Reasoning's decisive vs. diagnostic metrics (§27 #8) | **Accepted** | Formaliserar vilka av §12.2:s tio mått som styr beslut idag (5) kontra bara rapporterar (5); löser upp `w1`/`information_gain`-namnkollisionen; löser upp Fas 6:s blockerande exitkriterium |
 
 ## Beslut och auktoritet
 

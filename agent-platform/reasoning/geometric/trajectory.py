@@ -13,6 +13,24 @@ import json
 from dataclasses import dataclass, field
 
 from .graph_space import ProblemSpace
+from .metrics import GraphMetrics
+
+
+def apply_confidence_update(space: ProblemSpace, nid: str, new_confidence: float) -> float:
+    """Measured (realized) information gain (ADR-025, §27 #8): the real, post-hoc
+    delta once a node's confidence actually changes — as opposed to
+    ``CandidatePathScore``'s ``w1``, which estimates *expected* gain for a
+    candidate path that has not been walked yet. Mutates the node's confidence
+    and returns ``GraphMetrics.information_gain``'s before/after delta; a
+    missing node is a no-op returning 0.0.
+    """
+    node = space.node(nid)
+    if node is None:
+        return 0.0
+    before = node.confidence
+    gain = GraphMetrics.information_gain(space, nid, before, new_confidence)
+    node.confidence = new_confidence
+    return gain
 
 
 @dataclass
@@ -25,6 +43,7 @@ class TrajectoryReport:
     policy_version: str | None = None
     attractor_nodes: list[str] = field(default_factory=list)
     contradictions: list[dict] = field(default_factory=list)
+    information_gains: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Expand the ProblemSpace explicitly into nodes/edges lists (P2.1: not json.dumps(space))."""
@@ -51,6 +70,7 @@ class TrajectoryReport:
             "policy_version": self.policy_version,
             "attractor_nodes": list(self.attractor_nodes),
             "contradictions": list(self.contradictions),
+            "information_gains": dict(self.information_gains),
             "nodes": nodes,
             "edges": edges,
         }
@@ -72,5 +92,7 @@ class TrajectoryReport:
             lines.append("attractors: " + ", ".join(self.attractor_nodes))
         if self.contradictions:
             lines.append(f"contradictions: {len(self.contradictions)}")
+        if self.information_gains:
+            lines.append(f"information_gains: {self.information_gains}")
         lines.append(f"nodes: {len(self.space.ids())}")
         return "\n".join(lines)

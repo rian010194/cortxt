@@ -1,5 +1,11 @@
 # Fas 6 — Geometric Reasoning v1 — exit-criterion checklist (structural)
 
+> **STATUS-AMENDMENT (2026-08-19):** §27 #8 (vilka geometric metrics som är
+> beslutande kontra diagnostiska) är löst av ADR-025
+> (`docs/adr/025-geometric-reasoning-decisive-vs-diagnostic-metrics.md`) —
+> ett av de två blockerande villkoren för att detta exitkriterium ska kunna
+> utvärderas. §27 #10 (embeddings-provider) kvarstår enligt raden nedan.
+
 Status: **STRUCTURAL — det deterministiska lagret av Fas 6 är implementerat och grönt.**
 
 Branch `ci/adr-doc-currency-gate-clean`, 2026-08-17. Spec: `docs/superpowers/specs/
