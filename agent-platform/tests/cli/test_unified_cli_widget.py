@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -36,3 +37,21 @@ def test_run_runtimes_writes_snapshot(tmp_path):
     doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
     assert "runtimes" in doc
     assert isinstance(doc["runtimes"], list)
+
+
+def test_run_credentials_store_writes_snapshot_metadata_only(tmp_path, monkeypatch):
+    snapshot_path = tmp_path / "snapshot.json"
+    store_dir = tmp_path / ".credentials"
+    monkeypatch.setattr("sys.stdin", io.StringIO("super-secret-value\n"))
+
+    exit_code = main([
+        "credentials", "store", "--id", "test-cred", "--confirm",
+        "--store-dir", str(store_dir), "--snapshot", str(snapshot_path),
+    ])
+
+    assert exit_code == 0
+    doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert "credentials" in doc
+    ids = [c["credential_id"] for c in doc["credentials"]]
+    assert "test-cred" in ids
+    assert "super-secret-value" not in snapshot_path.read_text(encoding="utf-8")
