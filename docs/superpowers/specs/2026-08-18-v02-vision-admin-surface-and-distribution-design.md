@@ -302,6 +302,69 @@ adminytan (§3).
   Hermes-scratch inte bör vara det), eller om det kräver ett aktivt
   register orkestratorn själv underhåller och håller synkat.
 
+- **Tillagd 2026-08-19 — agentminne: taglinens löfte är fortfarande tomt,
+  och bottom-up/top-down är en medveten dubbelriktning, inte bara
+  top-down.** Operatören jämförde Cortxt med
+  [Hindsight](https://hindsight.vectorize.io/), en specialiserad
+  minnestjänst för AI-agenter (Retain/Recall/Reflect: lagrar world-/
+  experience-fakta, söker med fyra parallella strategier — temporal,
+  semantisk, keyword/BM25, graf — och konsoliderar överlappande fakta till
+  evidensspårade "observations"). Två saker föll ut av jämförelsen:
+
+  **1. Minnesluckan.** Repots egen README-tagline ("Users own the work's
+  state, **memory**, tools, evidence, and evolution") lovar ett minne som
+  inte finns. `runtime/session_state.py` (Fas 2) är en append-only,
+  hash-kedjad händelselogg per session — ett revisionsspår av vad som
+  hände, inte ett sökbart minne. Ingen semantisk sökning, ingen
+  konsolidering av fakta, ingen kontinuitet mellan sessioner. Fas 8:s
+  `learning/`-modul (`promotion_gate.py`/`candidate.py`/`evidence.py`) är
+  närmast besläktad men löser ett annat problem — den lär sig vilka
+  routing-/skill-beslut som fungerar, inte fakta om användaren eller
+  världen. Om taglinen ska vara sann, inte aspirational, är ett riktigt
+  minneslager en öppen, obyggd del av produkten — inte en detalj.
+  **Säkerhetsimplikation:** ett minneslager har en egen hotyta (t.ex.
+  minnesförgiftning, prompt injection via lagrade fakta, vem som får
+  skriva till en agents minne) som skiljer sig från
+  credential-brokerns (`docs/security/credential-broker-threat-model.md`,
+  Fas 1) — kräver ett eget hotmodell-dokument, inte återanvänder det
+  befintliga, om/när det byggs.
+
+  **2. Bottom-up kontra top-down är inte ett val mellan två — det är två
+  giltiga riktningar Cortxt kan jobba i samtidigt (operatörens
+  ställningstagande 2026-08-19).** Hindsights egen integrationsstruktur
+  (Clients per språk → Coding agents → Frameworks/SDKs → Apps/tools) är
+  **bottom-up**: en smal, väldefinierad tjänst *andra* ramverk
+  (LangGraph/LangChain, CrewAI, Vercel AI SDK) och agenter (Claude Code,
+  Codex CLI, Cursor CLI, m.fl.) kopplar in sig mot. Cortxts egen tagline
+  är **top-down**: äger state/memory/tools/evidence/evolution och
+  behandlar modeller, providers och externa agent-engines (Hermes, Pi,
+  Codex, Claude Code) som utbytbara resurser bakom Cortxt-ägda kontrakt.
+
+  Avvägning, inte ett facit:
+  - **Bottom-up:** snabbare till "bra nog" på en sak, möter utvecklare där
+    de redan är (lägg till en integration istället för att byta hela
+    stacken), lågt inlåsning för den som integrerar — men kan inte
+    garantera helhetsegenskaper (mandat, audit, no-self-approval) över en
+    uppgifts hela livscykel, bara inom sin egen skiva.
+  - **Top-down:** kan hålla ihop precis de invarianter som redan gör
+    ikvällens mönster meningsfulla (routing, promotion gate, credential
+    broker — de förutsätter alla att Cortxt äger orkestreringsloopen) —
+    men mycket större yta att bygga rätt innan något är användbart, och en
+    tyngre första-ask till en användare ("routa allt genom vår
+    kontrollplan" vs. "lägg till ett minnesanrop").
+
+  **Beslutat (operatör, 2026-08-19): bygg i båda riktningarna, inte
+  antingen-eller.** Cortxt förblir top-down internt mot de engines den
+  förvaltar (routing, mandat, audit — grunden ADR-019/ADR-022 redan
+  lagt), men kan *samtidigt* vara bottom-up-konsumerbar utåt — andra
+  ramverk (LangGraph, CrewAI, etc.) eller andra coding agents anropar in i
+  Cortxts kontrollplan som en tjänst, samma sätt Hindsight erbjuds till
+  Claude Code/Cursor/CrewAI idag. Sammanfaller med Fas 6:s redan olösta
+  "installerbara paket"/SDK-fråga (§4.1) — **inte beslutat:** vilken yta
+  (Python/TypeScript/Go-SDK? MCP-server? REST?) en extern konsument skulle
+  mötas av, eller om det är samma "installerbara paket" som §4.1 redan
+  refererar till eller en separat integrationsyta.
+
 ## 7. Rekommenderat nästa steg
 
 Detta dokument beskriver riktning, inte en implementationsplan. Rekommenderat
