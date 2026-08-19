@@ -1,6 +1,6 @@
 # ADR-023: Cortxt supports both bottom-up and top-down integration, not one exclusively
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-19
 **Deciders:** Rikard (operatör), Claude Code (utkast)
 **Technical Story:** Operatörsdiskussion 2026-08-19 (jämförelse mot [Hindsight](https://hindsight.vectorize.io/)); v.02-visionens §6 (`docs/superpowers/specs/2026-08-18-v02-vision-admin-surface-and-distribution-design.md`, tillägg 2026-08-19)
