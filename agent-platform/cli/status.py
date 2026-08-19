@@ -107,15 +107,29 @@ def render_table(sessions: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def write_snapshot(sessions: list[dict[str, Any]], snapshot_path: Path) -> None:
+def write_snapshot(
+    sessions: list[dict[str, Any]],
+    snapshot_path: Path,
+    *,
+    runtimes: list[dict[str, Any]] | None = None,
+    credentials: list[dict[str, Any]] | None = None,
+) -> None:
     """Atomically write the JSON snapshot the widget polls.
 
-    Same write pattern as session_state._atomic_write: tempfile in the
-    target directory + os.replace, so a reader never sees a half-written
-    file.
+    `runtimes`/`credentials` are optional admin-surface data (Fas 4) the
+    widget can render alongside sessions -- omitted from the document
+    entirely when not given, so callers that only care about sessions
+    (the existing `cortxt sessions`/`dispatch` call sites) don't need to
+    change. Same write pattern as session_state._atomic_write: tempfile in
+    the target directory + os.replace, so a reader never sees a
+    half-written file.
     """
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    doc = {"generated_at": state.utc_now(), "sessions": sessions}
+    doc: dict[str, Any] = {"generated_at": state.utc_now(), "sessions": sessions}
+    if runtimes is not None:
+        doc["runtimes"] = runtimes
+    if credentials is not None:
+        doc["credentials"] = credentials
     descriptor, tmp = tempfile.mkstemp(prefix=".snapshot-", suffix=".tmp", dir=snapshot_path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
