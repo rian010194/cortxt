@@ -123,6 +123,29 @@ def test_dispatch_default_snapshot_path_matches_sessions_default(tmp_path, monke
     assert (fake_ap_path / "widget" / "snapshot.json").is_file()
 
 
+def test_dispatch_logs_a_warning_when_snapshot_write_fails_without_masking_result(tmp_path, caplog):
+    """Review finding: the snapshot-write failure path was a bare
+    `except Exception: pass` -- silent, no trace anywhere. Must log (same
+    visibility principle status.py's own load_sessions() already follows)
+    without letting a snapshot failure change dispatch's own outcome."""
+    import logging
+
+    store = tmp_path / "sessions"
+    fake_result = {"status": "succeeded", "profile": "researcher", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result), \
+         patch("status.write_snapshot", side_effect=OSError("disk full")), \
+         caplog.at_level(logging.WARNING):
+        exit_code = main([
+            "dispatch",
+            "--tags", "research",
+            "--task-id", "snapshot-write-fails",
+            "--prompt", "survey the landscape",
+            "--store", str(store),
+        ])
+    assert exit_code == 0
+    assert any("snapshot" in record.message.lower() for record in caplog.records)
+
+
 def test_dispatch_defaults_research_tag_to_researcher_hermes_profile(tmp_path):
     """Tonight's evidence: the `builder` profile is where both Fas 2
     Kanban-dispatch failures (#165, #166) and both admin-surface-CLI
