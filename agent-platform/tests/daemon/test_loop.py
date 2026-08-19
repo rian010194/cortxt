@@ -138,3 +138,25 @@ def test_run_forever_hits_max_iterations_when_neither_stop_nor_exhausted(tmp_pat
     loop = _make_loop(tmp_path, list_ready_issues=_list)
     reason = loop.run_forever(poll_interval_seconds=0.0, sleep=lambda s: None, max_iterations=3)
     assert reason == "max_iterations"
+
+
+def test_crash_then_restart_does_not_redispatch(tmp_path):
+    dispatch_count = {"n": 0}
+
+    def _list(repo, **kwargs):
+        return [{"number": 11, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
+
+    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None):
+        dispatch_count["n"] += 1
+        return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
+
+    first = _make_loop(tmp_path, list_ready_issues=_list, invoke_hermes=_counting_invoke)
+    first.run_once()
+    assert dispatch_count["n"] == 1
+
+    # Simulate a crash: `first` is discarded without cleanup, a brand-new
+    # DaemonLoop is constructed against the same state_dir (the only thing
+    # that survives a real process crash).
+    second = _make_loop(tmp_path, list_ready_issues=_list, invoke_hermes=_counting_invoke)
+    second.run_once()
+    assert dispatch_count["n"] == 1  # still 1 -- no duplicate dispatch
