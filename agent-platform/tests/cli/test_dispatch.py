@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -30,6 +31,96 @@ def test_dispatch_routes_research_tag_to_hermes_and_invokes_it(tmp_path):
     terminal = sessions[0]["events"][-1]
     assert terminal["event_type"] == "session.terminal"
     assert terminal["payload"]["status"] == "succeeded"
+
+
+def test_dispatch_writes_the_widget_snapshot_on_success(tmp_path):
+    store = tmp_path / "sessions"
+    snapshot = tmp_path / "widget" / "snapshot.json"
+    fake_result = {"status": "succeeded", "profile": "researcher", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result):
+        main([
+            "dispatch",
+            "--tags", "research",
+            "--task-id", "snapshot-on-success",
+            "--prompt", "survey the landscape",
+            "--store", str(store),
+            "--snapshot", str(snapshot),
+        ])
+    doc = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert [s["task_id"] for s in doc["sessions"]] == ["snapshot-on-success"]
+    assert doc["sessions"][0]["status"] == "succeeded"
+
+
+def test_dispatch_writes_the_widget_snapshot_when_routed_to_claude_direct(tmp_path):
+    store = tmp_path / "sessions"
+    snapshot = tmp_path / "widget" / "snapshot.json"
+    with patch("routing.hermes_invoker.invoke_hermes"):
+        main([
+            "dispatch",
+            "--tags", "widget-ui",
+            "--task-id", "snapshot-on-blocked",
+            "--prompt", "n/a",
+            "--store", str(store),
+            "--snapshot", str(snapshot),
+        ])
+    doc = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert doc["sessions"][0]["status"] == "blocked"
+
+
+def test_dispatch_writes_the_widget_snapshot_on_hermes_failure(tmp_path):
+    store = tmp_path / "sessions"
+    snapshot = tmp_path / "widget" / "snapshot.json"
+    fake_result = {"status": "failed", "profile": "researcher", "stdout": "", "stderr": "boom", "elapsed_seconds": 0.5}
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result):
+        main([
+            "dispatch",
+            "--tags", "research",
+            "--task-id", "snapshot-on-failure",
+            "--prompt", "survey the landscape",
+            "--store", str(store),
+            "--snapshot", str(snapshot),
+        ])
+    doc = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert doc["sessions"][0]["status"] == "failed"
+
+
+def test_dispatch_writes_the_widget_snapshot_when_invoker_raises(tmp_path):
+    """The orphaned-session fix already guarantees a terminal event on any
+    exception -- the snapshot write must reflect that same outcome, not
+    just the happy path."""
+    store = tmp_path / "sessions"
+    snapshot = tmp_path / "widget" / "snapshot.json"
+    with patch("routing.hermes_invoker.invoke_hermes", side_effect=RuntimeError("hermes not found")):
+        main([
+            "dispatch",
+            "--tags", "research",
+            "--task-id", "snapshot-on-raise",
+            "--prompt", "survey the landscape",
+            "--store", str(store),
+            "--snapshot", str(snapshot),
+        ])
+    doc = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert doc["sessions"][0]["status"] == "failed"
+
+
+def test_dispatch_default_snapshot_path_matches_sessions_default(tmp_path, monkeypatch):
+    """No --snapshot given: dispatch should land in the same default place
+    `cortxt sessions` writes to (agent-platform/widget/snapshot.json),
+    so a widget already pointed at that file picks up dispatch results
+    without the operator having to run `sessions` afterward."""
+    import cli.unified_cli as unified_cli
+
+    fake_ap_path = tmp_path / "agent-platform"
+    monkeypatch.setattr(unified_cli, "_get_agent_platform_path", lambda: fake_ap_path)
+    fake_result = {"status": "succeeded", "profile": "researcher", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result):
+        main([
+            "dispatch",
+            "--tags", "research",
+            "--task-id", "default-snapshot-path",
+            "--prompt", "survey the landscape",
+        ])
+    assert (fake_ap_path / "widget" / "snapshot.json").is_file()
 
 
 def test_dispatch_defaults_research_tag_to_researcher_hermes_profile(tmp_path):

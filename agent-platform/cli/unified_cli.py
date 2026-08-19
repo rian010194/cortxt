@@ -366,6 +366,19 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
     except Exception as e:
         state.append(store, session_id, 0, "session.terminal", {"status": "failed", "reason": str(e)})
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+    finally:
+        # Best-effort: the widget polls this same file (cli/status.py's
+        # write_snapshot), so a dispatch result should show up there without
+        # the operator having to run `cortxt sessions` afterward. Runs
+        # whichever branch above returned, success or failure, via `finally`
+        # -- a snapshot write failure must never mask the dispatch's own result.
+        try:
+            from cli import status as status_cli
+
+            snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+            status_cli.write_snapshot(status_cli.load_sessions(store), snapshot_path)
+        except Exception:
+            pass
 
 
 def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
@@ -532,6 +545,7 @@ def main(argv: list[str] | None = None) -> int:
     dispatch_parser.add_argument("--task-id", required=True, help="Task identity recorded in session state")
     dispatch_parser.add_argument("--prompt", required=True, help="Prompt to send if routed to an LLM-backed engine")
     dispatch_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
+    dispatch_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json, same as `sessions`)")
     dispatch_parser.add_argument("--hermes-profile", default=None, help="Hermes profile to use if routed to hermes (default: inferred from matched tag, else builder)")
     dispatch_parser.add_argument("--timeout", type=int, default=120, help="Timeout in seconds for an engine invocation (default: 120)")
     dispatch_parser.add_argument("--model", help="Model override passed to hermes -m (optional)")
