@@ -15,7 +15,7 @@ from .graph_space import ReasoningNode, ProblemSpace
 from .metrics import GraphMetrics
 from .operators import PerspectiveResult, change_perspective, compare_paths
 from .path_scoring import CandidatePathScore, score_path
-from .trajectory import TrajectoryReport
+from .trajectory import TrajectoryReport, apply_confidence_update
 
 __all__ = [
     "ReasoningNode",
@@ -34,4 +34,5 @@ __all__ = [
     "CandidatePathScore",
     "score_path",
     "TrajectoryReport",
+    "apply_confidence_update",
 ]
