@@ -1,11 +1,15 @@
-# agent-platform/tests/daemon/test_loop.py
+import itertools
 import json
 from pathlib import Path
+
+import pytest
 
 from daemon.autonomy import AutonomyTracker
 from daemon.budget import SessionBudget
 from daemon.loop import DaemonLoop
+from daemon.stop_flag import request_stop
 from routing.engine_manifest import DEFAULT_MANIFESTS, EngineChoice
+from routing.hermes_invoker import HermesInvocationError
 
 
 def _fake_route(task_tags, manifests, fallback="claude-direct"):
@@ -17,8 +21,22 @@ def _fake_invoke_hermes(profile, prompt, *, timeout_seconds, model=None, provide
     return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
 
+def _make_progressing_git_head():
+    """A git_head fake that returns a new value each call -- simulates a commit landing."""
+    counter = itertools.count()
+    def _git_head(workdir):
+        return f"commit-{next(counter)}"
+    return _git_head
+
+
+def _static_git_head(workdir):
+    """A git_head fake that never changes -- simulates no commit landing."""
+    return "same-commit"
+
+
 def _make_loop(tmp_path: Path, *, list_ready_issues, route=_fake_route,
-                invoke_hermes=_fake_invoke_hermes, supervised=True):
+                invoke_hermes=_fake_invoke_hermes, supervised=True,
+                git_head=None):
     return DaemonLoop(
         repo="owner/repo",
         state_dir=tmp_path / "state",
@@ -27,23 +45,22 @@ def _make_loop(tmp_path: Path, *, list_ready_issues, route=_fake_route,
         autonomy=AutonomyTracker(),
         supervised=supervised,
         manifests=DEFAULT_MANIFESTS,
+        workdir=tmp_path,
         list_ready_issues=list_ready_issues,
         invoke_hermes=invoke_hermes,
         route=route,
+        git_head=git_head or _make_progressing_git_head(),
     )
 
 
-def test_no_ready_issues_returns_empty():
+def test_no_ready_issues_returns_empty(tmp_path):
     def _list(repo, **kwargs):
         return []
-    loop = _make_loop(Path("/tmp/unused"), list_ready_issues=_list)
+    loop = _make_loop(tmp_path, list_ready_issues=_list)
     assert loop.run_once() == []
 
 
 def test_supervised_default_pauses_even_when_engine_does_not_require_it(tmp_path):
-    # supervised=True is DaemonLoop's default -- a clean result still pauses
-    # for operator review until this (engine, task_shape) class has earned
-    # unattended autonomy, regardless of the engine's own checkpoint_required.
     def _list(repo, **kwargs):
         return [{"number": 7, "title": "Fix widget", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
 
@@ -56,9 +73,6 @@ def test_supervised_default_pauses_even_when_engine_does_not_require_it(tmp_path
 
 
 def test_unattended_and_unlocked_class_proceeds(tmp_path):
-    # The only combination that reaches "proceed": supervised=False, the
-    # engine itself doesn't require a checkpoint, AND this (engine,
-    # task_shape) class has already earned its unattended unlock.
     def _list(repo, **kwargs):
         return [{"number": 7, "title": "Fix widget", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
 
@@ -75,14 +89,11 @@ def test_already_claimed_issue_is_skipped(tmp_path):
 
     loop = _make_loop(tmp_path, list_ready_issues=_list)
     loop.run_once()
-    second = _make_loop(tmp_path, list_ready_issues=_list)  # fresh instance, same state_dir
-    assert second.run_once() == []  # already in claimed.json -> skipped, no re-dispatch
+    second = _make_loop(tmp_path, list_ready_issues=_list)
+    assert second.run_once() == []
 
 
 def test_checkpoint_required_engine_pauses_even_unattended_and_unlocked(tmp_path):
-    # Isolates the engine-level checkpoint_required=True from supervised
-    # mode: even with supervised=False AND the class already unlocked, the
-    # engine's own flag still forces a pause.
     def _list(repo, **kwargs):
         return [{"number": 8, "title": "Refactor core", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
 
@@ -108,12 +119,9 @@ def test_snapshot_written_after_run_once(tmp_path):
     assert doc["daemon"]["claimed"] == ["owner/repo#9"]
 
 
-from daemon.stop_flag import request_stop
-
-
 def test_run_forever_stops_on_stop_flag(tmp_path):
     def _list(repo, **kwargs):
-        return []  # nothing to dispatch -- isolates the stop-loop behavior
+        return []
 
     loop = _make_loop(tmp_path, list_ready_issues=_list)
     request_stop(loop.state_dir)
@@ -126,7 +134,7 @@ def test_run_forever_stops_on_budget_exhausted(tmp_path):
         return []
 
     loop = _make_loop(tmp_path, list_ready_issues=_list)
-    loop.budget.record_cost(loop.budget.max_cost_usd)  # pre-exhaust
+    loop.budget.record_cost(loop.budget.max_cost_usd)
     reason = loop.run_forever(poll_interval_seconds=0.0, sleep=lambda s: None, max_iterations=5)
     assert reason == "budget_exhausted"
 
@@ -154,9 +162,90 @@ def test_crash_then_restart_does_not_redispatch(tmp_path):
     first.run_once()
     assert dispatch_count["n"] == 1
 
-    # Simulate a crash: `first` is discarded without cleanup, a brand-new
-    # DaemonLoop is constructed against the same state_dir (the only thing
-    # that survives a real process crash).
     second = _make_loop(tmp_path, list_ready_issues=_list, invoke_hermes=_counting_invoke)
     second.run_once()
-    assert dispatch_count["n"] == 1  # still 1 -- no duplicate dispatch
+    assert dispatch_count["n"] == 1
+
+
+def test_route_choosing_non_hermes_engine_is_skipped_not_dispatched(tmp_path):
+    dispatch_count = {"n": 0}
+
+    def _list(repo, **kwargs):
+        return [{"number": 12, "title": "Security review", "labels": [{"name": "workflow:ready"}, {"name": "security-sensitive"}]}]
+
+    def _route_claude_direct(task_tags, manifests, fallback="claude-direct"):
+        return EngineChoice(engine_id="claude-direct", reason="test", matched_tag="security-sensitive",
+                             checkpoint_required=True)
+
+    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None):
+        dispatch_count["n"] += 1
+        return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list, route=_route_claude_direct, invoke_hermes=_counting_invoke)
+    results = loop.run_once()
+    assert results == []
+    assert dispatch_count["n"] == 0
+    assert "owner/repo#12" not in loop.claimed_issue_ids
+
+
+def test_succeeded_status_with_no_commit_landed_is_treated_as_failed(tmp_path):
+    def _list(repo, **kwargs):
+        return [{"number": 13, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list, git_head=_static_git_head, supervised=False)
+    for _ in range(3):
+        loop.autonomy.record_pass("hermes", "research", clean=True)
+    results = loop.run_once()
+    assert results[0]["gate_outcome"]["decision"] == "freeze"
+    assert "not 'succeeded'" in results[0]["gate_outcome"]["reason"]
+
+
+def test_hermes_invocation_error_freezes_that_issue(tmp_path):
+    def _list(repo, **kwargs):
+        return [{"number": 14, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
+
+    def _raising_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None):
+        raise HermesInvocationError("could not start hermes: [WinError 2]")
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list, invoke_hermes=_raising_invoke)
+    results = loop.run_once()
+    assert results[0]["gate_outcome"]["decision"] == "freeze"
+    assert "owner/repo#14" in loop.claimed_issue_ids
+
+
+def test_run_forever_stops_on_pause_decision(tmp_path):
+    def _list(repo, **kwargs):
+        return [{"number": 15, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list)  # supervised=True default -> pause
+    reason = loop.run_forever(poll_interval_seconds=0.0, sleep=lambda s: None, max_iterations=5)
+    assert reason == "paused_for_review"
+
+
+def test_run_forever_survives_a_transient_run_once_exception(tmp_path):
+    call_count = {"n": 0}
+
+    def _flaky_list(repo, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RuntimeError("gh issue list failed: network blip")
+        return []
+
+    loop = _make_loop(tmp_path, list_ready_issues=_flaky_list)
+    reason = loop.run_forever(poll_interval_seconds=0.0, sleep=lambda s: None, max_iterations=3)
+    assert reason == "max_iterations"
+    assert call_count["n"] == 3
+
+
+def test_autonomy_persists_across_restart(tmp_path):
+    def _list(repo, **kwargs):
+        return []
+
+    first = _make_loop(tmp_path, list_ready_issues=_list)
+    first.autonomy.record_pass("hermes", "research", clean=True)
+    first.autonomy.record_pass("hermes", "research", clean=True)
+    first._persist_autonomy()
+
+    second = _make_loop(tmp_path, list_ready_issues=_list)
+    second.autonomy.record_pass("hermes", "research", clean=True)
+    assert second.autonomy.is_unlocked("hermes", "research")

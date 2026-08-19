@@ -19,3 +19,19 @@ class AutonomyTracker:
 
     def is_unlocked(self, engine_id: str, task_shape: str) -> bool:
         return self._streaks.get((engine_id, task_shape), 0) >= self.unlock_threshold
+
+    def to_dict(self) -> dict:
+        return {
+            "unlock_threshold": self.unlock_threshold,
+            "streaks": [
+                [engine_id, task_shape, count]
+                for (engine_id, task_shape), count in self._streaks.items()
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AutonomyTracker":
+        tracker = cls(unlock_threshold=data.get("unlock_threshold", 3))
+        for engine_id, task_shape, count in data.get("streaks", []):
+            tracker._streaks[(engine_id, task_shape)] = count
+        return tracker

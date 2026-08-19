@@ -606,6 +606,9 @@ def _run_daemon(args: argparse.Namespace) -> ResultEnvelope:
             from daemon.autonomy import AutonomyTracker
             from daemon.budget import SessionBudget
             from daemon.loop import DaemonLoop
+            from daemon.stop_flag import clear_stop
+
+            clear_stop(Path(args.state_dir))
 
             loop = DaemonLoop(
                 repo=args.repo,

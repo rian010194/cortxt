@@ -30,3 +30,21 @@ def test_classes_are_independent():
     assert t.is_unlocked("hermes", "research")
     assert not t.is_unlocked("hermes", "coding")
     assert not t.is_unlocked("claude-direct", "research")
+
+
+def test_to_dict_from_dict_roundtrip_preserves_streaks_and_unlock_state():
+    t = AutonomyTracker(unlock_threshold=3)
+    t.record_pass("hermes", "research", clean=True)
+    t.record_pass("hermes", "research", clean=True)
+    t.record_pass("claude-direct", "cli", clean=True)
+
+    restored = AutonomyTracker.from_dict(t.to_dict())
+
+    assert restored.unlock_threshold == 3
+    assert not restored.is_unlocked("hermes", "research")
+    restored.record_pass("hermes", "research", clean=True)
+    assert restored.is_unlocked("hermes", "research")
+    assert not restored.is_unlocked("claude-direct", "cli")
+    restored.record_pass("claude-direct", "cli", clean=True)
+    restored.record_pass("claude-direct", "cli", clean=True)
+    assert restored.is_unlocked("claude-direct", "cli")
