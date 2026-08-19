@@ -31,6 +31,9 @@ class EngineManifest:
     "typed from above, not a platform contract yet" stance as the Fas 3
     research doc's capability tags). `reliability_class` is set by hand --
     v0.1 has no learned/dynamic scoring, per ADR-022's explicit deferral.
+    `checkpoint_required` defaults to `True` — an engine is only exempted once
+    a proof step or track-specific evidence justifies unattended multi-step runs
+    (none does yet, so nothing sets it to `False` today).
     """
 
     engine_id: str
@@ -38,6 +41,7 @@ class EngineManifest:
     cost_class: str
     reliability_class: str
     notes: str = ""
+    checkpoint_required: bool = True
 
     def __post_init__(self) -> None:
         if not self.engine_id:
@@ -61,6 +65,7 @@ class EngineChoice:
     reason: str
     matched_tag: str | None = None
     excluded: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    checkpoint_required: bool = True
 
 
 DEFAULT_MANIFESTS: tuple[EngineManifest, ...] = (
@@ -122,6 +127,7 @@ def route(
             reason=f"no engine matched task_tags={sorted(tag_set)}; falling back to default",
             matched_tag=None,
             excluded=tuple(excluded),
+            checkpoint_required=True,
         )
 
     candidates.sort(key=lambda pair: (COST_ORDER[pair[0].cost_class], pair[0].engine_id))
@@ -131,4 +137,5 @@ def route(
         reason=f"matched tag {matched_tag!r}, cheapest of {len(candidates)} candidate(s)",
         matched_tag=matched_tag,
         excluded=tuple(excluded),
+        checkpoint_required=winner.checkpoint_required,
     )

@@ -26,6 +26,38 @@ def _manifest(**overrides):
 # --- EngineManifest validation ---
 
 
+def test_manifest_defaults_to_checkpoint_required():
+    manifest = EngineManifest(
+        engine_id="test-engine",
+        task_shapes=("general",),
+        cost_class="cheap",
+        reliability_class="unverified",
+    )
+    assert manifest.checkpoint_required is True
+
+
+def test_default_manifests_require_checkpoint():
+    for manifest in DEFAULT_MANIFESTS:
+        assert manifest.checkpoint_required is True, (
+            f"{manifest.engine_id} should default to checkpoint_required=True; "
+            "no engine has cleared evidence to be exempted yet"
+        )
+
+
+def test_route_result_carries_checkpoint_policy():
+    manifests = (
+        EngineManifest(
+            engine_id="engine-a",
+            task_shapes=("research",),
+            cost_class="cheap",
+            reliability_class="unverified",
+            checkpoint_required=False,
+        ),
+    )
+    choice = route(["research"], manifests)
+    assert choice.checkpoint_required is False
+
+
 def test_manifest_rejects_empty_engine_id():
     with pytest.raises(InvalidManifestError):
         _manifest(engine_id="")
