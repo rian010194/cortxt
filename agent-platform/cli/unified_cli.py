@@ -415,6 +415,7 @@ def _run_dispatch(
         except Exception as snapshot_error:
             logger.warning("dispatch: could not refresh widget snapshot: %s", snapshot_error)
 
+
 def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
     """List known agent runtimes and whether each is on PATH (Fas 4 admin surface).
 
