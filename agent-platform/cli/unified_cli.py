@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -366,6 +369,33 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
     except Exception as e:
         state.append(store, session_id, 0, "session.terminal", {"status": "failed", "reason": str(e)})
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+    finally:
+        # Best-effort: the widget polls this same file (cli/status.py's
+        # write_snapshot), so a dispatch result should show up there without
+        # the operator having to run `cortxt sessions` afterward. Runs
+        # whichever branch above returned, success or failure, via `finally`
+        # -- a snapshot write failure must never mask the dispatch's own
+        # result, but per review it must not vanish silently either
+        # (status.py's own load_sessions() logs exactly this class of gap
+        # for the same reason).
+        #
+        # Scope note (review): this only refreshes the snapshot for
+        # `dispatch`. Other session.terminal producers (agent_loop.py,
+        # coding_loop.py, rlm_child_cli.py, supervisor/coordinator.py) don't
+        # -- extending to all of them is a real, larger change, not covered
+        # by this fix. Also note load_sessions() rescans the whole store, so
+        # this is O(n) in total session history per dispatch call; fine at
+        # v0.1 scale, a candidate to revisit if the store grows large.
+        try:
+            cli_dir = Path(__file__).parent
+            if str(cli_dir) not in sys.path:
+                sys.path.insert(0, str(cli_dir))
+            import status as status_cli
+
+            snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+            status_cli.write_snapshot(status_cli.load_sessions(store), snapshot_path)
+        except Exception as snapshot_error:
+            logger.warning("dispatch: could not refresh widget snapshot: %s", snapshot_error)
 
 
 def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
@@ -532,6 +562,7 @@ def main(argv: list[str] | None = None) -> int:
     dispatch_parser.add_argument("--task-id", required=True, help="Task identity recorded in session state")
     dispatch_parser.add_argument("--prompt", required=True, help="Prompt to send if routed to an LLM-backed engine")
     dispatch_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
+    dispatch_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json, same as `sessions`)")
     dispatch_parser.add_argument("--hermes-profile", default=None, help="Hermes profile to use if routed to hermes (default: inferred from matched tag, else builder)")
     dispatch_parser.add_argument("--timeout", type=int, default=120, help="Timeout in seconds for an engine invocation (default: 120)")
     dispatch_parser.add_argument("--model", help="Model override passed to hermes -m (optional)")
