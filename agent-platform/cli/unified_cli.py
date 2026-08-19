@@ -332,6 +332,7 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
             "routing_reason": choice.reason,
             "matched_tag": choice.matched_tag,
             "excluded": list(choice.excluded),
+            "checkpoint_required": choice.checkpoint_required,
         }
 
         if choice.engine_id == "hermes":

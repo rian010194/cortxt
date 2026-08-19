@@ -300,3 +300,25 @@ def test_dispatch_records_routing_reason_in_evidence(tmp_path, capsys):
         ])
     out = capsys.readouterr().out
     assert "routing_reason" in out
+
+
+def test_dispatch_records_checkpoint_required_in_evidence(tmp_path, capsys):
+    """Review finding: route()'s checkpoint_required field was threaded
+    through EngineManifest/EngineChoice but never surfaced in `cortxt
+    dispatch`'s own evidence -- the spec names dispatch specifically as
+    Track 0's checkpoint-support surface, so an unread field there defeats
+    the point of adding it."""
+    store = tmp_path / "sessions"
+    fake_result = {"status": "succeeded", "profile": "researcher", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result):
+        exit_code = main([
+            "dispatch",
+            "--tags", "research",
+            "--task-id", "checkpoint-evidence",
+            "--prompt", "survey the landscape",
+            "--store", str(store),
+        ])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    doc = json.loads(out)
+    assert doc["evidence"][0]["checkpoint_required"] is True
