@@ -36,7 +36,7 @@ class HermesAdapter:
         model: str | None = None,
         provider: str | None = None,
     ) -> dict:
-        invoke_fn = self._invoke_hermes or _hermes_invoker_module.invoke_hermes
+        invoke_fn = self._invoke_hermes if self._invoke_hermes is not None else _hermes_invoker_module.invoke_hermes
         return invoke_fn(
             profile, prompt, timeout_seconds=timeout_seconds, model=model, provider=provider
         )

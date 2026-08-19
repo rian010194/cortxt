@@ -1,15 +1,13 @@
 """The daemon's core dispatch cycle (spec: "Daemon loop" + "Data flow").
 Wires the Evidence Gate, GitHub scanner, budget, and autonomy tracker
 around the existing, proven dispatch v0.1 primitives -- routing.
-engine_manifest.route() and routing.hermes_invoker.invoke_hermes() -- not
+engine_manifest.route() and the EngineContext broker (runtime/engine_registry.py) -- not
 supervisor.coordinator.Coordinator, which is RLM child-recursion machinery
 for a different concern (see spec's Architecture section and this plan's
 course-correction note).
 
-Final-review fixes (2026-08-19): route()'s decision is now enforced (a
-non-hermes choice is skipped, never silently dispatched to hermes anyway --
-this v1 daemon has no invoker for any other engine, matching hermes_invoker
-.py's own documented "claude-direct has no headless invocation here");
+Final-review fixes (2026-08-19): route()'s decision is now enforced (an
+engine_id with no registered EngineContext adapter is skipped, never silently dispatched to whatever IS registered -- see runtime/engine_registry.py, ADR-026/027);
 Evidence Gate now checks a real signal (did a commit actually land) instead
 of self-reported status alone; gate decisions have real effects (pause stops
 run_forever, freeze is recorded distinctly); autonomy streaks persist across
@@ -172,6 +170,11 @@ class DaemonLoop:
                     "researcher" if "research" in task_tags else "builder",
                     issue["title"], timeout_seconds=300,
                 )
+            # Hermes-specific by construction: only HermesAdapter exists today, so
+            # this except and the "researcher"/"builder" profile strings above are
+            # coupled to Hermes's shape, not yet generalized across engines. A
+            # second adapter is the trigger (ADR-026's own Review Trigger) to widen
+            # this -- not done speculatively here.
             except HermesInvocationError as error:
                 gate_outcome = GateOutcome("freeze", f"hermes invocation failed to start: {error}")
                 self.autonomy.record_pass(choice.engine_id, choice.matched_tag, clean=False)
