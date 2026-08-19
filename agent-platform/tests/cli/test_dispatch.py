@@ -51,6 +51,26 @@ def test_dispatch_defaults_research_tag_to_researcher_hermes_profile(tmp_path):
     assert fake_invoke.call_args.args[0] == "researcher"
 
 
+def test_dispatch_defaults_to_researcher_even_when_research_is_not_the_matched_tag(tmp_path):
+    """Review finding: route() picks matched_tag as the alphabetically-first
+    tag in the intersection with the winning engine's task_shapes --
+    "parallel-dispatch" sorts before "research", so --tags
+    research,parallel-dispatch would silently fall back to "builder" if the
+    profile lookup only checked choice.matched_tag instead of the full
+    supplied tag set."""
+    store = tmp_path / "sessions"
+    fake_result = {"status": "succeeded", "profile": "researcher", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake_invoke:
+        main([
+            "dispatch",
+            "--tags", "research,parallel-dispatch",
+            "--task-id", "research-shaped-background-task",
+            "--prompt", "survey the landscape",
+            "--store", str(store),
+        ])
+    assert fake_invoke.call_args.args[0] == "researcher"
+
+
 def test_dispatch_explicit_hermes_profile_overrides_the_tag_default(tmp_path):
     store = tmp_path / "sessions"
     fake_result = {"status": "succeeded", "profile": "coordinator", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}

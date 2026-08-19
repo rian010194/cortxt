@@ -332,7 +332,17 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
         }
 
         if choice.engine_id == "hermes":
-            hermes_profile = args.hermes_profile or _HERMES_PROFILE_BY_TAG.get(choice.matched_tag, "builder")
+            # Check the full supplied tag set, not choice.matched_tag: route()
+            # picks matched_tag as the alphabetically-first tag in the
+            # intersection with the winning engine's task_shapes, which isn't
+            # necessarily "research" even when "research" was among --tags
+            # (e.g. --tags research,parallel-dispatch matches "parallel-dispatch"
+            # alphabetically first, silently defeating this default -- caught
+            # by review before merge).
+            hermes_profile = args.hermes_profile or next(
+                (profile for tag, profile in _HERMES_PROFILE_BY_TAG.items() if tag in tags),
+                "builder",
+            )
             result = hermes_invoker.invoke_hermes(
                 hermes_profile, args.prompt, timeout_seconds=args.timeout,
                 model=args.model, provider=args.provider,
