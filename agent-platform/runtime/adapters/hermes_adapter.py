@@ -2,15 +2,29 @@
 point 3: "befintlig invocation-kod paketeras om, skrivs inte om" -- existing
 invocation code is repackaged, not rewritten. This class adds no logic
 beyond the delegation itself; invoke_hermes's tested subprocess behavior,
-including HermesInvocationError, passes through unchanged."""
+including HermesInvocationError, passes through unchanged.
+
+The default path resolves routing.hermes_invoker.invoke_hermes by live
+module-attribute lookup at call time, not by binding the function object as
+a constructor default -- a default-argument expression is evaluated once,
+at class-definition time, and freezing it here would make
+unittest.mock.patch("routing.hermes_invoker.invoke_hermes", ...) unable to
+intercept calls made through HermesAdapter's bare default (a real
+regression found in agent-platform/tests/cli/test_dispatch.py, a
+pre-existing suite that patches exactly that target around real
+cli.unified_cli.main([...]) calls). Explicit injection
+(HermesAdapter(invoke_hermes=fake_fn)) is unaffected by this and still
+takes priority -- it is only the "no argument given" path that now does a
+live lookup instead of a frozen one.
+"""
 from __future__ import annotations
 
 from typing import Callable
-from routing.hermes_invoker import invoke_hermes as _default_invoke_hermes
+import routing.hermes_invoker as _hermes_invoker_module
 
 
 class HermesAdapter:
-    def __init__(self, invoke_hermes: Callable = _default_invoke_hermes) -> None:
+    def __init__(self, invoke_hermes: Callable | None = None) -> None:
         self._invoke_hermes = invoke_hermes
 
     def invoke(
@@ -22,6 +36,7 @@ class HermesAdapter:
         model: str | None = None,
         provider: str | None = None,
     ) -> dict:
-        return self._invoke_hermes(
+        invoke_fn = self._invoke_hermes or _hermes_invoker_module.invoke_hermes
+        return invoke_fn(
             profile, prompt, timeout_seconds=timeout_seconds, model=model, provider=provider
         )
