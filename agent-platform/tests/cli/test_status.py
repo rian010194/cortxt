@@ -164,3 +164,25 @@ def test_write_snapshot_preserves_runtimes_across_a_later_credentials_only_call(
     doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
     assert doc["runtimes"] == runtimes
     assert doc["credentials"] == credentials
+
+
+def test_write_snapshot_includes_daemon_section(tmp_path):
+    from cli import status
+
+    snapshot_path = tmp_path / "snapshot.json"
+    status.write_snapshot([], snapshot_path, daemon={"status": "idle", "claimed": []})
+
+    doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert doc["daemon"] == {"status": "idle", "claimed": []}
+
+
+def test_write_snapshot_preserves_daemon_when_omitted(tmp_path):
+    from cli import status
+
+    snapshot_path = tmp_path / "snapshot.json"
+    status.write_snapshot([], snapshot_path, daemon={"status": "running", "claimed": ["owner/repo#1"]})
+    status.write_snapshot([], snapshot_path, runtimes=[{"name": "hermes"}])  # daemon omitted this call
+
+    doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert doc["daemon"] == {"status": "running", "claimed": ["owner/repo#1"]}
+    assert doc["runtimes"] == [{"name": "hermes"}]
