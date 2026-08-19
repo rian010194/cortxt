@@ -278,6 +278,16 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
+# Which Hermes profile a matched task_shape defaults to, when --hermes-profile
+# isn't given explicitly. Evidence-based, not speculative: tonight both Fas 2
+# Kanban-dispatch failures (#165, #166) and both admin-surface-CLI failures
+# (#174, #175) happened on "builder" -- a research-shaped task defaulting to
+# "builder" just because that was the flag's own default was never a real
+# choice. Only "research" is mapped for now; other tags fall back to "builder"
+# until there's similar evidence for a different default.
+_HERMES_PROFILE_BY_TAG = {"research": "researcher"}
+
+
 def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
     """Orchestrator Dispatch v0.1: route a tagged task to an engine, invoke
     it, and record the outcome in the same session_state Fas 2 already
@@ -322,8 +332,19 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
         }
 
         if choice.engine_id == "hermes":
+            # Check the full supplied tag set, not choice.matched_tag: route()
+            # picks matched_tag as the alphabetically-first tag in the
+            # intersection with the winning engine's task_shapes, which isn't
+            # necessarily "research" even when "research" was among --tags
+            # (e.g. --tags research,parallel-dispatch matches "parallel-dispatch"
+            # alphabetically first, silently defeating this default -- caught
+            # by review before merge).
+            hermes_profile = args.hermes_profile if args.hermes_profile is not None else next(
+                (profile for tag, profile in _HERMES_PROFILE_BY_TAG.items() if tag in tags),
+                "builder",
+            )
             result = hermes_invoker.invoke_hermes(
-                args.hermes_profile, args.prompt, timeout_seconds=args.timeout,
+                hermes_profile, args.prompt, timeout_seconds=args.timeout,
                 model=args.model, provider=args.provider,
             )
             state.append(store, session_id, 0, "session.terminal", {"status": result["status"]})
@@ -511,7 +532,7 @@ def main(argv: list[str] | None = None) -> int:
     dispatch_parser.add_argument("--task-id", required=True, help="Task identity recorded in session state")
     dispatch_parser.add_argument("--prompt", required=True, help="Prompt to send if routed to an LLM-backed engine")
     dispatch_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
-    dispatch_parser.add_argument("--hermes-profile", default="builder", help="Hermes profile to use if routed to hermes (default: builder)")
+    dispatch_parser.add_argument("--hermes-profile", default=None, help="Hermes profile to use if routed to hermes (default: inferred from matched tag, else builder)")
     dispatch_parser.add_argument("--timeout", type=int, default=120, help="Timeout in seconds for an engine invocation (default: 120)")
     dispatch_parser.add_argument("--model", help="Model override passed to hermes -m (optional)")
     dispatch_parser.add_argument("--provider", help="Provider override passed to hermes --provider (optional)")
