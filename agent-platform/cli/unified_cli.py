@@ -22,7 +22,10 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from runtime.engine_registry import EngineContext
 
 logger = logging.getLogger(__name__)
 
@@ -291,28 +294,36 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
 _HERMES_PROFILE_BY_TAG = {"research": "researcher"}
 
 
-def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
+def _run_dispatch(
+    args: argparse.Namespace, *, engine_context: "EngineContext | None" = None
+) -> ResultEnvelope:
     """Orchestrator Dispatch v0.1: route a tagged task to an engine, invoke
     it, and record the outcome in the same session_state Fas 2 already
     tracks. See .hermes/plans/2026-08-19-orchestrator-dispatch-v01.md.
 
-    "claude-direct" has no headless invocation here -- there is no
-    confirmed one-shot Claude Code CLI entry point in this repo, and
+    Invocation goes through an EngineContext broker (ADR-026/027) instead of
+    a hardcoded if/elif on engine_id -- "claude-direct" has no adapter
+    registered (no confirmed one-shot Claude Code CLI entry point exists;
     guessing one would repeat the exact mistake ADR-022 was written to
-    avoid (coding in an assumption nothing verified). Routed-to-claude-direct
-    tasks are recorded as "blocked" -- picked up by a human/Claude Code
-    session, not auto-executed.
+    avoid), so its broker has no provider and the task is recorded as
+    "blocked" -- picked up by a human/Claude Code session, not auto-executed.
+    Any other engine_id with no registered adapter gets the same treatment,
+    not a silent fallback to whatever IS registered.
+
+    `engine_context` is None in every real CLI invocation (build_default_
+    engine_context() is used); tests inject a fake one directly.
     """
     try:
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
-        from routing import hermes_invoker
         from routing.engine_manifest import DEFAULT_MANIFESTS, route
         from runtime import session_state as state
+        from runtime.default_engine_context import build_default_engine_context
 
         tags = [t.strip() for t in args.tags.split(",") if t.strip()]
         choice = route(tags, DEFAULT_MANIFESTS)
+        context = engine_context if engine_context is not None else build_default_engine_context()
 
         store = args.store or (_get_agent_platform_path() / ".sessions")
         session = state.create(store, task_id=args.task_id)
@@ -335,7 +346,8 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
             "checkpoint_required": choice.checkpoint_required,
         }
 
-        if choice.engine_id == "hermes":
+        broker = context.get(choice.engine_id)
+        if broker.has_provider:
             # Check the full supplied tag set, not choice.matched_tag: route()
             # picks matched_tag as the alphabetically-first tag in the
             # intersection with the winning engine's task_shapes, which isn't
@@ -347,11 +359,16 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
                 (profile for tag, profile in _HERMES_PROFILE_BY_TAG.items() if tag in tags),
                 "builder",
             )
-            result = hermes_invoker.invoke_hermes(
+            result = broker.invoke(
                 hermes_profile, args.prompt, timeout_seconds=args.timeout,
                 model=args.model, provider=args.provider,
             )
             state.append(store, session_id, 0, "session.terminal", {"status": result["status"]})
+            # Kept as "hermes_result" even though the broker is generic:
+            # hermes is the only engine with a registered adapter today, so
+            # renaming this key would be a real (if currently invisible)
+            # evidence-shape change with no engine that would exercise the
+            # difference -- not something this plan does speculatively.
             evidence["hermes_result"] = {k: v for k, v in result.items() if k != "stdout"}
             status = "succeeded" if result["status"] == "succeeded" else "failed"
         else:
@@ -397,7 +414,6 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
             status_cli.write_snapshot(status_cli.load_sessions(store), snapshot_path)
         except Exception as snapshot_error:
             logger.warning("dispatch: could not refresh widget snapshot: %s", snapshot_error)
-
 
 def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
     """List known agent runtimes and whether each is on PATH (Fas 4 admin surface).
