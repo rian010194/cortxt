@@ -106,3 +106,35 @@ def test_snapshot_written_after_run_once(tmp_path):
     doc = json.loads((tmp_path / "snapshot.json").read_text(encoding="utf-8"))
     assert "daemon" in doc
     assert doc["daemon"]["claimed"] == ["owner/repo#9"]
+
+
+from daemon.stop_flag import request_stop
+
+
+def test_run_forever_stops_on_stop_flag(tmp_path):
+    def _list(repo, **kwargs):
+        return []  # nothing to dispatch -- isolates the stop-loop behavior
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list)
+    request_stop(loop.state_dir)
+    reason = loop.run_forever(poll_interval_seconds=0.0, sleep=lambda s: None, max_iterations=5)
+    assert reason == "stop_requested"
+
+
+def test_run_forever_stops_on_budget_exhausted(tmp_path):
+    def _list(repo, **kwargs):
+        return []
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list)
+    loop.budget.record_cost(loop.budget.max_cost_usd)  # pre-exhaust
+    reason = loop.run_forever(poll_interval_seconds=0.0, sleep=lambda s: None, max_iterations=5)
+    assert reason == "budget_exhausted"
+
+
+def test_run_forever_hits_max_iterations_when_neither_stop_nor_exhausted(tmp_path):
+    def _list(repo, **kwargs):
+        return []
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list)
+    reason = loop.run_forever(poll_interval_seconds=0.0, sleep=lambda s: None, max_iterations=3)
+    assert reason == "max_iterations"

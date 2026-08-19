@@ -10,12 +10,14 @@ course-correction note).
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
 from daemon.autonomy import AutonomyTracker
 from daemon.budget import SessionBudget
+from daemon.stop_flag import is_stop_requested
 from daemon.evidence_gate import evaluate_gate
 from daemon.github_scanner import list_ready_issues as _default_list_ready_issues
 from routing.engine_manifest import DEFAULT_MANIFESTS, EngineManifest, route as _default_route
@@ -112,3 +114,22 @@ class DaemonLoop:
             return [{"issue_id": issue_id, "engine_id": choice.engine_id,
                       "gate_outcome": {"decision": gate_outcome.decision, "reason": gate_outcome.reason}}]
         return []
+
+    def run_forever(
+        self,
+        *,
+        poll_interval_seconds: float = 30.0,
+        sleep: Callable[[float], None] = time.sleep,
+        max_iterations: int | None = None,
+    ) -> str:
+        iterations = 0
+        while True:
+            if is_stop_requested(self.state_dir):
+                return "stop_requested"
+            if self.budget.exhausted():
+                return "budget_exhausted"
+            self.run_once()
+            iterations += 1
+            if max_iterations is not None and iterations >= max_iterations:
+                return "max_iterations"
+            sleep(poll_interval_seconds)
