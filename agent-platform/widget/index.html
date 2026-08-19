@@ -100,6 +100,20 @@ unless polling genuinely can't work" guidance.
         <tbody id="rows"></tbody>
       </table>
     </div>
+    <div class="body" id="runtimes-panel" style="display:none;">
+      <div class="meta">Runtimes</div>
+      <table>
+        <thead><tr><th>Runtime</th><th>Installed</th><th>Path</th></tr></thead>
+        <tbody id="runtimes-rows"></tbody>
+      </table>
+    </div>
+    <div class="body" id="credentials-panel" style="display:none;">
+      <div class="meta">Credentials</div>
+      <table>
+        <thead><tr><th>Credential</th><th>Last action</th><th>Result</th><th>Updated</th></tr></thead>
+        <tbody id="credentials-rows"></tbody>
+      </table>
+    </div>
   </div>
 
 <script>
@@ -138,10 +152,59 @@ function render(doc) {
   }
 }
 
+function renderRuntimes(doc) {
+  const panel = document.getElementById("runtimes-panel");
+  if (!doc.runtimes) { panel.style.display = "none"; return; }
+  panel.style.display = "";
+  const rows = document.getElementById("runtimes-rows");
+  rows.innerHTML = "";
+  for (const r of doc.runtimes) {
+    const tr = document.createElement("tr");
+    const idCell = document.createElement("td");
+    idCell.textContent = r.runtime_id;
+    const installedCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = `badge ${r.installed ? "ok" : "warn"}`;
+    badge.textContent = r.installed ? "yes" : "no";
+    installedCell.appendChild(badge);
+    const pathCell = document.createElement("td");
+    pathCell.textContent = r.path || "";
+    tr.append(idCell, installedCell, pathCell);
+    rows.appendChild(tr);
+  }
+}
+
+function renderCredentials(doc) {
+  const panel = document.getElementById("credentials-panel");
+  if (!doc.credentials) { panel.style.display = "none"; return; }
+  panel.style.display = "";
+  const rows = document.getElementById("credentials-rows");
+  rows.innerHTML = "";
+  for (const c of doc.credentials) {
+    const tr = document.createElement("tr");
+    const idCell = document.createElement("td");
+    idCell.textContent = c.credential_id;
+    const actionCell = document.createElement("td");
+    actionCell.textContent = c.last_action;
+    const resultCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = `badge ${c.last_result === "ok" ? "ok" : "error"}`;
+    badge.textContent = c.last_result;
+    resultCell.appendChild(badge);
+    const updatedCell = document.createElement("td");
+    updatedCell.textContent = c.last_timestamp;
+    tr.append(idCell, actionCell, resultCell, updatedCell);
+    rows.appendChild(tr);
+  }
+}
+
 async function poll() {
   try {
     const res = await fetch("snapshot.json", { cache: "no-store" });
-    render(await res.json());
+    const doc = await res.json();
+    render(doc);
+    renderRuntimes(doc);
+    renderCredentials(doc);
   } catch (err) {
     document.getElementById("meta").textContent = "waiting for snapshot.json (run `cortxt sessions`)…";
   }
