@@ -113,12 +113,13 @@ def write_snapshot(
     *,
     runtimes: list[dict[str, Any]] | None = None,
     credentials: list[dict[str, Any]] | None = None,
+    daemon: dict[str, Any] | None = None,
 ) -> None:
     """Atomically write the JSON snapshot the widget polls.
 
-    `runtimes`/`credentials` are optional admin-surface data (Fas 4) the
+    `runtimes`/`credentials`/`daemon` are optional admin-surface data (Fas 4) the
     widget can render alongside sessions. Every call to this function
-    rewrites the whole document, but not every caller knows about both
+    rewrites the whole document, but not every caller knows about all
     keys (`_run_runtimes` only has `runtimes`, `_refresh_credentials_snapshot`
     only has `credentials`, and `sessions`/`dispatch`/`addons` have neither) --
     so `None` means "caller didn't supply this", not "clear it". When a key
@@ -136,7 +137,7 @@ def write_snapshot(
     """
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if runtimes is None or credentials is None:
+    if runtimes is None or credentials is None or daemon is None:
         try:
             existing = json.loads(snapshot_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -145,12 +146,16 @@ def write_snapshot(
             runtimes = existing.get("runtimes")
         if credentials is None:
             credentials = existing.get("credentials")
+        if daemon is None:
+            daemon = existing.get("daemon")
 
     doc: dict[str, Any] = {"generated_at": state.utc_now(), "sessions": sessions}
     if runtimes is not None:
         doc["runtimes"] = runtimes
     if credentials is not None:
         doc["credentials"] = credentials
+    if daemon is not None:
+        doc["daemon"] = daemon
     descriptor, tmp = tempfile.mkstemp(prefix=".snapshot-", suffix=".tmp", dir=snapshot_path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:

@@ -581,6 +581,52 @@ def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
             logger.warning("addons: could not refresh widget snapshot: %s", snapshot_error)
 
 
+def _run_daemon(args: argparse.Namespace) -> ResultEnvelope:
+    """Run the Supervisor Daemon (workflow:ready dispatch loop)."""
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+
+        from daemon.stop_flag import request_stop
+
+        if args.daemon_command == "stop":
+            request_stop(Path(args.state_dir))
+            return ResultEnvelope(status="succeeded", evidence=[{"stopped": args.state_dir}])
+
+        if args.daemon_command == "status":
+            snapshot_path = Path(args.snapshot)
+            try:
+                doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                doc = {}
+            return ResultEnvelope(status="succeeded", evidence=[{"daemon": doc.get("daemon")}])
+
+        if args.daemon_command == "start":
+            from daemon.autonomy import AutonomyTracker
+            from daemon.budget import SessionBudget
+            from daemon.loop import DaemonLoop
+            from daemon.stop_flag import clear_stop
+
+            clear_stop(Path(args.state_dir))
+
+            loop = DaemonLoop(
+                repo=args.repo,
+                state_dir=Path(args.state_dir),
+                snapshot_path=Path(args.snapshot),
+                budget=SessionBudget(max_cost_usd=args.max_cost_usd, max_wall_clock_seconds=args.max_wall_clock_seconds),
+                autonomy=AutonomyTracker(),
+                supervised=not args.unattended,
+            )
+            max_iterations = 1 if args.once else None
+            reason = loop.run_forever(poll_interval_seconds=args.poll_interval, max_iterations=max_iterations)
+            return ResultEnvelope(status="succeeded", evidence=[{"stop_reason": reason}])
+
+        return ResultEnvelope(status="failed", error={"category": "invalid_args", "message": "unknown daemon_command"})
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
 def main(argv: list[str] | None = None) -> int:
     """Unified CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -695,6 +741,29 @@ def main(argv: list[str] | None = None) -> int:
     addons_submit_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
     addons_submit_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     addons_parser.set_defaults(func=_run_addons)
+
+    # daemon subcommand
+    daemon_parser = sub.add_parser("daemon", help="Background Supervisor Daemon (workflow:ready dispatch loop)")
+    daemon_sub = daemon_parser.add_subparsers(dest="daemon_command", required=True)
+
+    daemon_start = daemon_sub.add_parser("start", help="Start the dispatch loop")
+    daemon_start.add_argument("--repo", required=True, help="owner/repo to scan for workflow:ready issues")
+    daemon_start.add_argument("--state-dir", required=True)
+    daemon_start.add_argument("--snapshot", required=True)
+    daemon_start.add_argument("--max-cost-usd", type=float, default=10.0)
+    daemon_start.add_argument("--max-wall-clock-seconds", type=float, default=6 * 3600.0)
+    daemon_start.add_argument("--poll-interval", type=float, default=30.0)
+    daemon_start.add_argument("--once", action="store_true", help="Run a single iteration and exit (testing/proof-step)")
+    daemon_start.add_argument("--unattended", action="store_true", help="Skip forced supervised-mode pausing (only after a class has earned autonomy)")
+    daemon_start.set_defaults(func=_run_daemon)
+
+    daemon_stop = daemon_sub.add_parser("stop", help="Request the running daemon to stop")
+    daemon_stop.add_argument("--state-dir", required=True)
+    daemon_stop.set_defaults(func=_run_daemon)
+
+    daemon_status = daemon_sub.add_parser("status", help="Print the daemon section of the widget snapshot")
+    daemon_status.add_argument("--snapshot", required=True)
+    daemon_status.set_defaults(func=_run_daemon)
 
     args = parser.parse_args(argv)
 
