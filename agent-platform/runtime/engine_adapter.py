@@ -8,6 +8,7 @@ engine it's talking to.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 
@@ -21,5 +22,6 @@ class EngineAdapter(Protocol):
         timeout_seconds: int,
         model: str | None = None,
         provider: str | None = None,
+        cwd: Path | None = None,
     ) -> dict:
         ...

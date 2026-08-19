@@ -22,7 +22,7 @@ def list_ready_issues(
 ) -> list[dict]:
     result = run_subprocess(
         ["gh", "issue", "list", "--repo", repo, "--label", label,
-         "--state", "open", "--json", "number,title,labels"],
+         "--state", "open", "--json", "number,title,body,labels"],
         capture_output=True, text=True, timeout=timeout_seconds,
     )
     if result.returncode != 0:

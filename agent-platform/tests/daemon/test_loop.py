@@ -19,8 +19,12 @@ def _fake_route(task_tags, manifests, fallback="claude-direct"):
                          checkpoint_required=False)
 
 
-def _fake_invoke_hermes(profile, prompt, *, timeout_seconds, model=None, provider=None):
+def _fake_invoke_hermes(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
     return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
+
+
+def _fake_create_worktree(workdir, issue_id):
+    return workdir
 
 
 def _context_with_hermes(invoke_fn):
@@ -44,7 +48,7 @@ def _static_git_head(workdir):
 
 def _make_loop(tmp_path: Path, *, list_ready_issues, route=_fake_route,
                 engine_context=None, supervised=True,
-                git_head=None):
+                git_head=None, create_worktree=None):
     return DaemonLoop(
         repo="owner/repo",
         state_dir=tmp_path / "state",
@@ -58,6 +62,7 @@ def _make_loop(tmp_path: Path, *, list_ready_issues, route=_fake_route,
         engine_context=engine_context or _context_with_hermes(_fake_invoke_hermes),
         route=route,
         git_head=git_head or _make_progressing_git_head(),
+        create_worktree=create_worktree or _fake_create_worktree,
     )
 
 
@@ -162,7 +167,7 @@ def test_crash_then_restart_does_not_redispatch(tmp_path):
     def _list(repo, **kwargs):
         return [{"number": 11, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
 
-    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None):
+    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
         dispatch_count["n"] += 1
         return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
@@ -185,7 +190,7 @@ def test_route_choosing_non_hermes_engine_is_skipped_not_dispatched(tmp_path):
         return EngineChoice(engine_id="claude-direct", reason="test", matched_tag="security-sensitive",
                              checkpoint_required=True)
 
-    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None):
+    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
         dispatch_count["n"] += 1
         return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
@@ -212,13 +217,84 @@ def test_hermes_invocation_error_freezes_that_issue(tmp_path):
     def _list(repo, **kwargs):
         return [{"number": 14, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
 
-    def _raising_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None):
+    def _raising_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
         raise HermesInvocationError("could not start hermes: [WinError 2]")
 
     loop = _make_loop(tmp_path, list_ready_issues=_list, engine_context=_context_with_hermes(_raising_invoke))
     results = loop.run_once()
     assert results[0]["gate_outcome"]["decision"] == "freeze"
     assert "owner/repo#14" in loop.claimed_issue_ids
+
+
+def test_prompt_includes_issue_body_not_just_title(tmp_path):
+    captured = {}
+
+    def _list(repo, **kwargs):
+        return [{"number": 16, "title": "X", "body": "Create docs/foo.md with exactly one line.",
+                  "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
+
+    def _capturing_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
+        captured["prompt"] = prompt
+        return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list, engine_context=_context_with_hermes(_capturing_invoke))
+    loop.run_once()
+    assert "Create docs/foo.md with exactly one line." in captured["prompt"]
+
+
+def test_dispatch_runs_in_isolated_worktree_cwd(tmp_path):
+    captured = {}
+    worktree_path = tmp_path / "some-other-worktree"
+
+    def _list(repo, **kwargs):
+        return [{"number": 17, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
+
+    def _capturing_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
+        captured["cwd"] = cwd
+        return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
+
+    def _fixed_worktree(workdir, issue_id):
+        return worktree_path
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list,
+                       engine_context=_context_with_hermes(_capturing_invoke),
+                       create_worktree=_fixed_worktree)
+    loop.run_once()
+    assert captured["cwd"] == worktree_path
+
+
+def test_commit_landed_check_uses_worktree_path_not_workdir(tmp_path):
+    worktree_path = tmp_path / "some-other-worktree"
+
+    def _list(repo, **kwargs):
+        return [{"number": 18, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
+
+    seen_paths = []
+
+    def _recording_git_head(path):
+        seen_paths.append(path)
+        return "same-commit"
+
+    def _fixed_worktree(workdir, issue_id):
+        return worktree_path
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list,
+                       git_head=_recording_git_head, create_worktree=_fixed_worktree)
+    loop.run_once()
+    assert seen_paths == [worktree_path, worktree_path]
+
+
+def test_create_worktree_failure_freezes_issue_without_crashing_loop(tmp_path):
+    def _list(repo, **kwargs):
+        return [{"number": 19, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
+
+    def _failing_worktree(workdir, issue_id):
+        raise RuntimeError("git worktree add failed: already exists")
+
+    loop = _make_loop(tmp_path, list_ready_issues=_list, create_worktree=_failing_worktree)
+    results = loop.run_once()
+    assert results[0]["gate_outcome"]["decision"] == "freeze"
+    assert "owner/repo#19" in loop.claimed_issue_ids
 
 
 def test_run_forever_stops_on_pause_decision(tmp_path):

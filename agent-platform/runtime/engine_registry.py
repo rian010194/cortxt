@@ -9,6 +9,7 @@ the same engine_id (ADR-027 non-goal, explicit).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from runtime.engine_adapter import EngineAdapter
 
 
@@ -35,6 +36,7 @@ class EngineBroker:
         timeout_seconds: int,
         model: str | None = None,
         provider: str | None = None,
+        cwd: Path | None = None,
     ) -> dict:
         if not self._providers:
             raise NoProviderRegisteredError(
@@ -42,7 +44,7 @@ class EngineBroker:
             )
         # v1: exactly one provider, pure passthrough (ADR-027 point 2).
         return self._providers[0].invoke(
-            profile, prompt, timeout_seconds=timeout_seconds, model=model, provider=provider
+            profile, prompt, timeout_seconds=timeout_seconds, model=model, provider=provider, cwd=cwd
         )
 
 

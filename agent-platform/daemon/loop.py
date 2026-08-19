@@ -14,19 +14,30 @@ run_forever, freeze is recorded distinctly); autonomy streaks persist across
 restarts; HermesInvocationError and other run_once() failures no longer kill
 the whole run_forever loop.
 
+Prompt + worktree fix (2026-08-19, Task 11 Step 2 proof-step follow-up):
+`run_once()` now sends Hermes the issue's full body, not just its title --
+the earlier title-only prompt gave Hermes no actual task spec, which is why
+the first real end-to-end proof dispatch produced no commit at all. Each
+dispatch also gets its own git worktree + branch (`create_worktree`,
+injectable like `git_head`), created from `workdir` before invoking and
+never removed automatically (branch cleanup/merge stays an operator
+decision). `commit_landed` is now checked against that worktree, not the
+shared `workdir` -- this closes two of the three known limitations noted
+below: the cwd Hermes's subprocess runs in is now explicitly the same path
+`git_head` inspects (no more "coincidentally equal" caveat), and concurrent
+dispatches can no longer false-positive off each other's commits since each
+has its own worktree. A `workdir` that isn't a git repo now fails loudly at
+worktree-creation time (`git worktree add` errors, caught and turned into a
+distinct "could not create isolated worktree" freeze) instead of the old
+silent every-dispatch-freezes-with-no-reason behavior.
+
 Known limitations of the git-commit evidence check (re-review, 2026-08-19),
 not fixed here -- ruled acceptable for v1, documented so a future reader
-doesn't read "real signal" as airtight: (1) `commit_landed` only proves
-*some* commit landed in `workdir` during the call, not that it came from
-this dispatch -- a concurrent commit from elsewhere in the same window
-would false-positive; (2) `workdir` and the cwd `invoke_hermes`'s subprocess
-actually inherits are never explicitly tied together, only coincidentally
-equal today because `DaemonLoop` is always constructed and run from the
-same process/cwd in the only production call site (`cli/unified_cli.py`'s
-`_run_daemon`); (3) a non-git `workdir` makes `git_head` always return
-`None`, so `commit_landed` is always `False` and every dispatch permanently
-freezes with no distinct "not a git repo" signal in the evidence entry --
-fail-safe, but silent. `allowed_artifact_prefixes=("issue:", "engine:")`
+doesn't read "real signal" as airtight: `commit_landed` only proves *some*
+commit landed in the dispatch's worktree during the call, not that its
+content matches what the issue asked for -- a real code/doc review step is
+still a separate, unbuilt gate (see the "granskare/dokumenterare/scout
+roles in the loop" thread). `allowed_artifact_prefixes=("issue:", "engine:")`
 passed to `evaluate_gate` below is also known-tautological: `artifacts` is
 constructed from those exact two prefixes on every call, so that check can
 never fail -- it is not real scope enforcement, only a placeholder for when
@@ -73,6 +84,29 @@ def _default_git_head(workdir: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def _default_create_worktree(workdir: Path, issue_id: str) -> Path:
+    """Give each dispatch its own branch + worktree, sibling to `workdir`, so
+    Hermes never writes directly onto whatever branch happens to be checked
+    out in the daemon's own working tree. Idempotent (a crash-then-restart on
+    an already-claimed issue reuses the same worktree instead of erroring).
+    Never removed here -- cleanup/merge of a dispatch's branch is an
+    operator decision, not something this loop does silently.
+    """
+    safe_id = issue_id.replace("/", "-").replace("#", "-issue-")
+    worktree_path = workdir.parent / f"{workdir.name}-worktrees" / safe_id
+    if worktree_path.is_dir():
+        return worktree_path
+    worktree_path.parent.mkdir(parents=True, exist_ok=True)
+    branch = f"daemon/{safe_id}"
+    result = subprocess.run(
+        ["git", "-C", str(workdir), "worktree", "add", "-b", branch, str(worktree_path)],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"git worktree add failed: {result.stderr.strip()}")
+    return worktree_path
+
+
 @dataclass
 class DaemonLoop:
     repo: str
@@ -87,6 +121,7 @@ class DaemonLoop:
     engine_context: EngineContext = field(default_factory=build_default_engine_context)
     route: Callable = _default_route
     git_head: Callable[[Path], "str | None"] = _default_git_head
+    create_worktree: Callable[[Path, str], Path] = _default_create_worktree
     claimed_issue_ids: set[str] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
@@ -164,11 +199,26 @@ class DaemonLoop:
             self.claimed_issue_ids.add(issue_id)
             self._persist_claimed()
 
-            head_before = self.git_head(self.workdir)
+            prompt = issue["title"]
+            body = issue.get("body")
+            if body:
+                prompt = f"{issue['title']}\n\n{body}"
+
+            try:
+                worktree_path = self.create_worktree(self.workdir, issue_id)
+            except Exception as error:
+                gate_outcome = GateOutcome("freeze", f"could not create isolated worktree: {error}")
+                self.autonomy.record_pass(choice.engine_id, choice.matched_tag, clean=False)
+                self._persist_autonomy()
+                self._write_status(last_gate_outcome=gate_outcome)
+                return [{"issue_id": issue_id, "engine_id": choice.engine_id,
+                          "gate_outcome": {"decision": gate_outcome.decision, "reason": gate_outcome.reason}}]
+
+            head_before = self.git_head(worktree_path)
             try:
                 invoke_result = broker.invoke(
                     "researcher" if "research" in task_tags else "builder",
-                    issue["title"], timeout_seconds=300,
+                    prompt, timeout_seconds=300, cwd=worktree_path,
                 )
             # Hermes-specific by construction: only HermesAdapter exists today, so
             # this except and the "researcher"/"builder" profile strings above are
@@ -183,7 +233,7 @@ class DaemonLoop:
                 return [{"issue_id": issue_id, "engine_id": choice.engine_id,
                           "gate_outcome": {"decision": gate_outcome.decision, "reason": gate_outcome.reason}}]
 
-            head_after = self.git_head(self.workdir)
+            head_after = self.git_head(worktree_path)
             commit_landed = (
                 head_before is not None and head_after is not None and head_before != head_after
             )

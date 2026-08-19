@@ -17,7 +17,7 @@ class _FakeHermesAdapter:
         self._response = response
         self.calls = []
 
-    def invoke(self, profile, prompt, *, timeout_seconds, model=None, provider=None):
+    def invoke(self, profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
         self.calls.append((profile, prompt, timeout_seconds, model, provider))
         return self._response
 

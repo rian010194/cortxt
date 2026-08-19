@@ -38,6 +38,19 @@ def test_nonzero_exit_raises():
         list_ready_issues("owner/repo", run_subprocess=runner)
 
 
+def test_requests_body_field_from_gh():
+    captured = {}
+
+    def _runner(args, **kwargs):
+        captured["args"] = args
+        return subprocess.CompletedProcess(args, 0, stdout="[]", stderr="")
+
+    list_ready_issues("owner/repo", run_subprocess=_runner)
+    json_flag_index = captured["args"].index("--json")
+    fields = captured["args"][json_flag_index + 1].split(",")
+    assert "body" in fields
+
+
 def test_custom_label():
     captured = {}
 

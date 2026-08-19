@@ -48,3 +48,4 @@ Avancerade
 *.dispatch.lock
 *.init.lock
 .worktrees/
+agent-platform-worktrees/
