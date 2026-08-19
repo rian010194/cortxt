@@ -19,6 +19,7 @@ live lookup instead of a frozen one.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable
 import routing.hermes_invoker as _hermes_invoker_module
 
@@ -35,8 +36,9 @@ class HermesAdapter:
         timeout_seconds: int,
         model: str | None = None,
         provider: str | None = None,
+        cwd: Path | None = None,
     ) -> dict:
         invoke_fn = self._invoke_hermes if self._invoke_hermes is not None else _hermes_invoker_module.invoke_hermes
         return invoke_fn(
-            profile, prompt, timeout_seconds=timeout_seconds, model=model, provider=provider
+            profile, prompt, timeout_seconds=timeout_seconds, model=model, provider=provider, cwd=cwd
         )

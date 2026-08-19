@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+from pathlib import Path
 from typing import Callable
 
 
@@ -33,6 +34,7 @@ def invoke_hermes(
     run_subprocess: Callable[..., "subprocess.CompletedProcess[str]"] = subprocess.run,
     model: str | None = None,
     provider: str | None = None,
+    cwd: Path | None = None,
 ) -> dict:
     """Run `hermes -p <profile> -z <prompt>` (with optional -m/--provider
     overrides) and return a structured result.
@@ -58,7 +60,10 @@ def invoke_hermes(
 
     started = time.time()
     try:
-        proc = run_subprocess(argv, capture_output=True, text=True, timeout=timeout_seconds)
+        proc = run_subprocess(
+            argv, capture_output=True, text=True, timeout=timeout_seconds,
+            cwd=str(cwd) if cwd is not None else None,
+        )
     except subprocess.TimeoutExpired:
         return {
             "status": "timed_out",

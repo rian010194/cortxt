@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from runtime.engine_registry import EngineBroker, EngineContext, NoProviderRegisteredError
@@ -10,8 +12,8 @@ class _FakeAdapter:
         self._response = response
         self.calls = []
 
-    def invoke(self, profile, prompt, *, timeout_seconds, model=None, provider=None):
-        self.calls.append((profile, prompt, timeout_seconds, model, provider))
+    def invoke(self, profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
+        self.calls.append((profile, prompt, timeout_seconds, model, provider, cwd))
         return self._response
 
 
@@ -32,8 +34,17 @@ def test_broker_with_one_provider_passes_through():
     broker.register(adapter)
     result = broker.invoke("builder", "do it", timeout_seconds=60, model="m", provider="p")
     assert result == {"status": "succeeded"}
-    assert adapter.calls == [("builder", "do it", 60, "m", "p")]
+    assert adapter.calls == [("builder", "do it", 60, "m", "p", None)]
     assert broker.has_provider is True
+
+
+def test_broker_passes_cwd_through_to_adapter():
+    adapter = _FakeAdapter({"status": "succeeded"})
+    broker = EngineBroker()
+    broker.register(adapter)
+    worktree = Path("/some/worktree")
+    broker.invoke("builder", "do it", timeout_seconds=60, cwd=worktree)
+    assert adapter.calls == [("builder", "do it", 60, None, None, worktree)]
 
 
 def test_context_get_returns_broker_for_unknown_engine_id():
