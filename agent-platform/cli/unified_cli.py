@@ -469,16 +469,52 @@ def _run_credentials(args: argparse.Namespace) -> ResultEnvelope:
             # for every unconfirmed attempt made through this admin surface.
             value = sys.stdin.read().rstrip("\n")
             broker.store(args.id, value, operator_confirmed=args.confirm)
-            return ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
+            result = ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
+        else:
+            # inject
+            value = broker.inject(args.id, requesting_runtime=args.runtime, purpose=args.purpose)
+            print(value)
+            result = ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
 
-        # inject
-        value = broker.inject(args.id, requesting_runtime=args.runtime, purpose=args.purpose)
-        print(value)
-        return ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
+        _refresh_credentials_snapshot(args, ap_path, broker)
+        return result
     except NotOperatorConfirmedError as e:
         return ResultEnvelope(status="failed", error={"category": "not_confirmed", "message": str(e)})
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
+def _refresh_credentials_snapshot(args: argparse.Namespace, ap_path: Path, broker) -> None:
+    """Derive credential metadata (id, last action/result/timestamp) from
+    the broker's own audit log -- never the plaintext value, which never
+    leaves `inject`'s stdout. Best-effort, same pattern as _run_dispatch's
+    and _run_runtimes' snapshot refresh: a failure here is logged, never
+    masks the store/inject result that already succeeded."""
+    try:
+        cli_dir = Path(__file__).parent
+        if str(cli_dir) not in sys.path:
+            sys.path.insert(0, str(cli_dir))
+        import status as status_cli
+
+        latest_by_id: dict[str, dict] = {}
+        for record in broker.audit_log():
+            if record.result != "ok":
+                continue
+            latest_by_id[record.credential_id] = {
+                "credential_id": record.credential_id,
+                "last_action": record.action,
+                "last_result": record.result,
+                "last_timestamp": record.timestamp,
+            }
+
+        store = _get_agent_platform_path() / ".sessions"
+        snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+        status_cli.write_snapshot(
+            status_cli.load_sessions(store), snapshot_path,
+            credentials=list(latest_by_id.values()),
+        )
+    except Exception as snapshot_error:
+        logger.warning("credentials: could not refresh widget snapshot: %s", snapshot_error)
 
 
 def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
@@ -603,11 +639,13 @@ def main(argv: list[str] | None = None) -> int:
     cred_store_parser.add_argument("--id", required=True, help="Credential id")
     cred_store_parser.add_argument("--confirm", action="store_true", help="Required to actually persist the credential")
     cred_store_parser.add_argument("--store-dir", type=Path, help="Credential store dir (default: agent-platform/.credentials)")
+    cred_store_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     cred_inject_parser = credentials_sub.add_parser("inject", help="Print a credential's value (purpose-bound)")
     cred_inject_parser.add_argument("--id", required=True, help="Credential id")
     cred_inject_parser.add_argument("--runtime", required=True, help="Requesting runtime identity")
     cred_inject_parser.add_argument("--purpose", required=True, help="Why this credential is being requested")
     cred_inject_parser.add_argument("--store-dir", type=Path, help="Credential store dir (default: agent-platform/.credentials)")
+    cred_inject_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     credentials_parser.set_defaults(func=_run_credentials)
 
     # addons subcommand
