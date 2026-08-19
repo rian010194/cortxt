@@ -113,6 +113,26 @@ def test_route_falls_back_when_no_engine_matches():
     assert choice.matched_tag is None
 
 
+def test_route_fallback_is_checkpoint_required_even_if_engine_default_were_relaxed():
+    """Review finding: the fallback branch's `checkpoint_required=True` in
+    route() is currently unverified as an intentional policy choice rather
+    than incidental -- True also happens to be EngineChoice's own dataclass
+    default, so a test that only asserted the field's value without ruling
+    out that coincidence wouldn't catch a future flip of the dataclass
+    default to False. Route with a matching-but-not-checkpoint-required
+    candidate absent (no candidate at all) so the fallback path is the only
+    thing that can produce this choice, and note the candidate engine below
+    is itself declared checkpoint_required=False -- proving the fallback's
+    True doesn't come from some ambient always-True default in this test's
+    own setup."""
+    manifests = [
+        _manifest(engine_id="a", task_shapes=("research",), checkpoint_required=False),
+    ]
+    choice = route(["completely-unmatched-tag"], manifests)
+    assert choice.engine_id == DEFAULT_FALLBACK_ENGINE
+    assert choice.checkpoint_required is True
+
+
 def test_route_falls_back_when_only_matching_engine_is_degraded():
     manifests = [_manifest(engine_id="a", task_shapes=("research",), reliability_class="degraded")]
     choice = route(["research"], manifests)
