@@ -399,7 +399,13 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
 
 
 def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
-    """List known agent runtimes and whether each is on PATH (Fas 4 admin surface)."""
+    """List known agent runtimes and whether each is on PATH (Fas 4 admin surface).
+
+    Refreshes the widget snapshot's `runtimes` key on every call, same
+    best-effort-but-visible pattern _run_dispatch uses for `sessions`: a
+    snapshot write failure is logged, never masks this command's own
+    result (Track 1, docs/superpowers/plans/2026-08-19-track1-admin-ui-wiring.md).
+    """
     try:
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
@@ -412,11 +418,27 @@ def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
         for s in statuses:
             print(f"{s.runtime_id:<14} {'yes' if s.installed else 'no':<10} {s.path or ''}")
 
+        runtimes_payload = [
+            {"runtime_id": s.runtime_id, "installed": s.installed, "path": s.path} for s in statuses
+        ]
+
+        try:
+            cli_dir = Path(__file__).parent
+            if str(cli_dir) not in sys.path:
+                sys.path.insert(0, str(cli_dir))
+            import status as status_cli
+
+            store = _get_agent_platform_path() / ".sessions"
+            snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+            status_cli.write_snapshot(
+                status_cli.load_sessions(store), snapshot_path, runtimes=runtimes_payload,
+            )
+        except Exception as snapshot_error:
+            logger.warning("runtimes: could not refresh widget snapshot: %s", snapshot_error)
+
         return ResultEnvelope(
             status="succeeded",
-            evidence=[{"runtimes": [
-                {"runtime_id": s.runtime_id, "installed": s.installed, "path": s.path} for s in statuses
-            ]}],
+            evidence=[{"runtimes": runtimes_payload}],
         )
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
@@ -571,6 +593,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # runtimes subcommand
     runtimes_parser = sub.add_parser("runtimes", help="List known agent runtimes and whether each is on PATH")
+    runtimes_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     runtimes_parser.set_defaults(func=_run_runtimes)
 
     # credentials subcommand
