@@ -428,7 +428,7 @@ def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
                 sys.path.insert(0, str(cli_dir))
             import status as status_cli
 
-            store = _get_agent_platform_path() / ".sessions"
+            store = args.store or (_get_agent_platform_path() / ".sessions")
             snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
             status_cli.write_snapshot(
                 status_cli.load_sessions(store), snapshot_path, runtimes=runtimes_payload,
@@ -507,7 +507,7 @@ def _refresh_credentials_snapshot(args: argparse.Namespace, ap_path: Path, broke
                 "last_timestamp": record.timestamp,
             }
 
-        store = _get_agent_platform_path() / ".sessions"
+        store = args.store or (_get_agent_platform_path() / ".sessions")
         snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
         status_cli.write_snapshot(
             status_cli.load_sessions(store), snapshot_path,
@@ -662,6 +662,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # runtimes subcommand
     runtimes_parser = sub.add_parser("runtimes", help="List known agent runtimes and whether each is on PATH")
+    runtimes_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
     runtimes_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     runtimes_parser.set_defaults(func=_run_runtimes)
 
@@ -672,12 +673,14 @@ def main(argv: list[str] | None = None) -> int:
     cred_store_parser.add_argument("--id", required=True, help="Credential id")
     cred_store_parser.add_argument("--confirm", action="store_true", help="Required to actually persist the credential")
     cred_store_parser.add_argument("--store-dir", type=Path, help="Credential store dir (default: agent-platform/.credentials)")
+    cred_store_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
     cred_store_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     cred_inject_parser = credentials_sub.add_parser("inject", help="Print a credential's value (purpose-bound)")
     cred_inject_parser.add_argument("--id", required=True, help="Credential id")
     cred_inject_parser.add_argument("--runtime", required=True, help="Requesting runtime identity")
     cred_inject_parser.add_argument("--purpose", required=True, help="Why this credential is being requested")
     cred_inject_parser.add_argument("--store-dir", type=Path, help="Credential store dir (default: agent-platform/.credentials)")
+    cred_inject_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
     cred_inject_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     credentials_parser.set_defaults(func=_run_credentials)
 
