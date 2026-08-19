@@ -1,11 +1,18 @@
 <!--
-Cortxt sessions widget -- Fas 2 real implementation.
+Cortxt sessions widget -- Fas 2 real implementation, extended in Track 1
+(admin-ui-wiring) with two more panels.
 
-Renders exactly what agent-platform/cli/status.py's `sessions` subcommand
-wrote to snapshot.json (session_id, task_id, status, severity, updated_at).
-No independent status logic here (per v.02 vision §3): severity and status
-are read straight from the snapshot, not recomputed from raw session
-events, so the widget can never drift from what the CLI shows.
+Renders exactly what agent-platform/cli/status.py's `write_snapshot()`
+wrote to snapshot.json: the sessions table (session_id, task_id, status,
+severity, updated_at) -- populated by `sessions`, `dispatch`, and
+`addons submit` -- plus a `runtimes` panel (runtime_id, installed, path,
+from `runtimes`) and a `credentials` panel (credential_id, last_action,
+last_result, last_timestamp -- metadata only, never plaintext, from
+`credentials store`/`inject`). Each panel hides itself when its top-level
+key is absent from the snapshot. No independent status logic here (per
+v.02 vision §3): all of this is read straight from the snapshot, not
+recomputed from raw session events, so the widget can never drift from
+what the CLI shows.
 
 Fluent/Win11 dark-chrome look carried over from prototype-widget-v02.html
 (operator-approved direction), stripped of its hardcoded fake pipeline data.

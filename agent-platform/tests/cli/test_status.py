@@ -146,3 +146,21 @@ def test_write_snapshot_includes_runtimes_and_credentials_when_given(tmp_path):
     doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
     assert doc["runtimes"] == runtimes
     assert doc["credentials"] == credentials
+
+
+def test_write_snapshot_preserves_runtimes_across_a_later_credentials_only_call(tmp_path):
+    """Review finding: _run_runtimes and _refresh_credentials_snapshot each
+    only pass the one key they know about. Without carry-forward, a
+    `credentials` call made after a `runtimes` call silently wipes the
+    `runtimes` key (and vice versa) because write_snapshot rebuilds the
+    whole document from scratch every time."""
+    snapshot_path = tmp_path / "snapshot.json"
+    runtimes = [{"runtime_id": "hermes", "installed": True, "path": "/usr/bin/hermes"}]
+    credentials = [{"credential_id": "openai-key", "last_action": "store", "last_result": "ok", "last_timestamp": "2026-08-19T10:00:00Z"}]
+
+    status.write_snapshot([], snapshot_path, runtimes=runtimes)
+    status.write_snapshot([], snapshot_path, credentials=credentials)
+
+    doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert doc["runtimes"] == runtimes
+    assert doc["credentials"] == credentials
