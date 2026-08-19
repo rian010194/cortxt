@@ -15,6 +15,26 @@ of self-reported status alone; gate decisions have real effects (pause stops
 run_forever, freeze is recorded distinctly); autonomy streaks persist across
 restarts; HermesInvocationError and other run_once() failures no longer kill
 the whole run_forever loop.
+
+Known limitations of the git-commit evidence check (re-review, 2026-08-19),
+not fixed here -- ruled acceptable for v1, documented so a future reader
+doesn't read "real signal" as airtight: (1) `commit_landed` only proves
+*some* commit landed in `workdir` during the call, not that it came from
+this dispatch -- a concurrent commit from elsewhere in the same window
+would false-positive; (2) `workdir` and the cwd `invoke_hermes`'s subprocess
+actually inherits are never explicitly tied together, only coincidentally
+equal today because `DaemonLoop` is always constructed and run from the
+same process/cwd in the only production call site (`cli/unified_cli.py`'s
+`_run_daemon`); (3) a non-git `workdir` makes `git_head` always return
+`None`, so `commit_landed` is always `False` and every dispatch permanently
+freezes with no distinct "not a git repo" signal in the evidence entry --
+fail-safe, but silent. `allowed_artifact_prefixes=("issue:", "engine:")`
+passed to `evaluate_gate` below is also known-tautological: `artifacts` is
+constructed from those exact two prefixes on every call, so that check can
+never fail -- it is not real scope enforcement, only a placeholder for when
+a real per-run artifact list exists. `SessionBudget.record_cost()` is still
+never called anywhere in this package -- `budget_spent_usd` reports `None`
+rather than a misleading `0.0`, but no real cost is ever measured.
 """
 from __future__ import annotations
 
