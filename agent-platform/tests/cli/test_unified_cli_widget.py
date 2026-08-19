@@ -55,3 +55,18 @@ def test_run_credentials_store_writes_snapshot_metadata_only(tmp_path, monkeypat
     ids = [c["credential_id"] for c in doc["credentials"]]
     assert "test-cred" in ids
     assert "super-secret-value" not in snapshot_path.read_text(encoding="utf-8")
+
+
+def test_run_addons_submit_creates_session(tmp_path):
+    snapshot_path = tmp_path / "snapshot.json"
+    store = tmp_path / ".sessions"
+
+    exit_code = main([
+        "addons", "submit", "--candidate-id", "test-addon-1", "--codex-security-passed",
+        "--store", str(store), "--snapshot", str(snapshot_path),
+    ])
+
+    assert exit_code == 0
+    doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    task_ids = [s["task_id"] for s in doc["sessions"]]
+    assert "addon:test-addon-1" in task_ids

@@ -524,6 +524,11 @@ def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
     and print the verdict. No addon registry/list here -- none exists yet
     (see .hermes/plans/2026-08-19-orchestrator-dispatch-v01.md); inventing
     one is a separate, larger decision, not CLI plumbing over already-tested code.
+
+    Records each submission as a session_state entry tagged
+    `addon:<candidate_id>` instead of a bespoke addon registry -- reusing
+    the sessions mechanism the widget already renders gives visibility for
+    free (Track 1, docs/superpowers/plans/2026-08-19-track1-admin-ui-wiring.md).
     """
     try:
         ap_path = _get_agent_platform_path()
@@ -531,20 +536,48 @@ def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
             sys.path.insert(0, str(ap_path))
         from learning.addon_review import AddonReviewGate
         from learning.promotion_gate import PromotionGate
+        from runtime import session_state as state
 
         matrix = {
             "complete": not args.incomplete,
             "codex_security_passed": args.codex_security_passed,
         }
+
+        store = args.store or (ap_path / ".sessions")
+        session = state.create(store, task_id=f"addon:{args.candidate_id}")
+        session_id = session["session_id"]
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+    # From here on, a session exists on disk. Any exception below must
+    # still leave it with a terminal event -- same orphaned-session bug
+    # class fixed in _run_dispatch (a mid-flight exception between session
+    # creation and the terminal append would otherwise leave it stuck
+    # showing "running" forever).
+    try:
         verdict = AddonReviewGate(PromotionGate()).submit(matrix, args.candidate_id)
         print(verdict)
+        status = "succeeded" if verdict != "REJECT" else "failed"
+        state.append(store, session_id, 0, "session.terminal", {"status": status, "verdict": verdict})
 
         return ResultEnvelope(
-            status="succeeded" if verdict != "REJECT" else "failed",
+            status=status,
             evidence=[{"candidate_id": args.candidate_id, "verdict": verdict, "matrix": matrix}],
         )
     except Exception as e:
+        state.append(store, session_id, 0, "session.terminal", {"status": "failed", "reason": str(e)})
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+    finally:
+        try:
+            cli_dir = Path(__file__).parent
+            if str(cli_dir) not in sys.path:
+                sys.path.insert(0, str(cli_dir))
+            import status as status_cli
+
+            snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+            status_cli.write_snapshot(status_cli.load_sessions(store), snapshot_path)
+        except Exception as snapshot_error:
+            logger.warning("addons: could not refresh widget snapshot: %s", snapshot_error)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -655,6 +688,8 @@ def main(argv: list[str] | None = None) -> int:
     addons_submit_parser.add_argument("--candidate-id", required=True, help="e.g. addon@my-addon")
     addons_submit_parser.add_argument("--codex-security-passed", action="store_true", help="Codex security review passed")
     addons_submit_parser.add_argument("--incomplete", action="store_true", help="Mark the evidence matrix incomplete (fails closed)")
+    addons_submit_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
+    addons_submit_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     addons_parser.set_defaults(func=_run_addons)
 
     args = parser.parse_args(argv)
