@@ -76,6 +76,17 @@ class DaemonLoop:
                 continue  # no routable tag on this issue -- skip, don't guess
 
             choice = self.route(task_tags, self.manifests)
+
+            # Persist the claim BEFORE dispatching (finding #2, review round 1):
+            # a crash between a successful invoke_hermes() and persistence would
+            # otherwise cause a real duplicate dispatch on restart. Persisting
+            # first means the crash-window failure mode is a stuck claim
+            # (visible in claimed.json, requires manual clear) instead of a
+            # duplicate real-world side effect -- the safer trade for this
+            # project's verified-progress-over-unverified-completion stance.
+            self.claimed_issue_ids.add(issue_id)
+            self._persist_claimed()
+
             invoke_result = self.invoke_hermes(
                 "researcher" if "research" in task_tags else "builder",
                 issue["title"], timeout_seconds=300,
@@ -85,15 +96,17 @@ class DaemonLoop:
                 "evidence": [{"kind": "hermes_result", "detail": invoke_result["status"]}],
                 "artifacts": [f"issue:{issue_id}", f"engine:{choice.engine_id}"],
             }
+            # Keyed on choice.matched_tag (finding #1, review round 1), not
+            # task_tags[0] -- matched_tag is the tag route() actually used to
+            # pick the engine, so the autonomy streak reflects the real
+            # routing decision even when an issue carries multiple labels.
             gate_outcome = evaluate_gate(result_envelope, checkpoint_required=(
                 self.supervised or choice.checkpoint_required
-                or not self.autonomy.is_unlocked(choice.engine_id, task_tags[0])
+                or not self.autonomy.is_unlocked(choice.engine_id, choice.matched_tag)
             ))
-            self.autonomy.record_pass(choice.engine_id, task_tags[0],
+            self.autonomy.record_pass(choice.engine_id, choice.matched_tag,
                                        clean=gate_outcome.decision in ("proceed", "pause"))
 
-            self.claimed_issue_ids.add(issue_id)
-            self._persist_claimed()
             self._write_status()
 
             return [{"issue_id": issue_id, "engine_id": choice.engine_id,
