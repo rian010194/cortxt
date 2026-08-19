@@ -51,7 +51,9 @@ from daemon.stop_flag import is_stop_requested
 from daemon.evidence_gate import GateOutcome, evaluate_gate
 from daemon.github_scanner import list_ready_issues as _default_list_ready_issues
 from routing.engine_manifest import DEFAULT_MANIFESTS, EngineManifest, route as _default_route
-from routing.hermes_invoker import HermesInvocationError, invoke_hermes as _default_invoke_hermes
+from routing.hermes_invoker import HermesInvocationError
+from runtime.default_engine_context import build_default_engine_context
+from runtime.engine_registry import EngineContext
 from cli.status import write_snapshot
 
 
@@ -84,7 +86,7 @@ class DaemonLoop:
     manifests: tuple[EngineManifest, ...] = DEFAULT_MANIFESTS
     workdir: Path = field(default_factory=Path.cwd)
     list_ready_issues: Callable = _default_list_ready_issues
-    invoke_hermes: Callable = _default_invoke_hermes
+    engine_context: EngineContext = field(default_factory=build_default_engine_context)
     route: Callable = _default_route
     git_head: Callable[[Path], "str | None"] = _default_git_head
     claimed_issue_ids: set[str] = field(default_factory=set, init=False)
@@ -144,13 +146,15 @@ class DaemonLoop:
 
             choice = self.route(task_tags, self.manifests)
 
-            if choice.engine_id != "hermes":
-                # This v1 daemon only has a Hermes invoker wired (routing.
-                # hermes_invoker.invoke_hermes -- see its own docstring:
+            broker = self.engine_context.get(choice.engine_id)
+            if not broker.has_provider:
+                # No adapter registered for this engine_id (ADR-026/027) --
+                # e.g. route() chose "claude-direct", which this v1 daemon
+                # has no invoker for (routing.hermes_invoker's own docstring:
                 # "claude-direct has no headless invocation here"). Silently
-                # dispatching a claude-direct (or any non-hermes) routing
-                # decision to Hermes anyway is exactly the "wrong surface"
-                # failure mode behind #165/#166 -- refuse instead of guessing.
+                # dispatching to whatever IS registered instead is exactly
+                # the "wrong surface" failure mode behind #165/#166 -- refuse
+                # instead of guessing.
                 continue
 
             # Persist the claim BEFORE dispatching: a crash between a
@@ -164,7 +168,7 @@ class DaemonLoop:
 
             head_before = self.git_head(self.workdir)
             try:
-                invoke_result = self.invoke_hermes(
+                invoke_result = broker.invoke(
                     "researcher" if "research" in task_tags else "builder",
                     issue["title"], timeout_seconds=300,
                 )

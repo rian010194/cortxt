@@ -1,6 +1,7 @@
 import itertools
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -8,6 +9,7 @@ from daemon.autonomy import AutonomyTracker
 from daemon.budget import SessionBudget
 from daemon.loop import DaemonLoop
 from daemon.stop_flag import request_stop
+from runtime.engine_registry import EngineContext
 from routing.engine_manifest import DEFAULT_MANIFESTS, EngineChoice
 from routing.hermes_invoker import HermesInvocationError
 
@@ -19,6 +21,12 @@ def _fake_route(task_tags, manifests, fallback="claude-direct"):
 
 def _fake_invoke_hermes(profile, prompt, *, timeout_seconds, model=None, provider=None):
     return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
+
+
+def _context_with_hermes(invoke_fn):
+    context = EngineContext()
+    context.register("hermes", SimpleNamespace(invoke=invoke_fn))
+    return context
 
 
 def _make_progressing_git_head():
@@ -35,7 +43,7 @@ def _static_git_head(workdir):
 
 
 def _make_loop(tmp_path: Path, *, list_ready_issues, route=_fake_route,
-                invoke_hermes=_fake_invoke_hermes, supervised=True,
+                engine_context=None, supervised=True,
                 git_head=None):
     return DaemonLoop(
         repo="owner/repo",
@@ -47,7 +55,7 @@ def _make_loop(tmp_path: Path, *, list_ready_issues, route=_fake_route,
         manifests=DEFAULT_MANIFESTS,
         workdir=tmp_path,
         list_ready_issues=list_ready_issues,
-        invoke_hermes=invoke_hermes,
+        engine_context=engine_context or _context_with_hermes(_fake_invoke_hermes),
         route=route,
         git_head=git_head or _make_progressing_git_head(),
     )
@@ -158,11 +166,11 @@ def test_crash_then_restart_does_not_redispatch(tmp_path):
         dispatch_count["n"] += 1
         return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
-    first = _make_loop(tmp_path, list_ready_issues=_list, invoke_hermes=_counting_invoke)
+    first = _make_loop(tmp_path, list_ready_issues=_list, engine_context=_context_with_hermes(_counting_invoke))
     first.run_once()
     assert dispatch_count["n"] == 1
 
-    second = _make_loop(tmp_path, list_ready_issues=_list, invoke_hermes=_counting_invoke)
+    second = _make_loop(tmp_path, list_ready_issues=_list, engine_context=_context_with_hermes(_counting_invoke))
     second.run_once()
     assert dispatch_count["n"] == 1
 
@@ -181,7 +189,7 @@ def test_route_choosing_non_hermes_engine_is_skipped_not_dispatched(tmp_path):
         dispatch_count["n"] += 1
         return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
-    loop = _make_loop(tmp_path, list_ready_issues=_list, route=_route_claude_direct, invoke_hermes=_counting_invoke)
+    loop = _make_loop(tmp_path, list_ready_issues=_list, route=_route_claude_direct, engine_context=_context_with_hermes(_counting_invoke))
     results = loop.run_once()
     assert results == []
     assert dispatch_count["n"] == 0
@@ -207,7 +215,7 @@ def test_hermes_invocation_error_freezes_that_issue(tmp_path):
     def _raising_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None):
         raise HermesInvocationError("could not start hermes: [WinError 2]")
 
-    loop = _make_loop(tmp_path, list_ready_issues=_list, invoke_hermes=_raising_invoke)
+    loop = _make_loop(tmp_path, list_ready_issues=_list, engine_context=_context_with_hermes(_raising_invoke))
     results = loop.run_once()
     assert results[0]["gate_outcome"]["decision"] == "freeze"
     assert "owner/repo#14" in loop.claimed_issue_ids
