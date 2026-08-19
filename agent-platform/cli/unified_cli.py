@@ -400,7 +400,13 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
 
 
 def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
-    """List known agent runtimes and whether each is on PATH (Fas 4 admin surface)."""
+    """List known agent runtimes and whether each is on PATH (Fas 4 admin surface).
+
+    Refreshes the widget snapshot's `runtimes` key on every call, same
+    best-effort-but-visible pattern _run_dispatch uses for `sessions`: a
+    snapshot write failure is logged, never masks this command's own
+    result (Track 1, docs/superpowers/plans/2026-08-19-track1-admin-ui-wiring.md).
+    """
     try:
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
@@ -413,11 +419,27 @@ def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
         for s in statuses:
             print(f"{s.runtime_id:<14} {'yes' if s.installed else 'no':<10} {s.path or ''}")
 
+        runtimes_payload = [
+            {"runtime_id": s.runtime_id, "installed": s.installed, "path": s.path} for s in statuses
+        ]
+
+        try:
+            cli_dir = Path(__file__).parent
+            if str(cli_dir) not in sys.path:
+                sys.path.insert(0, str(cli_dir))
+            import status as status_cli
+
+            store = args.store or (_get_agent_platform_path() / ".sessions")
+            snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+            status_cli.write_snapshot(
+                status_cli.load_sessions(store), snapshot_path, runtimes=runtimes_payload,
+            )
+        except Exception as snapshot_error:
+            logger.warning("runtimes: could not refresh widget snapshot: %s", snapshot_error)
+
         return ResultEnvelope(
             status="succeeded",
-            evidence=[{"runtimes": [
-                {"runtime_id": s.runtime_id, "installed": s.installed, "path": s.path} for s in statuses
-            ]}],
+            evidence=[{"runtimes": runtimes_payload}],
         )
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
@@ -448,16 +470,52 @@ def _run_credentials(args: argparse.Namespace) -> ResultEnvelope:
             # for every unconfirmed attempt made through this admin surface.
             value = sys.stdin.read().rstrip("\n")
             broker.store(args.id, value, operator_confirmed=args.confirm)
-            return ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
+            result = ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
+        else:
+            # inject
+            value = broker.inject(args.id, requesting_runtime=args.runtime, purpose=args.purpose)
+            print(value)
+            result = ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
 
-        # inject
-        value = broker.inject(args.id, requesting_runtime=args.runtime, purpose=args.purpose)
-        print(value)
-        return ResultEnvelope(status="succeeded", artifacts=[f"credential:{args.id}"])
+        _refresh_credentials_snapshot(args, ap_path, broker)
+        return result
     except NotOperatorConfirmedError as e:
         return ResultEnvelope(status="failed", error={"category": "not_confirmed", "message": str(e)})
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
+def _refresh_credentials_snapshot(args: argparse.Namespace, ap_path: Path, broker) -> None:
+    """Derive credential metadata (id, last action/result/timestamp) from
+    the broker's own audit log -- never the plaintext value, which never
+    leaves `inject`'s stdout. Best-effort, same pattern as _run_dispatch's
+    and _run_runtimes' snapshot refresh: a failure here is logged, never
+    masks the store/inject result that already succeeded."""
+    try:
+        cli_dir = Path(__file__).parent
+        if str(cli_dir) not in sys.path:
+            sys.path.insert(0, str(cli_dir))
+        import status as status_cli
+
+        latest_by_id: dict[str, dict] = {}
+        for record in broker.audit_log():
+            if record.result != "ok":
+                continue
+            latest_by_id[record.credential_id] = {
+                "credential_id": record.credential_id,
+                "last_action": record.action,
+                "last_result": record.result,
+                "last_timestamp": record.timestamp,
+            }
+
+        store = args.store or (_get_agent_platform_path() / ".sessions")
+        snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+        status_cli.write_snapshot(
+            status_cli.load_sessions(store), snapshot_path,
+            credentials=list(latest_by_id.values()),
+        )
+    except Exception as snapshot_error:
+        logger.warning("credentials: could not refresh widget snapshot: %s", snapshot_error)
 
 
 def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
@@ -467,6 +525,11 @@ def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
     and print the verdict. No addon registry/list here -- none exists yet
     (see .hermes/plans/2026-08-19-orchestrator-dispatch-v01.md); inventing
     one is a separate, larger decision, not CLI plumbing over already-tested code.
+
+    Records each submission as a session_state entry tagged
+    `addon:<candidate_id>` instead of a bespoke addon registry -- reusing
+    the sessions mechanism the widget already renders gives visibility for
+    free (Track 1, docs/superpowers/plans/2026-08-19-track1-admin-ui-wiring.md).
     """
     try:
         ap_path = _get_agent_platform_path()
@@ -474,20 +537,48 @@ def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
             sys.path.insert(0, str(ap_path))
         from learning.addon_review import AddonReviewGate
         from learning.promotion_gate import PromotionGate
+        from runtime import session_state as state
 
         matrix = {
             "complete": not args.incomplete,
             "codex_security_passed": args.codex_security_passed,
         }
+
+        store = args.store or (ap_path / ".sessions")
+        session = state.create(store, task_id=f"addon:{args.candidate_id}")
+        session_id = session["session_id"]
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+    # From here on, a session exists on disk. Any exception below must
+    # still leave it with a terminal event -- same orphaned-session bug
+    # class fixed in _run_dispatch (a mid-flight exception between session
+    # creation and the terminal append would otherwise leave it stuck
+    # showing "running" forever).
+    try:
         verdict = AddonReviewGate(PromotionGate()).submit(matrix, args.candidate_id)
         print(verdict)
+        status = "succeeded" if verdict != "REJECT" else "failed"
+        state.append(store, session_id, 0, "session.terminal", {"status": status, "verdict": verdict})
 
         return ResultEnvelope(
-            status="succeeded" if verdict != "REJECT" else "failed",
+            status=status,
             evidence=[{"candidate_id": args.candidate_id, "verdict": verdict, "matrix": matrix}],
         )
     except Exception as e:
+        state.append(store, session_id, 0, "session.terminal", {"status": "failed", "reason": str(e)})
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+    finally:
+        try:
+            cli_dir = Path(__file__).parent
+            if str(cli_dir) not in sys.path:
+                sys.path.insert(0, str(cli_dir))
+            import status as status_cli
+
+            snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+            status_cli.write_snapshot(status_cli.load_sessions(store), snapshot_path)
+        except Exception as snapshot_error:
+            logger.warning("addons: could not refresh widget snapshot: %s", snapshot_error)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -572,6 +663,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # runtimes subcommand
     runtimes_parser = sub.add_parser("runtimes", help="List known agent runtimes and whether each is on PATH")
+    runtimes_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
+    runtimes_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     runtimes_parser.set_defaults(func=_run_runtimes)
 
     # credentials subcommand
@@ -581,11 +674,15 @@ def main(argv: list[str] | None = None) -> int:
     cred_store_parser.add_argument("--id", required=True, help="Credential id")
     cred_store_parser.add_argument("--confirm", action="store_true", help="Required to actually persist the credential")
     cred_store_parser.add_argument("--store-dir", type=Path, help="Credential store dir (default: agent-platform/.credentials)")
+    cred_store_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
+    cred_store_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     cred_inject_parser = credentials_sub.add_parser("inject", help="Print a credential's value (purpose-bound)")
     cred_inject_parser.add_argument("--id", required=True, help="Credential id")
     cred_inject_parser.add_argument("--runtime", required=True, help="Requesting runtime identity")
     cred_inject_parser.add_argument("--purpose", required=True, help="Why this credential is being requested")
     cred_inject_parser.add_argument("--store-dir", type=Path, help="Credential store dir (default: agent-platform/.credentials)")
+    cred_inject_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
+    cred_inject_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     credentials_parser.set_defaults(func=_run_credentials)
 
     # addons subcommand
@@ -595,6 +692,8 @@ def main(argv: list[str] | None = None) -> int:
     addons_submit_parser.add_argument("--candidate-id", required=True, help="e.g. addon@my-addon")
     addons_submit_parser.add_argument("--codex-security-passed", action="store_true", help="Codex security review passed")
     addons_submit_parser.add_argument("--incomplete", action="store_true", help="Mark the evidence matrix incomplete (fails closed)")
+    addons_submit_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
+    addons_submit_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path (default: agent-platform/widget/snapshot.json)")
     addons_parser.set_defaults(func=_run_addons)
 
     args = parser.parse_args(argv)
