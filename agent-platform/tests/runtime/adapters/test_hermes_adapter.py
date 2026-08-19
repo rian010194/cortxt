@@ -34,9 +34,28 @@ def test_invoke_propagates_hermes_invocation_error_unwrapped():
         adapter.invoke("builder", "do it", timeout_seconds=60)
 
 
-def test_default_constructor_uses_real_invoke_hermes():
-    import runtime.adapters.hermes_adapter as module
-    from routing.hermes_invoker import invoke_hermes as real_invoke_hermes
+def test_default_constructor_delegates_to_live_hermes_invoker_module_lookup():
+    from unittest.mock import patch
 
-    adapter = module.HermesAdapter()
-    assert adapter._invoke_hermes is real_invoke_hermes
+    fake_result = {"status": "succeeded", "profile": "builder"}
+    adapter = HermesAdapter()
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake:
+        result = adapter.invoke("builder", "do it", timeout_seconds=60)
+    fake.assert_called_once_with("builder", "do it", timeout_seconds=60, model=None, provider=None)
+    assert result == fake_result
+
+
+def test_explicit_invoke_hermes_still_takes_priority_over_live_lookup():
+    from unittest.mock import patch
+
+    calls = []
+
+    def explicit_fn(profile, prompt, *, timeout_seconds, model=None, provider=None):
+        calls.append((profile, prompt, timeout_seconds, model, provider))
+        return {"status": "succeeded", "profile": profile}
+
+    adapter = HermesAdapter(invoke_hermes=explicit_fn)
+    with patch("routing.hermes_invoker.invoke_hermes") as unused_patch:
+        adapter.invoke("builder", "do it", timeout_seconds=60)
+    unused_patch.assert_not_called()
+    assert calls == [("builder", "do it", 60, None, None)]
