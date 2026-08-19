@@ -4,7 +4,7 @@ Auktoritativt index över arkitekturbesluten i detta repo. Status per decision-s
 `docs/style-guide.md` / ADR-mönstret: **Accepted** = normativt inom sitt scope; **Proposal** = reviewbart
 förslag, inte implementeringsauktoritet; **Superseded** = historisk referens, ersatt av nyare beslut.
 
-Uppdaterat: 2026-08-16 (ADR-020, terminologiredaktion proof environment-namn).
+Uppdaterat: 2026-08-19 (ADR-022, ADR-023, ADR-024 tillagda).
 
 | # | Titel | Status | Notis |
 | --- | --- | --- | --- |
@@ -19,6 +19,9 @@ Uppdaterat: 2026-08-16 (ADR-020, terminologiredaktion proof environment-namn).
 | 019 | Coding execution — permanent multi-engine routing, not Pi/Hermes replacement | **Accepted** | Pi/Hermes/Codex (+ framtida Copilot) permanenta routingval jämte egen Coding Agent; upphäver §24.2-ersättningskriterier i target-architecture.md |
 | 020 | Proof environment naming — redact product/partner name from public surface | **Accepted** | Terminologiredaktion: "Norcom/CSL" → "proof environment B" framåt; ADR-014/015 oredigerade och kvar Accepted för sakinnehållet |
 | 021 | Reopen ADR-015 for v.02 admin surface + widget UI (F2 treatment) | **Accepted** | ADR-015 review-trigger observerad; beslutar endast produktyta-komplement (widget + adminyta ovanpå CLI), inte wedge, naming, säkerhetsmodell, pris eller addon-granskning; Fas 2+ i v.02-wayfindern nu auktoritativt |
+| 022 | Fas 3 v0.1 — capability manifest shape and engine-selection criteria | **Accepted** | Motoragnostiskt capability-manifest + deterministisk `route()`; löser ADR-019:s öppna urvalskriterie-punkt |
+| 023 | Cortxt supports both bottom-up and top-down integration, not one exclusively | **Accepted** | Top-down internt permanent + avsiktligt bottom-up-konsumerbar utåt; beslutar riktningen, inte ytan (deferrat till Fas 6) |
+| 024 | External integration surface takes the form of an MCP server | **Accepted** | Beslutar ADR-023:s deferrade ytform: MCP-server, inte SDK/REST, för initial skiva |
 
 ## Beslut och auktoritet
 
