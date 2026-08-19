@@ -589,9 +589,6 @@ def _run_daemon(args: argparse.Namespace) -> ResultEnvelope:
             sys.path.insert(0, str(ap_path))
 
         from daemon.stop_flag import request_stop
-        from daemon.autonomy import AutonomyTracker
-        from daemon.budget import SessionBudget
-        from daemon.loop import DaemonLoop
 
         if args.daemon_command == "stop":
             request_stop(Path(args.state_dir))
@@ -606,6 +603,10 @@ def _run_daemon(args: argparse.Namespace) -> ResultEnvelope:
             return ResultEnvelope(status="succeeded", evidence=[{"daemon": doc.get("daemon")}])
 
         if args.daemon_command == "start":
+            from daemon.autonomy import AutonomyTracker
+            from daemon.budget import SessionBudget
+            from daemon.loop import DaemonLoop
+
             loop = DaemonLoop(
                 repo=args.repo,
                 state_dir=Path(args.state_dir),
