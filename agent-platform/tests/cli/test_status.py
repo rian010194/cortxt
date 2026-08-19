@@ -125,3 +125,24 @@ def test_write_snapshot_is_the_same_data_the_table_is_rendered_from(tmp_path):
     doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
     assert doc["sessions"] == sessions
     assert "generated_at" in doc
+
+
+def test_write_snapshot_omits_runtimes_and_credentials_by_default(tmp_path):
+    snapshot_path = tmp_path / "snapshot.json"
+    status.write_snapshot([], snapshot_path)
+
+    doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert "runtimes" not in doc
+    assert "credentials" not in doc
+
+
+def test_write_snapshot_includes_runtimes_and_credentials_when_given(tmp_path):
+    snapshot_path = tmp_path / "snapshot.json"
+    runtimes = [{"runtime_id": "hermes", "installed": True, "path": "/usr/bin/hermes"}]
+    credentials = [{"credential_id": "openai-key", "last_action": "store", "last_result": "ok", "last_timestamp": "2026-08-19T10:00:00Z"}]
+
+    status.write_snapshot([], snapshot_path, runtimes=runtimes, credentials=credentials)
+
+    doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert doc["runtimes"] == runtimes
+    assert doc["credentials"] == credentials
