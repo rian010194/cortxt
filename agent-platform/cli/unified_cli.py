@@ -339,7 +339,7 @@ def _run_dispatch(args: argparse.Namespace) -> ResultEnvelope:
             # (e.g. --tags research,parallel-dispatch matches "parallel-dispatch"
             # alphabetically first, silently defeating this default -- caught
             # by review before merge).
-            hermes_profile = args.hermes_profile or next(
+            hermes_profile = args.hermes_profile if args.hermes_profile is not None else next(
                 (profile for tag, profile in _HERMES_PROFILE_BY_TAG.items() if tag in tags),
                 "builder",
             )
