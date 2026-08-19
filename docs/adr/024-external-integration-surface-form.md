@@ -30,7 +30,10 @@ Cortxt should be bottom-up-consumable externally: other frameworks
 able to call into Cortxt's control plane as a service, without adopting
 Cortxt's own orchestration loop. ADR-023 explicitly left the concrete form of
 that surface undecided: SDK, MCP server, or REST API was named as a later
-question, not resolved there.
+question, not resolved there. ADR-023 assigned this form question to Fas 6's
+installable-package work ('löses där, inte här'); this ADR answers it earlier
+than that, for the reasons given in the Alternatives Considered section,
+without changing ADR-023's direction decision.
 
 ADR-022 (Accepted, 2026-08-18,
 `docs/adr/022-fas3-capability-manifest-and-engine-selection-criteria.md`)

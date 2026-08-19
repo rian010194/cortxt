@@ -260,3 +260,8 @@ in scope for this document either.
    into Hindsight — or is that premature for a first version, given ADR-023
    itself defers the external-facing surface question to Fas 6 and does not
    require every future subsystem to pre-answer it?
+
+> **STATUS-AMENDMENT (2026-08-19, later same session):** ADR-024
+> (`docs/adr/024-external-integration-surface-form.md`) has since chosen MCP
+> as that form. This document's characterization of ADR-023 at the time of
+> writing is unchanged; the question is no longer open.
