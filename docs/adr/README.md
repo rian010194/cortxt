@@ -4,7 +4,7 @@ Auktoritativt index över arkitekturbesluten i detta repo. Status per decision-s
 `docs/style-guide.md` / ADR-mönstret: **Accepted** = normativt inom sitt scope; **Proposal** = reviewbart
 förslag, inte implementeringsauktoritet; **Superseded** = historisk referens, ersatt av nyare beslut.
 
-Uppdaterat: 2026-08-19 (ADR-022, ADR-023, ADR-024, ADR-025 tillagda).
+Uppdaterat: 2026-08-20 (ADR-028, ADR-029, ADR-030 tillagda).
 
 | # | Titel | Status | Notis |
 | --- | --- | --- | --- |
@@ -25,6 +25,9 @@ Uppdaterat: 2026-08-19 (ADR-022, ADR-023, ADR-024, ADR-025 tillagda).
 | 025 | Geometric Reasoning's decisive vs. diagnostic metrics (§27 #8) | **Accepted** | Formaliserar vilka av §12.2:s tio mått som styr beslut idag (5) kontra bara rapporterar (5); löser upp `w1`/`information_gain`-namnkollisionen; löser upp Fas 6:s blockerande exitkriterium |
 | 026 | Engine adapter-registry (cordis-inspirerad DI) hålls separat från `route()`s selection | **Accepted** (amended 2026-08-19 för service-broker-mönster per ADR-027) | `route()`/`engine_manifest.py` orört; nytt `EngineAdapter`/`EngineContext`-lager ersätter `unified_cli.py`s if/elif-dispatch, inte selection-logiken |
 | 027 | `EngineContext` antar service-broker-mönstret (Cordis §6.2), inte exclusive binding | **Accepted** | `engine_id` blir en broker-nyckel som kan bära flera providers utan att störa konsumenter; v1 bygger bara skelettet (en provider = passthrough), ingen routningspolicy förrän en andra provider faktiskt registreras |
+| 028 | Orchestrator multi-engine resume via opak per-adapter `session_id`, CodexAdapter tillagd | **Accepted** | `EngineAdapter.invoke()` får additivt `session_id`; `/engine`-kommando i chat-REPL; implementerat och mergat 2026-08-20 |
+| 029 | Unattended daemon credential isolation — allowlistad subprocess-env, delad launch-discipline, broker som read-only caller | **Proposed** | Spec-only, ej implementerad; stänger env-inheritance-gapet i `invoke_hermes()`/`CodexAdapter.invoke()` och generaliserar Windows-shim-fixen |
+| 030 | Plan-vs-actual divergence tracking — YAML-sidecar + explicit-only korrelation, ghost-markers på riktig tidsaxel | **Proposed** (Del 1 implementerad) | `plan_task_ref`-fältet finns och flödar genom pipelinen (Del 1, 2026-08-20); reconciliation/rendering (Del 2) fortfarande bara spec |
 
 ## Beslut och auktoritet
 
