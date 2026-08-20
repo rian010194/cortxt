@@ -7,12 +7,12 @@ from cli import unified_cli
 from runtime import session_state
 
 
-def _args(tmp_path: Path, ask: str, engine: str = "hermes") -> SimpleNamespace:
+def _args(tmp_path: Path, ask: str, engine: str = "hermes", timeout=5, resume=None) -> SimpleNamespace:
     return SimpleNamespace(
         ask=ask,
         engine=engine,
         hermes_profile="researcher",
-        timeout=5,
+        timeout=timeout,
         model=None,
         provider=None,
         store=tmp_path / "sessions",
@@ -20,6 +20,7 @@ def _args(tmp_path: Path, ask: str, engine: str = "hermes") -> SimpleNamespace:
         stale_after=300,
         workstream_id="branch-main",
         branch="main",
+        resume=resume,
     )
 
 
@@ -237,3 +238,82 @@ def test_slash_engine_command_rejects_an_unavailable_engine_and_keeps_the_curren
     output = capsys.readouterr().out
     assert "not-a-real-engine" in output and "not available" in output
     assert hermes_broker.calls  # the turn after the rejected switch still went to hermes
+
+
+def test_timeout_omitted_uses_the_active_engines_default(tmp_path, monkeypatch, capsys):
+    # --timeout is None (operator didn't override) -- the turn must fall
+    # back to the per-engine default (spec Open question #5), not some
+    # single global constant.
+    codex_broker = FakeBroker()
+    monkeypatch.setattr(unified_cli, "_collect_orchestrator_projection", lambda args: _projection(tmp_path))
+
+    unified_cli._run_orchestrator_chat(
+        _args(tmp_path, "what is running?", engine="codex", timeout=None),
+        engine_context=FakeContext({"codex": codex_broker}),
+    )
+
+    from runtime.engine_registry import default_timeout_seconds
+
+    assert codex_broker.calls[0][2]["timeout_seconds"] == default_timeout_seconds("codex")
+
+
+def test_timeout_explicit_value_overrides_the_per_engine_default(tmp_path, monkeypatch, capsys):
+    codex_broker = FakeBroker()
+    monkeypatch.setattr(unified_cli, "_collect_orchestrator_projection", lambda args: _projection(tmp_path))
+
+    unified_cli._run_orchestrator_chat(
+        _args(tmp_path, "what is running?", engine="codex", timeout=7),
+        engine_context=FakeContext({"codex": codex_broker}),
+    )
+
+    assert codex_broker.calls[0][2]["timeout_seconds"] == 7
+
+
+def test_resume_restores_the_stored_engine_session_id_for_the_first_turn(tmp_path, monkeypatch, capsys):
+    # A prior REPL run left behind a session with a Codex turn whose
+    # engine_session_id was captured. A fresh REPL invocation with
+    # --resume <that session_id> must pass it to the adapter on the very
+    # first turn -- the whole point of spec Open question #4.
+    from runtime import session_state as state
+    from cli import orchestrator as orchestrator_cli
+
+    store = tmp_path / "sessions"
+    monkeypatch.setattr(unified_cli, "_collect_orchestrator_projection", lambda args: _projection(tmp_path))
+
+    doc = state.create(store, task_id="orchestrator-chat:prior", runtime="codex")
+    prior_session_id = doc["session_id"]
+    seq = 0
+    user_record = orchestrator_cli.transcript_record(
+        transcript_id="prior-transcript", turn_index=1, role="user",
+        content="hi", engine="codex", status="submitted", redactions=[],
+    )
+    doc = state.append(store, prior_session_id, seq, "chat.user", user_record)
+    seq += 1
+    assistant_record = orchestrator_cli.transcript_record(
+        transcript_id="prior-transcript", turn_index=1, role="assistant",
+        content="hello", engine="codex", status="succeeded",
+        engine_session_id="thread-from-last-run",
+    )
+    state.append(store, prior_session_id, seq, "chat.assistant", assistant_record)
+
+    codex_broker = FakeBroker()
+
+    unified_cli._run_orchestrator_chat(
+        _args(tmp_path, "continue please", engine="codex", resume=prior_session_id),
+        engine_context=FakeContext({"codex": codex_broker}),
+    )
+
+    assert codex_broker.calls[0][2]["session_id"] == "thread-from-last-run"
+
+
+def test_resume_with_unknown_session_id_fails_without_crashing(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(unified_cli, "_collect_orchestrator_projection", lambda args: _projection(tmp_path))
+    codex_broker = FakeBroker()
+
+    result = unified_cli._run_orchestrator_chat(
+        _args(tmp_path, "continue please", engine="codex", resume="session_" + "0" * 32),
+        engine_context=FakeContext({"codex": codex_broker}),
+    )
+
+    assert result.status == "failed"
+    assert codex_broker.calls == []
