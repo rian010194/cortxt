@@ -23,5 +23,14 @@ class EngineAdapter(Protocol):
         model: str | None = None,
         provider: str | None = None,
         cwd: Path | None = None,
+        session_id: str | None = None,
     ) -> dict:
+        """session_id, when given, resumes an existing engine-native
+        conversation instead of starting fresh -- opaque to every caller
+        above the adapter (never parsed, compared, or assumed to mean the
+        same thing across different engine_ids). The returned dict should
+        include a `session_id` key: the engine-native id of the session
+        that was just used (fresh or resumed), or None if the call failed
+        before a session was established.
+        """
         ...
