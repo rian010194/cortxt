@@ -9,6 +9,16 @@ turn's content. `-o/--output-last-message <file>` writes the final
 assistant message as plain text, avoiding parsing conversational prose out
 of the JSONL/stdout stream.
 
+Also verified live, 2026-08-20 (this time via a real orchestrator-chat
+`--resume` round trip through Cortxt's own session store, not just a
+one-off `codex exec` call): `codex exec resume <id> ...` has no `-C/--cd`
+option at all -- unlike plain `codex exec`, which does. Passing it through
+unconditionally on a resumed call fails the real CLI outright
+("unexpected argument '-C' found"), invisible under mocked-subprocess unit
+tests. `invoke()` below only adds `-C` on a fresh call; a resumed call's
+subprocess still launches in the right directory via the `cwd=` kwarg to
+`run_subprocess`, just not via this CLI flag.
+
 `stdin=subprocess.DEVNULL` is required, not optional: `codex exec` reads
 stdin as an appended `<stdin>` block whenever stdin isn't explicitly
 closed/redirected, even when a prompt argument is also given -- observed
@@ -154,7 +164,14 @@ class CodexAdapter:
                 argv += ["-p", profile]
             if model:
                 argv += ["-m", model]
-            if cwd is not None:
+            # `codex exec resume` has no -C/--cd option at all (verified
+            # live, 2026-08-20: a resumed call passing it fails outright
+            # with "unexpected argument '-C' found") -- only plain
+            # `codex exec` accepts it. The subprocess's own OS-level
+            # working directory is still set via the `cwd=` kwarg below
+            # regardless of session_id; only this CLI flag is resume-only
+            # forbidden.
+            if cwd is not None and not session_id:
                 argv += ["-C", str(cwd)]
             argv.append(prompt)
             call_argv = argv
