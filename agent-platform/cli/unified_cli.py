@@ -341,7 +341,8 @@ def _run_orchestrator_chat(
 
     projection = _collect_orchestrator_projection(args)
     context = engine_context or build_default_engine_context()
-    broker = context.get("hermes")
+    active_engine_id = getattr(args, "engine", None) or "hermes"
+    engine_sessions: dict[str, str] = {}
     transcript_id = orchestrator_cli.new_transcript_id()
     store = args.store or (_get_agent_platform_path() / ".sessions")
     session_id: str | None = None
@@ -351,7 +352,7 @@ def _run_orchestrator_chat(
     failed = False
 
     print("Cortxt orchestrator chat — advisory, GitHub workflow state is authoritative.")
-    print("Commands: /status /workstreams /runtimes /skills /quit")
+    print("Commands: /status /workstreams /runtimes /skills /engine <id> /quit")
     pending = [args.ask] if args.ask else None
     while True:
         try:
@@ -367,6 +368,21 @@ def _run_orchestrator_chat(
         if value == "/quit":
             print("Session closed.")
             break
+        if value.startswith("/engine"):
+            parts = value.split(maxsplit=1)
+            if len(parts) == 2 and parts[1].strip():
+                candidate = parts[1].strip()
+                if context.get(candidate).has_provider:
+                    active_engine_id = candidate
+                else:
+                    print(f"Engine '{candidate}' is not available (no provider registered). Staying on '{active_engine_id}'.")
+                    if pending is not None and not pending:
+                        break
+                    continue
+            print(f"Active engine: {active_engine_id}")
+            if pending is not None and not pending:
+                break
+            continue
         if value.startswith("/"):
             print(orchestrator_cli.render_chat_command(value, projection))
         else:
@@ -385,36 +401,48 @@ def _run_orchestrator_chat(
                     run_id=transcript_id,
                     branch=args.branch,
                     worker_role="orchestrator",
-                    runtime="hermes",
+                    runtime=active_engine_id,
                 )
                 session_id = session_doc["session_id"]
             prompt, redactions = orchestrator_cli.build_chat_prompt(value, projection)
             user_record = orchestrator_cli.transcript_record(
                 transcript_id=transcript_id, turn_index=turn, role="user",
-                content=value, engine="hermes", status="submitted", redactions=redactions,
+                content=value, engine=active_engine_id, status="submitted", redactions=redactions,
             )
             state.append(store, session_id, sequence, "chat.user", user_record)
             sequence += 1
+            broker = context.get(active_engine_id)
+            # args.hermes_profile ("researcher" by default) is a Hermes
+            # profile name; only Hermes understands it. Other engines get
+            # no profile (None) unless a future flag adds an engine-aware
+            # mapping -- passing a Hermes-shaped name to e.g. Codex's -p
+            # would just fail against a real CLI.
+            turn_profile = args.hermes_profile if active_engine_id == "hermes" else None
             try:
                 result = broker.invoke(
-                    args.hermes_profile,
+                    turn_profile,
                     prompt,
                     timeout_seconds=args.timeout,
                     model=args.model,
                     provider=args.provider,
                     cwd=_get_agent_platform_path().parent,
+                    session_id=engine_sessions.get(active_engine_id),
                 )
             except Exception as error:
-                result = {"status": "failed", "stdout": "", "stderr": str(error)}
+                result = {"status": "failed", "stdout": "", "stderr": str(error), "session_id": None}
             answer = result.get("stdout", "").strip()
             status = result.get("status", "failed")
+            new_engine_session_id = result.get("session_id")
+            if new_engine_session_id:
+                engine_sessions[active_engine_id] = new_engine_session_id
             if answer:
                 print(answer)
             else:
-                print(f"Hermes {status}: {result.get('stderr') or 'no response'}")
+                print(f"{active_engine_id} {status}: {result.get('stderr') or 'no response'}")
             assistant_record = orchestrator_cli.transcript_record(
                 transcript_id=transcript_id, turn_index=turn, role="assistant",
-                content=answer or result.get("stderr", ""), engine="hermes", status=status,
+                content=answer or result.get("stderr", ""), engine=active_engine_id, status=status,
+                engine_session_id=new_engine_session_id,
             )
             state.append(store, session_id, sequence, "chat.assistant", assistant_record)
             sequence += 1
@@ -930,7 +958,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Seconds without an event before a running agent session is shown as stale",
     )
     orchestrator_parser.add_argument("--ask", help="Run one chat turn non-interactively")
-    orchestrator_parser.add_argument("--hermes-profile", default="researcher", help="Hermes profile for advisory chat")
+    orchestrator_parser.add_argument("--hermes-profile", default="researcher", help="Hermes profile for advisory chat (Hermes only -- ignored when --engine is not hermes)")
+    orchestrator_parser.add_argument("--engine", default="hermes", help="Engine to talk to in chat mode (hermes, codex, ...)")
     orchestrator_parser.add_argument("--timeout", type=int, default=120, help="Hermes turn timeout in seconds")
     orchestrator_parser.add_argument("--model", help="Optional Hermes model override")
     orchestrator_parser.add_argument("--provider", help="Optional Hermes provider override")
