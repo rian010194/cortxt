@@ -41,6 +41,26 @@ STATUS_SEVERITY = {
 }
 DEFAULT_STALE_AFTER_SECONDS = 300
 
+# An operator can append this event to a session's log to correct automatic
+# staleness inference (e.g. mark a closed-but-never-terminated REPL window
+# abandoned immediately, instead of waiting for `stale_after_seconds` to
+# elapse). Purely additive: it never rewrites or removes prior events.
+ARCHIVE_EVENT_TYPE = "session.archived"
+
+# Three-way derived lifecycle classification, computed at read time from the
+# append-only event log -- never stored, never mutates history:
+#   running   -- no terminal event yet, and recently active.
+#   terminal  -- has a session.terminal event (succeeded/failed/blocked/...).
+#   abandoned -- no terminal event, but either exceeded the staleness
+#                threshold or was explicitly archived by an operator. This
+#                replaces the old binary "stale" flag: it's a distinct state,
+#                not just a relabeling, because it changes how segments are
+#                projected (see _segments_from_events) so an abandoned
+#                session's open segment stops extending to "now".
+LIFECYCLE_RUNNING = "running"
+LIFECYCLE_TERMINAL = "terminal"
+LIFECYCLE_ABANDONED = "abandoned"
+
 
 def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -57,6 +77,19 @@ def _session_status(doc: dict[str, Any]) -> tuple[str, str]:
         if event["event_type"] == "session.terminal":
             return event["payload"].get("status", DEFAULT_STATUS), event["timestamp"]
     return DEFAULT_STATUS, doc["events"][-1]["timestamp"]
+
+
+def _archived_event(doc: dict[str, Any]) -> dict[str, Any] | None:
+    """Most recent operator-recorded archival event, if any.
+
+    Only meaningful for a session with no terminal event -- a session that
+    already ended (succeeded/failed/blocked/timed_out) doesn't need operator
+    correction, its lifecycle is already unambiguous.
+    """
+    for event in reversed(doc["events"]):
+        if event["event_type"] == ARCHIVE_EVENT_TYPE:
+            return event
+    return None
 
 
 def load_sessions(
@@ -98,18 +131,32 @@ def load_sessions(
         task_id = created_payload.get("task_id", session_id)
         status, updated_at = _session_status(doc)
         age_seconds = max(0.0, (observed_at - _parse_timestamp(updated_at)).total_seconds())
-        is_stale = status == "running" and age_seconds > stale_after_seconds
-        display_status = "stale" if is_stale else status
+
+        if status != DEFAULT_STATUS:
+            lifecycle = LIFECYCLE_TERMINAL
+            archived_event = None
+        else:
+            archived_event = _archived_event(doc)
+            auto_abandoned = age_seconds > stale_after_seconds
+            lifecycle = LIFECYCLE_ABANDONED if (archived_event or auto_abandoned) else LIFECYCLE_RUNNING
+        is_abandoned = lifecycle == LIFECYCLE_ABANDONED
+        display_status = LIFECYCLE_ABANDONED if is_abandoned else status
+        # An operator-recorded archive event is authoritative about *when*
+        # the session was last known to be active -- prefer its timestamp
+        # over the last raw event when capping the abandoned segment.
+        last_activity_at = archived_event["timestamp"] if archived_event else updated_at
+
         sessions.append(
             {
                 "session_id": session_id,
                 "task_id": task_id,
                 "status": status,
                 "display_status": display_status,
-                "severity": "warn" if is_stale else STATUS_SEVERITY.get(status, "info"),
+                "severity": "warn" if is_abandoned else STATUS_SEVERITY.get(status, "info"),
                 "updated_at": updated_at,
                 "age_seconds": round(age_seconds, 3),
-                "is_stale": is_stale,
+                "lifecycle": lifecycle,
+                "is_abandoned": is_abandoned,
                 "workstream_id": created_payload.get("workstream_id") or created_payload.get("issue_id") or task_id,
                 "run_id": created_payload.get("run_id") or session_id,
                 "issue_id": created_payload.get("issue_id"),
@@ -117,7 +164,7 @@ def load_sessions(
                 "worktree": created_payload.get("worktree"),
                 "worker_role": created_payload.get("worker_role") or "agent",
                 "runtime": created_payload.get("runtime"),
-                "segments": _segments_from_events(doc["events"], display_status),
+                "segments": _segments_from_events(doc["events"], display_status, last_activity_at),
                 "activity": [
                     {"event_type": event["event_type"], "timestamp": event["timestamp"]}
                     for event in doc["events"][-12:]
@@ -127,8 +174,20 @@ def load_sessions(
     return sessions
 
 
-def _segments_from_events(events: list[dict[str, Any]], display_status: str) -> list[dict[str, Any]]:
-    """Project append-only events into small, UI-safe timeline intervals."""
+def _segments_from_events(
+    events: list[dict[str, Any]], display_status: str, last_activity_at: str | None = None
+) -> list[dict[str, Any]]:
+    """Project append-only events into small, UI-safe timeline intervals.
+
+    `last_activity_at` is the abandoned-session's own last-known-activity
+    timestamp (from `load_sessions`). A trailing "abandoned" marker segment
+    is capped there instead of left open (`finished_at: None`) -- an open
+    segment reads as "still running" to any consumer that fills in "now" for
+    a missing end time (the widget's Gantt axis did exactly that, which is
+    why a session abandoned hours ago dominated the chart on every reload).
+    A genuinely still-running session's segment keeps no such marker, so it
+    is free to still extend to "now" in the UI -- that's correct for it.
+    """
     if not events:
         return []
     start = events[0]["timestamp"]
@@ -145,8 +204,9 @@ def _segments_from_events(events: list[dict[str, Any]], display_status: str) -> 
                 "finished_at": terminal["timestamp"],
             }
         )
-    elif display_status == "stale":
-        segments.append({"state": "stale", "started_at": end, "finished_at": None})
+    elif display_status == LIFECYCLE_ABANDONED:
+        marker_at = last_activity_at or end
+        segments.append({"state": LIFECYCLE_ABANDONED, "started_at": marker_at, "finished_at": marker_at})
     return segments
 
 
@@ -183,7 +243,7 @@ def build_workstreams(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
 
-    priority = {"failed": 6, "blocked": 5, "stale": 4, "running": 3, "timed_out": 2, "succeeded": 1}
+    priority = {"failed": 6, "blocked": 5, "abandoned": 4, "running": 3, "timed_out": 2, "succeeded": 1}
     for workstream in grouped.values():
         lane_statuses = [lane["status"] for lane in workstream["lanes"]]
         workstream["status"] = max(lane_statuses, key=lambda value: priority.get(value, 0))
@@ -191,15 +251,15 @@ def build_workstreams(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def build_orchestrator_summary(sessions: list[dict[str, Any]]) -> dict[str, Any]:
-    active = [s for s in sessions if s["status"] == "running" and not s["is_stale"]]
-    stale = [s for s in sessions if s["is_stale"]]
+    active = [s for s in sessions if s["status"] == "running" and not s["is_abandoned"]]
+    abandoned = [s for s in sessions if s["is_abandoned"]]
     blocked = [s for s in sessions if s["status"] == "blocked"]
     failed = [s for s in sessions if s["status"] in {"failed", "timed_out"}]
-    attention = len(stale) + len(blocked) + len(failed)
+    attention = len(abandoned) + len(blocked) + len(failed)
     return {
         "status": "attention" if attention else ("working" if active else "idle"),
         "active_agent_sessions": len(active),
-        "stale_agent_sessions": len(stale),
+        "abandoned_agent_sessions": len(abandoned),
         "blocked_agent_sessions": len(blocked),
         "failed_agent_sessions": len(failed),
         "attention_items": attention,

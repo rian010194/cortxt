@@ -58,7 +58,7 @@ def test_load_sessions_maps_timed_out_status_to_error_severity(tmp_path):
     assert sessions[0]["severity"] == "error"
 
 
-def test_load_sessions_marks_old_unfinished_work_as_stale(tmp_path):
+def test_load_sessions_classifies_old_unfinished_work_as_abandoned(tmp_path):
     store = tmp_path / "sessions"
     session = state.create(store, task_id="abandoned-run")
     created = session["events"][0]["timestamp"]
@@ -67,9 +67,72 @@ def test_load_sessions_marks_old_unfinished_work_as_stale(tmp_path):
     entry = status.load_sessions(store, now=now, stale_after_seconds=300)[0]
 
     assert entry["status"] == "running"
-    assert entry["display_status"] == "stale"
-    assert entry["is_stale"] is True
-    assert entry["segments"][-1]["state"] == "stale"
+    assert entry["display_status"] == "abandoned"
+    assert entry["is_abandoned"] is True
+    assert entry["lifecycle"] == "abandoned"
+    assert entry["segments"][-1]["state"] == "abandoned"
+
+
+def test_load_sessions_lifecycle_is_running_for_fresh_running_session(tmp_path):
+    store = tmp_path / "sessions"
+    state.create(store, task_id="fresh-run")
+
+    entry = status.load_sessions(store)[0]
+
+    assert entry["lifecycle"] == "running"
+    assert entry["is_abandoned"] is False
+    assert entry["display_status"] == "running"
+
+
+def test_load_sessions_lifecycle_is_terminal_for_any_terminal_status(tmp_path):
+    store = tmp_path / "sessions"
+    session = state.create(store, task_id="finished-run")
+    state.append(store, session["session_id"], 0, "session.terminal", {"status": "blocked"})
+
+    entry = status.load_sessions(store)[0]
+
+    assert entry["lifecycle"] == "terminal"
+    assert entry["is_abandoned"] is False
+    assert entry["status"] == "blocked"
+
+
+def test_load_sessions_abandoned_segment_is_capped_at_last_activity_not_open_ended(tmp_path):
+    """Regression test for the widget's Gantt axis bug: an abandoned
+    session's trailing segment must carry a concrete `finished_at` (its own
+    last-known-activity timestamp), not `None`. The widget's JS falls back
+    to `new Date()` for a null `finished_at`, which made every abandoned
+    session's bar -- and the whole axis -- stretch to "now" on every page
+    load, no matter how long ago the session was actually abandoned.
+    """
+    store = tmp_path / "sessions"
+    session = state.create(store, task_id="abandoned-run")
+    created = session["events"][0]["timestamp"]
+    now = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(hours=7)
+
+    entry = status.load_sessions(store, now=now, stale_after_seconds=300)[0]
+
+    abandoned_segment = entry["segments"][-1]
+    assert abandoned_segment["state"] == "abandoned"
+    assert abandoned_segment["finished_at"] is not None
+    assert abandoned_segment["finished_at"] == entry["updated_at"]
+
+
+def test_load_sessions_operator_archived_event_forces_abandoned_before_threshold(tmp_path):
+    """An operator can record an explicit `session.archived` event to correct
+    automatic staleness inference -- e.g. to mark a session abandoned
+    immediately, without waiting for `stale_after_seconds` to elapse."""
+    store = tmp_path / "sessions"
+    session = state.create(store, task_id="operator-archived")
+    state.append(
+        store, session["session_id"], 0, "session.archived", {"reason": "operator closed REPL"}
+    )
+
+    entry = status.load_sessions(store, stale_after_seconds=300)[0]
+
+    assert entry["lifecycle"] == "abandoned"
+    assert entry["is_abandoned"] is True
+    assert entry["display_status"] == "abandoned"
+    assert entry["segments"][-1]["finished_at"] is not None
 
 
 def test_workstream_groups_agent_sessions_and_keeps_workspace_metadata(tmp_path):
@@ -316,7 +379,8 @@ def test_daemon_only_snapshot_refresh_preserves_sessions(tmp_path):
         "severity": "info",
         "updated_at": "2026-08-20T00:00:00Z",
         "age_seconds": 0,
-        "is_stale": False,
+        "is_abandoned": False,
+        "lifecycle": "running",
         "workstream_id": "keep-me",
         "run_id": "run-1",
         "issue_id": None,

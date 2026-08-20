@@ -289,7 +289,7 @@ def render_overview(summary, workstreams, runtimes, engines, skills) -> str:
         (
             "Agent sessions: "
             f"{summary['active_agent_sessions']} active, "
-            f"{summary['stale_agent_sessions']} stale, "
+            f"{summary['abandoned_agent_sessions']} abandoned, "
             f"{summary['blocked_agent_sessions']} blocked, "
             f"{summary['failed_agent_sessions']} failed"
         ),
