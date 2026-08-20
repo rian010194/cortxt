@@ -65,6 +65,47 @@ def test_render_frame_includes_workstream_and_lane_lines():
     assert "succeeded" in frame
 
 
+def test_render_frame_distinguishes_two_same_role_same_runtime_lanes():
+    """Regression for the bug this feature fixes: two lanes with the same
+    label/runtime used to render as identical text. session_id suffix +
+    branch must now tell them apart in the pipeline bars view too."""
+    summary = {"status": "working", "message": "m"}
+    workstreams = [
+        {
+            "workstream_id": "issue-180",
+            "status": "running",
+            "lanes": [
+                {
+                    "lane_id": "session-1",
+                    "session_id": "session_" + "a" * 32,
+                    "label": "orchestrator",
+                    "runtime": "codex",
+                    "branch": "daemon/issue-180-a",
+                    "started_at": "2026-08-20T10:00:00.000000Z",
+                    "status": "running",
+                },
+                {
+                    "lane_id": "session-2",
+                    "session_id": "session_" + "b" * 32,
+                    "label": "orchestrator",
+                    "runtime": "codex",
+                    "branch": "daemon/issue-180-b",
+                    "started_at": "2026-08-20T10:05:00.000000Z",
+                    "status": "running",
+                },
+            ],
+        }
+    ]
+
+    frame = pipeline.render_frame(summary, workstreams, frame=0, width=10)
+
+    lines = [line for line in frame.splitlines() if "orchestrator" in line]
+    assert len(lines) == 2
+    assert lines[0] != lines[1]
+    assert "daemon/issue-180-a" in lines[0]
+    assert "daemon/issue-180-b" in lines[1]
+
+
 def test_run_watch_draws_one_frame_per_iteration_and_stops_at_max_iterations():
     calls = {"collect": 0, "sleep": 0, "clear": 0}
     drawn: list[str] = []
