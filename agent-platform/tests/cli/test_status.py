@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 
 from runtime import session_state as state
 
@@ -53,6 +54,42 @@ def test_load_sessions_maps_timed_out_status_to_error_severity(tmp_path):
     sessions = status.load_sessions(store)
     assert sessions[0]["status"] == "timed_out"
     assert sessions[0]["severity"] == "error"
+
+
+def test_load_sessions_marks_old_unfinished_work_as_stale(tmp_path):
+    store = tmp_path / "sessions"
+    session = state.create(store, task_id="abandoned-run")
+    created = session["events"][0]["timestamp"]
+    now = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(minutes=6)
+
+    entry = status.load_sessions(store, now=now, stale_after_seconds=300)[0]
+
+    assert entry["status"] == "running"
+    assert entry["display_status"] == "stale"
+    assert entry["is_stale"] is True
+    assert entry["segments"][-1]["state"] == "stale"
+
+
+def test_workstream_groups_agent_sessions_and_keeps_workspace_metadata(tmp_path):
+    store = tmp_path / "sessions"
+    state.create(
+        store,
+        task_id="builder-step",
+        workstream_id="issue-180",
+        run_id="run-2",
+        issue_id="owner/repo#180",
+        branch="daemon/issue-180",
+        worker_role="builder",
+        runtime="hermes",
+    )
+    sessions = status.load_sessions(store, now=datetime.now(timezone.utc))
+
+    workstream = status.build_workstreams(sessions)[0]
+
+    assert workstream["workstream_id"] == "issue-180"
+    assert workstream["workspace"]["branch"] == "daemon/issue-180"
+    assert workstream["lanes"][0]["label"] == "builder"
+    assert workstream["lanes"][0]["runtime"] == "hermes"
 
 
 def test_load_sessions_skips_and_logs_malformed_session(tmp_path, caplog):
@@ -186,3 +223,32 @@ def test_write_snapshot_preserves_daemon_when_omitted(tmp_path):
     doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
     assert doc["daemon"] == {"status": "running", "claimed": ["owner/repo#1"]}
     assert doc["runtimes"] == [{"name": "hermes"}]
+
+
+def test_daemon_only_snapshot_refresh_preserves_sessions(tmp_path):
+    snapshot_path = tmp_path / "snapshot.json"
+    sessions = [{
+        "session_id": "session_" + "1" * 32,
+        "task_id": "keep-me",
+        "status": "running",
+        "display_status": "running",
+        "severity": "info",
+        "updated_at": "2026-08-20T00:00:00Z",
+        "age_seconds": 0,
+        "is_stale": False,
+        "workstream_id": "keep-me",
+        "run_id": "run-1",
+        "issue_id": None,
+        "branch": None,
+        "worktree": None,
+        "worker_role": "builder",
+        "runtime": "hermes",
+        "segments": [],
+    }]
+    status.write_snapshot(sessions, snapshot_path)
+
+    status.write_snapshot(None, snapshot_path, daemon={"status": "running", "claimed": []})
+
+    doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert [item["task_id"] for item in doc["sessions"]] == ["keep-me"]
+    assert doc["workstreams"][0]["workstream_id"] == "keep-me"
