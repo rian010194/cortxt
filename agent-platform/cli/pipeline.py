@@ -6,7 +6,7 @@ redraw on an interval for a live watch.
 
 Progress here is *indeterminate* -- the domain has no numeric
 percent-complete signal for a running agent session, only a status
-(running/succeeded/failed/blocked/stale/timed_out). A running lane gets a
+(running/succeeded/failed/blocked/abandoned/timed_out). A running lane gets a
 moving scanner block instead of a fill percentage, so the bar communicates
 "this is alive and being redrawn," not a fabricated completion estimate.
 """
@@ -36,8 +36,8 @@ def render_lane_bar(status: str, frame: int, *, width: int = 20) -> str:
     if status == "blocked":
         half = width // 2
         return f"[{'?' * half}{' ' * (width - half)}] blocked"
-    if status == "stale":
-        return f"[{'.' * width}] stale"
+    if status == "abandoned":
+        return f"[{'.' * width}] abandoned"
     # running, or any other in-flight status: indeterminate scanner.
     bar = [" "] * width
     if width:
