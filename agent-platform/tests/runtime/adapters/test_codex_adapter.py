@@ -160,6 +160,42 @@ def test_falls_back_to_raw_stdout_when_output_file_is_empty():
     assert result["stdout"] == _THREAD_STARTED + "raw fallback text\n"
 
 
+def test_default_codex_executable_prefers_windows_cmd_shim(monkeypatch):
+    from runtime.adapters.codex_adapter import _default_codex_executable
+    import runtime.adapters.codex_adapter as codex_adapter_module
+
+    monkeypatch.setattr(codex_adapter_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        codex_adapter_module.shutil, "which",
+        lambda name: r"C:\npm\codex.cmd" if name == "codex.cmd" else None,
+    )
+
+    assert _default_codex_executable() == r"C:\npm\codex.cmd"
+
+
+def test_default_codex_executable_falls_back_to_bare_name_on_posix(monkeypatch):
+    from runtime.adapters.codex_adapter import _default_codex_executable
+    import runtime.adapters.codex_adapter as codex_adapter_module
+
+    monkeypatch.setattr(codex_adapter_module.sys, "platform", "linux")
+
+    assert _default_codex_executable() == "codex"
+
+
+def test_fake_injected_run_subprocess_receives_logical_codex_argv_not_resolved_path():
+    # The Windows executable-resolution only applies to the real
+    # subprocess.run default (see _default_codex_executable) -- every
+    # other test in this file injects a fake run_subprocess and asserts
+    # argv[0] == "codex" literally, which this test makes explicit as its
+    # own guarantee rather than an implicit side effect of the others.
+    fake_run, calls = _fake_run_writing_output_file()
+    adapter = CodexAdapter(run_subprocess=fake_run)
+
+    adapter.invoke("researcher", "do it", timeout_seconds=60)
+
+    assert calls[0][0][0] == "codex"
+
+
 def test_non_object_jsonl_lines_do_not_crash_thread_id_parsing():
     # A JSON scalar/array/null line (not an object) must not raise --
     # _parse_thread_id has to check the parsed value is a dict before

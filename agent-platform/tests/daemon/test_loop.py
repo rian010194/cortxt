@@ -19,7 +19,7 @@ def _fake_route(task_tags, manifests, fallback="claude-direct"):
                          checkpoint_required=False)
 
 
-def _fake_invoke_hermes(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
+def _fake_invoke_hermes(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
     return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
 
@@ -170,7 +170,7 @@ def test_crash_then_restart_does_not_redispatch(tmp_path):
     def _list(repo, **kwargs):
         return [{"number": 11, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
 
-    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
+    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
         dispatch_count["n"] += 1
         return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
@@ -193,7 +193,7 @@ def test_route_choosing_non_hermes_engine_is_skipped_not_dispatched(tmp_path):
         return EngineChoice(engine_id="claude-direct", reason="test", matched_tag="security-sensitive",
                              checkpoint_required=True)
 
-    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
+    def _counting_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
         dispatch_count["n"] += 1
         return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
@@ -220,7 +220,7 @@ def test_hermes_invocation_error_freezes_that_issue(tmp_path):
     def _list(repo, **kwargs):
         return [{"number": 14, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
 
-    def _raising_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
+    def _raising_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
         raise HermesInvocationError("could not start hermes: [WinError 2]")
 
     loop = _make_loop(tmp_path, list_ready_issues=_list, engine_context=_context_with_hermes(_raising_invoke))
@@ -236,7 +236,7 @@ def test_prompt_includes_issue_body_not_just_title(tmp_path):
         return [{"number": 16, "title": "X", "body": "Create docs/foo.md with exactly one line.",
                   "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
 
-    def _capturing_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
+    def _capturing_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
         captured["prompt"] = prompt
         return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
@@ -252,7 +252,7 @@ def test_dispatch_runs_in_isolated_worktree_cwd(tmp_path):
     def _list(repo, **kwargs):
         return [{"number": 17, "title": "X", "labels": [{"name": "workflow:ready"}, {"name": "research"}]}]
 
-    def _capturing_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None):
+    def _capturing_invoke(profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
         captured["cwd"] = cwd
         return {"status": "succeeded", "profile": profile, "stdout": "", "stderr": ""}
 
