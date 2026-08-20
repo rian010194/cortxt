@@ -15,6 +15,8 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from . import color as color_cli
+
 # Terminal statuses render as a full bar, distinguished by fill character.
 _TERMINAL_FILL = {
     "succeeded": "#",
@@ -23,26 +25,33 @@ _TERMINAL_FILL = {
 }
 
 
-def render_lane_bar(status: str, frame: int, *, width: int = 20) -> str:
+def render_lane_bar(status: str, frame: int, *, width: int = 20, color: bool | None = None) -> str:
     """Render one lane's `[bar] status` fragment.
 
     Deterministic given (status, frame, width) so it's unit-testable without
-    real time passing. `frame` only matters for "running" -- it moves the
+    real time passing (the color-off default keeps prior exact-string
+    assertions intact). `frame` only matters for "running" -- it moves the
     scanner block one position per redraw, wrapping at `width`.
+    `color=None` auto-detects (real terminal -> colored); pass True/False
+    to force it. Only the bar+label is colored, not the enclosing brackets.
     """
     if status in _TERMINAL_FILL:
         fill = _TERMINAL_FILL[status]
-        return f"[{fill * width}] {status}"
+        body = color_cli.colorize(f"{fill * width}] {status}", status, enabled=color)
+        return f"[{body}"
     if status == "blocked":
         half = width // 2
-        return f"[{'?' * half}{' ' * (width - half)}] blocked"
+        body = color_cli.colorize(f"{'?' * half}{' ' * (width - half)}] blocked", "blocked", enabled=color)
+        return f"[{body}"
     if status == "stale":
-        return f"[{'.' * width}] stale"
+        body = color_cli.colorize(f"{'.' * width}] stale", "stale", enabled=color)
+        return f"[{body}"
     # running, or any other in-flight status: indeterminate scanner.
     bar = [" "] * width
     if width:
         bar[frame % width] = "#"
-    return f"[{''.join(bar)}] running"
+    body = color_cli.colorize(f"{''.join(bar)}] running", "running", enabled=color)
+    return f"[{body}"
 
 
 def render_frame(
@@ -51,19 +60,26 @@ def render_frame(
     *,
     frame: int = 0,
     width: int = 20,
+    color: bool | None = None,
 ) -> str:
-    """Render one full screen: header + one block of lane bars per workstream."""
+    """Render one full screen: header + one block of lane bars per workstream.
+
+    `color=None` auto-detects; pass True/False to force it.
+    """
+    overall_status = summary.get("status", "idle")
+    status_text = color_cli.colorize(overall_status, overall_status, enabled=color)
     lines = [
-        f"CORTXT PIPELINE -- {summary.get('status', 'idle')} ({summary.get('message', '')})",
+        f"CORTXT PIPELINE -- {status_text} ({summary.get('message', '')})",
         "=" * 72,
     ]
     if not workstreams:
         lines.append("No workstreams found.")
         return "\n".join(lines)
     for workstream in workstreams:
-        lines.append(f"{workstream['workstream_id']} [{workstream['status']}]")
+        ws_status = color_cli.colorize(workstream["status"], workstream["status"], enabled=color)
+        lines.append(f"{workstream['workstream_id']} [{ws_status}]")
         for lane in workstream.get("lanes", []):
-            bar = render_lane_bar(lane.get("status", "running"), frame, width=width)
+            bar = render_lane_bar(lane.get("status", "running"), frame, width=width, color=color)
             lines.append(f"  {lane.get('label', 'agent'):<12} {bar}")
         lines.append("")
     return "\n".join(lines).rstrip("\n")
