@@ -22,9 +22,9 @@ def test_render_lane_bar_blocked_is_half_filled():
     assert bar == "[?????     ] blocked"
 
 
-def test_render_lane_bar_stale_is_dotted():
-    bar = pipeline.render_lane_bar("stale", 0, width=5)
-    assert bar == "[.....] stale"
+def test_render_lane_bar_abandoned_is_dotted():
+    bar = pipeline.render_lane_bar("abandoned", 0, width=5)
+    assert bar == "[.....] abandoned"
 
 
 def test_render_lane_bar_running_is_a_scanner_that_moves_with_frame():
