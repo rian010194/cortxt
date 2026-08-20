@@ -14,6 +14,7 @@ pattern as everything else `cortxt` does).
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -21,11 +22,53 @@ from typing import Callable
 
 from subprocess_windows import no_window_kwargs
 
+# Same pattern as cli/orchestrator.py's _ANSI_ESCAPE, for the same reason:
+# Hermes emits ANSI/UTF-8 table decoration that a captured, non-TTY
+# subprocess call may receive verbatim.
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
 
 class HermesInvocationError(RuntimeError):
     """Raised when the hermes CLI itself could not be started (not found,
     not executable, or another OSError before it ever ran) -- distinct from
     a normal failed/timed-out response, which is a regular return value."""
+
+
+def _parse_latest_session_id(output: str) -> str | None:
+    """Parse `hermes sessions list --limit 1`'s plain-text table: columns
+    are separated by 2+ spaces, the session id is always the last column
+    of the single data row after the header/separator lines."""
+    lines = [_ANSI_ESCAPE.sub("", line) for line in output.splitlines()]
+    sep_index = next(
+        (i for i, line in enumerate(lines) if line.strip() and set(line.strip()) <= {"─"}),
+        None,
+    )
+    if sep_index is None:
+        return None
+    data_lines = [line for line in lines[sep_index + 1:] if line.strip()]
+    if not data_lines:
+        return None
+    fields = re.split(r"\s{2,}", data_lines[0].strip())
+    return fields[-1] if fields else None
+
+
+def _capture_latest_hermes_session_id(
+    cwd: Path | None,
+    run_subprocess: Callable[..., "subprocess.CompletedProcess[str]"],
+) -> str | None:
+    argv = ["hermes", "sessions", "list", "--limit", "1"]
+    if cwd is not None:
+        argv += ["--workspace", str(cwd)]
+    try:
+        proc = run_subprocess(
+            argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+            **no_window_kwargs(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return _parse_latest_session_id(proc.stdout or "")
 
 
 def invoke_hermes(
@@ -47,6 +90,7 @@ def invoke_hermes(
         profile: the profile passed in
         stdout / stderr: captured text
         elapsed_seconds: wall-clock time for the call
+        session_id: the session id if captured or provided, None otherwise
 
     Raises HermesInvocationError if the hermes executable itself could not
     be started (missing from PATH, not executable, etc.) -- that's an
@@ -78,14 +122,21 @@ def invoke_hermes(
             "stdout": "",
             "stderr": f"hermes did not complete within {timeout_seconds}s",
             "elapsed_seconds": time.time() - started,
+            "session_id": session_id,
         }
     except OSError as error:
         raise HermesInvocationError(f"could not start hermes: {error}") from error
 
+    status = "succeeded" if proc.returncode == 0 else "failed"
+    result_session_id = session_id
+    if status == "succeeded" and session_id is None:
+        result_session_id = _capture_latest_hermes_session_id(cwd, run_subprocess)
+
     return {
-        "status": "succeeded" if proc.returncode == 0 else "failed",
+        "status": status,
         "profile": profile,
         "stdout": proc.stdout or "",
         "stderr": proc.stderr or "",
         "elapsed_seconds": time.time() - started,
+        "session_id": result_session_id,
     }
