@@ -175,6 +175,7 @@ def load_sessions(
                 "worktree": created_payload.get("worktree"),
                 "worker_role": created_payload.get("worker_role") or "agent",
                 "runtime": created_payload.get("runtime"),
+                "plan_task_ref": created_payload.get("plan_task_ref"),
                 "started_at": doc["events"][0]["timestamp"],
                 "segments": _segments_from_events(doc["events"], display_status, last_activity_at),
                 "activity": [
