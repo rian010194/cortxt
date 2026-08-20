@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from runtime import session_state as state
 
@@ -223,6 +225,39 @@ def test_write_snapshot_preserves_daemon_when_omitted(tmp_path):
     doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
     assert doc["daemon"] == {"status": "running", "claimed": ["owner/repo#1"]}
     assert doc["runtimes"] == [{"name": "hermes"}]
+
+
+def test_write_snapshot_replaces_the_file_atomically(tmp_path, monkeypatch):
+    """A live watch loop (`cortxt pipeline --watch`) rewrites this file on
+    every redraw while the widget polls it concurrently. If the write were
+    truncate-then-fill instead of write-temp-then-rename, a poll landing
+    mid-write would read a partial/invalid JSON document. Assert the
+    mechanism directly: the real write must go through a temp file in the
+    same directory followed by `os.replace`, never a direct open-and-write
+    of `snapshot_path` itself."""
+    snapshot_path = tmp_path / "widget" / "snapshot.json"
+    snapshot_path.parent.mkdir(parents=True)
+    snapshot_path.write_text('{"generated_at": "old"}', encoding="utf-8")
+
+    replace_calls = []
+    real_replace = os.replace
+
+    def spy_replace(src, dst):
+        # At the moment of replace, the temp file must already hold the
+        # full new document, and the destination must still be the old one.
+        assert Path(src).read_text(encoding="utf-8") != snapshot_path.read_text(encoding="utf-8")
+        replace_calls.append((src, dst))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", spy_replace)
+    status.write_snapshot([], snapshot_path)
+
+    assert len(replace_calls) == 1
+    src, dst = replace_calls[0]
+    assert Path(src).parent == snapshot_path.parent
+    assert Path(dst) == snapshot_path
+    doc = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert doc["generated_at"] != "old"
 
 
 def test_render_status_table_reports_no_workstreams_when_empty():
