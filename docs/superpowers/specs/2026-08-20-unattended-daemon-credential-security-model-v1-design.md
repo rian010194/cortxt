@@ -1,8 +1,9 @@
 # Unattended daemon credential/security model v1 — design
 
-Status: draft (spec-only; not reviewed with operator; no implementation
-started per explicit instruction — this is sub-project 2 of the 2026-08-19
-three-way split, deliberately deferred until now)
+Status: spec-only, open questions resolved (see Decisions section below,
+Codex review directed by operator 2026-08-20); no implementation started —
+this is sub-project 2 of the 2026-08-19 three-way split, deliberately
+deferred until now
 Date: 2026-08-20
 Authority: architectural proposal for one bounded sub-project; does not
 override `docs/security/credential-broker-threat-model.md` (Fas 1, the
@@ -392,6 +393,43 @@ an explicit "yes" before the session reordered.
   `CodexAdapter` already exists as the second concrete adapter, confirming
   the abstraction is real, not speculative, so scoping this design to it is
   no longer premature the way it was when only Hermes had shipped.
+
+## Decisions (Codex review, 2026-08-20, operator-directed)
+
+The operator asked Codex to review the 6 open questions above and directed
+that this spec proceed per Codex's recommendations. Answers below (verbatim
+recommendation, condensed justification) resolve all 6 open questions;
+implementation may now proceed against them without further sign-off on
+these specific points.
+
+1. **R4 confirmed.** Scope credentials by `engine_id x task_shape` — specific
+   enough for least privilege, still operationally manageable.
+2. **Daemon's GitHub token: raw env var for v1, not CredentialBroker.**
+   Narrowly scoped, read-only-polling, excluded from the engine-subprocess
+   allowlist (R1) so it never reaches an engine dispatch. Migrate to the
+   broker later if rotation or broader GitHub scope is introduced.
+3. **DPAPI decrypt failure mid-run: freeze only the affected track**, not
+   the whole daemon loop — matches the Evidence Gate's existing
+   freeze-one-continue-others pattern. Emit an operator-visible error;
+   require explicit operator action before retrying decryption.
+4. **R1 allowlist contents (v1, both engines):** `PATH`, `SYSTEMROOT`,
+   `WINDIR`, `COMSPEC`, `PATHEXT`, `TEMP`, `TMP`, `USERPROFILE`, `HOME`,
+   `LOCALAPPDATA`, `APPDATA`. Plus `CODEX_HOME` for Codex only, and Hermes's
+   own documented config-home variable for Hermes only. Proxy, GitHub,
+   cloud, and engine API-key variables stay excluded unless a specific,
+   tested task shape proves a concrete need.
+5. **Full daemon-process hardening (separate OS account, privilege
+   separation): deferred to v2.** v1 stays an operator-started process,
+   with T1's fix (explicit subprocess env), R3 (read-only broker access),
+   R4 (credential scoping), and auditable failure handling as its
+   hardening surface.
+6. **T2 gets a structural trust marker.** Thread a trust classification
+   through `EngineAdapter.invoke()` — an enum (`trusted_operator` /
+   `untrusted_issue`) rather than a bare boolean. Evidence Gate skepticism
+   catches a false self-report after the fact; it does not address
+   prompt-driven tool misuse *during* execution, so it is not sufficient
+   on its own. This changes the `EngineAdapter` protocol's shape (ADR-026
+   territory) and belongs in the implementation plan, not this spec.
 
 ## Decomposition note (unchanged from sub-project 1's spec)
 
