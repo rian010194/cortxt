@@ -38,6 +38,41 @@ def test_render_lane_bar_running_is_a_scanner_that_moves_with_frame():
     assert frame5 == frame0
 
 
+def test_render_lane_bar_has_no_ansi_codes_by_default():
+    bar = pipeline.render_lane_bar("succeeded", 0, width=10)
+    assert bar == "[##########] succeeded"
+    assert "\033[" not in bar
+
+
+def test_render_lane_bar_colors_when_explicitly_enabled():
+    bar = pipeline.render_lane_bar("succeeded", 0, width=10, color=True)
+    assert "\033[" in bar
+    assert "succeeded" in bar
+
+
+def test_render_lane_bar_no_color_when_explicitly_disabled_even_if_forced_elsewhere():
+    bar = pipeline.render_lane_bar("failed", 0, width=4, color=False)
+    assert bar == "[!!!!] failed"
+
+
+def test_render_frame_colors_status_when_explicitly_enabled():
+    summary = {"status": "working", "message": "1 active; 0 need attention"}
+    workstreams = [
+        {
+            "workstream_id": "issue-180",
+            "status": "running",
+            "lanes": [{"lane_id": "session-1", "label": "builder", "status": "running"}],
+        }
+    ]
+
+    plain = pipeline.render_frame(summary, workstreams, color=False)
+    colored = pipeline.render_frame(summary, workstreams, color=True)
+
+    assert "\033[" not in plain
+    assert "\033[" in colored
+    assert "issue-180" in colored
+
+
 def test_render_frame_reports_no_workstreams_when_empty():
     frame = pipeline.render_frame({"status": "idle", "message": "No verified agent work is active"}, [])
     assert "No workstreams found." in frame
