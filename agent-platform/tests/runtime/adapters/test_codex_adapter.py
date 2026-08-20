@@ -195,6 +195,22 @@ def test_default_codex_launch_prefix_falls_back_to_exe_when_node_layout_missing(
     assert _default_codex_launch_prefix() == [r"C:\npm\codex.exe"]
 
 
+def test_default_codex_launch_prefix_never_falls_back_to_a_bat_shim(monkeypatch):
+    # A .bat target has the exact same implicit-cmd.exe-routing risk this
+    # function exists to close -- it must fall through to the bare "codex"
+    # name rather than silently reopening the injection vector.
+    from runtime.adapters.codex_adapter import _default_codex_launch_prefix
+    import runtime.adapters.codex_adapter as codex_adapter_module
+
+    monkeypatch.setattr(codex_adapter_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        codex_adapter_module.shutil, "which",
+        lambda name: r"C:\npm\codex.bat" if name == "codex.bat" else None,
+    )
+
+    assert _default_codex_launch_prefix() == ["codex"]
+
+
 def test_default_codex_launch_prefix_falls_back_to_bare_name_on_posix(monkeypatch):
     from runtime.adapters.codex_adapter import _default_codex_launch_prefix
     import runtime.adapters.codex_adapter as codex_adapter_module
