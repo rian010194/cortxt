@@ -18,3 +18,8 @@ def test_each_call_returns_an_independent_context():
     second = build_default_engine_context()
     assert first is not second
     assert first.get("hermes") is not second.get("hermes")
+
+
+def test_codex_has_a_provider():
+    context = build_default_engine_context()
+    assert context.get("codex").has_provider is True

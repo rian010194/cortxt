@@ -5,6 +5,7 @@ specific adapter -- adding a second adapter later means editing this file
 plus adding the adapter file, not touching the registry mechanics."""
 from __future__ import annotations
 
+from runtime.adapters.codex_adapter import CodexAdapter
 from runtime.adapters.hermes_adapter import HermesAdapter
 from runtime.engine_registry import EngineContext
 
@@ -12,4 +13,5 @@ from runtime.engine_registry import EngineContext
 def build_default_engine_context() -> EngineContext:
     context = EngineContext()
     context.register("hermes", HermesAdapter())
+    context.register("codex", CodexAdapter())
     return context
