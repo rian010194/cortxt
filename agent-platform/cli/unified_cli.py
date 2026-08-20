@@ -265,6 +265,202 @@ def _run_sessions(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
+def _collect_orchestrator_projection(args: argparse.Namespace) -> dict[str, Any]:
+    """Build the single read-only projection shared by CLI, chat, and widget."""
+    ap_path = _get_agent_platform_path()
+    if str(ap_path) not in sys.path:
+        sys.path.insert(0, str(ap_path))
+    cli_dir = Path(__file__).parent
+    if str(cli_dir) not in sys.path:
+        sys.path.insert(0, str(cli_dir))
+
+    from cli import orchestrator as orchestrator_cli
+    from cli import status as status_cli
+    from routing.discovery import discover_installed_runtimes
+    from routing.engine_manifest import DEFAULT_MANIFESTS
+    from runtime.default_engine_context import build_default_engine_context
+
+    store = args.store or (ap_path / ".sessions")
+    snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+    sessions = status_cli.load_sessions(store, stale_after_seconds=args.stale_after)
+    active_runtimes = {
+        item.get("runtime") for item in sessions
+        if item.get("runtime") and item.get("display_status") == "running"
+    }
+    runtimes = [
+        {
+            "runtime_id": item.runtime_id,
+            "installed": item.installed,
+            "available": item.installed,
+            "loaded": item.runtime_id in {"hermes", "claude", "codex"} and item.installed,
+            "running": item.runtime_id in active_runtimes,
+            "path": item.path,
+        }
+        for item in discover_installed_runtimes()
+    ]
+    context = build_default_engine_context()
+    engines = orchestrator_cli.engine_inventory(DEFAULT_MANIFESTS, context)
+    profile_roots, loaded_by_root = orchestrator_cli.hermes_profile_skill_roots()
+    skills = orchestrator_cli.merge_skills(
+        orchestrator_cli.discover_skills(orchestrator_cli.default_skill_roots(ap_path))
+        + orchestrator_cli.discover_skills(profile_roots, loaded_by_root=loaded_by_root)
+    )
+    profiles = orchestrator_cli.discover_hermes_profiles()
+    workstreams = status_cli.build_workstreams(sessions)
+    summary = status_cli.build_orchestrator_summary(sessions)
+    status_cli.write_snapshot(
+        sessions,
+        snapshot_path,
+        runtimes=runtimes,
+        engines=engines,
+        skills=skills,
+        profiles=profiles,
+    )
+    return {
+        "orchestrator": summary,
+        "workstreams": workstreams,
+        "runtimes": runtimes,
+        "engines": engines,
+        "skills": skills,
+        "profiles": profiles,
+        "snapshot_path": snapshot_path,
+    }
+
+
+def _run_orchestrator_chat(
+    args: argparse.Namespace, *, engine_context: "EngineContext | None" = None,
+    input_fn=None,
+) -> ResultEnvelope:
+    """Talk to the advisory orchestrator while deterministic commands stay local."""
+    from cli import orchestrator as orchestrator_cli
+    from runtime import session_state as state
+    from runtime.default_engine_context import build_default_engine_context
+
+    projection = _collect_orchestrator_projection(args)
+    context = engine_context or build_default_engine_context()
+    broker = context.get("hermes")
+    transcript_id = orchestrator_cli.new_transcript_id()
+    store = args.store or (_get_agent_platform_path() / ".sessions")
+    session_id: str | None = None
+    sequence = 0
+    read_input = input_fn or input
+    turn = 0
+    failed = False
+
+    print("Cortxt orchestrator chat — advisory, GitHub workflow state is authoritative.")
+    print("Commands: /status /workstreams /runtimes /skills /quit")
+    pending = [args.ask] if args.ask else None
+    while True:
+        try:
+            value = pending.pop(0) if pending else read_input("cortxt> ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nSession closed.")
+            break
+        value = value.strip()
+        if not value:
+            if pending is not None:
+                break
+            continue
+        if value == "/quit":
+            print("Session closed.")
+            break
+        if value.startswith("/"):
+            print(orchestrator_cli.render_chat_command(value, projection))
+        else:
+            local_reply = orchestrator_cli.local_conversation_reply(value)
+            if local_reply is not None:
+                print(local_reply)
+                if pending is not None and not pending:
+                    break
+                continue
+            turn += 1
+            if session_id is None:
+                session_doc = state.create(
+                    store,
+                    task_id=f"orchestrator-chat:{transcript_id[:8]}",
+                    workstream_id=args.workstream_id or args.branch or "orchestrator-chat",
+                    run_id=transcript_id,
+                    branch=args.branch,
+                    worker_role="orchestrator",
+                    runtime="hermes",
+                )
+                session_id = session_doc["session_id"]
+            prompt, redactions = orchestrator_cli.build_chat_prompt(value, projection)
+            user_record = orchestrator_cli.transcript_record(
+                transcript_id=transcript_id, turn_index=turn, role="user",
+                content=value, engine="hermes", status="submitted", redactions=redactions,
+            )
+            state.append(store, session_id, sequence, "chat.user", user_record)
+            sequence += 1
+            try:
+                result = broker.invoke(
+                    args.hermes_profile,
+                    prompt,
+                    timeout_seconds=args.timeout,
+                    model=args.model,
+                    provider=args.provider,
+                    cwd=_get_agent_platform_path().parent,
+                )
+            except Exception as error:
+                result = {"status": "failed", "stdout": "", "stderr": str(error)}
+            answer = result.get("stdout", "").strip()
+            status = result.get("status", "failed")
+            if answer:
+                print(answer)
+            else:
+                print(f"Hermes {status}: {result.get('stderr') or 'no response'}")
+            assistant_record = orchestrator_cli.transcript_record(
+                transcript_id=transcript_id, turn_index=turn, role="assistant",
+                content=answer or result.get("stderr", ""), engine="hermes", status=status,
+            )
+            state.append(store, session_id, sequence, "chat.assistant", assistant_record)
+            sequence += 1
+            failed = failed or status != "succeeded"
+        if pending is not None and not pending:
+            break
+    artifacts = [f"snapshot:{projection['snapshot_path']}"]
+    if session_id is not None:
+        state.append(
+            store, session_id, sequence, "session.terminal",
+            {"status": "failed" if failed else "succeeded"},
+        )
+        projection = _collect_orchestrator_projection(args)
+        artifacts.append(f"session:{session_id}")
+    return ResultEnvelope(
+        status="failed" if failed else "succeeded",
+        artifacts=artifacts,
+        evidence=[{"transcript_id": transcript_id, "turns": turn, "content_persisted": False}],
+    )
+
+
+def _run_orchestrator(args: argparse.Namespace) -> ResultEnvelope:
+    """Refresh/render the projection, or enter conversational chat mode."""
+    try:
+        if args.orchestrator_command == "chat":
+            return _run_orchestrator_chat(args)
+        ap_path = _get_agent_platform_path()
+        cli_dir = Path(__file__).parent
+        if str(cli_dir) not in sys.path:
+            sys.path.insert(0, str(cli_dir))
+
+        from cli import orchestrator as orchestrator_cli
+        projection = _collect_orchestrator_projection(args)
+        summary = projection["orchestrator"]
+        workstreams = projection["workstreams"]
+        runtimes = projection["runtimes"]
+        engines = projection["engines"]
+        skills = projection["skills"]
+        snapshot_path = projection["snapshot_path"]
+        print(orchestrator_cli.render_overview(summary, workstreams, runtimes, engines, skills))
+        return ResultEnvelope(
+            status="succeeded",
+            artifacts=[f"snapshot:{snapshot_path}"],
+            evidence=[{"orchestrator": summary, "workstreams": len(workstreams)}],
+        )
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
 def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
     """Serve the sessions widget (loopback-only static server, widget/serve.py).
 
@@ -326,7 +522,17 @@ def _run_dispatch(
         context = engine_context if engine_context is not None else build_default_engine_context()
 
         store = args.store or (_get_agent_platform_path() / ".sessions")
-        session = state.create(store, task_id=args.task_id)
+        session = state.create(
+            store,
+            task_id=args.task_id,
+            workstream_id=getattr(args, "workstream_id", None),
+            run_id=getattr(args, "run_id", None),
+            issue_id=getattr(args, "issue_id", None),
+            branch=getattr(args, "branch", None),
+            worktree=getattr(args, "worktree", None),
+            worker_role="builder" if choice.engine_id == "hermes" else "agent",
+            runtime=choice.engine_id,
+        )
         session_id = session["session_id"]
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
@@ -707,6 +913,28 @@ def main(argv: list[str] | None = None) -> int:
     sessions_parser.add_argument("--snapshot", type=Path, help="Snapshot output path (default: agent-platform/widget/snapshot.json)")
     sessions_parser.set_defaults(func=_run_sessions)
 
+    orchestrator_parser = sub.add_parser(
+        "orchestrator", help="Show the operator overview or talk to the local orchestrator"
+    )
+    orchestrator_parser.add_argument(
+        "orchestrator_command", nargs="?", choices=["overview", "chat"], default="overview",
+        help="overview (default) or interactive chat",
+    )
+    orchestrator_parser.add_argument("--store", type=Path, help="Session store path")
+    orchestrator_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path")
+    orchestrator_parser.add_argument(
+        "--stale-after", type=float, default=300.0,
+        help="Seconds without an event before a running agent session is shown as stale",
+    )
+    orchestrator_parser.add_argument("--ask", help="Run one chat turn non-interactively")
+    orchestrator_parser.add_argument("--hermes-profile", default="researcher", help="Hermes profile for advisory chat")
+    orchestrator_parser.add_argument("--timeout", type=int, default=120, help="Hermes turn timeout in seconds")
+    orchestrator_parser.add_argument("--model", help="Optional Hermes model override")
+    orchestrator_parser.add_argument("--provider", help="Optional Hermes provider override")
+    orchestrator_parser.add_argument("--workstream-id", help="Attach the chat session to a workstream")
+    orchestrator_parser.add_argument("--branch", help="Attach the chat session to a branch/worktree stream")
+    orchestrator_parser.set_defaults(func=_run_orchestrator)
+
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
     widget_parser.set_defaults(func=_run_widget)
@@ -722,6 +950,11 @@ def main(argv: list[str] | None = None) -> int:
     dispatch_parser.add_argument("--timeout", type=int, default=120, help="Timeout in seconds for an engine invocation (default: 120)")
     dispatch_parser.add_argument("--model", help="Model override passed to hermes -m (optional)")
     dispatch_parser.add_argument("--provider", help="Provider override passed to hermes --provider (optional)")
+    dispatch_parser.add_argument("--workstream-id", help="Operator-visible workstream identity")
+    dispatch_parser.add_argument("--run-id", help="Durable attempt identity (generated externally when omitted)")
+    dispatch_parser.add_argument("--issue-id", help="Canonical owner/repo#number correlation")
+    dispatch_parser.add_argument("--branch", help="Git branch attached to the workstream")
+    dispatch_parser.add_argument("--worktree", help="Worktree path attached to the workstream")
     dispatch_parser.set_defaults(func=_run_dispatch)
 
     # runtimes subcommand
