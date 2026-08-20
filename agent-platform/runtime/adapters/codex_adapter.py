@@ -68,9 +68,13 @@ def _default_codex_launch_prefix() -> list[str]:
     every argv element after it (prompt included) is passed through as a
     real argv array, never reinterpreted as a shell command line.
 
-    Falls back to `codex.exe`/`codex.bat` (no known shim risk beyond what
-    `.exe` launching already has) if the npm-shim layout isn't found, and
-    finally to the bare `codex` name -- POSIX's own `codex` has a real
+    Falls back to `codex.exe` (a real PE binary, launched directly by
+    CreateProcess with no shell involved -- no equivalent risk) if the
+    npm-shim layout isn't found. Deliberately does **not** fall back to
+    `codex.bat`: a `.bat` target has the exact same implicit-cmd.exe-
+    routing risk this function exists to avoid, so falling back to it
+    would silently reopen the injection vector for a layout this function
+    has no evidence actually occurs. POSIX's own `codex` has a real
     shebang and needs none of this.
     """
     if sys.platform == "win32":
@@ -84,10 +88,9 @@ def _default_codex_launch_prefix() -> list[str]:
             codex_js = shim_dir / "node_modules" / "@openai" / "codex" / "bin" / "codex.js"
             if node_exe is not None and node_exe.is_file() and codex_js.is_file():
                 return [str(node_exe), str(codex_js)]
-        for candidate in ("codex.exe", "codex.bat"):
-            resolved = shutil.which(candidate)
-            if resolved:
-                return [resolved]
+        resolved_exe = shutil.which("codex.exe")
+        if resolved_exe:
+            return [resolved_exe]
     return ["codex"]
 
 
