@@ -22,6 +22,61 @@ dependencies.
 
 **Spec:** `docs/superpowers/specs/2026-08-20-orchestrator-engine-resume-and-codex-adapter-v1-design.md`
 
+## Revision note (2026-08-20, post-plan review)
+
+Codex reviewed this plan against the actual current file contents (text-only
+review — the local Codex CLI's Windows sandbox could not spawn even
+read-only shell commands in this environment, `CreateProcessAsUserW failed:
+5`, so the plan/spec/source files were pasted directly into the review
+prompt instead; a separate Hermes review ran the same check). Two of its
+findings were **confirmed real bugs that would have broken the plan's own
+"tests pass" claims** and are fixed inline below rather than left as
+findings:
+- Task 3's automatic `hermes sessions list` lookup call reuses the same
+  `run_subprocess` fake as the primary `-z` call in two **pre-existing**
+  tests (`test_invoke_hermes_returns_succeeded_on_zero_exit`,
+  `test_invoke_hermes_passes_model_and_provider_overrides_when_given`),
+  whose fakes assert an exact single argv — they would fail on the second,
+  unanticipated call. Fixed by updating those two fakes (Task 3, new Step
+  3b) to branch on the incoming argv, same pattern the new capture tests
+  already use.
+- Task 4's `HermesAdapter.invoke()` now always passes `session_id=` to
+  `invoke_fn`, but three **pre-existing** tests in
+  `tests/runtime/adapters/test_hermes_adapter.py` inject fakes/mocks with no
+  `session_id` parameter and assert exact call signatures without it — they
+  would raise `TypeError` or fail their `assert_called_once_with(...)`.
+  Fixed by updating all three (Task 4, new Step 3b).
+A separate Hermes review of the same payload converged on the same two
+confirmed bugs and added three more cheap, worthwhile fixes now folded in:
+an explicit test for the resume-then-fail case (`invoke_hermes` echoes back
+the *input* `session_id` unchanged on a failed resumed call, rather than
+clearing it — deliberate, now documented and tested), a `CodexAdapter` test
+for the raw-stdout fallback when the `-o` file is empty, and a clarified
+`--hermes-profile` help string now that `--engine` exists. Hermes also
+raised a real question this plan can answer directly rather than leave
+open: does `EngineContext.get(engine_id)` raise for an unregistered engine,
+or return a harmless empty broker? Already read in this session
+(`agent-platform/runtime/engine_registry.py`) — it **never raises**:
+`get()` auto-creates and caches an empty `EngineBroker()` for any unseen
+`engine_id`, and `EngineBroker.has_provider` is simply `bool(self.
+_providers)`. This confirms Task 8's `/engine` validation
+(`context.get(candidate).has_provider`) is safe against unknown engine ids
+with no additional guard needed.
+
+Three further findings are legitimate correctness gaps, fixed inline: Codex
+never receives a profile it can't use (Task 8's REPL previously passed
+Hermes's `--hermes-profile` value to every engine, including Codex, whose
+`-p` expects a Codex config-profile name); `_parse_thread_id` now guards
+against non-dict JSON lines instead of assuming every JSONL line is an
+object; `_parse_latest_session_id` now strips ANSI escapes before parsing,
+reusing the exact pattern `cli/orchestrator.py`'s `_ANSI_ESCAPE` already
+uses for the same Windows-codepage-mangles-hermes'-glyphs problem. A few
+lower-priority findings (session-lookup race under concurrent orchestrator
+use, session `runtime` metadata not updating after a mid-REPL `/engine`
+switch, additional test coverage for failure paths) are accepted as known
+v1 limitations — each is called out at its relevant task rather than
+silently dropped.
+
 ## Global Constraints
 
 - `session_id=None` on every adapter's `invoke()` must behave identically to
@@ -342,6 +397,49 @@ def test_parse_latest_session_id_returns_none_when_table_has_no_data_rows():
 
     header_only = "Preview   Workspace   Last Active   Src    ID\n" + ("─" * 40) + "\n"
     assert _parse_latest_session_id(header_only) is None
+
+
+def test_parse_latest_session_id_strips_ansi_escapes_before_parsing():
+    from routing.hermes_invoker import _parse_latest_session_id
+
+    ansi_table = (
+        "\x1b[1mPreview  Workspace  Last Active  Src  ID\x1b[0m\n"
+        + "─" * 40 + "\n"
+        + "\x1b[32mok\x1b[0m       agent-platform  just now    cli  20260820_112139_8c44cf\n"
+    )
+    assert _parse_latest_session_id(ansi_table) == "20260820_112139_8c44cf"
+
+
+def test_invoke_hermes_stays_succeeded_when_session_capture_lookup_fails():
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["hermes", "sessions", "list"]:
+            return _FakeCompletedProcess(1, stdout="", stderr="db locked")
+        return _FakeCompletedProcess(0, stdout="ok")
+
+    result = invoke_hermes("builder", "do the thing", timeout_seconds=60, run_subprocess=fake_run)
+
+    assert result["status"] == "succeeded"
+    assert result["session_id"] is None
+
+
+def test_invoke_hermes_echoes_back_input_session_id_when_a_resumed_call_fails():
+    # A resume call that fails (bad/expired session_id, or a transient
+    # error) still echoes back the *input* session_id rather than clearing
+    # it to None -- deliberate: the caller already had this id, a failed
+    # turn doesn't prove it's invalid (could be a timeout, rate limit,
+    # etc.), and the REPL's next turn to the same engine will just retry
+    # with the same id rather than silently starting a fresh, un-announced
+    # conversation.
+    def fake_run(argv, **kwargs):
+        return _FakeCompletedProcess(1, stdout="", stderr="model refused")
+
+    result = invoke_hermes(
+        "builder", "do the thing", timeout_seconds=60, run_subprocess=fake_run,
+        session_id="sess-existing",
+    )
+
+    assert result["status"] == "failed"
+    assert result["session_id"] == "sess-existing"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -360,12 +458,17 @@ module-level helpers (near the top, after the imports and before
 ```python
 import re
 
+# Same pattern as cli/orchestrator.py's _ANSI_ESCAPE, for the same reason:
+# Hermes emits ANSI/UTF-8 table decoration that a captured, non-TTY
+# subprocess call may receive verbatim.
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
 
 def _parse_latest_session_id(output: str) -> str | None:
     """Parse `hermes sessions list --limit 1`'s plain-text table: columns
     are separated by 2+ spaces, the session id is always the last column
     of the single data row after the header/separator lines."""
-    lines = output.splitlines()
+    lines = [_ANSI_ESCAPE.sub("", line) for line in output.splitlines()]
     sep_index = next(
         (i for i, line in enumerate(lines) if line.strip() and set(line.strip()) <= {"─"}),
         None,
@@ -429,12 +532,61 @@ and the final branch) to populate `session_id`:
     }
 ```
 
+- [ ] **Step 3b: Update the two pre-existing tests whose fakes assert a single exact argv**
+
+`test_invoke_hermes_returns_succeeded_on_zero_exit` and
+`test_invoke_hermes_passes_model_and_provider_overrides_when_given` (both
+already in the file, written before this task) each use a `fake_run` that
+asserts one exact `argv` unconditionally. Step 3's change makes a *second*
+`run_subprocess` call (the `sessions list` lookup) whenever the primary call
+succeeds and `session_id` was `None` — both of these tests hit exactly that
+path, so their fakes now see a call they don't expect and fail. Update both
+in place:
+
+```python
+def test_invoke_hermes_returns_succeeded_on_zero_exit():
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["hermes", "sessions", "list"]:
+            return _FakeCompletedProcess(0, stdout="")
+        assert argv == ["hermes", "-p", "builder", "-z", "do the thing"]
+        assert kwargs.get("timeout") == 60
+        assert kwargs.get("encoding") == "utf-8"
+        assert kwargs.get("errors") == "replace"
+        return _FakeCompletedProcess(0, stdout="the response text\n")
+
+    result = invoke_hermes("builder", "do the thing", timeout_seconds=60, run_subprocess=fake_run)
+    assert result["status"] == "succeeded"
+    assert result["stdout"] == "the response text\n"
+    assert result["profile"] == "builder"
+    assert isinstance(result["elapsed_seconds"], float)
+
+
+def test_invoke_hermes_passes_model_and_provider_overrides_when_given():
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["hermes", "sessions", "list"]:
+            return _FakeCompletedProcess(0, stdout="")
+        assert argv == [
+            "hermes", "-p", "researcher", "-z", "do research",
+            "-m", "deepseek-v4-flash-0731", "--provider", "custom:inferx",
+        ]
+        return _FakeCompletedProcess(0, stdout="ok")
+
+    result = invoke_hermes(
+        "researcher", "do research", timeout_seconds=60, run_subprocess=fake_run,
+        model="deepseek-v4-flash-0731", provider="custom:inferx",
+    )
+    assert result["status"] == "succeeded"
+```
+
+(An empty-`stdout` `_FakeCompletedProcess(0, stdout="")` for the lookup call
+means `_parse_latest_session_id("")` returns `None` — fine, these two tests
+don't assert anything about `result["session_id"]`.)
+
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cd agent-platform && python -m pytest tests/routing/test_hermes_invoker.py -v`
-Expected: PASS (all tests, including every pre-existing one — `session_id`
-being present now is additive to the returned dict, no prior test asserts
-the dict's exact key set)
+Expected: PASS (all tests, including every pre-existing one, now updated
+where Step 3b applies)
 
 - [ ] **Step 5: Commit**
 
@@ -504,12 +656,74 @@ In `agent-platform/runtime/adapters/hermes_adapter.py`, change `invoke()`:
         )
 ```
 
+- [ ] **Step 3b: Update the three pre-existing tests whose fakes have no `session_id` parameter**
+
+`HermesAdapter.invoke()` now always calls `invoke_fn(..., session_id=session_id)`
+— every fake/mock `invoke_fn` in the test file must accept that keyword, or
+the call raises `TypeError` before it can return anything. Update all three
+pre-existing tests in place:
+
+```python
+def test_invoke_delegates_to_injected_invoke_hermes_unchanged():
+    calls = []
+
+    def fake_invoke_hermes(profile, prompt, *, timeout_seconds, model=None,
+                            provider=None, cwd=None, session_id=None):
+        calls.append((profile, prompt, timeout_seconds, model, provider, cwd, session_id))
+        return {"status": "succeeded", "profile": profile}
+
+    adapter = HermesAdapter(invoke_hermes=fake_invoke_hermes)
+    result = adapter.invoke("researcher", "do research", timeout_seconds=300, model="m", provider="p")
+
+    assert result == {"status": "succeeded", "profile": "researcher"}
+    assert calls == [("researcher", "do research", 300, "m", "p", None, None)]
+
+
+def test_invoke_propagates_hermes_invocation_error_unwrapped():
+    def raising_invoke_hermes(profile, prompt, *, timeout_seconds, model=None,
+                               provider=None, cwd=None, session_id=None):
+        raise HermesInvocationError("could not start hermes")
+
+    adapter = HermesAdapter(invoke_hermes=raising_invoke_hermes)
+    with pytest.raises(HermesInvocationError):
+        adapter.invoke("builder", "do it", timeout_seconds=60)
+
+
+def test_default_constructor_delegates_to_live_hermes_invoker_module_lookup():
+    from unittest.mock import patch
+
+    fake_result = {"status": "succeeded", "profile": "builder"}
+    adapter = HermesAdapter()
+    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake:
+        result = adapter.invoke("builder", "do it", timeout_seconds=60)
+    fake.assert_called_once_with(
+        "builder", "do it", timeout_seconds=60, model=None, provider=None, cwd=None, session_id=None
+    )
+    assert result == fake_result
+
+
+def test_explicit_invoke_hermes_still_takes_priority_over_live_lookup():
+    from unittest.mock import patch
+
+    calls = []
+
+    def explicit_fn(profile, prompt, *, timeout_seconds, model=None,
+                     provider=None, cwd=None, session_id=None):
+        calls.append((profile, prompt, timeout_seconds, model, provider, cwd, session_id))
+        return {"status": "succeeded", "profile": profile}
+
+    adapter = HermesAdapter(invoke_hermes=explicit_fn)
+    with patch("routing.hermes_invoker.invoke_hermes") as unused_patch:
+        adapter.invoke("builder", "do it", timeout_seconds=60)
+    unused_patch.assert_not_called()
+    assert calls == [("builder", "do it", 60, None, None, None, None)]
+```
+
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cd agent-platform && python -m pytest tests/runtime/adapters/test_hermes_adapter.py -v`
-Expected: PASS (all tests — the pre-existing ones that assert exact `calls`
-tuples/`assert_called_once_with(...)` must still match since `session_id`
-defaults to `None` and every existing test calls `invoke()` without it)
+Expected: PASS (all tests, including the three updated in Step 3b and the
+new one from Step 1)
 
 - [ ] **Step 5: Commit**
 
@@ -670,6 +884,52 @@ def test_missing_thread_started_event_falls_back_to_prior_session_id():
     result = adapter.invoke("researcher", "do it", timeout_seconds=60, session_id="prior-id")
 
     assert result["session_id"] == "prior-id"
+
+
+def test_fresh_call_missing_thread_started_event_returns_none_session_id():
+    # A fresh call (no prior session_id to fall back to) whose JSONL stream
+    # never emits thread.started -- accepted v1 behavior per the plan's
+    # revision note: the call still succeeds, but the next REPL turn starts
+    # a new conversation instead of resuming, since there is nothing to
+    # resume with. Not silently wrong -- just degraded, and now covered.
+    fake_run, _ = _fake_run_writing_output_file(stdout='{"type":"turn.completed"}\n')
+    adapter = CodexAdapter(run_subprocess=fake_run)
+
+    result = adapter.invoke("researcher", "do it", timeout_seconds=60)
+
+    assert result["status"] == "succeeded"
+    assert result["session_id"] is None
+
+
+def test_falls_back_to_raw_stdout_when_output_file_is_empty():
+    # Codex exits 0 but writes nothing to the -o file (e.g. a turn that
+    # produced no final agent_message) -- stdout must still carry
+    # something displayable rather than an empty string, matching
+    # invoke_hermes's contract of stdout always being what the caller
+    # should show.
+    def fake_run(argv, **kwargs):
+        out_path = Path(argv[argv.index("-o") + 1])
+        out_path.write_text("", encoding="utf-8")
+        return _FakeCompletedProcess(0, stdout=_THREAD_STARTED + "raw fallback text\n")
+
+    adapter = CodexAdapter(run_subprocess=fake_run)
+    result = adapter.invoke("researcher", "do it", timeout_seconds=60)
+
+    assert result["stdout"] == _THREAD_STARTED + "raw fallback text\n"
+
+
+def test_non_object_jsonl_lines_do_not_crash_thread_id_parsing():
+    # A JSON scalar/array/null line (not an object) must not raise --
+    # _parse_thread_id has to check the parsed value is a dict before
+    # calling .get() on it.
+    fake_run, _ = _fake_run_writing_output_file(
+        stdout='"just a string"\n[1, 2, 3]\nnull\n{"type":"thread.started","thread_id":"real-id"}\n'
+    )
+    adapter = CodexAdapter(run_subprocess=fake_run)
+
+    result = adapter.invoke("researcher", "do it", timeout_seconds=60)
+
+    assert result["session_id"] == "real-id"
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -699,6 +959,14 @@ closed/redirected, even when a prompt argument is also given -- observed
 live as a "Reading additional input from stdin..." message that would
 otherwise silently corrupt the prompt under a subprocess whose stdin is
 inherited from a parent process.
+
+The returned dict's `stdout` key holds the *parsed final message* (the
+`-o` file's contents), not the raw JSONL stream -- deliberately, so
+`_run_orchestrator_chat`'s `result.get("stdout", "").strip()` (written
+against `invoke_hermes()`, where stdout already *is* the answer) works
+identically for both engines without an engine-specific branch. The raw
+JSONL is not preserved separately in v1 -- a real need for it (debugging a
+parse failure) is a v2 concern, not designed here.
 """
 from __future__ import annotations
 
@@ -726,8 +994,12 @@ def _parse_thread_id(stdout: str) -> str | None:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(event, dict):
+            continue
         if event.get("type") == "thread.started":
-            return event.get("thread_id")
+            thread_id = event.get("thread_id")
+            if isinstance(thread_id, str) and thread_id:
+                return thread_id
     return None
 
 
@@ -813,7 +1085,7 @@ class CodexAdapter:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cd agent-platform && python -m pytest tests/runtime/adapters/test_codex_adapter.py -v`
-Expected: PASS (all 10 tests)
+Expected: PASS (all 13 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1022,9 +1294,10 @@ def _projection(tmp_path: Path) -> dict:
 
 
 class FakeBroker:
-    def __init__(self, session_ids=None):
+    def __init__(self, session_ids=None, has_provider=True):
         self.calls = []
         self._session_ids = list(session_ids or [])
+        self.has_provider = has_provider
 
     def invoke(self, profile, prompt, **kwargs):
         self.calls.append((profile, prompt, kwargs))
@@ -1037,7 +1310,7 @@ class FakeContext:
         self.brokers = brokers
 
     def get(self, engine_id):
-        return self.brokers[engine_id]
+        return self.brokers.get(engine_id, FakeBroker(has_provider=False))
 
 
 def test_slash_command_stays_local_and_never_invokes_engine(tmp_path, monkeypatch, capsys):
@@ -1177,17 +1450,60 @@ def test_engine_session_id_is_persisted_on_the_assistant_record(tmp_path, monkey
         if event["event_type"] == "chat.assistant"
     )
     assert assistant_record["engine_session_id"] == "sess-first"
+
+
+def test_codex_engine_does_not_receive_the_hermes_specific_profile_flag(tmp_path, monkeypatch, capsys):
+    # args.hermes_profile ("researcher" in _args()) is a Hermes profile name
+    # (hermes -p researcher); Codex's -p flag expects a Codex config-profile
+    # name from $CODEX_HOME. Passing "researcher" through unchanged would
+    # make --engine codex fail against a real codex CLI with no such
+    # profile configured, so the REPL must not forward it to non-Hermes
+    # engines.
+    codex_broker = FakeBroker()
+    monkeypatch.setattr(unified_cli, "_collect_orchestrator_projection", lambda args: _projection(tmp_path))
+
+    unified_cli._run_orchestrator_chat(
+        _args(tmp_path, "what is running?", engine="codex"),
+        engine_context=FakeContext({"codex": codex_broker}),
+    )
+
+    assert codex_broker.calls[0][0] is None
+
+
+def test_hermes_engine_still_receives_the_hermes_profile_flag(tmp_path, monkeypatch, capsys):
+    hermes_broker = FakeBroker()
+    monkeypatch.setattr(unified_cli, "_collect_orchestrator_projection", lambda args: _projection(tmp_path))
+
+    unified_cli._run_orchestrator_chat(
+        _args(tmp_path, "what is running?"), engine_context=FakeContext({"hermes": hermes_broker})
+    )
+
+    assert hermes_broker.calls[0][0] == "researcher"
+
+
+def test_slash_engine_command_rejects_an_unavailable_engine_and_keeps_the_current_one(tmp_path, monkeypatch, capsys):
+    hermes_broker = FakeBroker()
+    monkeypatch.setattr(unified_cli, "_collect_orchestrator_projection", lambda args: _projection(tmp_path))
+    inputs = iter(["/engine not-a-real-engine", "what is running?", "/quit"])
+
+    unified_cli._run_orchestrator_chat(
+        _args(tmp_path, None),
+        engine_context=FakeContext({"hermes": hermes_broker}),
+        input_fn=lambda prompt: next(inputs),
+    )
+
+    output = capsys.readouterr().out
+    assert "not-a-real-engine" in output and "not available" in output
+    assert hermes_broker.calls  # the turn after the rejected switch still went to hermes
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cd agent-platform && python -m pytest tests/cli/test_orchestrator_chat.py -v`
-Expected: FAIL — `test_engine_flag_selects_the_broker_for_every_turn` and
-the `/engine`/resume tests fail (`KeyError: 'hermes'` from the old
-`FakeContext.get` always asserting `engine_id == "hermes"`, or the broker
-never being invoked for `"codex"`); `test_second_turn...` and
-`test_engine_session_id_is_persisted...` fail because `broker.calls[...][2]`
-has no `"session_id"` key yet.
+Expected: FAIL — every test exercising `engine="codex"`, `/engine`, or a
+second turn fails against today's code (hardcoded `context.get("hermes")`,
+no `session_id` kwarg, `args.hermes_profile` always forwarded verbatim, no
+`/engine` branch at all).
 
 - [ ] **Step 3: Implement**
 
@@ -1197,6 +1513,14 @@ existing `orchestrator_parser.add_argument("--hermes-profile", ...)` line):
 
 ```python
     orchestrator_parser.add_argument("--engine", default="hermes", help="Engine to talk to in chat mode (hermes, codex, ...)")
+```
+
+Also update the existing `--hermes-profile` argument's help text a few lines
+above (currently `help="Hermes profile for advisory chat"`) to make clear
+it's Hermes-only now that `--engine` exists:
+
+```python
+    orchestrator_parser.add_argument("--hermes-profile", default="researcher", help="Hermes profile for advisory chat (Hermes only -- ignored when --engine is not hermes)")
 ```
 
 Then replace `_run_orchestrator_chat`'s body. The full new function:
@@ -1243,7 +1567,14 @@ def _run_orchestrator_chat(
         if value.startswith("/engine"):
             parts = value.split(maxsplit=1)
             if len(parts) == 2 and parts[1].strip():
-                active_engine_id = parts[1].strip()
+                candidate = parts[1].strip()
+                if context.get(candidate).has_provider:
+                    active_engine_id = candidate
+                else:
+                    print(f"Engine '{candidate}' is not available (no provider registered). Staying on '{active_engine_id}'.")
+                    if pending is not None and not pending:
+                        break
+                    continue
             print(f"Active engine: {active_engine_id}")
             if pending is not None and not pending:
                 break
@@ -1277,9 +1608,17 @@ def _run_orchestrator_chat(
             state.append(store, session_id, sequence, "chat.user", user_record)
             sequence += 1
             broker = context.get(active_engine_id)
+            # args.hermes_profile ("researcher" by default) is a Hermes
+            # profile name; only Hermes understands it. Other engines get
+            # no profile (None) unless a future flag adds an engine-aware
+            # mapping -- passing a Hermes-shaped name to e.g. Codex's -p
+            # would just fail against a real CLI (spec Open question #5's
+            # sibling gap, fixed here since it's a plain correctness bug,
+            # not a design choice left open).
+            turn_profile = args.hermes_profile if active_engine_id == "hermes" else None
             try:
                 result = broker.invoke(
-                    args.hermes_profile,
+                    turn_profile,
                     prompt,
                     timeout_seconds=args.timeout,
                     model=args.model,
@@ -1325,19 +1664,25 @@ def _run_orchestrator_chat(
 
 (Only the differences from today's version: `active_engine_id`/`engine_
 sessions` replace the hardcoded `broker = context.get("hermes")` done once
-up front; `/engine` is a new branch before the generic `/` dispatch; the
-help line lists `/engine <id>`; `runtime=active_engine_id` replaces the
-hardcoded `runtime="hermes"` in `state.create`; both `transcript_record`
-calls use `engine=active_engine_id`; the assistant one adds
-`engine_session_id=new_engine_session_id`; `broker.invoke(...)` moved inside
-the loop and gained `session_id=engine_sessions.get(active_engine_id)`; the
-result dict's `session_id` is captured into `engine_sessions` right after
-the call.)
+up front; `/engine` is a new branch before the generic `/` dispatch that
+validates the target has a registered provider before switching; the help
+line lists `/engine <id>`; `runtime=active_engine_id` replaces the
+hardcoded `runtime="hermes"` in `state.create` (accepted v1 limitation: this
+field reflects the engine active at session *creation*, not any later
+`/engine` switch mid-REPL — each turn's own `transcript_record.engine` is
+still accurate, only this one coarse session-level field can go stale);
+both `transcript_record` calls use `engine=active_engine_id`; the assistant
+one adds `engine_session_id=new_engine_session_id`; `broker.invoke(...)`
+moved inside the loop, gained `session_id=engine_sessions.get(active_engine_id)`,
+and now receives `turn_profile` (Hermes's profile only when Hermes is
+active, `None` otherwise) instead of unconditionally `args.hermes_profile`;
+the result dict's `session_id` is captured into `engine_sessions` right
+after the call.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cd agent-platform && python -m pytest tests/cli/test_orchestrator_chat.py -v`
-Expected: PASS (all 9 tests)
+Expected: PASS (all 12 tests)
 
 - [ ] **Step 5: Run the full filtered suite to check for regressions**
 
@@ -1368,3 +1713,18 @@ git commit -m "feat(cli): add engine choice and per-engine resume to orchestrato
   correctly out of this plan's scope per the spec's own Decomposition note.
 - No task references a type/function not defined by an earlier task in this
   plan or already present in the codebase.
+- Post-plan Codex + Hermes review (2026-08-20, see Revision note above):
+  two confirmed test-breaking bugs fixed (Task 3's and Task 4's pre-existing
+  test fakes updated in new Step 3b's), one confirmed correctness bug fixed
+  (Task 8's Codex-gets-a-Hermes-profile issue), two defensive-coding gaps
+  closed (`_parse_thread_id`'s dict check, `_parse_latest_session_id`'s ANSI
+  stripping), one validation gap closed (`/engine` now checks
+  `has_provider` before switching). Accepted as known v1 limitations, not
+  fixed: the Hermes session-lookup race under concurrent orchestrator
+  processes (spec's own Error handling section already flags this); the
+  session-level `runtime` field not updating after a mid-REPL `/engine`
+  switch (per-turn `transcript_record.engine` is unaffected and remains
+  accurate); a handful of additional failure-path test suggestions
+  (resumed-but-failed turn, Hermes→Codex→Hermes 3-engine isolation) that
+  would add coverage but don't fix a known bug — worth a follow-up pass,
+  not a blocker for this plan.
