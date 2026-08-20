@@ -72,3 +72,23 @@ def test_invoke_hermes_raises_on_missing_hermes_executable():
 def test_invoke_hermes_rejects_empty_prompt():
     with pytest.raises(ValueError):
         invoke_hermes("builder", "", timeout_seconds=60, run_subprocess=lambda *a, **k: None)
+
+
+def test_invoke_hermes_passes_resume_flag_when_session_id_given():
+    def fake_run(argv, **kwargs):
+        assert argv == ["hermes", "-p", "builder", "-z", "do the thing", "--resume", "sess-123"]
+        return _FakeCompletedProcess(0, stdout="ok")
+
+    result = invoke_hermes(
+        "builder", "do the thing", timeout_seconds=60, run_subprocess=fake_run,
+        session_id="sess-123",
+    )
+    assert result["status"] == "succeeded"
+
+
+def test_invoke_hermes_omits_resume_flag_when_session_id_is_none():
+    def fake_run(argv, **kwargs):
+        assert "--resume" not in argv
+        return _FakeCompletedProcess(0, stdout="ok")
+
+    invoke_hermes("builder", "do the thing", timeout_seconds=60, run_subprocess=fake_run)

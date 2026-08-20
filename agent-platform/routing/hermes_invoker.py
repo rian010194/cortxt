@@ -37,6 +37,7 @@ def invoke_hermes(
     model: str | None = None,
     provider: str | None = None,
     cwd: Path | None = None,
+    session_id: str | None = None,
 ) -> dict:
     """Run `hermes -p <profile> -z <prompt>` (with optional -m/--provider
     overrides) and return a structured result.
@@ -55,6 +56,8 @@ def invoke_hermes(
         raise ValueError("prompt must be a non-empty string")
 
     argv = ["hermes", "-p", profile, "-z", prompt]
+    if session_id:
+        argv += ["--resume", session_id]
     if model:
         argv += ["-m", model]
     if provider:
