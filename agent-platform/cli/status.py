@@ -23,8 +23,19 @@ from typing import Any
 _AGENT_PLATFORM_ROOT = Path(__file__).resolve().parent.parent
 if str(_AGENT_PLATFORM_ROOT) not in sys.path:
     sys.path.insert(0, str(_AGENT_PLATFORM_ROOT))
+_CLI_DIR = Path(__file__).resolve().parent
+if str(_CLI_DIR) not in sys.path:
+    sys.path.insert(0, str(_CLI_DIR))
 
 from runtime import session_state as state  # noqa: E402
+
+# Bare (not `from . import`) because this module is sometimes loaded as a
+# standalone top-level module (`import status`, cli_dir on sys.path) rather
+# than as the `cli` package's `status` submodule -- see the "Normal import"
+# note on `_run_sessions` in unified_cli.py. A relative import breaks under
+# that loading path with "attempted relative import with no known parent
+# package"; a bare import with cli_dir on sys.path works either way.
+import color as color_cli  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -288,26 +299,39 @@ def build_activity(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(items, key=lambda item: item["timestamp"], reverse=True)[:80]
 
 
-def render_table(sessions: list[dict[str, Any]]) -> str:
-    """Human-readable CLI table for `cortxt sessions`."""
+def render_table(sessions: list[dict[str, Any]], *, color: bool | None = None) -> str:
+    """Human-readable CLI table for `cortxt sessions`.
+
+    `color=None` auto-detects (real terminal -> colored, piped/captured ->
+    plain); pass True/False to force it. Status text is colored, not the
+    fixed-width padding around it, so column alignment survives either way.
+    """
     if not sessions:
         return "No sessions found."
     header = f"{'TASK':<30} {'STATUS':<12} {'UPDATED':<28} SESSION"
     lines = [header, "-" * len(header)]
     for s in sessions:
-        lines.append(f"{s['task_id']:<30} {s.get('display_status', s['status']):<12} {s['updated_at']:<28} {s['session_id']}")
+        status_text = s.get("display_status", s["status"])
+        status_cell = color_cli.colorize(f"{status_text:<12}", status_text, enabled=color)
+        lines.append(f"{s['task_id']:<30} {status_cell} {s['updated_at']:<28} {s['session_id']}")
     return "\n".join(lines)
 
 
-def render_status_table(summary: dict[str, Any], workstreams: list[dict[str, Any]]) -> str:
+def render_status_table(
+    summary: dict[str, Any], workstreams: list[dict[str, Any]], *, color: bool | None = None
+) -> str:
     """Ledger view for `cortxt status`: one row per workstream, not per session.
 
     A workstream groups its agent sessions into lanes (see
     `build_workstreams`); this table shows the workstream-level rollup an
     operator scans first, leaving the per-session detail to `cortxt sessions`
     and the live per-lane view to `cortxt pipeline`.
+
+    `color=None` auto-detects; pass True/False to force it.
     """
-    lines = [f"Status: {summary.get('status', 'idle')} -- {summary.get('message', '')}", ""]
+    overall_status = summary.get("status", "idle")
+    status_text = color_cli.colorize(overall_status, overall_status, enabled=color)
+    lines = [f"Status: {status_text} -- {summary.get('message', '')}", ""]
     if not workstreams:
         lines.append("No workstreams found.")
         return "\n".join(lines)
@@ -316,8 +340,9 @@ def render_status_table(summary: dict[str, Any], workstreams: list[dict[str, Any
     lines.append("-" * len(header))
     for workstream in workstreams:
         branch = workstream["workspace"].get("branch") or "-"
+        status_cell = color_cli.colorize(f"{workstream['status']:<10}", workstream["status"], enabled=color)
         lines.append(
-            f"{workstream['workstream_id']:<28} {workstream['status']:<10} "
+            f"{workstream['workstream_id']:<28} {status_cell} "
             f"{len(workstream['lanes']):<6} {branch:<30} {workstream['updated_at']}"
         )
     return "\n".join(lines)

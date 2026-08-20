@@ -350,6 +350,62 @@ def test_render_status_table_includes_workstream_row():
     assert "2026-08-20T00:00:00.000000Z" in table
 
 
+def test_render_table_has_no_ansi_codes_by_default_under_pytest_capture():
+    """pytest captures stdout as a non-tty stream -- the default (color not
+    passed) must auto-detect that and stay plain, so this and every other
+    render_table test above (which assert exact substrings) keep passing."""
+    sessions = [
+        {
+            "session_id": "session_" + "1" * 32,
+            "task_id": "example-task",
+            "status": "succeeded",
+            "display_status": "succeeded",
+            "severity": "ok",
+            "updated_at": "2026-08-18T00:00:00.000000Z",
+        }
+    ]
+    table = status.render_table(sessions)
+    assert "\033[" not in table
+
+
+def test_render_table_colors_status_when_explicitly_enabled():
+    sessions = [
+        {
+            "session_id": "session_" + "1" * 32,
+            "task_id": "example-task",
+            "status": "succeeded",
+            "display_status": "succeeded",
+            "severity": "ok",
+            "updated_at": "2026-08-18T00:00:00.000000Z",
+        }
+    ]
+    table = status.render_table(sessions, color=True)
+    assert "\033[" in table
+    assert "example-task" in table
+    assert "succeeded" in table
+
+
+def test_render_status_table_colors_status_when_explicitly_enabled():
+    summary = {"status": "working", "message": "1 active; 0 need attention"}
+    workstreams = [
+        {
+            "workstream_id": "issue-180",
+            "status": "running",
+            "updated_at": "2026-08-20T00:00:00.000000Z",
+            "workspace": {"branch": "daemon/issue-180", "worktree": None},
+            "lanes": [{"lane_id": "session-1", "label": "builder", "status": "running"}],
+        }
+    ]
+
+    plain = status.render_status_table(summary, workstreams, color=False)
+    colored = status.render_status_table(summary, workstreams, color=True)
+
+    assert "\033[" not in plain
+    assert "\033[" in colored
+    assert "issue-180" in colored
+    assert "running" in colored
+
+
 def test_render_status_table_shows_dash_for_missing_branch():
     summary = {"status": "working", "message": "m"}
     workstreams = [
