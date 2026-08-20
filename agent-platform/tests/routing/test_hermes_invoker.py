@@ -18,6 +18,8 @@ def test_invoke_hermes_returns_succeeded_on_zero_exit():
     def fake_run(argv, **kwargs):
         assert argv == ["hermes", "-p", "builder", "-z", "do the thing"]
         assert kwargs.get("timeout") == 60
+        assert kwargs.get("encoding") == "utf-8"
+        assert kwargs.get("errors") == "replace"
         return _FakeCompletedProcess(0, stdout="the response text\n")
 
     result = invoke_hermes("builder", "do the thing", timeout_seconds=60, run_subprocess=fake_run)

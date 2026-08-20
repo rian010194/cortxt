@@ -61,7 +61,8 @@ def invoke_hermes(
     started = time.time()
     try:
         proc = run_subprocess(
-            argv, capture_output=True, text=True, timeout=timeout_seconds,
+            argv, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout_seconds,
             cwd=str(cwd) if cwd is not None else None,
         )
     except subprocess.TimeoutExpired:
