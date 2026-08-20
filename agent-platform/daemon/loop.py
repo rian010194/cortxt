@@ -151,10 +151,43 @@ class DaemonLoop:
         last_gate_outcome: GateOutcome | None = None,
         last_error: str | None = None,
     ) -> None:
+        lane_status = "running"
+        if last_gate_outcome is not None:
+            lane_status = {"pause": "review", "freeze": "blocked", "proceed": "done"}.get(
+                last_gate_outcome.decision, last_gate_outcome.decision
+            )
+        daemon_workstreams = []
+        for issue_id in sorted(self.claimed_issue_ids):
+            safe_id = issue_id.replace("/", "-").replace("#", "-issue-")
+            daemon_workstreams.append(
+                {
+                    "workstream_id": issue_id,
+                    "issue_id": issue_id,
+                    "workspace": {
+                        "branch": f"daemon/{safe_id}",
+                        "worktree": str(self.workdir.parent / f"{self.workdir.name}-worktrees" / safe_id),
+                    },
+                    "status": lane_status,
+                    "updated_at": None,
+                    "lanes": [
+                        {
+                            "lane_id": f"daemon:{issue_id}",
+                            "label": "supervisor daemon",
+                            "runtime": "cortxt",
+                            "run_id": None,
+                            "session_id": None,
+                            "status": lane_status,
+                            "severity": "warn" if lane_status in {"review", "blocked"} else "info",
+                            "segments": [],
+                        }
+                    ],
+                }
+            )
         daemon_status: dict = {
             "status": "running",
             "claimed": sorted(self.claimed_issue_ids),
             "budget_spent_usd": self.budget.spent_usd if self.budget.spent_usd else None,
+            "workstreams": daemon_workstreams,
         }
         if last_gate_outcome is not None:
             daemon_status["last_gate_outcome"] = {
@@ -162,7 +195,7 @@ class DaemonLoop:
             }
         if last_error is not None:
             daemon_status["last_error"] = last_error
-        write_snapshot([], self.snapshot_path, daemon=daemon_status)
+        write_snapshot(None, self.snapshot_path, daemon=daemon_status)
 
     def run_once(self) -> list[dict]:
         issues = self.list_ready_issues(self.repo)
