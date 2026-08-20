@@ -23,3 +23,8 @@ def test_each_call_returns_an_independent_context():
 def test_codex_has_a_provider():
     context = build_default_engine_context()
     assert context.get("codex").has_provider is True
+
+
+def test_claude_has_a_provider():
+    context = build_default_engine_context()
+    assert context.get("claude").has_provider is True
