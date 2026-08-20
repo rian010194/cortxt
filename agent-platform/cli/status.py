@@ -239,6 +239,30 @@ def render_table(sessions: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def render_status_table(summary: dict[str, Any], workstreams: list[dict[str, Any]]) -> str:
+    """Ledger view for `cortxt status`: one row per workstream, not per session.
+
+    A workstream groups its agent sessions into lanes (see
+    `build_workstreams`); this table shows the workstream-level rollup an
+    operator scans first, leaving the per-session detail to `cortxt sessions`
+    and the live per-lane view to `cortxt pipeline`.
+    """
+    lines = [f"Status: {summary.get('status', 'idle')} -- {summary.get('message', '')}", ""]
+    if not workstreams:
+        lines.append("No workstreams found.")
+        return "\n".join(lines)
+    header = f"{'WORKSTREAM':<28} {'STATUS':<10} {'LANES':<6} {'BRANCH':<30} UPDATED"
+    lines.append(header)
+    lines.append("-" * len(header))
+    for workstream in workstreams:
+        branch = workstream["workspace"].get("branch") or "-"
+        lines.append(
+            f"{workstream['workstream_id']:<28} {workstream['status']:<10} "
+            f"{len(workstream['lanes']):<6} {branch:<30} {workstream['updated_at']}"
+        )
+    return "\n".join(lines)
+
+
 def write_snapshot(
     sessions: list[dict[str, Any]] | None,
     snapshot_path: Path,

@@ -225,6 +225,52 @@ def test_write_snapshot_preserves_daemon_when_omitted(tmp_path):
     assert doc["runtimes"] == [{"name": "hermes"}]
 
 
+def test_render_status_table_reports_no_workstreams_when_empty():
+    summary = {"status": "idle", "message": "No verified agent work is active"}
+    table = status.render_status_table(summary, [])
+    assert "No workstreams found." in table
+    assert "idle" in table
+
+
+def test_render_status_table_includes_workstream_row():
+    summary = {"status": "working", "message": "1 active; 0 need attention"}
+    workstreams = [
+        {
+            "workstream_id": "issue-180",
+            "status": "running",
+            "updated_at": "2026-08-20T00:00:00.000000Z",
+            "workspace": {"branch": "daemon/issue-180", "worktree": None},
+            "lanes": [{"lane_id": "session-1", "label": "builder", "status": "running"}],
+        }
+    ]
+
+    table = status.render_status_table(summary, workstreams)
+
+    assert "issue-180" in table
+    assert "running" in table
+    assert "daemon/issue-180" in table
+    assert "2026-08-20T00:00:00.000000Z" in table
+
+
+def test_render_status_table_shows_dash_for_missing_branch():
+    summary = {"status": "working", "message": "m"}
+    workstreams = [
+        {
+            "workstream_id": "no-branch-stream",
+            "status": "running",
+            "updated_at": "2026-08-20T00:00:00.000000Z",
+            "workspace": {"branch": None, "worktree": None},
+            "lanes": [],
+        }
+    ]
+
+    table = status.render_status_table(summary, workstreams)
+
+    assert "no-branch-stream" in table
+    lines = [line for line in table.splitlines() if "no-branch-stream" in line]
+    assert lines and " - " in lines[0]
+
+
 def test_daemon_only_snapshot_refresh_preserves_sessions(tmp_path):
     snapshot_path = tmp_path / "snapshot.json"
     sessions = [{
