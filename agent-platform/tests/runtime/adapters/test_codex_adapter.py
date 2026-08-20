@@ -160,26 +160,48 @@ def test_falls_back_to_raw_stdout_when_output_file_is_empty():
     assert result["stdout"] == _THREAD_STARTED + "raw fallback text\n"
 
 
-def test_default_codex_executable_prefers_windows_cmd_shim(monkeypatch):
-    from runtime.adapters.codex_adapter import _default_codex_executable
+def test_default_codex_launch_prefix_resolves_node_and_codex_js_to_bypass_cmd_shim(monkeypatch, tmp_path):
+    from runtime.adapters.codex_adapter import _default_codex_launch_prefix
+    import runtime.adapters.codex_adapter as codex_adapter_module
+
+    shim_dir = tmp_path / "npm"
+    node_dir = shim_dir / "node_modules" / "@openai" / "codex" / "bin"
+    node_dir.mkdir(parents=True)
+    (node_dir / "codex.js").write_text("", encoding="utf-8")
+    node_exe = shim_dir / "node.exe"
+    node_exe.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(codex_adapter_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        codex_adapter_module.shutil, "which",
+        lambda name: str(shim_dir / "codex.cmd") if name == "codex.cmd" else None,
+    )
+
+    prefix = _default_codex_launch_prefix()
+
+    assert prefix == [str(node_exe), str(node_dir / "codex.js")]
+
+
+def test_default_codex_launch_prefix_falls_back_to_exe_when_node_layout_missing(monkeypatch):
+    from runtime.adapters.codex_adapter import _default_codex_launch_prefix
     import runtime.adapters.codex_adapter as codex_adapter_module
 
     monkeypatch.setattr(codex_adapter_module.sys, "platform", "win32")
     monkeypatch.setattr(
         codex_adapter_module.shutil, "which",
-        lambda name: r"C:\npm\codex.cmd" if name == "codex.cmd" else None,
+        lambda name: r"C:\npm\codex.exe" if name == "codex.exe" else None,
     )
 
-    assert _default_codex_executable() == r"C:\npm\codex.cmd"
+    assert _default_codex_launch_prefix() == [r"C:\npm\codex.exe"]
 
 
-def test_default_codex_executable_falls_back_to_bare_name_on_posix(monkeypatch):
-    from runtime.adapters.codex_adapter import _default_codex_executable
+def test_default_codex_launch_prefix_falls_back_to_bare_name_on_posix(monkeypatch):
+    from runtime.adapters.codex_adapter import _default_codex_launch_prefix
     import runtime.adapters.codex_adapter as codex_adapter_module
 
     monkeypatch.setattr(codex_adapter_module.sys, "platform", "linux")
 
-    assert _default_codex_executable() == "codex"
+    assert _default_codex_launch_prefix() == ["codex"]
 
 
 def test_fake_injected_run_subprocess_receives_logical_codex_argv_not_resolved_path():
