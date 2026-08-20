@@ -16,6 +16,7 @@ import time
 from typing import Any, Callable
 
 from . import color as color_cli
+from .status import format_lane_summary
 
 # Terminal statuses render as a full bar, distinguished by fill character.
 _TERMINAL_FILL = {
@@ -80,7 +81,8 @@ def render_frame(
         lines.append(f"{workstream['workstream_id']} [{ws_status}]")
         for lane in workstream.get("lanes", []):
             bar = render_lane_bar(lane.get("status", "running"), frame, width=width, color=color)
-            lines.append(f"  {lane.get('label', 'agent'):<12} {bar}")
+            label = format_lane_summary(lane) if lane.get("session_id") else lane.get("label", "agent")
+            lines.append(f"  {label:<48} {bar}")
         lines.append("")
     return "\n".join(lines).rstrip("\n")
 

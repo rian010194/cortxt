@@ -157,6 +157,145 @@ def test_workstream_groups_agent_sessions_and_keeps_workspace_metadata(tmp_path)
     assert workstream["lanes"][0]["runtime"] == "hermes"
 
 
+def test_load_sessions_includes_started_at(tmp_path):
+    """`started_at` is the session's first (creation) event timestamp -- it
+    already exists inside `segments[0]["started_at"]`, but callers that just
+    want "when did this session begin" for a distinguishing label shouldn't
+    have to reach into the segments projection to get it."""
+    store = tmp_path / "sessions"
+    session = state.create(store, task_id="wire-widget-to-cli")
+
+    entry = status.load_sessions(store)[0]
+
+    assert entry["started_at"] == session["events"][0]["timestamp"]
+
+
+def test_build_workstreams_lanes_carry_distinguishing_metadata(tmp_path):
+    """Two lanes in the same workstream with the same worker_role/runtime
+    must still be distinguishable: each lane needs its own branch and a real
+    start timestamp alongside the session_id it already carries (Codex
+    review finding: session_id, branch, runtime, and start time already
+    exist per-session and should be surfaced onto the lane, not invented)."""
+    store = tmp_path / "sessions"
+    state.create(
+        store,
+        task_id="task-a",
+        workstream_id="issue-180",
+        branch="daemon/issue-180-a",
+        worker_role="orchestrator",
+        runtime="codex",
+    )
+    state.create(
+        store,
+        task_id="task-b",
+        workstream_id="issue-180",
+        branch="daemon/issue-180-b",
+        worker_role="orchestrator",
+        runtime="codex",
+    )
+    sessions = status.load_sessions(store, now=datetime.now(timezone.utc))
+
+    workstream = status.build_workstreams(sessions)[0]
+    lanes = workstream["lanes"]
+
+    assert len(lanes) == 2
+    branches = {lane["branch"] for lane in lanes}
+    assert branches == {"daemon/issue-180-a", "daemon/issue-180-b"}
+    for lane in lanes:
+        assert lane["started_at"]
+        assert lane["session_id"]
+
+
+def test_lane_summary_distinguishes_two_same_role_same_runtime_lanes():
+    """The whole point of this feature: two lanes that would otherwise
+    render as the identical generic string ("orchestrator - codex") must
+    produce different summary strings once session_id/branch/timestamp are
+    folded in."""
+    lane_a = {
+        "session_id": "session_" + "a" * 32,
+        "label": "orchestrator",
+        "runtime": "codex",
+        "branch": "daemon/issue-180-a",
+        "started_at": "2026-08-20T10:00:00.000000Z",
+        "status": "running",
+    }
+    lane_b = {
+        "session_id": "session_" + "b" * 32,
+        "label": "orchestrator",
+        "runtime": "codex",
+        "branch": "daemon/issue-180-b",
+        "started_at": "2026-08-20T10:05:00.000000Z",
+        "status": "running",
+    }
+
+    summary_a = status.format_lane_summary(lane_a)
+    summary_b = status.format_lane_summary(lane_b)
+
+    assert summary_a != summary_b
+    # session_id suffix, not the full 40-char id, keeps it compact.
+    assert "aaaaaaaa" in summary_a
+    assert "session_" not in summary_a
+    assert "daemon/issue-180-a" in summary_a
+    assert "2026-08-20T10:00:00.000000Z" in summary_a
+
+
+def test_lane_summary_shows_no_branch_when_branch_missing():
+    lane = {
+        "session_id": "session_" + "c" * 32,
+        "label": "agent",
+        "runtime": None,
+        "branch": None,
+        "started_at": "2026-08-20T10:00:00.000000Z",
+        "status": "running",
+    }
+
+    summary = status.format_lane_summary(lane)
+
+    assert "no branch" in summary
+
+
+def test_render_status_table_includes_per_lane_summary_lines():
+    """`cortxt status` shows a workstream summary row today, but the lanes
+    beneath it are indistinguishable (just a count). Each lane needs its own
+    line with session_id-suffix + branch + timestamp."""
+    summary = {"status": "working", "message": "1 active; 0 need attention"}
+    workstreams = [
+        {
+            "workstream_id": "issue-180",
+            "status": "running",
+            "updated_at": "2026-08-20T00:00:00.000000Z",
+            "workspace": {"branch": "daemon/issue-180", "worktree": None},
+            "lanes": [
+                {
+                    "lane_id": "session-1",
+                    "session_id": "session_" + "1" * 32,
+                    "label": "orchestrator",
+                    "runtime": "codex",
+                    "branch": "daemon/issue-180-a",
+                    "started_at": "2026-08-20T00:00:00.000000Z",
+                    "status": "running",
+                },
+                {
+                    "lane_id": "session-2",
+                    "session_id": "session_" + "2" * 32,
+                    "label": "orchestrator",
+                    "runtime": "codex",
+                    "branch": "daemon/issue-180-b",
+                    "started_at": "2026-08-20T00:05:00.000000Z",
+                    "status": "running",
+                },
+            ],
+        }
+    ]
+
+    table = status.render_status_table(summary, workstreams)
+
+    assert "daemon/issue-180-a" in table
+    assert "daemon/issue-180-b" in table
+    assert "11111111" in table
+    assert "22222222" in table
+
+
 def test_load_sessions_skips_and_logs_malformed_session(tmp_path, caplog):
     store = tmp_path / "sessions"
     session = state.create(store, task_id="good-session")
