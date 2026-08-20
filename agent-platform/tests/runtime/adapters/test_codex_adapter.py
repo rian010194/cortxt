@@ -76,6 +76,27 @@ def test_model_and_cwd_are_forwarded():
     assert kwargs["cwd"] == str(Path("/repo"))
 
 
+def test_resume_call_omits_the_cd_flag_even_when_cwd_is_given():
+    # `codex exec resume` (verified live, 2026-08-20) has no -C/--cd option
+    # at all -- only plain `codex exec` does. Passing it through on a
+    # resumed call fails the real CLI outright ("unexpected argument '-C'
+    # found"), a bug only live E2E testing caught. The subprocess's own
+    # OS-level working directory (the `cwd=` kwarg to run_subprocess) still
+    # must be set so the resumed process runs in the right repo -- only the
+    # CLI flag is omitted.
+    fake_run, calls = _fake_run_writing_output_file()
+    adapter = CodexAdapter(run_subprocess=fake_run)
+
+    adapter.invoke(
+        "researcher", "continue", timeout_seconds=60,
+        session_id="01a01e79-1e13-7643-b676-e02307b4b1be", cwd=Path("/repo"),
+    )
+
+    argv, kwargs = calls[0]
+    assert "-C" not in argv
+    assert kwargs["cwd"] == str(Path("/repo"))
+
+
 def test_provider_argument_raises_not_implemented():
     fake_run, _ = _fake_run_writing_output_file()
     adapter = CodexAdapter(run_subprocess=fake_run)

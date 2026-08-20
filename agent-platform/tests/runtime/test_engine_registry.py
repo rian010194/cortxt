@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from runtime.engine_registry import EngineBroker, EngineContext, NoProviderRegisteredError
+from runtime.engine_registry import (
+    EngineBroker,
+    EngineContext,
+    NoProviderRegisteredError,
+    default_timeout_seconds,
+)
 
 
 class _FakeAdapter:
@@ -74,3 +79,22 @@ def test_context_register_makes_broker_have_provider():
     context = EngineContext()
     context.register("hermes", adapter)
     assert context.get("hermes").has_provider is True
+
+
+def test_default_timeout_seconds_for_hermes_is_120():
+    # Hermes is an advisory, short-answer engine -- this is today's existing
+    # --timeout default, preserved exactly (spec Open question #5).
+    assert default_timeout_seconds("hermes") == 120
+
+
+def test_default_timeout_seconds_for_codex_is_longer_than_hermes():
+    # Codex coding turns (read files, propose a diff) legitimately run
+    # longer than a Hermes advisory reply -- spec Open question #5.
+    assert default_timeout_seconds("codex") > default_timeout_seconds("hermes")
+
+
+def test_default_timeout_seconds_for_unknown_engine_falls_back_to_the_hermes_default():
+    # An engine with no explicit entry gets a sane fallback rather than a
+    # KeyError -- today's global 120s default, unchanged for anything not
+    # yet given its own row.
+    assert default_timeout_seconds("some-future-engine") == default_timeout_seconds("hermes")

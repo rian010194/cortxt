@@ -17,6 +17,26 @@ class NoProviderRegisteredError(RuntimeError):
     """No adapter is registered for this engine_id yet."""
 
 
+# Per-engine advisory default for how long one turn is allowed to run when
+# the caller doesn't pass an explicit timeout_seconds/--timeout override.
+# Hermes's 120s is today's pre-existing global default (orchestrator chat's
+# --timeout), preserved unchanged; Codex gets its own, larger default
+# because a coding turn (read files, propose a diff) legitimately runs
+# longer than a short Hermes advisory reply (spec Open question #5,
+# 2026-08-20-orchestrator-engine-resume-and-codex-adapter-v1-design.md).
+# Any engine_id not listed here falls back to Hermes's default rather than
+# raising -- same "sane fallback, not a silent wrong guess" shape the rest
+# of this registry already follows.
+_DEFAULT_TIMEOUT_SECONDS_BY_ENGINE: dict[str, int] = {
+    "hermes": 120,
+    "codex": 300,
+}
+
+
+def default_timeout_seconds(engine_id: str) -> int:
+    return _DEFAULT_TIMEOUT_SECONDS_BY_ENGINE.get(engine_id, _DEFAULT_TIMEOUT_SECONDS_BY_ENGINE["hermes"])
+
+
 @dataclass
 class EngineBroker:
     _providers: list[EngineAdapter] = field(default_factory=list)
