@@ -37,6 +37,7 @@ class EngineBroker:
         model: str | None = None,
         provider: str | None = None,
         cwd: Path | None = None,
+        session_id: str | None = None,
     ) -> dict:
         if not self._providers:
             raise NoProviderRegisteredError(
@@ -44,7 +45,8 @@ class EngineBroker:
             )
         # v1: exactly one provider, pure passthrough (ADR-027 point 2).
         return self._providers[0].invoke(
-            profile, prompt, timeout_seconds=timeout_seconds, model=model, provider=provider, cwd=cwd
+            profile, prompt, timeout_seconds=timeout_seconds, model=model, provider=provider,
+            cwd=cwd, session_id=session_id,
         )
 
 

@@ -335,11 +335,18 @@ def _run_orchestrator_chat(
     input_fn=None,
 ) -> ResultEnvelope:
     """Talk to the advisory orchestrator while deterministic commands stay local."""
+    # _collect_orchestrator_projection() bootstraps agent-platform's root
+    # (and thus top-level modules like subprocess_windows) onto sys.path --
+    # it must run before any import that transitively needs that path,
+    # which is why these imports come after it rather than at the top of
+    # the function (a bare `python cli/unified_cli.py orchestrator chat`
+    # invocation has no other mechanism to put agent-platform on sys.path).
+    projection = _collect_orchestrator_projection(args)
+
     from cli import orchestrator as orchestrator_cli
     from runtime import session_state as state
     from runtime.default_engine_context import build_default_engine_context
 
-    projection = _collect_orchestrator_projection(args)
     context = engine_context or build_default_engine_context()
     active_engine_id = getattr(args, "engine", None) or "hermes"
     engine_sessions: dict[str, str] = {}

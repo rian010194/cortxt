@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -39,6 +41,27 @@ from subprocess_windows import no_window_kwargs
 
 class CodexInvocationError(RuntimeError):
     """Raised when the codex executable itself could not be started."""
+
+
+def _default_codex_executable() -> str:
+    """Resolve the real `codex` executable on Windows.
+
+    npm installs `codex` as a `.cmd` shim on Windows (confirmed via `where
+    codex`, which lists an extensionless file *and* `codex.cmd`).
+    `subprocess.run(["codex", ...])` without `shell=True` can't execute the
+    extensionless one directly -- Windows' CreateProcess has no way to
+    associate it with an interpreter -- and fails with `WinError 2` ("the
+    system cannot find the file specified"), observed live. Resolve to the
+    `.cmd`/`.exe` shim explicitly instead of using `shell=True` (which would
+    reintroduce shell-quoting risk for the prompt argument). POSIX has no
+    such split -- "codex" resolves and executes directly there.
+    """
+    if sys.platform == "win32":
+        for candidate in ("codex.cmd", "codex.exe", "codex.bat"):
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+    return "codex"
 
 
 def _parse_thread_id(stdout: str) -> str | None:
@@ -63,6 +86,12 @@ class CodexAdapter:
     def __init__(
         self, run_subprocess: Callable[..., "subprocess.CompletedProcess[str]"] | None = None
     ) -> None:
+        # Real subprocess.run only when no fake was injected -- resolving
+        # "codex" to a platform-specific executable path (below) is a
+        # concern of *actually launching a process*, not of the argv this
+        # adapter builds, so it must not change what a fake run_subprocess
+        # (as every test injects) receives.
+        self._using_real_subprocess = run_subprocess is None
         self._run_subprocess = run_subprocess if run_subprocess is not None else subprocess.run
 
     def invoke(
@@ -98,11 +127,14 @@ class CodexAdapter:
             if cwd is not None:
                 argv += ["-C", str(cwd)]
             argv.append(prompt)
+            call_argv = argv
+            if self._using_real_subprocess:
+                call_argv = [_default_codex_executable()] + argv[1:]
 
             started = time.time()
             try:
                 proc = self._run_subprocess(
-                    argv,
+                    call_argv,
                     capture_output=True,
                     text=True,
                     encoding="utf-8",
