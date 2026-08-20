@@ -43,25 +43,52 @@ class CodexInvocationError(RuntimeError):
     """Raised when the codex executable itself could not be started."""
 
 
-def _default_codex_executable() -> str:
-    """Resolve the real `codex` executable on Windows.
+def _default_codex_launch_prefix() -> list[str]:
+    """Resolve how to launch `codex` on Windows, bypassing its `.cmd` shim.
 
     npm installs `codex` as a `.cmd` shim on Windows (confirmed via `where
     codex`, which lists an extensionless file *and* `codex.cmd`).
     `subprocess.run(["codex", ...])` without `shell=True` can't execute the
     extensionless one directly -- Windows' CreateProcess has no way to
     associate it with an interpreter -- and fails with `WinError 2` ("the
-    system cannot find the file specified"), observed live. Resolve to the
-    `.cmd`/`.exe` shim explicitly instead of using `shell=True` (which would
-    reintroduce shell-quoting risk for the prompt argument). POSIX has no
-    such split -- "codex" resolves and executes directly there.
+    system cannot find the file specified"), observed live.
+
+    Launching `codex.cmd` directly (`shell=False`) *does* start the
+    process, but Windows' CreateProcess routes any `.bat`/`.cmd` target
+    through `cmd.exe` internally regardless of `shell=False` -- meaning
+    argv elements (including the operator's `prompt` text) pass through
+    cmd.exe's own metacharacter interpretation (`&`, `|`, `%VAR%`, `^`,
+    ...) before codex ever sees them, a real injection surface for
+    untrusted or accidental special characters in a chat prompt. Confirmed
+    by reading the shim itself (`%APPDATA%\\npm\\codex.cmd`): it is a thin
+    wrapper that ultimately runs `node.exe
+    node_modules\\@openai\\codex\\bin\\codex.js %*`. Resolving straight to
+    that `node.exe` + `codex.js` pair and launching *that* bypasses
+    `cmd.exe` entirely -- CreateProcess launches `node.exe` directly, and
+    every argv element after it (prompt included) is passed through as a
+    real argv array, never reinterpreted as a shell command line.
+
+    Falls back to `codex.exe`/`codex.bat` (no known shim risk beyond what
+    `.exe` launching already has) if the npm-shim layout isn't found, and
+    finally to the bare `codex` name -- POSIX's own `codex` has a real
+    shebang and needs none of this.
     """
     if sys.platform == "win32":
-        for candidate in ("codex.cmd", "codex.exe", "codex.bat"):
+        cmd_shim = shutil.which("codex.cmd")
+        if cmd_shim:
+            shim_dir = Path(cmd_shim).parent
+            node_exe = shim_dir / "node.exe"
+            if not node_exe.is_file():
+                found_node = shutil.which("node.exe") or shutil.which("node")
+                node_exe = Path(found_node) if found_node else None
+            codex_js = shim_dir / "node_modules" / "@openai" / "codex" / "bin" / "codex.js"
+            if node_exe is not None and node_exe.is_file() and codex_js.is_file():
+                return [str(node_exe), str(codex_js)]
+        for candidate in ("codex.exe", "codex.bat"):
             resolved = shutil.which(candidate)
             if resolved:
-                return resolved
-    return "codex"
+                return [resolved]
+    return ["codex"]
 
 
 def _parse_thread_id(stdout: str) -> str | None:
@@ -129,7 +156,7 @@ class CodexAdapter:
             argv.append(prompt)
             call_argv = argv
             if self._using_real_subprocess:
-                call_argv = [_default_codex_executable()] + argv[1:]
+                call_argv = _default_codex_launch_prefix() + argv[1:]
 
             started = time.time()
             try:
