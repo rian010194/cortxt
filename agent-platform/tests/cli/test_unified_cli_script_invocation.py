@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from subprocess_windows import no_window_kwargs
+
 CLI_PATH = Path(__file__).parent.parent.parent / "cli" / "unified_cli.py"
 
 
@@ -25,6 +27,7 @@ def _run_as_bare_script(args: list[str], cwd: Path) -> subprocess.CompletedProce
         capture_output=True,
         text=True,
         timeout=30,
+        **no_window_kwargs(),
     )
 
 

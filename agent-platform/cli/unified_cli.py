@@ -145,6 +145,7 @@ def _run_profile(args: argparse.Namespace) -> ResultEnvelope:
     try:
         import subprocess
         import shutil
+        from subprocess_windows import no_window_kwargs
         python_exe = shutil.which("python") or sys.executable
         profile_cli_path = Path(__file__).parent.parent.parent / "scripts" / "profile_cli.py"
         argv = [python_exe, str(profile_cli_path), args.command]
@@ -153,7 +154,9 @@ def _run_profile(args: argparse.Namespace) -> ResultEnvelope:
         if hasattr(args, 'json') and args.json:
             argv.append("--json")
 
-        result = subprocess.run(argv, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+        result = subprocess.run(
+            argv, capture_output=True, text=True, cwd=Path(__file__).parent.parent, **no_window_kwargs()
+        )
         if result.returncode == 0:
             return ResultEnvelope(status="succeeded", artifacts=[f"profile:{args.command}"], evidence=[{"stdout": result.stdout}])
         else:

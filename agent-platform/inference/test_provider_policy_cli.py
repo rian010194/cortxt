@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 
+from subprocess_windows import no_window_kwargs
 
 HERE = Path(__file__).resolve().parent
 CLI = HERE / "provider_policy_cli.py"
@@ -19,6 +20,7 @@ def invoke(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess[
         check=False,
         cwd=HERE,
         timeout=10,
+        **no_window_kwargs(),
     )
 
 
