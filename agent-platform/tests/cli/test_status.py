@@ -385,6 +385,26 @@ def test_write_snapshot_is_the_same_data_the_table_is_rendered_from(tmp_path):
     assert "generated_at" in doc
 
 
+def test_write_snapshot_carries_plan_task_ref_through(tmp_path):
+    store = tmp_path / "sessions"
+    store.mkdir()
+    state.create(
+        store,
+        task_id="t1",
+        workstream_id="issue-180",
+        plan_task_ref="2026-08-20-example-plan#T3",
+    )
+
+    sessions = status.load_sessions(store)
+    out_path = tmp_path / "snapshot.json"
+    status.write_snapshot(sessions, out_path)
+
+    doc = json.loads(out_path.read_text(encoding="utf-8"))
+    matching = [s for s in doc["sessions"] if s.get("task_id") == "t1"]
+    assert matching, "expected session t1 to appear in doc['sessions']"
+    assert matching[0]["plan_task_ref"] == "2026-08-20-example-plan#T3"
+
+
 def test_write_snapshot_omits_runtimes_and_credentials_by_default(tmp_path):
     snapshot_path = tmp_path / "snapshot.json"
     status.write_snapshot([], snapshot_path)
