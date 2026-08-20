@@ -550,6 +550,31 @@ these is happening and to which task.
    that builds the correlation-metadata increment (Part 1's "its own
    implementation increment").
 
+## Decisions (Codex review, 2026-08-20, operator-directed)
+
+The operator directed following Codex's recommendations for all 5 open
+questions above. These resolve the tuning calls; the implementation plan
+should build against them without re-litigating.
+
+1. **Overrun multiplier: 2x the median peer duration** (same-plan,
+   same-or-smaller relative_size). Simple to explain, resistant to
+   outliers. Revisit once real production data exists.
+2. **Minimum baseline sample size: 5 completed same-size tasks** in the
+   same plan before "overrunning" is computed. Below that, render
+   `insufficient-baseline` rather than a noisy early signal.
+3. **Add an explicit `supersedes` field in v1**, not deferred to v2.
+   Codex's pushback: silently treating a renamed/split task_id as
+   unplanned/unmatched destroys traceability exactly when plans evolve —
+   the case this field exists for is common enough to design in now.
+4. **Planned-but-not-started tasks get a dedicated fixed lane**, aligned
+   to the shared time axis, queued starting after the latest real event.
+   Preserves sequence/order without visually competing with real
+   activity for the same horizontal space as an active session's bar.
+5. **A lightweight interactive picker at session-creation time**, with an
+   explicit "unplanned session" choice alongside real plan tasks. Reduces
+   mistyped `plan_task_ref` values while keeping operator-driven session
+   creation quick (no separate flag to remember/look up).
+
 ## Decomposition note
 
 This spec covers a narrow slice of sub-project 3 of 3 (agreed with the
