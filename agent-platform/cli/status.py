@@ -175,6 +175,7 @@ def load_sessions(
                 "worktree": created_payload.get("worktree"),
                 "worker_role": created_payload.get("worker_role") or "agent",
                 "runtime": created_payload.get("runtime"),
+                "started_at": doc["events"][0]["timestamp"],
                 "segments": _segments_from_events(doc["events"], display_status, last_activity_at),
                 "activity": [
                     {"event_type": event["event_type"], "timestamp": event["timestamp"]}
@@ -248,6 +249,8 @@ def build_workstreams(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "runtime": session.get("runtime"),
                 "run_id": session.get("run_id"),
                 "session_id": session["session_id"],
+                "branch": session.get("branch"),
+                "started_at": session.get("started_at"),
                 "status": session["display_status"],
                 "severity": session["severity"],
                 "segments": session["segments"],
@@ -299,6 +302,26 @@ def build_activity(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(items, key=lambda item: item["timestamp"], reverse=True)[:80]
 
 
+def format_lane_summary(lane: dict[str, Any]) -> str:
+    """Compact, distinguishing one-line summary for a single lane.
+
+    Every lane in a workstream can share the same `label` (worker_role) and
+    `runtime` -- that was the whole bug this exists to fix: every lane
+    rendered as the identical generic "orchestrator - codex" string, with no
+    way to tell 10 different sessions apart. session_id already uniquely
+    identifies a lane, so a short suffix of it -- plus branch and a real
+    start timestamp, both of which already exist on every session -- is
+    enough to distinguish lanes without inventing new data.
+    """
+    label = lane.get("label") or "agent"
+    runtime = lane.get("runtime") or "runtime okand"
+    session_id = lane.get("session_id") or lane.get("lane_id") or ""
+    suffix = session_id[-8:] if session_id else "--------"
+    branch = lane.get("branch") or "no branch"
+    started_at = lane.get("started_at") or "unknown start"
+    return f"{label} ({runtime}) #{suffix} {branch} started {started_at}"
+
+
 def render_table(sessions: list[dict[str, Any]], *, color: bool | None = None) -> str:
     """Human-readable CLI table for `cortxt sessions`.
 
@@ -345,6 +368,8 @@ def render_status_table(
             f"{workstream['workstream_id']:<28} {status_cell} "
             f"{len(workstream['lanes']):<6} {branch:<30} {workstream['updated_at']}"
         )
+        for lane in workstream.get("lanes", []):
+            lines.append(f"    - {format_lane_summary(lane)}")
     return "\n".join(lines)
 
 
