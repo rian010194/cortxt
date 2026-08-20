@@ -157,6 +157,23 @@ def test_workstream_groups_agent_sessions_and_keeps_workspace_metadata(tmp_path)
     assert workstream["lanes"][0]["runtime"] == "hermes"
 
 
+def test_load_sessions_surfaces_plan_task_ref(tmp_path):
+    store = tmp_path / "sessions"
+    store.mkdir()
+    state.create(
+        store,
+        task_id="t1",
+        workstream_id="issue-180",
+        plan_task_ref="2026-08-20-example-plan#T3",
+    )
+    state.create(store, task_id="t2", workstream_id="issue-180")
+
+    sessions = status.load_sessions(store)
+    by_task = {s["task_id"]: s for s in sessions}
+    assert by_task["t1"]["plan_task_ref"] == "2026-08-20-example-plan#T3"
+    assert by_task["t2"]["plan_task_ref"] is None
+
+
 def test_load_sessions_includes_started_at(tmp_path):
     """`started_at` is the session's first (creation) event timestamp -- it
     already exists inside `segments[0]["started_at"]`, but callers that just
