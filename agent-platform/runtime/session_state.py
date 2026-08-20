@@ -77,14 +77,36 @@ def _atomic_write(path: Path, doc: dict) -> None:
             os.unlink(tmp)
 
 
-def create(store: Path, task_id: str) -> dict:
+def create(
+    store: Path,
+    task_id: str,
+    *,
+    workstream_id: str | None = None,
+    run_id: str | None = None,
+    issue_id: str | None = None,
+    branch: str | None = None,
+    worktree: str | None = None,
+    worker_role: str | None = None,
+    runtime: str | None = None,
+) -> dict:
     if not isinstance(task_id, str) or not task_id.strip():
         raise SessionError("invalid_input", "task_id must be a non-empty string")
     session_id = "session_" + uuid.uuid4().hex
+    payload = {"task_id": task_id}
+    optional = {
+        "workstream_id": workstream_id,
+        "run_id": run_id,
+        "issue_id": issue_id,
+        "branch": branch,
+        "worktree": worktree,
+        "worker_role": worker_role,
+        "runtime": runtime,
+    }
+    payload.update({key: value for key, value in optional.items() if value is not None})
     doc = {
         "schema_version": SCHEMA_VERSION,
         "session_id": session_id,
-        "events": [_event(0, "session.created", {"task_id": task_id}, ZERO_HASH)],
+        "events": [_event(0, "session.created", payload, ZERO_HASH)],
     }
     _atomic_write(_session_path(store, session_id), doc)
     return doc

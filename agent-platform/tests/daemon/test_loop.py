@@ -130,6 +130,9 @@ def test_snapshot_written_after_run_once(tmp_path):
     doc = json.loads((tmp_path / "snapshot.json").read_text(encoding="utf-8"))
     assert "daemon" in doc
     assert doc["daemon"]["claimed"] == ["owner/repo#9"]
+    assert doc["workstreams"][0]["workstream_id"] == "owner/repo#9"
+    assert doc["workstreams"][0]["workspace"]["branch"] == "daemon/owner-repo-issue-9"
+    assert doc["workstreams"][0]["lanes"][0]["label"] == "supervisor daemon"
 
 
 def test_run_forever_stops_on_stop_flag(tmp_path):
