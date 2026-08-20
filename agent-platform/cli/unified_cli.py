@@ -11,6 +11,8 @@ Commands:
   coding           — Coding loop execution (coding_loop_cli.py)
   rlm              — RLM node execution (rlm_child_cli.py)
   sessions         — List real session state, write widget snapshot (status.py)
+  status           — Table/ledger view of agent/pipeline state, default operator surface (status.py)
+  pipeline         — Live per-agent progress bars; --watch keeps redrawing (pipeline.py)
 """
 
 from __future__ import annotations
@@ -330,6 +332,48 @@ def _collect_orchestrator_projection(args: argparse.Namespace) -> dict[str, Any]
     }
 
 
+def _collect_session_projection(args: argparse.Namespace) -> dict[str, Any]:
+    """Lightweight sessions/workstreams-only projection for `status` and `pipeline`.
+
+    Deliberately does *not* call `_collect_orchestrator_projection`: that one
+    also discovers engines, runtimes, and skills (a hermes-profile subprocess
+    call plus a walk of ~900 skill files), which live-testing showed costs
+    several seconds per call. That's fine for an occasional `orchestrator
+    overview`, but `pipeline --watch` calls its collector every redraw --
+    at that cost, a requested `--interval` under ~10s is a lie. `status` and
+    `pipeline` only ever render sessions/workstreams, so this only computes
+    that, keeping both commands fast and `--watch` actually live.
+
+    Still inserts `ap_path` onto `sys.path` before `cli_dir`, and before any
+    `from cli import ...`, for the same reason `_collect_orchestrator_
+    projection` does: a stale editable-install finder for a *different*
+    `agent-platform` checkout's `cli` package is registered globally in this
+    environment, and importing `cli.status` before that ordering is set
+    silently binds to the other checkout's copy.
+
+    Still writes the shared widget snapshot via `write_snapshot`'s
+    carry-forward semantics (only `sessions` is passed, so any
+    runtimes/engines/skills/profiles a prior `orchestrator`/`runtimes` call
+    wrote stay in the snapshot rather than being wiped).
+    """
+    ap_path = _get_agent_platform_path()
+    if str(ap_path) not in sys.path:
+        sys.path.insert(0, str(ap_path))
+    cli_dir = Path(__file__).parent
+    if str(cli_dir) not in sys.path:
+        sys.path.insert(0, str(cli_dir))
+
+    from cli import status as status_cli
+
+    store = args.store or (ap_path / ".sessions")
+    snapshot_path = args.snapshot or (ap_path / "widget" / "snapshot.json")
+    sessions = status_cli.load_sessions(store, stale_after_seconds=args.stale_after)
+    workstreams = status_cli.build_workstreams(sessions)
+    summary = status_cli.build_orchestrator_summary(sessions)
+    status_cli.write_snapshot(sessions, snapshot_path)
+    return {"orchestrator": summary, "workstreams": workstreams, "snapshot_path": snapshot_path}
+
+
 def _run_orchestrator_chat(
     args: argparse.Namespace, *, engine_context: "EngineContext | None" = None,
     input_fn=None,
@@ -495,6 +539,68 @@ def _run_orchestrator(args: argparse.Namespace) -> ResultEnvelope:
             artifacts=[f"snapshot:{snapshot_path}"],
             evidence=[{"orchestrator": summary, "workstreams": len(workstreams)}],
         )
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
+def _run_status(args: argparse.Namespace) -> ResultEnvelope:
+    """`cortxt status` -- the default table/ledger view of current agent and pipeline state.
+
+    Uses `_collect_session_projection` (sessions/workstreams only, not the
+    full engine/skill/runtime discovery `orchestrator overview` also does)
+    so this stays fast enough to be the go-to default command.
+
+    `_collect_session_projection` must run before any `from cli import ...`
+    here -- see its docstring: it's what puts this worktree's
+    `agent-platform` root ahead of `cli_dir` on `sys.path`, needed because a
+    stale editable-install finder for a *different* `agent-platform`
+    checkout's `cli` package is registered globally in this environment
+    (found live: `AttributeError: module 'cli.status' has no attribute
+    'render_status_table'`, since that copy predates this feature).
+    """
+    try:
+        projection = _collect_session_projection(args)
+        from cli import status as status_cli
+        workstreams = projection["workstreams"]
+        print(status_cli.render_status_table(projection["orchestrator"], workstreams))
+        return ResultEnvelope(
+            status="succeeded",
+            artifacts=[f"workstreams:{len(workstreams)}", f"snapshot:{projection['snapshot_path']}"],
+            evidence=[{"orchestrator": projection["orchestrator"], "workstreams": len(workstreams)}],
+        )
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
+def _run_pipeline(args: argparse.Namespace) -> ResultEnvelope:
+    """`cortxt pipeline` -- one live-progress frame; `--watch` keeps redrawing until Ctrl+C.
+
+    Uses `_collect_session_projection` (see its docstring), not the full
+    `_collect_orchestrator_projection` -- live-testing found the full
+    projection's engine/skill/runtime discovery costs several seconds per
+    call, which `--watch` pays on *every* redraw. At that cost, any
+    `--interval` under ~10s doesn't reflect reality; sessions/workstreams
+    are all `pipeline` renders, so that's all it collects.
+    """
+    try:
+        projection = _collect_session_projection(args)
+        from cli import pipeline as pipeline_cli
+
+        def _collect() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+            fresh = _collect_session_projection(args)
+            return fresh["orchestrator"], fresh["workstreams"]
+
+        if not getattr(args, "watch", False):
+            workstreams = projection["workstreams"]
+            print(pipeline_cli.render_frame(projection["orchestrator"], workstreams))
+            return ResultEnvelope(status="succeeded", artifacts=[f"workstreams:{len(workstreams)}"])
+
+        iterations = pipeline_cli.run_watch(
+            _collect,
+            interval=args.interval,
+            clear_fn=lambda: print("\x1b[2J\x1b[H", end=""),
+        )
+        return ResultEnvelope(status="succeeded", artifacts=[f"frames:{iterations}"])
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
@@ -950,6 +1056,32 @@ def main(argv: list[str] | None = None) -> int:
     sessions_parser.add_argument("--store", type=Path, help="Session store path (default: agent-platform/.sessions)")
     sessions_parser.add_argument("--snapshot", type=Path, help="Snapshot output path (default: agent-platform/widget/snapshot.json)")
     sessions_parser.set_defaults(func=_run_sessions)
+
+    # status subcommand -- the default operator-facing table/ledger view
+    status_parser = sub.add_parser(
+        "status", help="Table/ledger view of current agent and pipeline state (default operator surface)"
+    )
+    status_parser.add_argument("--store", type=Path, help="Session store path")
+    status_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path")
+    status_parser.add_argument(
+        "--stale-after", type=float, default=300.0,
+        help="Seconds without an event before a running agent session is shown as stale",
+    )
+    status_parser.set_defaults(func=_run_status)
+
+    # pipeline subcommand -- live per-agent progress bars
+    pipeline_parser = sub.add_parser(
+        "pipeline", help="Per-agent progress bars; add --watch to keep it redrawing until Ctrl+C"
+    )
+    pipeline_parser.add_argument("--store", type=Path, help="Session store path")
+    pipeline_parser.add_argument("--snapshot", type=Path, help="Widget snapshot output path")
+    pipeline_parser.add_argument(
+        "--stale-after", type=float, default=300.0,
+        help="Seconds without an event before a running agent session is shown as stale",
+    )
+    pipeline_parser.add_argument("--watch", action="store_true", help="Keep redrawing on --interval until Ctrl+C")
+    pipeline_parser.add_argument("--interval", type=float, default=2.0, help="Seconds between redraws in --watch mode")
+    pipeline_parser.set_defaults(func=_run_pipeline)
 
     orchestrator_parser = sub.add_parser(
         "orchestrator", help="Show the operator overview or talk to the local orchestrator"
