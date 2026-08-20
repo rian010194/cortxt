@@ -88,6 +88,7 @@ def create(
     worktree: str | None = None,
     worker_role: str | None = None,
     runtime: str | None = None,
+    plan_task_ref: str | None = None,
 ) -> dict:
     if not isinstance(task_id, str) or not task_id.strip():
         raise SessionError("invalid_input", "task_id must be a non-empty string")
@@ -101,6 +102,7 @@ def create(
         "worktree": worktree,
         "worker_role": worker_role,
         "runtime": runtime,
+        "plan_task_ref": plan_task_ref,
     }
     payload.update({key: value for key, value in optional.items() if value is not None})
     doc = {

@@ -28,6 +28,18 @@ def test_create_returns_session_with_one_event():
     assert ev["previous_hash"] == "0" * 64
 
 
+def test_create_includes_plan_task_ref_when_given():
+    store = _store(Path(tempfile.mkdtemp()))
+    doc = s.create(store, task_id="t1", plan_task_ref="2026-08-20-example-plan#T3")
+    assert doc["events"][0]["payload"]["plan_task_ref"] == "2026-08-20-example-plan#T3"
+
+
+def test_create_omits_plan_task_ref_when_not_given():
+    store = _store(Path(tempfile.mkdtemp()))
+    doc = s.create(store, task_id="t1")
+    assert "plan_task_ref" not in doc["events"][0]["payload"]
+
+
 def test_append_extends_chain_and_persists():
     store = _store(Path(tempfile.mkdtemp()))
     doc = s.create(store, task_id="t1")
@@ -51,7 +63,7 @@ def test_load_resumes_and_validates_chain():
     store = _store(Path(tempfile.mkdtemp()))
     doc = s.create(store, task_id="t1")
     s.append(store, doc["session_id"], expected_sequence=0,
-              event_type="tool.admitted", payload={"tool": "read_fixture_file"})
+             event_type="tool.admitted", payload={"tool": "read_fixture_file"})
     reloaded = s.load(store, doc["session_id"])
     assert len(reloaded["events"]) == 2
     assert s.latest_sequence(reloaded) == 1
