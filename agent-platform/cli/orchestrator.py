@@ -247,6 +247,7 @@ def local_conversation_reply(value: str) -> str | None:
 def transcript_record(
     *, transcript_id: str, turn_index: int, role: str, content: str,
     engine: str, status: str, redactions: int = 0,
+    engine_session_id: str | None = None,
 ) -> dict[str, Any]:
     return {
         "transcript_id": transcript_id,
@@ -257,6 +258,7 @@ def transcript_record(
         "engine": engine,
         "status": status,
         "redactions": redactions,
+        "engine_session_id": engine_session_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

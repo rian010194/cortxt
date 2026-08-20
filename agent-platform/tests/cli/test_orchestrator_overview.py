@@ -58,6 +58,24 @@ def test_transcript_record_contains_hash_but_never_content():
     assert len(record["content_sha256"]) == 64
 
 
+def test_transcript_record_carries_optional_engine_session_id():
+    record = orchestrator.transcript_record(
+        transcript_id="t-1", turn_index=1, role="assistant", content="answer",
+        engine="codex", status="succeeded", engine_session_id="thread-abc",
+    )
+
+    assert record["engine_session_id"] == "thread-abc"
+
+
+def test_transcript_record_engine_session_id_defaults_to_none():
+    record = orchestrator.transcript_record(
+        transcript_id="t-1", turn_index=1, role="user", content="hi",
+        engine="hermes", status="submitted",
+    )
+
+    assert record["engine_session_id"] is None
+
+
 def test_widget_matches_v04_tabs_and_real_swimlane_surface():
     widget = Path(__file__).parents[2] / "widget" / "index.html"
     html = widget.read_text(encoding="utf-8")
