@@ -346,6 +346,7 @@ def _run_orchestrator_chat(
     from cli import orchestrator as orchestrator_cli
     from runtime import session_state as state
     from runtime.default_engine_context import build_default_engine_context
+    from runtime.engine_registry import default_timeout_seconds
 
     context = engine_context or build_default_engine_context()
     active_engine_id = getattr(args, "engine", None) or "hermes"
@@ -357,6 +358,38 @@ def _run_orchestrator_chat(
     read_input = input_fn or input
     turn = 0
     failed = False
+
+    # Open question #4: resuming a *past* Cortxt session's engine-native
+    # conversation across REPL restarts. `engine_session_id` is stored per
+    # turn on every chat.assistant event (see below); a fresh REPL
+    # invocation with --resume <cortxt session_id> reads that history back
+    # so the active engine's next turn continues its own native
+    # conversation instead of starting fresh. Each engine's last known
+    # engine_session_id is restored independently (not just the active
+    # engine's) so a later `/engine` switch mid-resumed-REPL also picks up
+    # that engine's own last session, same per-engine tracking this REPL
+    # already does for a single live run.
+    resume_session_id = getattr(args, "resume", None)
+    if resume_session_id:
+        try:
+            existing = state.load(store, resume_session_id)
+        except state.SessionError as error:
+            print(f"Could not resume session {resume_session_id}: {error.message}")
+            return ResultEnvelope(
+                status="failed",
+                error={"category": error.category, "message": error.message},
+            )
+        session_id = resume_session_id
+        sequence = state.latest_sequence(existing)
+        for event in existing["events"]:
+            if event["event_type"] != "chat.assistant":
+                continue
+            payload = event["payload"]
+            engine_id = payload.get("engine")
+            engine_session_id = payload.get("engine_session_id")
+            if engine_id and engine_session_id:
+                engine_sessions[engine_id] = engine_session_id
+        print(f"Resumed session {session_id}.")
 
     print("Cortxt orchestrator chat — advisory, GitHub workflow state is authoritative.")
     print("Commands: /status /workstreams /runtimes /skills /engine <id> /quit")
@@ -425,11 +458,16 @@ def _run_orchestrator_chat(
             # mapping -- passing a Hermes-shaped name to e.g. Codex's -p
             # would just fail against a real CLI.
             turn_profile = args.hermes_profile if active_engine_id == "hermes" else None
+            # args.timeout is None unless the operator passed --timeout
+            # explicitly; the default is per-engine, not one global 120s
+            # (spec Open question #5 -- a Codex coding turn legitimately
+            # needs longer than a Hermes advisory reply).
+            turn_timeout = args.timeout if args.timeout is not None else default_timeout_seconds(active_engine_id)
             try:
                 result = broker.invoke(
                     turn_profile,
                     prompt,
-                    timeout_seconds=args.timeout,
+                    timeout_seconds=turn_timeout,
                     model=args.model,
                     provider=args.provider,
                     cwd=_get_agent_platform_path().parent,
@@ -967,7 +1005,15 @@ def main(argv: list[str] | None = None) -> int:
     orchestrator_parser.add_argument("--ask", help="Run one chat turn non-interactively")
     orchestrator_parser.add_argument("--hermes-profile", default="researcher", help="Hermes profile for advisory chat (Hermes only -- ignored when --engine is not hermes)")
     orchestrator_parser.add_argument("--engine", default="hermes", help="Engine to talk to in chat mode (hermes, codex, ...)")
-    orchestrator_parser.add_argument("--timeout", type=int, default=120, help="Hermes turn timeout in seconds")
+    orchestrator_parser.add_argument(
+        "--timeout", type=int, default=None,
+        help="Turn timeout in seconds (default: per-engine -- 120s for hermes, 300s for codex; "
+             "see runtime.engine_registry.default_timeout_seconds)",
+    )
+    orchestrator_parser.add_argument(
+        "--resume", help="Resume a past Cortxt orchestrator-chat session_id, "
+        "restoring each engine's last engine-native session id",
+    )
     orchestrator_parser.add_argument("--model", help="Optional Hermes model override")
     orchestrator_parser.add_argument("--provider", help="Optional Hermes provider override")
     orchestrator_parser.add_argument("--workstream-id", help="Attach the chat session to a workstream")
