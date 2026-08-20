@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 import ledger
+from subprocess_windows import no_window_kwargs
 
 HERE = Path(__file__).parent
 CLI = HERE / "state_cli.py"
@@ -31,7 +32,7 @@ class StateCliTests(unittest.TestCase):
 
     def run_cli(self, *arguments):
         return subprocess.run([sys.executable, str(CLI), *map(str, arguments)],
-                              text=True, capture_output=True, check=False)
+                              text=True, capture_output=True, check=False, **no_window_kwargs())
 
     def create(self):
         result = self.run_cli("create", "--store", self.store, "--task-id", "synthetic-task-107",

@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 from typing import Callable
 
+from subprocess_windows import no_window_kwargs
+
 
 class HermesInvocationError(RuntimeError):
     """Raised when the hermes CLI itself could not be started (not found,
@@ -64,6 +66,7 @@ def invoke_hermes(
             argv, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=timeout_seconds,
             cwd=str(cwd) if cwd is not None else None,
+            **no_window_kwargs(),
         )
     except subprocess.TimeoutExpired:
         return {

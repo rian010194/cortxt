@@ -64,6 +64,7 @@ from routing.hermes_invoker import HermesInvocationError
 from runtime.default_engine_context import build_default_engine_context
 from runtime.engine_registry import EngineContext
 from cli.status import write_snapshot
+from subprocess_windows import no_window_kwargs
 
 
 def _known_task_shapes(manifests: tuple[EngineManifest, ...]) -> set[str]:
@@ -77,7 +78,7 @@ def _default_git_head(workdir: Path) -> str | None:
     try:
         result = subprocess.run(
             ["git", "-C", str(workdir), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, **no_window_kwargs(),
         )
     except OSError:
         return None
@@ -100,7 +101,7 @@ def _default_create_worktree(workdir: Path, issue_id: str) -> Path:
     branch = f"daemon/{safe_id}"
     result = subprocess.run(
         ["git", "-C", str(workdir), "worktree", "add", "-b", branch, str(worktree_path)],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, timeout=30, **no_window_kwargs(),
     )
     if result.returncode != 0:
         raise RuntimeError(f"git worktree add failed: {result.stderr.strip()}")

@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 
+from subprocess_windows import no_window_kwargs
 
 HERE = Path(__file__).parent
 CLI = HERE / "synthetic_journey.py"
@@ -14,7 +15,7 @@ SCENARIO = HERE / "fixtures" / "t1-synthetic-journey.json"
 class SyntheticJourneyTests(unittest.TestCase):
     def run_cli(self, *arguments):
         return subprocess.run([sys.executable, str(CLI), *map(str, arguments)],
-                              capture_output=True, text=True, check=False)
+                              capture_output=True, text=True, check=False, **no_window_kwargs())
 
     def test_separate_process_interrupt_resume_result_and_verification(self):
         with tempfile.TemporaryDirectory() as temporary:
