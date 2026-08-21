@@ -1,5 +1,4 @@
-"""Automated per-run gate (target: docs/superpowers/specs/
-2026-08-19-supervisor-daemon-v1-design.md, "Evidence Gate"). Replaces a
+"""Automated per-run gate (target: internal design archive, "Evidence Gate"). Replaces a
 human's per-commit review with three checks: terminal status, presence of
 real evidence, and artifact-scope match. A self-reported "succeeded" with no
 evidence is a gate failure, not a pass (the #174/#175 false-completion

@@ -1,6 +1,6 @@
 """Result integration — fold child results into the parent, excluding any
 child known to be lost (design spec error-handling table: a lost child is
-"ofullständig evidens", not silently summed as if its content were the result).
+"incomplete evidence", not silently summed as if its content were the result).
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Fas 8 Task 6 — Evaluator: multi-candidate EvidenceMatrix + embedding pre-cache (P1.2)."""
+"""Phase 8 Task 6 — Evaluator: multi-candidate EvidenceMatrix + embedding pre-cache (P1.2)."""
 from __future__ import annotations
 
 import pytest

@@ -1,9 +1,9 @@
 """Agent Runtime tool package.
 
-Fas 2 shipped a single module ``runtime/tools.py``. Fas 3 converts it into a
+Phase 2 shipped a single module ``runtime/tools.py``. Phase 3 converts it into a
 package so the admission gate, the write policy and the subprocess launcher are
 three separate trust boundaries in three separate files (design spec decision 2).
-The conversion is a move plus a re-export — never a signature change. Fas 2's
+The conversion is a move plus a re-export — never a signature change. Phase 2's
 import path ``from runtime.tools import ToolGate, ToolAdmissionError,
 ToolExecutionError, read_fixture_file`` continues to work unchanged.
 """

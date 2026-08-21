@@ -16,13 +16,13 @@ def test_next_child_budget_adds_reclaimed_surplus_to_base():
     assert next_child_budget(base_allocation=5, reclaimed_surplus=4) == 9
 
 
-# -- split_rlm_config (Fas 5) ------------------------------------------- #
+# -- split_rlm_config (Phase 5) ------------------------------------------- #
 from reasoning.recursive.bounds import RLMConfig
 from supervisor.budget import split_rlm_config
 
 
 def test_split_total_children_uses_the_REMAINING_pool_after_n_direct_spawns():
-    # spec's combinatorics (beslut 2): spawning n=3 direct children consumes
+    # spec's combinatorics (decision 2): spawning n=3 direct children consumes
     # 3 of a max_total_children=6 pool; only the remainder (3) is available
     # for those children's OWN further decomposition. split_rlm_config must
     # divide (parent.max_total_children - n), not the full parent value —

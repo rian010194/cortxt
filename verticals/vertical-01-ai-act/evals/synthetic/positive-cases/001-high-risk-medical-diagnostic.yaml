@@ -66,8 +66,8 @@ expected_output:
     - EUR-Lex 32024R1689
     primary_source_verified: false
   decision_brief:
-    language: sv
-    text: Systemet MedDiagnose AI sannolikt omfattas av AI-förordningen och klassas som högrisk enligt Annex III (hälsa). Artiklarna 9-12 är tillämpliga. Primärkällsverifiering krävs för samtliga skyldigheter.
+    language: en
+    text: The MedDiagnose AI system is likely covered by the AI Act and classified as high risk under Annex III (health). Articles 9-12 apply. Primary-source verification is required for all obligations.
   uncertainties:
   - topic: Annex III point 1(a) medical device overlap
     reason: MDR classification may affect AI Act risk class.
@@ -88,12 +88,12 @@ deterministic_assertions:
   expected_value: null
 - path: /decision_brief/language
   operator: equals
-  expected_value: sv
+  expected_value: en
 - path: /uncertainties
   operator: exists
   expected_value: null
 model_assisted_assertions:
-- rubric: The decision brief text should be in Swedish and mention high risk (högrisk) and Annex III.
+- rubric: The decision brief text should be in English and mention high risk and Annex III.
   required_model_capabilities:
   - structured-output
 human_review_required: false

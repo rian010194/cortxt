@@ -1,4 +1,4 @@
-"""SkillCandidateAdapter — §31 Skill-platform candidate (Fas 8, Beslut 5 / P1.6).
+"""SkillCandidateAdapter — §31 Skill-platform candidate (Phase 8, Decision 5 / P1.6).
 
 Mechanism-hooked: a SkillManifest-based candidate is registered and gated by the §31 promotion table. In v1
 the adapter is mechanism-functional (register + structural/regression eval + rule gate) but NOT deep-verified

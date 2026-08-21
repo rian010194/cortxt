@@ -1,69 +1,69 @@
-# ADR-017: Agent Platform — reasoning-kärnan accepterad som tracked arkitektur
+# ADR-017: Agent Platform — reasoning core accepted as tracked architecture
 
 **Status:** Accepted  \
 **Date:** 2026-08-14  \
-**Deciders:** Rikard (operatör); oberoende review (Kimi) GODKÄND 2026-08-14  \
-**Technical Story:** ADR-016 krävde ett vertikalt slice som bevisar agent-platform-behovet innan untracked-scaffold-tillståndet kan upphävas. Detta vertikala slice (reasoning-kärnan DM1–DM4) är nu i `main` via PR #113.
+**Deciders:** Rikard (operator); independent review (Kimi) APPROVED 2026-08-14  \
+**Technical Story:** ADR-016 required a vertical slice proving the agent-platform need before the untracked-scaffold status can be lifted. This vertical slice (reasoning core DM1–DM4) is now in `main` via PR #113.
 
 ## Context
 
-ADR-016 (bounded context, InferencePort, provider-assurance) etablerade att `agent-platform/` + `adapters/` förblir **untracked scaffold** "tills ett vertikalt slice bevisar behovet (inga stabila interface före det)". Detta ADR bekräftar att ett sådant slice nu existerar och formellt befordrar reasoning-kärnan till **tracked/Accepted** arkitektur inom bounded context Agent Platform — samtidigt som allt övrigt under `agent-platform/` förblir Proposal/Untracked.
+ADR-016 (bounded context, InferencePort, provider-assurance) established that `agent-platform/` + `adapters/` remain **untracked scaffold** "until a vertical slice proves the need (no stable interfaces before that)". This ADR confirms that such a slice now exists and formally promotes the reasoning core to **tracked/Accepted** architecture within the Agent Platform bounded context — while everything else under `agent-platform/` remains Proposal/Untracked.
 
 ## 1. Vertical Slice Evidence
 
-Reasoning-kärnan DM1–DM4 (Reasoning Kernel + RLM Engine + Geometric Engine + integrerad pipeline) är levererad, checkpoint-reviewed (oberoende Kimi-review CP1.1–CP4.1 GODKÄND) och **i `main` via PR #113** (`feat/reasoning-kernel`, commit `09f1d8a`).
+The reasoning core DM1–DM4 (Reasoning Kernel + RLM Engine + Geometric Engine + integrated pipeline) is delivered, checkpoint-reviewed (independent Kimi review CP1.1–CP4.1 APPROVED) and **in `main` via PR #113** (`feat/reasoning-kernel`, commit `09f1d8a`).
 
-Verifierbara invariantar (commit `09f1d8a`):
-- **58 pytest gröna**, **93 % coverage** för `reasoning/`, **0 model-anrop** (inference är en stubb).
-- `tests/reasoning/test_no_external_deps.py` garanterar att `reasoning/` **inte importerar Hermes/Pi/InferX/provider** — ADR-016:s repositoryinvariant (kärnan beror bara på interna portar/kontrakt).
-- Detta uppfyller ADR-016:s krav: ett vertikalt slice som bevisar behovet av `agent-platform/` (här: reasoning-kärnan) utan stabila interface-skulder.
+Verifiable invariants (commit `09f1d8a`):
+- **58 pytest green**, **93 % coverage** for `reasoning/`, **0 model calls** (inference is a stub).
+- `tests/reasoning/test_no_external_deps.py` guarantees that `reasoning/` **does not import Hermes/Pi/InferX/provider** — ADR-016's repository invariant (the core depends only on internal ports/contracts).
+- This satisfies ADR-016's requirement: a vertical slice that proves the need for `agent-platform/` (here: the reasoning core) without stable-interface debt.
 
 ## 2. Tracked Scope (Accepted)
 
-Inom bounded context **Agent Platform** förklaras följande som **Accepted/tracked**:
-- `agent-platform/reasoning/kernel/` — ProblemState, strategiväljare (direct/recursive/geometric), operatorer (inspect/decompose/integrate/verify), engine-loop.
-- `agent-platform/reasoning/recursive/` — RLM Engine (bounded rekursiv dekomposition, hårda gränser, stop-conditions).
-- `agent-platform/reasoning/geometric/` — Geometric Engine (ProblemSpace, mått, attractor-detektering, guidad explorer).
-- `agent-platform/reasoning/pipeline.py` + `orchestrator.py` — integrerad reasoning-pipeline.
-- `agent-platform/reasoning/__init__.py`, `tests/`, `pyproject.toml` — paket-/teststöd.
+Within the **Agent Platform** bounded context, the following are declared **Accepted/tracked**:
+- `agent-platform/reasoning/kernel/` — ProblemState, strategy selector (direct/recursive/geometric), operators (inspect/decompose/integrate/verify), engine loop.
+- `agent-platform/reasoning/recursive/` — RLM Engine (bounded recursive decomposition, hard limits, stop conditions).
+- `agent-platform/reasoning/geometric/` — Geometric Engine (ProblemSpace, metrics, attractor detection, guided explorer).
+- `agent-platform/reasoning/pipeline.py` + `orchestrator.py` — integrated reasoning pipeline.
+- `agent-platform/reasoning/__init__.py`, `tests/`, `pyproject.toml` — package/test support.
 
-Dessa filsökvägar matchar exakt det som finns i `git ls-tree 09f1d8a agent-platform/reasoning/`.
+These file paths match exactly what is in `git ls-tree 09f1d8a agent-platform/reasoning/`.
 
 ## 3. Stability Matrix
 
-| Område | Status |
+| Area | Status |
 | --- | --- |
-| `agent-platform/reasoning/` (allt i §2) | **Accepted / tracked** (bevisat vertikalt slice DM1–4) |
-| `agent-platform/adapters/` och övrig kod under `agent-platform/` (inference, memory, skills, tools, supervisor, profiles, state, runtime) | **Fortsatt Proposal / Untracked** (inga stabila interface bevisade; kräver egna vertical slices) |
+| `agent-platform/reasoning/` (all of §2) | **Accepted / tracked** (vertical slice DM1–4 proven) |
+| `agent-platform/adapters/` and other code under `agent-platform/` (inference, memory, skills, tools, supervisor, profiles, state, runtime) | **Still Proposal / Untracked** (no stable interfaces proven; requires its own vertical slices) |
 
-**Negativ avgränsning (explicit):** `adapters/` samt alla andra `agent-platform/`-paket **klassas INTE som Accepted** av detta ADR. Bara reasoning-kärnan befordras.
+**Negative boundary (explicit):** `adapters/` and all other `agent-platform/` packages are **NOT classified as Accepted** by this ADR. Only the reasoning core is promoted.
 
 ## 4. Authority Amendment (ADR-016)
 
-ADR-016:s beslut om att `agent-platform/` förblir untracked scaffold **upphävs partiellt** för reasoning-kärnan: det vertikala slice-kriteriet i ADR-016 §Konsekvenser är uppfyllt (se §1 ovan), så `agent-platform/reasoning/` övergår från untracked/Proposal till tracked/Accepted. Beslutet i ADR-016 raderas inte — det modifieras via detta ADR (principen att befintliga beslut bevaras och ändras genom nya ADR, inte genom att skriva om historik). Allt annat i ADR-016 (InferencePort, provider-assurance, dataklass→gate) står fast.
+ADR-016's decision that `agent-platform/` remains untracked scaffold is **partially lifted** for the reasoning core: the vertical-slice criterion in ADR-016 §Consequences is satisfied (see §1 above), so `agent-platform/reasoning/` moves from untracked/Proposal to tracked/Accepted. The ADR-016 decision is not deleted — it is modified via this ADR (the principle that existing decisions are preserved and changed through new ADRs, not by rewriting history). Everything else in ADR-016 (InferencePort, provider-assurance, data-class→gate) stands.
 
 ## Consequences
 
 ### Positive
-- Reasoning-kärnan får formell arkitekturstatus (tracked/Accepted) med bevisat vertikalt slice.
-- Inga stabila interface ges till icke-bevisade delar (adapters etc. förblir Proposal/Untracked).
-- ADR-016:s egen decision-state-regel (Accepted vs Proposal) upprätthålls konsistent.
+- The reasoning core gets formal architecture status (tracked/Accepted) with a proven vertical slice.
+- No stable interfaces are granted to unproven parts (adapters etc. remain Proposal/Untracked).
+- ADR-016's own decision-state rule (Accepted vs Proposal) is upheld consistently.
 
 ### Negative
-- Endast reasoning/ är Accepted — resten av agent-platform är fortfarande scaffold; ingen bredare promotion.
-- Legacy-ADR:arna 011/012/013 är inkompatibla med F0/F1-eran och behöver explicit superseded-markering (görs i samma rörelse).
+- Only reasoning/ is Accepted — the rest of agent-platform is still scaffold; no broader promotion.
+- The legacy ADRs 011/012/013 are incompatible with the F0/F1 era and need explicit superseded marking (done in the same move).
 
 ### Risks
-- Auktoritetsglidning (adapters implicit befordrad) — motverkas av explicit negativ avgränsning i §3.
-- Konsistensbrott med ADR-016 — motverkas av att 016 endast får ett tilläggspostscript (partiellt upphävt), inget borttag.
-- Ghost authority i legacy-ADR:ar — motverkas av frontmatter-mutation + legacy-notis i 011/012/013.
+- Authority drift (adapters implicitly promoted) — countered by the explicit negative boundary in §3.
+- Consistency break with ADR-016 — countered by 016 receiving only an addendum postscript (partially lifted), no removal.
+- Ghost authority in legacy ADRs — countered by frontmatter mutation + legacy notice in 011/012/013.
 
 ## Validation
-- [x] Vertikalt slice (DM1–4) i `main` via PR #113 (commit `09f1d8a`); 58 pytest, 93 % cov, 0 model-anrop, `test_no_external_deps` grön.
-- [x] Oberoende review (Kimi) av detta ADR → **GODKÄND** (Checkpoint 1.1 GODKÄND efter rework; Checkpoint 2.1 GODKÄND efter rework; 2026-08-14).
-- [x] ADR-016 får ett postscript-notis (partiellt upphävt för reasoning/) — 016:s Validation-blank rad uppdaterad till `[x] ... AMENDMENT ... tracked/Accepted per ADR-017` + STATUS-AMENDMENT högst upp; inget borttag av kärnbeslut.
-- [x] ADR-011/012/013 markeras `Superseded` i frontmatter + legacy-notis.
+- [x] Vertical slice (DM1–4) in `main` via PR #113 (commit `09f1d8a`); 58 pytest, 93 % cov, 0 model calls, `test_no_external_deps` green.
+- [x] Independent review (Kimi) of this ADR → **APPROVED** (Checkpoint 1.1 APPROVED after rework; Checkpoint 2.1 APPROVED after rework; 2026-08-14).
+- [x] ADR-016 receives a postscript notice (partially lifted for reasoning/) — 016's Validation blank line updated to `[x] ... AMENDMENT ... tracked/Accepted per ADR-017` + STATUS-AMENDMENT at the top; no removal of core decisions.
+- [x] ADR-011/012/013 marked `Superseded` in frontmatter + legacy notice.
 
 ## Expiry/Review Trigger
 - Review by: 2026-11-14
-- Trigger: om ett nytt vertikalt slice befordrar fler delar av agent-platform, eller om reasoning-kärnan ändras väsentligt (ny ADR krävs).
+- Trigger: if a new vertical slice promotes more parts of agent-platform, or if the reasoning core changes substantially (a new ADR is required).

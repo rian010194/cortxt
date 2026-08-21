@@ -1,4 +1,4 @@
-"""Contradiction detection tests (Fas 6, Task 4)."""
+"""Contradiction detection tests (Phase 6, Task 4)."""
 
 from reasoning.geometric import (
     Contradiction,

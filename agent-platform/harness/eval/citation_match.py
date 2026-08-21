@@ -1,5 +1,5 @@
 """citation-match-v1: structural verification for the research/document
-long-context class (spec beslut 5) — not model-based grading, per the
+long-context class (spec decision 5) — not model-based grading, per the
 runtime-and-evaluation-harness doc's requirement to distinguish the two.
 """
 from __future__ import annotations

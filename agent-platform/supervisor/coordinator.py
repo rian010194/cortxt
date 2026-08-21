@@ -519,7 +519,7 @@ class Coordinator:
         session_id = session["session_id"]
 
         # in-process decision: leaf vs decompose — Coordinator never calls a
-        # model itself (Fas 3 §32.1); decide_child_refs needs no inference
+        # model itself (Phase 3 §32.1); decide_child_refs needs no inference
         # port at all, unlike the original draft's run_node_body+_NullInference
         try:
             child_refs = decide_child_refs(
@@ -615,7 +615,7 @@ class Coordinator:
         """Shared spawn plumbing for both leaf and recursive RLM children —
         the child process's own main() (rlm_child_cli.py) decides, on its
         side, whether it is itself a leaf or a further decomposer. This
-        mirrors _spawn_child (Fas 4) but targets rlm_child_cli instead of
+        mirrors _spawn_child (Phase 4) but targets rlm_child_cli instead of
         coding_loop_cli, and passes a context-ref file alongside the config.
         """
         child_session = state.create(self._store, task_id=task_id)

@@ -30,8 +30,8 @@ export default function Overview() {
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">AI Workspace Control Plane</h1>
         <p className="text-slate-400 max-w-3xl">
-          Interaktiv prototyp som visualiserar hela flödet från operator-dialog till godkänd leverans.
-          GitHub Issues är source of truth. Hermes och Pi Builder är runtime. Codex är read-only review.
+          Interactive prototype visualizing the whole flow from operator dialog to approved delivery.
+          GitHub Issues is the source of truth. Hermes and Pi Builder are the runtime. Codex is read-only review.
         </p>
       </div>
 
@@ -43,7 +43,7 @@ export default function Overview() {
           </div>
           <div>
             <div className="text-2xl font-bold text-white">{verifiedCount}</div>
-            <div className="text-sm text-slate-400">Verifierade profiler</div>
+            <div className="text-sm text-slate-400">Verified profiles</div>
           </div>
         </div>
         <div className="card flex items-center gap-4">
@@ -52,7 +52,7 @@ export default function Overview() {
           </div>
           <div>
             <div className="text-2xl font-bold text-white">{experimentalCount}</div>
-            <div className="text-sm text-slate-400">Experimentella profiler</div>
+            <div className="text-sm text-slate-400">Experimental profiles</div>
           </div>
         </div>
         <div className="card flex items-center gap-4">
@@ -70,7 +70,7 @@ export default function Overview() {
           </div>
           <div>
             <div className="text-2xl font-bold text-white">{profiles.length}</div>
-            <div className="text-sm text-slate-400">Totala profiler</div>
+            <div className="text-sm text-slate-400">Total profiles</div>
           </div>
         </div>
       </div>
@@ -79,7 +79,7 @@ export default function Overview() {
       <div className="card">
         <div className="flex items-center gap-3 mb-4">
           <GitBranch className="w-5 h-5 text-brand-400" />
-          <h2 className="text-xl font-semibold text-white">Arkitekturöversikt</h2>
+          <h2 className="text-xl font-semibold text-white">Architecture Overview</h2>
         </div>
         <div className="overflow-x-auto">
           <div className="min-w-[800px] p-4">
@@ -149,28 +149,28 @@ export default function Overview() {
         <div className="card">
           <div className="flex items-center gap-3 mb-4">
             <Shield className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-xl font-semibold text-white">Kärnprinciper</h2>
+            <h2 className="text-xl font-semibold text-white">Core Principles</h2>
           </div>
           <ul className="space-y-3 text-sm text-slate-300">
             <li className="flex items-start gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-              <span>GitHub Issues/Projects är <strong>enda masterregistret</strong>. Ingen annan backlog får existera.</span>
+              <span>GitHub Issues/Projects is the <strong>single master registry</strong>. No other backlog may exist.</span>
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-              <span>Ingen agent får godkänna sitt eget arbete. Operator approval är final gate.</span>
+              <span>No agent may approve its own work. Operator approval is the final gate.</span>
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-              <span>Receptionist-pattern för alla externa systemintegrationer (Obsidian, Notion, Buzz, Hermes, Pi, Codex).</span>
+              <span>Receptionist pattern for all external system integrations (Obsidian, Notion, Buzz, Hermes, Pi, Codex).</span>
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-              <span>Skill framework med manifests, semver, error taxonomy, retry policy.</span>
+              <span>Skill framework with manifests, semver, error taxonomy, retry policy.</span>
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-              <span>Dispatch contract med JSON Schema-validering för alla körningar.</span>
+              <span>Dispatch contract with JSON Schema validation for all runs.</span>
             </li>
           </ul>
         </div>
@@ -178,12 +178,12 @@ export default function Overview() {
         <div className="card">
           <div className="flex items-center gap-3 mb-4">
             <Zap className="w-5 h-5 text-amber-400" />
-            <h2 className="text-xl font-semibold text-white">Verifierade förmågor</h2>
+            <h2 className="text-xl font-semibold text-white">Verified Capabilities</h2>
           </div>
           <ul className="space-y-3 text-sm text-slate-300">
             <li className="flex items-start gap-2">
               <Box className="w-4 h-4 text-brand-400 mt-0.5 shrink-0" />
-              <span>Hermes routing till korrekt Researcher/Builder profiler</span>
+              <span>Hermes routing to the correct Researcher/Builder profiles</span>
             </li>
             <li className="flex items-start gap-2">
               <Box className="w-4 h-4 text-brand-400 mt-0.5 shrink-0" />
@@ -191,19 +191,19 @@ export default function Overview() {
             </li>
             <li className="flex items-start gap-2">
               <Box className="w-4 h-4 text-brand-400 mt-0.5 shrink-0" />
-              <span>Swarm-mode: workers → verifier → synthesizer graf</span>
+              <span>Swarm mode: workers → verifier → synthesizer graph</span>
             </li>
             <li className="flex items-start gap-2">
               <Box className="w-4 h-4 text-brand-400 mt-0.5 shrink-0" />
-              <span>Kanban→GitHub mirror (cron var 10:e min)</span>
+              <span>Kanban→GitHub mirror (cron every 10 min)</span>
             </li>
             <li className="flex items-start gap-2">
               <Box className="w-4 h-4 text-brand-400 mt-0.5 shrink-0" />
-              <span>Pi Builder bounded writes + efterföljande Codex review</span>
+              <span>Pi Builder bounded writes + subsequent Codex review</span>
             </li>
             <li className="flex items-start gap-2">
               <Box className="w-4 h-4 text-brand-400 mt-0.5 shrink-0" />
-              <span>Manuell dispatch med run_id, lease, result envelope</span>
+              <span>Manual dispatch with run_id, lease, result envelope</span>
             </li>
           </ul>
         </div>

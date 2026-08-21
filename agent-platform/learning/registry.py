@@ -1,7 +1,7 @@
 """CandidateRegistry — SQLite-persisted, keyed on type@name@version, with active-pointer + promoted_from.
 
-Controlled learning loop (Fas 8, Beslut 9.4 / P1.1 plan-review). Mirrors the persistence pattern of
-``BudgetGate`` (``_ensure_table`` + row-level versioning) established in Fas 2a, and the deterministic
+Controlled learning loop (Phase 8, Decision 9.4 / P1.1 plan-review). Mirrors the persistence pattern of
+``BudgetGate`` (``_ensure_table`` + row-level versioning) established in Phase 2a, and the deterministic
 export/hash principles of ``SkillRegistry`` (PR #135).
 
 Schema:

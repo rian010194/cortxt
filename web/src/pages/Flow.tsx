@@ -17,10 +17,10 @@ export default function Flow() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">End-to-End Flöde</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">End-to-End Flow</h1>
         <p className="text-slate-400 max-w-3xl">
-          Visualisering av hela flödet från Buzz-operator till färdig leverans.
-          Varje steg visar verifierad status, blockers och outputs.
+          Visualization of the entire flow from Buzz operator to finished delivery.
+          Each step shows verified status, blockers and outputs.
         </p>
       </div>
 
@@ -50,7 +50,7 @@ export default function Flow() {
                         <span className="text-sm text-slate-500">{step.subtitle}</span>
                         {step.verified ? (
                           <span className="badge badge-green">
-                            <CheckCircle2 className="w-3 h-3 mr-1" /> Verifierad
+                            <CheckCircle2 className="w-3 h-3 mr-1" /> Verified
                           </span>
                         ) : (
                           <span className="badge badge-amber">
@@ -63,7 +63,7 @@ export default function Flow() {
                       {step.blockers.length > 0 && (
                         <div className="mb-3 p-3 rounded-lg bg-rose-900/20 border border-rose-800/40">
                           <div className="flex items-center gap-2 text-rose-300 text-sm font-medium mb-1">
-                            <AlertTriangle className="w-4 h-4" /> Kända blockers
+                            <AlertTriangle className="w-4 h-4" /> Known blockers
                           </div>
                           <ul className="space-y-1">
                             {step.blockers.map((b, i) => (

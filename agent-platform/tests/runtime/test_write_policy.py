@@ -58,9 +58,9 @@ def test_check_file_size_rejects_over_cap():
 
 
 def test_check_file_size_measures_utf8_bytes_not_characters():
-    # "å" is 2 bytes in UTF-8; 6 characters would pass a naive len() check.
+    # "é" is 2 bytes in UTF-8; 6 characters would pass a naive len() check.
     with pytest.raises(WritePolicyViolation):
-        check_file_size("a.py", "åååååå", WriteCaps(max_bytes_per_file=11))
+        check_file_size("a.py", "éééééé", WriteCaps(max_bytes_per_file=11))
 
 
 def test_changed_line_count_counts_both_sides():

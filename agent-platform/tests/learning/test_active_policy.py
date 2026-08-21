@@ -1,4 +1,4 @@
-"""Fas 8 Task 9 — active_policy injection into score_path (default unchanged, production untouched)."""
+"""Phase 8 Task 9 — active_policy injection into score_path (default unchanged, production untouched)."""
 from __future__ import annotations
 
 from learning.active_policy import resolve_active_policy

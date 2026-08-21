@@ -1,4 +1,4 @@
-"""EmbeddingPort — real embedding-model invocation for RLM geometric reasoning (Fas 6, §27#10).
+"""EmbeddingPort — real embedding-model invocation for RLM geometric reasoning (Phase 6, §27#10).
 
 Drop-in for reasoning/geometric/embeddings.py's EmbeddingFn surface
 (``Callable[[str], list[float]]``): an EmbeddingPort instance is itself callable, so it can be

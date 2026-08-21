@@ -44,8 +44,8 @@ export default function Dispatch() {
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">Dispatch Contract</h1>
         <p className="text-slate-400 max-w-3xl">
-          JSON Schema-validerad dispatch request och result envelope. Alla fält är obligatoriska.
-          Secrets, customer content, prompts och model reasoning får ej embeddas.
+          JSON Schema-validated dispatch request and result envelope. All fields are required.
+          Secrets, customer content, prompts and model reasoning must not be embedded.
         </p>
       </div>
 
@@ -139,7 +139,7 @@ export default function Dispatch() {
             <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700/50">
               <div className="flex items-center gap-2 text-sm font-medium text-white mb-2">
                 <DollarSign className="w-4 h-4 text-emerald-400" />
-                Kostnadsuppskattning
+                Cost estimate
               </div>
               {(() => {
                 const profile = profiles.find(p => p.id === formData.worker_role);
@@ -148,11 +148,11 @@ export default function Dispatch() {
                 return (
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between text-slate-400">
-                      <span>Profil:</span>
+                      <span>Profile:</span>
                       <span className="text-white">{profile?.name || formData.worker_role}</span>
                     </div>
                     <div className="flex justify-between text-slate-400">
-                      <span>Est. för 5k in + 2k out:</span>
+                      <span>Est. for 5k in + 2k out:</span>
                       <span className="text-emerald-300 font-mono">{estAmount === null ? '—' : `$${estAmount.toFixed(4)}`} {est.currency}</span>
                     </div>
                     <div className="flex justify-between text-slate-400">
@@ -164,7 +164,7 @@ export default function Dispatch() {
                     {estAmount !== null && formData.max_cost_usd < estAmount * 10 && (
                       <div className="flex items-center gap-2 text-amber-300 text-xs">
                         <AlertTriangle className="w-3 h-3" />
-                        Low ceiling — ~10x est. körningar innan gräns.
+                        Low ceiling — ~10x estimated runs before limit.
                       </div>
                     )}
                   </div>
@@ -180,7 +180,7 @@ export default function Dispatch() {
                 <div className="p-4 rounded-lg bg-blue-900/20 border border-blue-700/40">
                   <div className="flex items-center gap-2 text-sm font-medium text-white mb-2">
                     <ArrowRight className="w-4 h-4 text-blue-400" />
-                    Fallback-kedja
+                    Fallback chain
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     {chain.map((pid: string, i: number) => {
@@ -212,7 +212,7 @@ export default function Dispatch() {
           <div className="card">
             <div className="flex items-center gap-3 mb-4">
               <FileJson className="w-5 h-5 text-emerald-400" />
-              <h2 className="text-xl font-semibold text-white">Genererad JSON</h2>
+              <h2 className="text-xl font-semibold text-white">Generated JSON</h2>
             </div>
             <pre className="bg-slate-900 rounded-lg p-4 overflow-x-auto text-xs text-emerald-300 font-mono leading-relaxed">
               {JSON.stringify(formData, null, 2)}
@@ -323,9 +323,9 @@ export default function Dispatch() {
                 <CheckCircle2 className="w-4 h-4" /> Cost telemetry active
               </div>
               <p className="text-sm text-slate-400">
-                Auto-kalkylation tokens → USD är nu aktiv via lookup-tabell per profil.
-                Kostnader beräknas från <code>input_tokens</code> och <code>output_tokens</code>
-                med provider-specifika priser (OpenRouter free, Moonshot, OpenAI).
+                Automatic token → USD calculation is now active via a per-profile lookup table.
+                Costs are calculated from <code>input_tokens</code> and <code>output_tokens</code>
+                with provider-specific prices (OpenRouter free, Moonshot, OpenAI).
               </p>
             </div>
           </div>

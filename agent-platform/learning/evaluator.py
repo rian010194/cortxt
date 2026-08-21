@@ -1,4 +1,4 @@
-"""Evaluator — multi-candidate EvidenceMatrix (Fas 8, Beslut 2 / 9.2; P1.2).
+"""Evaluator — multi-candidate EvidenceMatrix (Phase 8, Decision 2 / 9.2; P1.2).
 
 Computes, per candidate, a baseline-relative evidence row over a shared fixture set:
 - ``baseline_delta`` = candidate score - baseline score (positive = strictly better, 0 = tie, negative = worse).
@@ -8,7 +8,7 @@ Computes, per candidate, a baseline-relative evidence row over a shared fixture 
 
 Kimi P1.2: ``cached_embedder()`` wraps any ``EmbeddingFn`` in a per-unique-text lookup, so geometric
 ``score_path`` treats the embedder as a lookup during eval (not an API call per path node), reusing the
-per-unique-text cache discipline proven in Fas 6. The pre-cache is applied by the candidate adapters (Task 8)
+per-unique-text cache discipline proven in Phase 6. The pre-cache is applied by the candidate adapters (Task 8)
 when they build a ``CandidatePathScore``; the generic Evaluator stays transport-agnostic.
 """
 from __future__ import annotations

@@ -23,7 +23,7 @@ def test_discover_marks_runtime_installed_when_which_finds_it():
 
 
 def test_discover_never_touches_credentials_or_env_values():
-    """Auto-discovery is read-only PATH detection, per the Fas 1 threat
+    """Auto-discovery is read-only PATH detection, per the Phase 1 threat
     model's boundary between the broker (credentials) and discovery
     (presence only). A RuntimeStatus must never carry a raw env value."""
     statuses = discover_installed_runtimes(which=lambda _name: "/usr/bin/fake")

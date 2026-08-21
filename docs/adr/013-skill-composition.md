@@ -5,10 +5,10 @@
 **Deciders:** Rikard  
 **Technical Story:** Addresses W-04 (No skill composition model)
 
-> **LEGACY-NOTIS (2026-08-14):** Denna ADR predaterar F0/F1 och beskrev en statisk skill-composition/pack-modell
-> bunden till Hermes-profiler. I F0-eran ägs skills/kunskap av Cortxt-ägda portar/tillstånd (ADR-014/016/017);
-> kompositions- och portabilitetsfrågan förskjuts mot den providerneutrala arkitekturen. Innehållet är
-> historisk referens, inte giltig aktuell auktoritet.
+> **LEGACY NOTICE (2026-08-14):** This ADR predates F0/F1 and described a static skill-composition/pack model
+> bound to Hermes profiles. In the F0 era, skills/knowledge are owned by Cortxt-owned ports/state (ADR-014/016/017);
+> the composition and portability question shifts toward the provider-neutral architecture. Its content is
+> historical reference, not valid current authority.
 
 ## Context
 Skills are currently a flat list loaded per profile. Issues:

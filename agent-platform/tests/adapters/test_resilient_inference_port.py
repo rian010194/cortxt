@@ -1,4 +1,4 @@
-"""Unit tests for ResilientInferencePort (Delmål 1 AC).
+"""Unit tests for ResilientInferencePort (Milestone 1 AC).
 
 These tests mock the provider-neutral ``execute`` backend so they are hermetic and cost 0
 model calls. They verify request-shape, strict integer parsing, and fail-closed behavior.

@@ -3,13 +3,13 @@
 **Status:** Proposed (Part 1 implemented; Part 2 spec-only)
 **Date:** 2026-08-20
 **Deciders:** Rikard Andersson (operator), with the 5 open questions resolved by Codex per operator direction; design reviewed by Hermes (7 issues found and folded in, see spec's Revision note)
-**Technical Story:** `docs/superpowers/specs/2026-08-20-plan-vs-actual-divergence-v1-design.md`
+**Technical Story:** (internal design archive)
 
 ## Context
 
 The operator wants the widget/CLI swimlane view to show a workstream's
 *expected* shape — derived from this project's own markdown implementation
-plans (`docs/superpowers/plans/*.md`) — next to its *actual* runtime shape
+plans ((internal design archive)) — next to its *actual* runtime shape
 (`cli/status.py`'s session/workstream/lane model), so the view visually
 diverges when execution doesn't match the plan.
 
@@ -75,7 +75,7 @@ verbatim in the `session.created` payload using the existing "include a
 key only if supplied" pattern. `cli/status.py:load_sessions()` surfaces
 it; `write_snapshot()` carries it through by inheritance, no special-
 casing needed. **This threading is implemented** — see
-`docs/superpowers/plans/2026-08-20-plan-task-ref-correlation-metadata.md`,
+(internal design archive),
 executed in this session, all three tasks landed and tested (45 passing
 tests across `test_session_state.py` and `test_status.py`).
 

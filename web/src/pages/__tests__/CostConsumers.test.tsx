@@ -26,8 +26,8 @@ describe('CostConsumers — null → "—" rendering', () => {
 
     await waitFor(() => {
       // Locate the ESTIMATE line explicitly (not any "—" anywhere on the page):
-      // the row labelled "Est. för 5k in + 2k out:" must contain "—".
-      const label = screen.getByText(/Est\. för 5k in \+ 2k out:/);
+      // the row labelled "Est. for 5k in + 2k out:" must contain "—".
+      const label = screen.getByText(/Est\. for 5k in \+ 2k out:/);
       const row = label.closest('div');
       expect(row).toBeTruthy();
       const rowText = (row as HTMLElement).textContent;

@@ -1,4 +1,4 @@
-"""ToolCandidateAdapter — §32.3 Tool-platform candidate (Fas 8, Beslut 5 / P1.6).
+"""ToolCandidateAdapter — §32.3 Tool-platform candidate (Phase 8, Decision 5 / P1.6).
 
 Mechanism-hooked: a tool candidate is registered and gated by effect class. Because every tool effect class
 that touches the outside (external_mutation / irreversible / credential, §32.2) mandates a human operator

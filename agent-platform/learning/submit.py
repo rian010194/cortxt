@@ -1,9 +1,9 @@
-"""submit_candidate — the candidate ingress door (Fas 8, Beslut 9.5 / 10c / P2.6 phase a).
+"""submit_candidate — the candidate ingress door (Phase 8, Decision 9.5 / 10c / P2.6 phase a).
 
 Validates type registration + provenance, persists the candidate as ``eval_pending``, and runs
-EvidenceClassifier ``phase_a`` at submit (Beslut 10c, Kimi P2.6 phase a), returning the typed evidence so it
+EvidenceClassifier ``phase_a`` at submit (Decision 10c, Kimi P2.6 phase a), returning the typed evidence so it
 is bound to the candidate for later gate evaluation. The actual promotion decision happens later via the gate
-(which is internal-resolving, self-approval-safe — Beslut 3).
+(which is internal-resolving, self-approval-safe — Decision 3).
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .candidate import Candidate
 from .evidence import EvidenceClassifier
 from .registry import CandidateRegistry
 
-# registered candidate types for v1 (future types are added here as adapters, Beslut 9.1)
+# registered candidate types for v1 (future types are added here as adapters, Decision 9.1)
 _KNOWN_TYPES = {"policy", "skill", "tool"}
 
 
@@ -29,7 +29,7 @@ def submit_candidate(
     """Register a candidate as eval_pending with typed phase-(a) evidence.
 
     Returns ``(candidate_id, evidence)`` where ``evidence`` is the four-group classification
-    (facts/events/instructions/tasks) produced by EvidenceClassifier.phase_a (Beslut 10c / P2.6).
+    (facts/events/instructions/tasks) produced by EvidenceClassifier.phase_a (Decision 10c / P2.6).
     """
     if type_ not in _KNOWN_TYPES:
         raise ValueError(f"unknown candidate type: {type_}")
