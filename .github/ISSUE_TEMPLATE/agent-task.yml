@@ -1,5 +1,5 @@
 name: Agent task
-description: Propose a manually approved task for the AI Workspace
+description: Propose a manually approved task for the Cortxt control plane
 title: "[Task]: "
 labels: []
 body:
