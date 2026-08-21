@@ -9,7 +9,7 @@ AGENT_PLATFORM_PATH = Path(__file__).parent.parent.parent
 if str(AGENT_PLATFORM_PATH) not in sys.path:
     sys.path.insert(0, str(AGENT_PLATFORM_PATH))
 
-from mcp import tools
+from cortxt_mcp import tools
 
 
 def test_unknown_tool_raises_tool_not_found():

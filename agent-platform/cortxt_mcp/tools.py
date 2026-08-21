@@ -2,7 +2,7 @@
 server (`cortxt mcp serve`).
 
 Deliberately transport-agnostic: nothing here imports the `mcp` SDK or does
-any stdio I/O, so it's testable without either (see `mcp.protocol` for the
+any stdio I/O, so it's testable without either (see `cortxt_mcp.protocol` for the
 stdio shim that calls into `call_tool`).
 
 Tiers (locked decision, issue #184 step 3 / #187 plan):

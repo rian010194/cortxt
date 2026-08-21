@@ -1,5 +1,12 @@
 """Cortxt MCP server package (`cortxt mcp serve`).
 
+Package name `cortxt_mcp` (renamed from `mcp` in PR #203, issue #202): the
+top-level `mcp` name collided with the official PyPI `mcp` Python SDK at
+import time, which the `[mcp]` optional-dependency group targets
+(`mcp>=1.2`). Renaming makes the SDK importable in-process and leaves the
+stdio shim in `protocol.py` as a genuine fallback for environments without
+the SDK.
+
 Exposes a first, read-only tool slice (`route_engine`, `list_engine_manifests`,
 `cortxt_status`, `cortxt_sessions`, `cortxt_runtimes`, `cortxt_orchestrator`,
 `cortxt_pipeline`) over MCP's stdio transport, plus tier-gated write/dispatch
