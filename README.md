@@ -36,15 +36,13 @@ The current product decisions are recorded as
 
 | Path | Role today |
 | --- | --- |
-| [`agent-platform/`](agent-platform/) | Cortxt-owned platform boundary (reasoning, runtimes, CLI, MCP server, state). `agent-platform/reasoning/` is accepted per ADR-017. |
-| [`adapters/`](adapters/) | Provider and runtime adapters behind Cortxt-owned ports. |
+| [`agent-platform/`](agent-platform/) | Cortxt-owned platform boundary (reasoning, runtimes, CLI, MCP server, state, adapters). `agent-platform/reasoning/` is accepted per ADR-017; `agent-platform/adapters/inference/` holds the live provider-neutral inference adapters. |
 | [`verticals/`](verticals/README.md) | Domain packages loaded by the harness — live, not historical. |
 | [`web/`](web/README.md) | Operator Cockpit prototype — **paused legacy** per ADR-015/021 (the CLI is the product surface; `cortxt widget` is the sanctioned thin mirror). |
 | [`contracts/`](contracts/README.md) | Interface schemas and contract experiments. |
 | [`schemas/`](schemas/) | Machine-readable schema definitions. |
-| [`harness/`](harness/) | Control-plane ↔ runtime/vertical bridge scripts. |
-| [`scripts/`](scripts/) | Developer and operational scripts. |
-| [`docs/`](docs/) | Architecture and decisions for the current baseline (ADRs, operating model, dispatch contract, runbooks, security). |
+| [`scripts/`](scripts/) | Dispatcher, worker adapters, and profile tooling used by the platform. |
+| [`docs/`](docs/) | Architecture and decisions for the current baseline (ADRs, operating model, dispatch contract, security). |
 
 Internal working documents (agent session plans, handoffs, assessments) are
 kept out of the repository and archived locally.
