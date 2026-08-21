@@ -16,6 +16,10 @@ archive/
 *.trace
 agent-platform/runs/
 
+# ---- Internal working documents (archived locally, not published) ----
+docs/superpowers/
+docs/assessments/
+
 # ---- Python ----
 __pycache__/
 *.py[cod]
