@@ -1,4 +1,4 @@
-﻿# Current operating model
+# Current operating model
 
 Status: active operational baseline  
 Last reconciled: 2026-08-13
@@ -59,10 +59,10 @@ theoretical:
   ceiling on either dimension since #136).
 - A manual GitHub -> Hermes Researcher -> GitHub workflow completed.
 - Hermes Kanban board `cortxt-cp` created with gateway dispatch proven (scratch
-  workspace, 36s `ready â†’ running â†’ done`).
-- Hermes Kanban swarm-mode demonstrated: parallel workers â†’ verifier â†’ synthesizer.
+  workspace, 36s `ready → running → done`).
+- Hermes Kanban swarm-mode demonstrated: parallel workers → verifier → synthesizer.
 - Kanban-to-GitHub mirror **script** exists; **no mirror cron is registered**
-  (verified 2026-08-09 â€” `hermes cron list` shows only `kanban-buzz-push`). The
+  (verified 2026-08-09 — `hermes cron list` shows only `kanban-buzz-push`). The
   mirror is a manual/available capability, not an active scheduled function.
 - Manual dispatch routine documented with run_id generation, runtime selection,
   result envelope, and operator approval checklist.
