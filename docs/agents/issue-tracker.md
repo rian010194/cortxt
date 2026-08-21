@@ -1,11 +1,11 @@
-﻿# Issue tracker: GitHub
+# Issue tracker: GitHub
 
 Status: active normative
 Authority: repository governance
 Last verified: 2026-08-13
 
 GitHub Issues remain the durable task records for this repository. Project 4,
-now named `Legacy AI Workspace Delivery â€” frozen`, is a frozen legacy planning
+now named `Legacy AI Workspace Delivery — frozen`, is a frozen legacy planning
 layer and is not Cortxt's active roadmap. Do not add, reclassify, or dispatch
 work from it without a separate operator decision. Use the repository remote to
 resolve `rian010194/ai-workspace-control-plane` and use `gh` for tracker
