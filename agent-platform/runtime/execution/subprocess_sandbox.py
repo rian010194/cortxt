@@ -16,7 +16,7 @@ Two boundaries, defence in depth per §15 — the second does not replace the fi
 
 The agent runs OUTSIDE this boundary and only a single validated command crosses
 into it — the opposite of Pi Builder's topology, which put the agent inside the
-container. §15: "Reasoning och exekvering ska vara separata failure domains."
+container. §15: "Reasoning and execution shall be separate failure domains."
 
 NOT claimed: memory and CPU ceilings are out of scope for v0.1 (assumption A10).
 ``docker run --memory``/``--cpus`` become load-bearing the first time a fixture

@@ -18,41 +18,41 @@ export interface CapabilityPreset {
 }
 export const capabilityPresets: CapabilityPreset[] = [
   // Biometric (Annex III 1(a)-(c))
-  { label: 'Remote biometric identification', group: 'Biometri' },
-  { label: 'Facial recognition', group: 'Biometri' },
-  { label: 'Emotion recognition', group: 'Biometri' },
-  { label: 'Biometric categorisation', group: 'Biometri' },
+  { label: 'Remote biometric identification', group: 'Biometrics' },
+  { label: 'Facial recognition', group: 'Biometrics' },
+  { label: 'Emotion recognition', group: 'Biometrics' },
+  { label: 'Biometric categorisation', group: 'Biometrics' },
   // Critical infrastructure (Annex III 2)
-  { label: 'Critical infrastructure management', group: 'Kritisk infrastruktur' },
+  { label: 'Critical infrastructure management', group: 'Critical infrastructure' },
   // Education (Annex III 3)
-  { label: 'Admissions / access to education', group: 'Utbildning' },
-  { label: 'Exam or assessment scoring', group: 'Utbildning' },
+  { label: 'Admissions / access to education', group: 'Education' },
+  { label: 'Exam or assessment scoring', group: 'Education' },
   // Employment (Annex III 4)
-  { label: 'Recruitment / CV screening', group: 'Anställning' },
-  { label: 'Performance monitoring of staff', group: 'Anställning' },
-  { label: 'Promotion or termination decisions', group: 'Anställning' },
+  { label: 'Recruitment / CV screening', group: 'Employment' },
+  { label: 'Performance monitoring of staff', group: 'Employment' },
+  { label: 'Promotion or termination decisions', group: 'Employment' },
   // Essential services (Annex III 5)
-  { label: 'Credit scoring / lending decisions', group: 'Väsentliga tjänster' },
-  { label: 'Insurance / health underwriting', group: 'Väsentliga tjänster' },
-  { label: 'Medical diagnosis support', group: 'Väsentliga tjänster' },
-  { label: 'Housing / social-benefits eligibility', group: 'Väsentliga tjänster' },
-  { label: 'Emergency-dispatch prioritisation', group: 'Väsentliga tjänster' },
+  { label: 'Credit scoring / lending decisions', group: 'Essential services' },
+  { label: 'Insurance / health underwriting', group: 'Essential services' },
+  { label: 'Medical diagnosis support', group: 'Essential services' },
+  { label: 'Housing / social-benefits eligibility', group: 'Essential services' },
+  { label: 'Emergency-dispatch prioritisation', group: 'Essential services' },
   // Law enforcement (Annex III 6)
-  { label: 'Law-enforcement risk assessment', group: 'Brottsbekämpning' },
-  { label: 'Evidence or polygraph evaluation', group: 'Brottsbekämpning' },
-  { label: 'Recidivism / profiling during investigation', group: 'Brottsbekämpning' },
+  { label: 'Law-enforcement risk assessment', group: 'Law enforcement' },
+  { label: 'Evidence or polygraph evaluation', group: 'Law enforcement' },
+  { label: 'Recidivism / profiling during investigation', group: 'Law enforcement' },
   // Migration / asylum / border (Annex III 7)
-  { label: 'Asylum / visa risk assessment', group: 'Migration & gräns' },
-  { label: 'Border surveillance', group: 'Migration & gräns' },
+  { label: 'Asylum / visa risk assessment', group: 'Migration & borders' },
+  { label: 'Border surveillance', group: 'Migration & borders' },
   // Justice / democratic processes (Annex III 8)
-  { label: 'Applying law / interpreting facts', group: 'Rättskipning' },
-  { label: 'Election / democratic-process influence', group: 'Rättskipning' },
+  { label: 'Applying law / interpreting facts', group: 'Justice' },
+  { label: 'Election / democratic-process influence', group: 'Justice' },
   // General / other (for systems that may still be in scope but not Annex III-listed)
-  { label: 'Chatbot / conversational interface', group: 'Övrigt' },
-  { label: 'Content moderation / recommendation', group: 'Övrigt' },
-  { label: 'Document processing / OCR', group: 'Övrigt' },
-  { label: 'Robotics / autonomous systems', group: 'Övrigt' },
-  { label: 'Algorithmic trading / finance', group: 'Övrigt' },
+  { label: 'Chatbot / conversational interface', group: 'Other' },
+  { label: 'Content moderation / recommendation', group: 'Other' },
+  { label: 'Document processing / OCR', group: 'Other' },
+  { label: 'Robotics / autonomous systems', group: 'Other' },
+  { label: 'Algorithmic trading / finance', group: 'Other' },
 ];
 
 export interface AssessmentInput {
@@ -108,7 +108,7 @@ export interface AssessFixture {
 export const assessFixtures: AssessFixture[] = [
   {
     fixture_id: 'v01-syn-pos-001',
-    label: 'Högrisk medicinsk diagnos (positiv)',
+    label: 'High-risk medical diagnosis (positive)',
     category: 'positive',
     input: {
       case_id: 'SYNTH-POS-001',
@@ -134,7 +134,7 @@ export const assessFixtures: AssessFixture[] = [
         { article: 'Art11', applies: true, summary: 'Technical documentation per Annex IV required. Needs primary-source research for component-level documentation.', evidence_refs: ['EUR-Lex 32024R1689', 'Annex IV'], primary_source_verified: false },
         { article: 'Art12', applies: true, summary: 'Automatic logging of operation events required. Needs primary-source research for retention period.', evidence_refs: ['EUR-Lex 32024R1689'], primary_source_verified: false },
       ],
-      decision_brief: { language: 'sv', text: 'Systemet MedDiagnose AI sannolikt omfattas av AI-förordningen och klassas som högrisk enligt Annex III (hälsa). Artiklarna 9-12 är tillämpliga. Primärkällsverifiering krävs för samtliga skyldigheter.' },
+      decision_brief: { language: 'sv', text: 'The MedDiagnose AI system is likely covered by the AI Act and classified as high risk under Annex III (health). Articles 9-12 apply. Primary-source verification is required for all obligations.' },
       uncertainties: [
         { topic: 'Annex III point 1(a) medical device overlap', reason: 'MDR classification may affect AI Act risk class.', suggested_research: 'Verify MDR Article 51 classification against AI Act Annex III point 1(a).' },
       ],
@@ -144,7 +144,7 @@ export const assessFixtures: AssessFixture[] = [
   },
   {
     fixture_id: 'v01-syn-neg-001',
-    label: 'Traditionell bokföringsprogramvara (negativ)',
+    label: 'Traditional accounting software (negative)',
     category: 'negative',
     input: {
       case_id: 'SYNTH-NEG-001',
@@ -165,7 +165,7 @@ export const assessFixtures: AssessFixture[] = [
       applicability: { ai_act_applies: false, confidence: 'certain', basis_articles: ['Art2', 'Art3'] },
       classification: { system_risk_class: 'minimal_risk', basis_annex: null },
       obligations_assessed: [],
-      decision_brief: { language: 'sv', text: 'Systemet LedgerPro Classic omfattas inte av AI-förordningen eftersom det saknar självständigt inlärande och använder enbart deterministiska regler. Klassas som minimal risk.' },
+      decision_brief: { language: 'sv', text: 'The LedgerPro Classic system is not covered by the AI Act because it lacks autonomous learning and uses only deterministic rules. Classified as minimal risk.' },
       uncertainties: [],
       schema_validation_passed: true,
       _provenance: 'fixture_reference',
@@ -173,7 +173,7 @@ export const assessFixtures: AssessFixture[] = [
   },
   {
     fixture_id: 'v01-syn-bnd-001',
-    label: 'Crowd-räkning utan identifiering (gränsfall)',
+    label: 'Crowd counting without identification (boundary)',
     category: 'boundary',
     input: {
       case_id: 'SYNTH-BND-001',
@@ -194,7 +194,7 @@ export const assessFixtures: AssessFixture[] = [
       applicability: { ai_act_applies: true, confidence: 'uncertain', basis_articles: ['Art2', 'Art3'] },
       classification: { system_risk_class: 'uncertain', basis_annex: null },
       obligations_assessed: [],
-      decision_brief: { language: 'sv', text: 'Systemet CrowdCount AI kan omfattas av AI-förordningen, men riskklassificeringen är osäker. Avsaknaden av identifiering talar emot Annex III, medan biometrisk bearbetning talar för. Primärkällsverifiering krävs.' },
+      decision_brief: { language: 'sv', text: 'The CrowdCount AI system may be covered by the AI Act, but the risk classification is uncertain. The absence of identification argues against Annex III, while biometric processing argues for it. Primary-source verification is required.' },
       uncertainties: [
         { topic: 'Annex III point 1(a) vs point 1(b) biometric boundary', reason: 'The system processes biometric data (silhouettes) but claims not to identify individuals. It is unclear whether pure counting falls under Annex III point 1(a) or 1(b).', suggested_research: 'Verify whether crowd-counting by silhouette is classified as biometric identification or categorisation under Annex III.' },
         { topic: 'Article 3(1) AI definition for silhouette detection', reason: 'The underlying model may use machine learning or traditional computer vision. The AI definition boundary is unclear without architecture details.', suggested_research: 'Confirm whether silhouette-detection models typically qualify as AI systems under Article 3(1).' },
@@ -205,7 +205,7 @@ export const assessFixtures: AssessFixture[] = [
   },
   {
     fixture_id: 'v01-syn-unc-001',
-    label: 'Knapphändig beskrivning (osäkerhet)',
+    label: 'Sparse description (uncertainty)',
     category: 'uncertainty',
     input: {
       case_id: 'SYNTH-UNC-001',
@@ -226,7 +226,7 @@ export const assessFixtures: AssessFixture[] = [
       applicability: { ai_act_applies: false, confidence: 'needs_more_info', basis_articles: ['Art2', 'Art3'] },
       classification: { system_risk_class: 'uncertain', basis_annex: null },
       obligations_assessed: [],
-      decision_brief: { language: 'sv', text: 'Beskrivningen av Project X är för knapphändig för att göra en säker bedömning. Ytterligare information om syfte, marknad och teknisk arkitektur krävs.' },
+      decision_brief: { language: 'sv', text: 'The description of Project X is too sparse to make a reliable assessment. Additional information about purpose, market, and technical architecture is required.' },
       uncertainties: [
         { topic: 'Insufficient system description', reason: "The purpose is too vague ('internal use'), intended_market is 'Unknown', and capabilities list contains only a generic phrase.", suggested_research: 'Request detailed system description including specific use case, technical architecture, and intended deployers.' },
         { topic: 'Operator type unverified', reason: 'The operator_type is stated as provider, but the actual role in the value chain is unclear from the description.', suggested_research: 'Confirm whether the entity is a provider, deployer, importer, or distributor under Article 3.' },
@@ -241,14 +241,14 @@ export const assessFixtures: AssessFixture[] = [
 // JSON-Schema validator). Returns a list of message strings (empty = valid).
 export function validateInput(input: AssessmentInput): string[] {
   const errors: string[] = [];
-  if (!/^(SYNTH-|EXT-).+$/.test(input.case_id)) errors.push('case_id måste börja med SYNTH- eller EXT-');
-  if (!input.system_description.name.trim()) errors.push('system_description.name krävs');
-  if (!input.system_description.purpose.trim()) errors.push('system_description.purpose krävs');
-  if (input.system_description.purpose.length > 2000) errors.push('purpose får vara max 2000 tecken');
-  if (input.system_description.name.length > 200) errors.push('name får vara max 200 tecken');
+  if (!/^(SYNTH-|EXT-).+$/.test(input.case_id)) errors.push('case_id must start with SYNTH- or EXT-');
+  if (!input.system_description.name.trim()) errors.push('system_description.name is required');
+  if (!input.system_description.purpose.trim()) errors.push('system_description.purpose is required');
+  if (input.system_description.purpose.length > 2000) errors.push('purpose may be at most 2000 characters');
+  if (input.system_description.name.length > 200) errors.push('name may be at most 200 characters');
   const ops = ['deployer', 'provider', 'importer', 'distributor'];
-  if (!ops.includes(input.system_description.operator_type)) errors.push('operator_type måste vara deployer/provider/importer/distributor');
-  if (input.system_capabilities.length === 0) errors.push('minst en system_capability krävs');
-  if (input.jurisdiction_hints.length === 0) errors.push('minst en jurisdiction_hint krävs');
+  if (!ops.includes(input.system_description.operator_type)) errors.push('operator_type must be deployer/provider/importer/distributor');
+  if (input.system_capabilities.length === 0) errors.push('at least one system_capability is required');
+  if (input.jurisdiction_hints.length === 0) errors.push('at least one jurisdiction_hint is required');
   return errors;
 }

@@ -33,8 +33,8 @@ expected_output:
     basis_annex: null
   obligations_assessed: []
   decision_brief:
-    language: sv
-    text: Systemet NPC-Buddy använder enbart förskriptade beteenden och tillståndsmaskiner utan maskininlärning. Det omfattas inte av AI-förordningen.
+    language: en
+    text: The NPC-Buddy system uses only scripted behaviours and state machines without machine learning. It is not covered by the AI Act.
   uncertainties:
   - topic: Whether scripted state machines qualify as AI under Article 3(1)
     reason: The definition of AI system includes systems based on machine-learning, logic- and knowledge-based, or statistical approaches. State machines may fall outside all three.
@@ -51,7 +51,7 @@ deterministic_assertions:
   operator: equals
   expected_value: []
 model_assisted_assertions:
-- rubric: The decision brief should explain in Swedish that the system uses scripted behaviour (förskriptade beteenden) without machine learning.
+- rubric: The decision brief should explain in English that the system uses scripted behaviour without machine learning.
   required_model_capabilities:
   - structured-output
 human_review_required: false

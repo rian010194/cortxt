@@ -2,192 +2,192 @@
 
 **Version:** 0.1  
 **Status:** Draft  
-**Language:** Swedish (primär), English (sekundär)  
+**Language:** English (primary)  
 **Last updated:** 2026-08-03
 
 ---
 
-## 1. Språk & Ton
+## 1. Language & Tone
 
-### 1.1 Primärt språk
-- **Interna samtal, dokumentation, handoffs:** Svenska
-- **GitHub issues, PR-beskrivningar, extern dokumentation:** Engelska
-- **Bilinguala dokument (decision briefs, handoffs):** Svenska + Engelska parallellt
+### 1.1 Primary language
+- **Internal conversations, documentation, handoffs:** English
+- **GitHub issues, PR descriptions, external documentation:** English
+- **Bilingual documents (decision briefs, handoffs):** English only — translate any legacy Swedish content as it is touched
 
-### 1.2 Ton per dokumenttyp
+### 1.2 Tone by document type
 
-| Dokumenttyp | Ton | Exempel |
-|-------------|-----|---------|
-| **Teknisk dokumentation** | Precis, aktiv röst, inget hedging | "Systemet validerar input" inte "Systemet bör validera input" |
-| **Blogg/artikel** | Konversationell, auktoritativ | "Vi upptäckte att..." inte "Det upptäcktes att..." |
-| **PR-beskrivning** | Teknisk, koncis | "Fixar bug i auth flow" inte "Denna PR fixar en bug..." |
-| **Decision brief** | Formell, avgörande | "Beslut: Vi väljer X. Bakgrund: Y. Konsekvens: Z." |
-| **Handoff** | Fullständig, odubbeltydlig | "Klarat: X. Kvar: Y. Blockers: Z." |
-| **E-post** | Professionell, handlingsorienterad | "Ärende: X. Fråga: Y. Deadline: Z." |
+| Document type | Tone | Example |
+|---------------|------|---------|
+| **Technical documentation** | Precise, active voice, no hedging | "The system validates input", not "The system should validate input" |
+| **Blog/article** | Conversational, authoritative | "We discovered that..." not "It was discovered that..." |
+| **PR description** | Technical, concise | "Fix bug in auth flow", not "This PR fixes a bug..." |
+| **Decision brief** | Formal, decisive | "Decision: We choose X. Background: Y. Consequence: Z." |
+| **Handoff** | Complete, unambiguous | "Done: X. Remaining: Y. Blockers: Z." |
+| **Email** | Professional, action-oriented | "Subject: X. Question: Y. Deadline: Z." |
 
-### 1.3 Svenska specifika regler
-- **Du-reform** internt, **Ni** externt (legacy)
-- **Sammansatta ord:** "agentarkitektur", "färdplan", "uppföljning", "dispatchkontrakt"
-- **Engelska termer OK** när standard: "API", "CLI", "JSON", "YAML", "HTTP", "REST", "GraphQL", "WebSocket", "OAuth", "JWT", "SQL", "NoSQL", "CI/CD", "PR", "Issue", "Deploy"
-- **Ingen "AI" som substantiv** — använd "agent", "modell", "system"
-
----
-
-## 2. Formattering
-
-### 2.1 Rubriker
-- **Sentence case:** "Skapa ny agent" (inte "Skapa Ny Agent")
-- **Ingen punkt** efter rubrik
-- **Max 3 nivåer** (H1, H2, H3)
-
-### 2.2 Kod
-- **Inline kod:** backticks `` `code` ``
-- **Kodblock:** med språk-tag (` ```python `, ` ```yaml `, ` ```bash `)
-- **Ingen kod** i löptext utan backticks
-
-### 2.3 Listor
-- **Parallel struktur** — alla punkter samma grammatik
-- **Oxford-komma** (seriell komma) — "A, B, och C"
-- **Punktlista** för oordnade, **numrerad** för sekventiella steg
-
-### 2.4 Länkar
-- **Beskrivande text** — inte "här", "here", "länk"
-- **Exempel:** `[GitHub Issues API](https://docs.github.com/en/rest/issues)` inte `[här](...)`
-
-### 2.5 Tabeller
-- **Header-rad** alltid
-- **Alignment** för numeriska kolumner (right)
-- **Ingen tomma celler** — använd "N/A" eller "—"
+### 1.3 English-specific rules
+- **Use "you" (second person) consistently** — no formal/informal address distinction
+- **Compound terms:** write established English compounds consistently, e.g. "agent architecture", "roadmap", "follow-up", "dispatch contract"
+- **English technical terms used as-is** when they are standard: "API", "CLI", "JSON", "YAML", "HTTP", "REST", "GraphQL", "WebSocket", "OAuth", "JWT", "SQL", "NoSQL", "CI/CD", "PR", "Issue", "Deploy"
+- **No "AI" as a noun** — use "agent", "model", "system"
 
 ---
 
-## 3. Terminologi (Ordlista)
+## 2. Formatting
 
-| Term | Använd | Undvik |
-|------|--------|--------|
-| Agent | ✅ | bot, AI, assistent |
+### 2.1 Headings
+- **Sentence case:** "Create new agent" (not "Create New Agent")
+- **No trailing period** after a heading
+- **Maximum 3 levels** (H1, H2, H3)
+
+### 2.2 Code
+- **Inline code:** backticks `` `code` ``
+- **Code blocks:** with language tag (` ```python `, ` ```yaml `, ` ```bash `)
+- **No code** in running text without backticks
+
+### 2.3 Lists
+- **Parallel structure** — all items share the same grammar
+- **Oxford comma** (serial comma) — "A, B, and C"
+- **Bulleted list** for unordered items, **numbered** for sequential steps
+
+### 2.4 Links
+- **Descriptive text** — not "here", "this link"
+- **Example:** `[GitHub Issues API](https://docs.github.com/en/rest/issues)` not `[here](...)`
+
+### 2.5 Tables
+- **Header row** always
+- **Alignment** for numeric columns (right)
+- **No empty cells** — use "N/A" or "—"
+
+---
+
+## 3. Terminology (Glossary)
+
+| Term | Use | Avoid |
+|------|-----|-------|
+| Agent | ✅ | bot, AI, assistant |
 | Skill | ✅ | plugin, module, extension |
-| Profil | ✅ | persona, mode, role |
+| Profile | ✅ | persona, mode, role |
 | Dispatch | ✅ | trigger, invoke, launch |
 | Vertical | ✅ | domain package, domain |
 | Receptionist | ✅ | gateway, proxy, adapter |
-| Dispatch kontrakt | ✅ | dispatch contract |
-| Result envelope | ✅ | result envelope |
+| Dispatch contract | ✅ | — |
+| Result envelope | ✅ | — |
 | BVC | ✅ | behaviour validation contract |
 | Shared memory | ✅ | workspace memory |
 | Pi Builder | ✅ | Pi, builder container |
-| Coordinator | ✅ | orchestrator (endast i arkitektur-sammanhang) |
+| Coordinator | ✅ | orchestrator (architecture context only) |
 
 ---
 
-## 4. Skrivprocess (Writer Skill Pipeline)
+## 4. Writing Process (Writer Skill Pipeline)
 
-1. **Analyze** — målgrupp, syfte, nyckelbudskap
-2. **Outline** — struktur, rubriker, evidens-mappning
-3. **Draft** — första version, fullständighet över polish
-4. **Edit** — aktiv röst, konkreta substantiv, korta meningar, ton-matchning, faktakoll
-5. **Polish** — formatering, länkar, metadata, SEO (om blogg)
-6. **Review** — self-check + valfri extern review
+1. **Analyze** — audience, purpose, key message
+2. **Outline** — structure, headings, evidence mapping
+3. **Draft** — first version, completeness over polish
+4. **Edit** — active voice, concrete nouns, short sentences, tone matching, fact-check
+5. **Polish** — formatting, links, metadata, SEO (if blog)
+6. **Review** — self-check + optional external review
 
-### 4.1 Redigeringsregler (Humanizer)
-- **Ta bort hedging:** "Det är viktigt att notera att" → (ta bort)
-- **Passiv → Aktiv:** "Felet upptäcktes av systemet" → "Systemet upptäckte felet"
-- **Variera ordval:** inte "använda" 3 gånger i rad
-- **Variera meningsstruktur:** fråga, kort mening, ledande sats
-- **Ta bort AI-isms:** "det är viktigt att notera", "i och med att", "vid detta tillfälle"
+### 4.1 Editing rules (Humanizer)
+- **Remove hedging:** "It is important to note that" → (remove)
+- **Passive → Active:** "The error was detected by the system" → "The system detected the error"
+- **Vary word choice:** do not use "use" three times in a row
+- **Vary sentence structure:** question, short sentence, leading clause
+- **Remove AI-isms:** "it is important to note", "in light of the fact that", "at this juncture"
 
 ---
 
-## 5. Dokumenttyper & Mallar
+## 5. Document Types & Templates
 
-| Typ | Mall | Målgrupp | Längd |
-|-----|------|----------|-------|
-| **Docs** | `templates/docs.md` | Utvecklare/Operatörer | Medium |
-| **Blogg** | `templates/blog.md` | Publiken/Teknisk | Long |
-| **PR-beskrivning** | `templates/pr-description.md` | Reviewers | Short |
-| **Release notes** | `templates/release-notes.md` | Användare/Operatörer | Medium |
-| **Changelog** | `templates/changelog.md` | Utvecklare | Medium |
+| Type | Template | Audience | Length |
+|------|----------|----------|--------|
+| **Docs** | `templates/docs.md` | Developers/Operators | Medium |
+| **Blog** | `templates/blog.md` | Public/Technical | Long |
+| **PR description** | `templates/pr-description.md` | Reviewers | Short |
+| **Release notes** | `templates/release-notes.md` | Users/Operators | Medium |
+| **Changelog** | `templates/changelog.md` | Developers | Medium |
 | **Decision brief** | `templates/decision-brief.md` | Stakeholders | Short |
-| **Handoff** | `templates/handoff.md` | Nästa agent/Operatör | Medium |
-| **E-post** | `templates/email.md` | Mottagare | Short |
-| **Social** | `templates/social.md` | Publiken | Short |
+| **Handoff** | `templates/handoff.md` | Next agent/Operator | Medium |
+| **Email** | `templates/email.md` | Recipient | Short |
+| **Social** | `templates/social.md` | Public | Short |
 
 ---
 
-## 6. Kvalitetskrav (Quality Gates)
+## 6. Quality Requirements (Quality Gates)
 
-- [ ] **Ordantal** inom ±20% av mål
-- [ ] **Läsbarhet** (Flesch-Kincaid) lämplig för målgrupp
-- [ ] **Alla länkar** fungerar (200 OK)
-- [ ] **Inga overifierade påståenden** (fact-check = passed)
-- [ ] **Ton-match** ≥ 80% vs begärd ton
-- [ ] **Stilguide-kompatibilitet** ≥ 90%
-- [ ] **Inga AI-isms** (humanizer pass)
+- [ ] **Word count** within ±20% of target
+- [ ] **Readability** (Flesch-Kincaid) appropriate for the audience
+- [ ] **All links** work (200 OK)
+- [ ] **No unverified claims** (fact-check = passed)
+- [ ] **Tone match** ≥ 80% vs. requested tone
+- [ ] **Style-guide compliance** ≥ 90%
+- [ ] **No AI-isms** (humanizer pass)
 
 ---
 
-## 7. Exempel
+## 7. Examples
 
-### 7.1 Decision Brief (Bilingual)
+### 7.1 Decision Brief
 ```markdown
-# Beslut: Agentarkitektur — Receptionist-mönster / Decision: Agent Architecture — Receptionist Pattern
+# Decision: Agent Architecture — Receptionist Pattern
 
-## Beslut / Decision
-Vi använder receptionist-mönster för alla externa systemintegrationer.
+## Decision
+We use the receptionist pattern for all external system integrations.
 
-## Bakgrund / Background
-Nuvarande arkitektur har direkta API-anrop från agenter → svårt att underhålla.
+## Background
+The current architecture has direct API calls from agents → hard to maintain.
 
-## Konsekvenser / Consequences
-+ Enstaka ändringspunkt vid API-brott
-+ Centraliserad auth/token-hantering
-- Extra abstraktionslager
+## Consequences
++ Single point of change at API breaks
++ Centralized auth/token handling
+- Extra abstraction layer
 
-## Nästa steg / Next Steps
-1. Implementera credential-manager
-2. Migrera 6 receptionists
+## Next Steps
+1. Implement credential manager
+2. Migrate 6 receptionists
 ```
 
-### 7.2 PR-beskrivning
+### 7.2 PR description
 ```markdown
-## Sammanfattning
-Fixar auth token refresh i receptionist-base.
+## Summary
+Fix auth token refresh in receptionist-base.
 
-## Motivering
-Token förnyades inte proaktivt → 401-fel vid långa körningar.
+## Motivation
+Tokens were not renewed proactively → 401 errors during long runs.
 
-## Ändringar
-- Lade till proaktiv refresh vid 80% TTL
-- Lade till retry-logik på 401
+## Changes
+- Added proactive refresh at 80% TTL
+- Added retry logic on 401
 
-## Testning
-- Enhetstester: pass
-- Integrationstest mot Notion: pass
+## Testing
+- Unit tests: pass
+- Integration test against Notion: pass
 
-## Relaterade
+## Related
 - Issue #42
-- Docs uppdaterade
+- Docs updated
 ```
 
 ---
 
-## 8. Verktyg & Validering
+## 8. Tools & Validation
 
-| Verktyg | Syfte |
-|---------|-------|
-| `humanizer` skill | Strip AI-isms, lägg till mänsklig röst |
+| Tool | Purpose |
+|------|---------|
+| `humanizer` skill | Strip AI-isms, add a human voice |
 | `writer` skill | Full pipeline: analyze → outline → draft → edit → polish → review |
-| Länkvalidering | Alla externa länkar 200 OK |
-| Faktakoll | Alla påståenden verifierade mot källor |
+| Link validation | All external links return 200 OK |
+| Fact-check | All claims verified against sources |
 
 ---
 
-## 9. Versionshistorik
+## 9. Version History
 
-| Version | Datum | Ändringar |
-|---------|-------|-----------|
+| Version | Date | Changes |
+|---------|------|---------|
 | 0.1 | 2026-08-03 | Initial version |
 
 ---
 
-*Denna stilguide är levande — uppdatera när arkitektur eller processer förändras.*
+*This style guide is a living document — update it when the architecture or processes change.*

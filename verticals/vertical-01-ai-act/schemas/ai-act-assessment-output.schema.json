@@ -144,9 +144,9 @@
         "language": {
           "type": "string",
           "enum": [
-            "sv"
+            "en"
           ],
-          "description": "Swedish for v0.1."
+          "description": "English for v0.1."
         },
         "text": {
           "type": "string",

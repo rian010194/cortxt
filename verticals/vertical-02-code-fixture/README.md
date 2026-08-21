@@ -6,10 +6,10 @@
 
 ## Purpose
 
-The smallest solvable code task that can falsify Fas 3's exit criterion:
+The smallest solvable code task that can falsify Phase 3's exit criterion:
 one file, one off-by-one bug, one failing assertion, one obviously-correct fix.
 
-The fixture is deliberately boring. A hard fixture would let a Fas 3 failure be
+The fixture is deliberately boring. A hard fixture would let a Phase 3 failure be
 blamed on task difficulty; an easy one means a failure can only be the
 *mechanism* — workspace containment, write policy, scope inspection, sandboxed
 falsification — which is what is actually under test.

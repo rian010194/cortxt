@@ -5,7 +5,7 @@ write via tempfile+os.replace, sha256 event-chain, optimistic-concurrency
 append) as Agent Runtime's own code — session persistence and resume is
 Agent Runtime's responsibility per the target architecture (§8.2), not a
 delegated concern of a separate module. See
-docs/superpowers/specs/2026-08-15-fas2-agent-runtime-v01-design.md.
+(internal design archive)
 """
 from __future__ import annotations
 

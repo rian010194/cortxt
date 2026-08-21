@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { calculateCost, estimateRunCost } from '../systemData';
 
-// Exakta kända profiler (verifierade mot systemData.ts):
+// Exact known profiles (verified against systemData.ts):
 //   researcher / model "kimi-k2.6" : costPer1MInput = 0.55, costPer1MOutput = 2.65
 //   reviewer   / model "codex"     : costPer1MInput = 1.75, costPer1MOutput = 14.0
-// 1_000_000 tokens => exakt: input = costPer1MInput, output = costPer1MOutput,
-// total = input + output. Variabeln är deterministisk, ingen early return.
+// 1_000_000 tokens => exact: input = costPer1MInput, output = costPer1MOutput,
+// total = input + output. The variable is deterministic, no early return.
 
-describe('calculateCost — exakt summa (known) & null (unknown)', () => {
+describe('calculateCost — exact sum (known) & null (unknown)', () => {
   it('returns amount null for an unknown model (no false 0)', () => {
     const r = calculateCost('does-not-exist', 5000, 2000);
     expect(r.amount).toBeNull();
@@ -29,7 +29,7 @@ describe('calculateCost — exakt summa (known) & null (unknown)', () => {
   });
 });
 
-describe('estimateRunCost — exakt summa (known) & null (unknown)', () => {
+describe('estimateRunCost — exact sum (known) & null (unknown)', () => {
   it('returns amount null for an unknown worker role (no false 0)', () => {
     const r = estimateRunCost('does-not-exist', 5000, 2000);
     expect(r.amount).toBeNull();

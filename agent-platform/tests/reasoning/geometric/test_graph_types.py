@@ -25,9 +25,9 @@ def test_add_edge_with_rel_type_stores_type():
 
 def test_add_edge_default_opaque_keeps_behavior():
     s = ProblemSpace()
-    s.add_edge("a", "b")  # otypad
+    s.add_edge("a", "b")  # untyped
     assert s.edge_types("a", "b") == []
-    assert "b" in s.successors("a")  # orörd
+    assert "b" in s.successors("a")  # untouched
 
 
 def test_node_type_index_derives_from_nodes():

@@ -1,6 +1,6 @@
-"""Import-path continuity for the tools.py -> tools/ package move (Fas 3 Task 1).
+"""Import-path continuity for the tools.py -> tools/ package move (Phase 3 Task 1).
 
-The move must be behaviour-preserving: every name Fas 2 exported from
+The move must be behaviour-preserving: every name Phase 2 exported from
 runtime.tools must still be importable from runtime.tools, AND from its new
 submodule, AND be the same object in both places.
 """

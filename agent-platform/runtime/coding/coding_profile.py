@@ -1,4 +1,4 @@
-"""Static config for Agent Runtime's coding profile (Fas 3 v0.1).
+"""Static config for Agent Runtime's coding profile (Phase 3 v0.1).
 
 Mirrors research_profile.py's shape (design spec Components table): a
 profile_id, an allowed_tools admission list, and a workflow reference. Unlike

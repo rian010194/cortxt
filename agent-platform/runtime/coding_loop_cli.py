@@ -1,6 +1,6 @@
-"""Child-process entry point for a Fas 4 Supervisor-spawned coding run.
+"""Child-process entry point for a Phase 4 Supervisor-spawned coding run.
 
-Fas 3's CodingLoop is used completely unmodified. This module supplies the two
+Phase 3's CodingLoop is used completely unmodified. This module supplies the two
 things CodingLoop was never designed to need on its own: (1) a heartbeat signal
 a Supervisor process can observe from outside, and (2) a way for that heartbeat
 to share CodingLoop's own session log without racing on
@@ -111,7 +111,7 @@ def run_child(store: Path, session_id: str, task_id: str, fixture_dir: Path,
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Fas 4 child-process coding run")
+    parser = argparse.ArgumentParser(description="Phase 4 child-process coding run")
     parser.add_argument("--session-id", required=True)
     parser.add_argument("--store", required=True, type=Path)
     parser.add_argument("--config-json", required=True, type=Path)

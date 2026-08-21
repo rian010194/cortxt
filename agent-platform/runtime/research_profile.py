@@ -1,6 +1,6 @@
 """Static config for Agent Runtime's read-only research profile.
 
-Fas 2 v0.1: single-file read only. Fas 5: adds multi-document long-context
+Phase 2 v0.1: single-file read only. Phase 5: adds multi-document long-context
 tools (context_store-backed range slicing) — see runtime/tools/research_tools.py.
 """
 

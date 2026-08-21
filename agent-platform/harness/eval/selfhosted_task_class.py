@@ -1,14 +1,14 @@
-"""Self-hosted L0 task-class eval harness (Fas 7, Beslut 4) -- deterministic part.
+"""Self-hosted L0 task-class eval harness (Phase 7, Decision 4) -- deterministic part.
 
 Runs a named L0 fixture through any ``TextInferencePort``-like object and
 reports binary success (+ error on failure, cost routed by the port's own
-BudgetGate). This reuses the pattern from Fas 5's N=3 baseline (binary success,
+BudgetGate). This reuses the pattern from Phase 5's N=3 baseline (binary success,
 cost, N rounds) but is purpose-built for a short, bounded L0 classification /
 extraction task over synthetic text -- not ``CodingFixture`` (long-context code
 repos, wrong task class for a bounded L0 proof).
 
 0 GPU / network calls here: the harness is built and tested against a fake
-port. The real N=3 run against a deployed model is Fas B.
+port. The real N=3 run against a deployed model is Phase B.
 """
 from __future__ import annotations
 

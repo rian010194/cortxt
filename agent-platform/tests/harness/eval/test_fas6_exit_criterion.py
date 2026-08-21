@@ -1,4 +1,4 @@
-"""Fas 6 empirical exit-criterion (target-architecture §23) — geometric reasoning.
+"""Phase 6 empirical exit-criterion (target-architecture §23) — geometric reasoning.
 
 The §23 exit criterion: geometric reasoning gives *measurable improvement on the
 determining metrics* (goal_relevance, evidence_coverage, contradiction_risk — formal
@@ -16,7 +16,7 @@ The `hash_embedding` arm needs 0 model calls and runs in the default suite. The 
 gated behind `real_inference` (needs CORTXT_EMBEDDING_URL/API_KEY), so a skipped real arm is
 NOT a pass.
 
-STATUS (2026-08-17): **FIXTURE LÅST och deterministiskt validerad (0 calls).** The semantic
+STATUS (2026-08-17): **FIXTURE LOCKED and deterministically validated (0 calls).** The semantic
 tie-break fixture (seed 0, ids s1/s2/w1/w2) is pre-registered: the two branches are graph-wise
 equal on the determining metrics, and the `hash_embedding` baseline deterministically mis-ranks
 the semantically-irrelevant branch above the relevant one (0.4837 > 0.4832). The empirical
@@ -260,7 +260,7 @@ def _cached_sleep_best_path(space: ProblemSpace, start: str, goal: str, base_emb
 
 # --- locked, pre-registered fixture (a priori, do NOT change after real-embedding result) ---
 # Found deterministically (0 calls) via find_misranking_seed with the CONTENT-BASED
-# `expected_information_gain` (path_scoring bäddar in node content, not ids): the
+# `expected_information_gain` (path_scoring embeds node content, not ids): the
 # `hash_embedding` baseline mis-ranks the semantically-irrelevant path (start->w1->w2->goal)
 # above the relevant one (start->s1->s2->goal) by 0.5166 > 0.4976, and the two branches are
 # graph-wise equal on the determining metrics.
@@ -347,7 +347,7 @@ def test_fas6_geometric_corrects_hash_semantic_misranking_on_locked_fixture(tmp_
     gr_r, ev_r, cr_r = determining(relevant)
     gr_l, ev_l, cr_l = determining(lure)
 
-    print("=== Fas 6 exit — 2x2 path scores ===")
+    print("=== Phase 6 exit — 2x2 path scores ===")
     print(f"hash   relevant(w)={sc_hash_rel:.4f}   lure(wo)={sc_hash_lure:.4f}")
     print(f"voyage relevant(w)={sc_voy_rel:.4f}   lure(wo)={sc_voy_lure:.4f}")
     print(f"determining metrics (graph-wise equal branches): relevant=(gr={gr_r:.3f}, ev={ev_r:.3f}, cr={cr_r:.3f})  lure=(gr={gr_l:.3f}, ev={ev_l:.3f}, cr={cr_l:.3f})")
@@ -357,10 +357,10 @@ def test_fas6_geometric_corrects_hash_semantic_misranking_on_locked_fixture(tmp_
     # Exit pass rule: the real embedder must correct hash's semantic mis-ranking.
     assert sc_hash_lure > sc_hash_rel, "hash baseline must mis-rank (lure above relevant) — fixture discriminating"
     assert sc_voy_rel > sc_voy_lure, (
-        f"Fas 6 exit NOT met: voyage scored relevant {sc_voy_rel:.4f} <= lure {sc_voy_lure:.4f}; "
+        f"Phase 6 exit NOT met: voyage scored relevant {sc_voy_rel:.4f} <= lure {sc_voy_lure:.4f}; "
         "real embedder did NOT improve semantic ranking over hash"
     )
-    print("Fas 6 exit PASS: voyage corrects hash's semantic mis-ranking"
+    print("Phase 6 exit PASS: voyage corrects hash's semantic mis-ranking"
           f" (relevant {sc_voy_rel:.4f} > lure {sc_voy_lure:.4f}; hash had lure {sc_hash_lure:.4f} > relevant {sc_hash_rel:.4f})")
 
 

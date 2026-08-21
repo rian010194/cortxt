@@ -76,5 +76,5 @@ def test_semantic_closeness_accepts_injected_embedder():
     s.add_node(ReasoningNode(id="a", evidence=0.9))
     s.add_node(ReasoningNode(id="b"))
     custom = lambda nid: [1.0, 0.0]
-    # identisk nod mot samma injector -> 1.0
+    # identical node against the same injector -> 1.0
     assert GraphMetrics.semantic_closeness(s, "a", "a", embedder=custom) == 1.0

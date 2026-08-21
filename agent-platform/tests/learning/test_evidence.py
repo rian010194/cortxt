@@ -1,4 +1,4 @@
-"""Fas 8 Task 5 — EvidenceClassifier phase (b): verifier-checks gate evidence fail-closed before PromotionGate."""
+"""Phase 8 Task 5 — EvidenceClassifier phase (b): verifier-checks gate evidence fail-closed before PromotionGate."""
 from __future__ import annotations
 
 from learning.evidence import EvidenceClassifier

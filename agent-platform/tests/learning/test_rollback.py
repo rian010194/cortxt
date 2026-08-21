@@ -1,4 +1,4 @@
-"""Fas 8 Task 7 — rollback(type, name): atomic pointer restore + audit (P1.5)."""
+"""Phase 8 Task 7 — rollback(type, name): atomic pointer restore + audit (P1.5)."""
 from __future__ import annotations
 
 import pytest

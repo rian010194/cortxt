@@ -1,4 +1,4 @@
-"""Agent Runtime's orchestrating loop (Fas 2 v0.1, read-only research profile).
+"""Agent Runtime's orchestrating loop (Phase 2 v0.1, read-only research profile).
 
 claim -> admit+run one tool -> reasoning kernel (MODEL_ASSISTED strategy) ->
 schema-validate -> result envelope. Every step is logged to session_state so

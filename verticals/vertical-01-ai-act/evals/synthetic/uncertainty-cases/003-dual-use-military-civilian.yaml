@@ -35,8 +35,8 @@ expected_output:
     basis_annex: null
   obligations_assessed: []
   decision_brief:
-    language: sv
-    text: Systemet DualNav Vision är dubbelanvändningsbar (civil/militär). Artikel 2(3) utesluter militära tillämpningar, men det civila logistiksyftet kan omfattas. Bedömningen är osäker.
+    language: en
+    text: The DualNav Vision system is dual-use (civilian/military). Article 2(3) excludes military applications, but the civilian logistics purpose may be covered. The assessment is uncertain.
   uncertainties:
   - topic: Article 2(3) military exclusion for dual-use systems
     reason: The system is explicitly developed for both civilian logistics and military reconnaissance. It is unclear whether the military exclusion applies to the entire system, only the military variant, or neither when marketed jointly.
@@ -59,7 +59,7 @@ deterministic_assertions:
   operator: equals
   expected_value: []
 model_assisted_assertions:
-- rubric: The decision brief should mention in Swedish the dual-use nature (dubbelanvändningsbar) and the military exclusion (militär uteslutning).
+- rubric: The decision brief should mention in English the dual-use nature and the military exclusion.
   required_model_capabilities:
   - structured-output
 human_review_required: true

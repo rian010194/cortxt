@@ -1,4 +1,4 @@
-"""resolve_active_policy — injection point (Fas 8, Beslut 8; P2.1).
+"""resolve_active_policy — injection point (Phase 8, Decision 8; P2.1).
 
 Returns the currently-promoted ``CandidatePathScore`` for a (type, name), or None when nothing is promoted.
 It is the ONLY touchpoint between the learning loop and an existing execution path (geometric ``score_path``):

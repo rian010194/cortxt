@@ -10,8 +10,8 @@ export default function Verticals() {
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">Vertical Packages</h1>
         <p className="text-slate-400 max-w-3xl">
-          Vertical packages deklarerar <strong>vad</strong> som ska göras utan att äga runtime-infrastruktur.
-          Harness avgör <strong>hur</strong> arbetet körs säkert.
+          Vertical packages declare <strong>what</strong> should be done without owning runtime infrastructure.
+          The harness decides <strong>how</strong> the work runs safely.
         </p>
       </div>
 

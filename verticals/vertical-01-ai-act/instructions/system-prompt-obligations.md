@@ -44,4 +44,4 @@ Respond with a JSON object conforming to `ai-act-assessment-output.schema.json`,
 - Every unverified legal constraint must include the exact phrase `Needs primary-source research`.
 - Do not assess Articles 14-15.
 - Do not emit secrets, customer data, or internal reasoning not requested by the schema.
-- The `decision_brief.text` must be written in Swedish.
+- The `decision_brief.text` must be written in English.

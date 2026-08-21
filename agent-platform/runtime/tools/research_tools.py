@@ -1,7 +1,7 @@
-"""Research-class tools consuming context_store references (spec beslut 5).
+"""Research-class tools consuming context_store references (spec decision 5).
 Reads only from an approved, already-copied-in fixture workspace, admitted
 through ToolGate (path sandbox) and DataClassGate (Task 9) before any I/O —
-same containment discipline as Fas 3's read/search tools.
+same containment discipline as Phase 3's read/search tools.
 """
 from __future__ import annotations
 
