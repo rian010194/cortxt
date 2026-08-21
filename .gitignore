@@ -19,6 +19,8 @@ agent-platform/runs/
 # ---- Internal working documents (archived locally, not published) ----
 docs/superpowers/
 docs/assessments/
+docs/runbooks/
+harness/scripts/
 
 # ---- Python ----
 __pycache__/
