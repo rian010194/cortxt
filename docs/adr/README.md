@@ -4,7 +4,7 @@ Auktoritativt index över arkitekturbesluten i detta repo. Status per decision-s
 `docs/style-guide.md` / ADR-mönstret: **Accepted** = normativt inom sitt scope; **Proposal** = reviewbart
 förslag, inte implementeringsauktoritet; **Superseded** = historisk referens, ersatt av nyare beslut.
 
-Uppdaterat: 2026-08-20 (ADR-028, ADR-029, ADR-030 tillagda).
+Uppdaterat: 2026-08-21 (ADR-031 tillagd).
 
 | # | Titel | Status | Notis |
 | --- | --- | --- | --- |
@@ -28,6 +28,7 @@ Uppdaterat: 2026-08-20 (ADR-028, ADR-029, ADR-030 tillagda).
 | 028 | Orchestrator multi-engine resume via opak per-adapter `session_id`, CodexAdapter tillagd | **Accepted** | `EngineAdapter.invoke()` får additivt `session_id`; `/engine`-kommando i chat-REPL; implementerat och mergat 2026-08-20 |
 | 029 | Unattended daemon credential isolation — allowlistad subprocess-env, delad launch-discipline, broker som read-only caller | **Proposed** | Spec-only, ej implementerad; stänger env-inheritance-gapet i `invoke_hermes()`/`CodexAdapter.invoke()` och generaliserar Windows-shim-fixen |
 | 030 | Plan-vs-actual divergence tracking — YAML-sidecar + explicit-only korrelation, ghost-markers på riktig tidsaxel | **Proposed** (Del 1 implementerad) | `plan_task_ref`-fältet finns och flödar genom pipelinen (Del 1, 2026-08-20); reconciliation/rendering (Del 2) fortfarande bara spec |
+| 031 | Open-source license — Apache-2.0 | **Accepted** | `LICENSE` → verbatim Apache-2.0 (copyright Rikard Andersson); ersätter "viewable, not open source"; grund för produktpaketering/bidrag |
 
 ## Beslut och auktoritet
 
