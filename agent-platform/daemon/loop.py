@@ -61,6 +61,7 @@ from daemon.evidence_gate import GateOutcome, evaluate_gate
 from daemon.github_scanner import list_ready_issues as _default_list_ready_issues
 from routing.engine_manifest import DEFAULT_MANIFESTS, EngineManifest, route as _default_route
 from routing.hermes_invoker import HermesInvocationError
+from routing.dsh_invoker import DshInvocationError
 from runtime.default_engine_context import build_default_engine_context
 from runtime.engine_registry import EngineContext
 from cli.status import write_snapshot
@@ -254,13 +255,13 @@ class DaemonLoop:
                     "researcher" if "research" in task_tags else "builder",
                     prompt, timeout_seconds=300, cwd=worktree_path,
                 )
-            # Hermes-specific by construction: only HermesAdapter exists today, so
-            # this except and the "researcher"/"builder" profile strings above are
-            # coupled to Hermes's shape, not yet generalized across engines. A
-            # second adapter is the trigger (ADR-026's own Review Trigger) to widen
-            # this -- not done speculatively here.
-            except HermesInvocationError as error:
-                gate_outcome = GateOutcome("freeze", f"hermes invocation failed to start: {error}")
+            # ADR-026 Review Trigger: a second adapter (dsh) widened this
+            # except from Hermes-specific to the two invocation errors that
+            # exist today -- the "researcher"/"builder" profile strings above
+            # are the EngineAdapter-protocol shape, not hermes-specific
+            # (dsh_adapter ignores profile for its own routing).
+            except (HermesInvocationError, DshInvocationError) as error:
+                gate_outcome = GateOutcome("freeze", f"worker invocation failed to start: {error}")
                 self.autonomy.record_pass(choice.engine_id, choice.matched_tag, clean=False)
                 self._persist_autonomy()
                 self._write_status(last_gate_outcome=gate_outcome)
