@@ -7,8 +7,8 @@ AGENT_PLATFORM_PATH = Path(__file__).parent.parent.parent
 if str(AGENT_PLATFORM_PATH) not in sys.path:
     sys.path.insert(0, str(AGENT_PLATFORM_PATH))
 
-from mcp.audit import AuditLog
-from mcp.protocol import handle_request
+from cortxt_mcp.audit import AuditLog
+from cortxt_mcp.protocol import handle_request
 
 
 def test_initialize_returns_server_info():

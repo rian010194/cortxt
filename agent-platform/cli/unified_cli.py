@@ -1045,7 +1045,7 @@ def _run_mcp(args: argparse.Namespace) -> ResultEnvelope:
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
-        from mcp.server import serve as mcp_serve
+        from cortxt_mcp.server import serve as mcp_serve
 
         mcp_serve(
             allow_dispatch=args.allow_dispatch,

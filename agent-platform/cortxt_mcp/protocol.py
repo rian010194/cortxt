@@ -2,9 +2,12 @@
 
 This is the documented fallback path noted in issue #184 step 3's brief:
 used whenever the official `mcp` Python SDK isn't importable in-process --
-see `server.py`'s `_try_import_sdk` docstring for why that is in fact the
-expected path in this repo today (the local `agent-platform/mcp/` package
-name collides with the pip `mcp` SDK package). Implements just the MCP
+see `server.py`'s `_try_import_sdk` docstring for the SDK-vs-shim selection.
+(The original reason for the fallback being the *only* path -- this repo's
+package was itself named `mcp`, colliding with the pip `mcp` SDK package --
+was resolved by renaming the package to `cortxt_mcp` in PR #203 / issue
+#202, so the SDK now imports cleanly and the shim is a genuine fallback.)
+Implements just the MCP
 methods this server's tool surface needs -- `initialize`,
 `notifications/initialized`, `tools/list`, `tools/call` -- framed as
 newline-delimited JSON objects on stdin/stdout, matching MCP's stdio
