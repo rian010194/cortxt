@@ -22,6 +22,7 @@ Not yet decided (flagged, not solved here): whether the adapter interface
 should instead return a future the dispatcher awaits, and which adapter is
 implemented second. First concrete adapter: Hermes Researcher.
 """
+import os
 import subprocess
 import sys
 import threading
@@ -219,12 +220,23 @@ class DshWorkerAdapter:
     def _call(self, run: Run, task_prompt: str, timeout_seconds: int) -> dict:
         # Default resolved at call time (not as a class-attribute default) so
         # tests can inject a fake and the import stays lazy: the DSH SDK may
-        # be absent entirely.
+        # be absent entirely. Provider/model routing is provider-neutral
+        # (issue #204): read CORTXT_DSH_PROVIDER / CORTXT_DSH_MODEL from the
+        # environment, never hardcode a vendor; the SDK's own defaults apply
+        # when neither is set.
+        provider = os.environ.get("CORTXT_DSH_PROVIDER")
+        model = os.environ.get("CORTXT_DSH_MODEL")
         if self.invoke_dsh is None:
             from routing.dsh_invoker import invoke_dsh as _default
 
-            return _default(task_prompt, timeout_seconds=timeout_seconds, cwd=Path.cwd())
-        return self.invoke_dsh(task_prompt, timeout_seconds=timeout_seconds, cwd=Path.cwd())
+            return _default(
+                task_prompt, timeout_seconds=timeout_seconds,
+                provider=provider, model=model, cwd=Path.cwd(),
+            )
+        return self.invoke_dsh(
+            task_prompt, timeout_seconds=timeout_seconds,
+            provider=provider, model=model, cwd=Path.cwd(),
+        )
 
     def invoke(self, run: Run, task_prompt: str, timeout_seconds: int) -> dict:
         started = time.time()
