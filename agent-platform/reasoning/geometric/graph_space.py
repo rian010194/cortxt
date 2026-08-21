@@ -13,13 +13,13 @@ class ReasoningNode:
     id: str
     content: str = ""
     # Observable/derived scores used by the metrics (see target architecture §12).
-    evidence: float = 0.0      # evidenstäckning basis [0,1]
-    contradiction: float = 0.0  # motsägelsegrad [0,1]
+    evidence: float = 0.0      # evidence coverage basis [0,1]
+    contradiction: float = 0.0  # contradiction degree [0,1]
     confidence: float = 0.5
-    visited_count: int = 0     # for återbesök/attractor detection
-    # §9 typing (target architecture §9.1/§9.3) — added for Fas 6, backward-compatible
+    visited_count: int = 0     # for revisit/attractor detection
+    # §9 typing (target architecture §9.1/§9.3) — added for Phase 6, backward-compatible
     node_type: Optional[str] = None      # goal|constraint|concept|claim|... (§9.1)
-    metadata: Optional[dict] = None      # minsta metadata: provenance, confidence_source,
+    metadata: Optional[dict] = None      # minimal metadata: provenance, confidence_source,
                                          # evidence_refs, data_class, reasoning_step_id,
                                          # created/updated, status, version (§9.3)
 
@@ -63,7 +63,7 @@ class ProblemSpace:
     def successors(self, nid: str) -> list[str]:
         return sorted(self._edges.get(nid, set()))
 
-    # -- §9 typing accessors (Fas 6, backward-compatible) ----------------- #
+    # -- §9 typing accessors (Phase 6, backward-compatible) ----------------- #
     def edge_types(self, src: str, dst: str) -> list[str]:
         """Relation types on edge (src,dst); [] when the edge is untyped."""
         return sorted(self._edge_types.get((src, dst), set()))

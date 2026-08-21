@@ -1,12 +1,12 @@
 # Threat model: centralized credential broker for connected agent tools
 
-**Status:** Proposed — clearing Fas 1 blocker for the v.02 wayfinder. Not implemented; this document clears Fas 4's prerequisite, it is not Fas 4 itself.  
+**Status:** Proposed — clearing Phase 1 blocker for the v.02 wayfinder. Not implemented; this document clears Phase 4's prerequisite, it is not Phase 4 itself.  
 **Issue:** [`rian010194/cortxt#158`](https://github.com/rian010194/cortxt/issues/158)  
 **Cross-references:**  
 - `docs/architecture/cortxt-agent-platform-target-architecture.md` §28 (operator retains mandate over irreversible decisions)  
-- `docs/architecture/cortxt-agent-platform-target-architecture.md` §32.2 (`credential` effect class — "separat trust-boundary-beslut")  
+- `docs/architecture/cortxt-agent-platform-target-architecture.md` §32.2 (`credential` effect class — "separate trust-boundary decision")  
 - `docs/architecture/cortxt-agent-platform-target-architecture.md` §32.3 (an agent candidate can never grant itself new rights)  
-- `docs/adr/021-reopen-adr-015-for-v02-admin-surface-and-widget-ui.md` (credential-storage security model explicitly deferred to Fas 1)  
+- `docs/adr/021-reopen-adr-015-for-v02-admin-surface-and-widget-ui.md` (credential-storage security model explicitly deferred to Phase 1)  
 - v.02 vision doc PR `#156`, §3 (centralized credential handling) and §6 (security-sensitive, not yet modeled)
 
 ## 1. What we are modeling
@@ -23,7 +23,7 @@ into other systems' configuration on the operator's behalf.
 
 This document does **not** design the broker. It enumerates the threats that
 any such design must neutralize, and gives concrete, minimum-acceptable
-recommendations so that Fas 4 (implementation) does not start from an open
+recommendations so that Phase 4 (implementation) does not start from an open
 question.
 
 ## 2. Trust boundaries we assume
@@ -186,7 +186,7 @@ every connected tool's credentials at once.
 
 ### 3.4 Blast radius if an addon is malicious or compromised post-approval
 
-**Threat.** The vision doc's addon model (Fas 5, separate from this task) allows
+**Threat.** The vision doc's addon model (Phase 5, separate from this task) allows
 addons that can install *executable logic*, not just UI decorations. An addon
 that is malicious at ship time, or that becomes compromised after approval
 (supply-chain dependency rot, a compromised update, a legitimate addon whose
@@ -215,7 +215,7 @@ compromised UI component; it is a potential credential consumer.
 3. **Pin and verify addon provenance.** If addons can update, the update path
    must be integrity-protected (signed or hash-pinned) so a compromised update
    server or a MITM does not silently replace an approved addon with a malicious
-   one. This is a Fas 5 concern, but the broker's threat model must assume the
+   one. This is a Phase 5 concern, but the broker's threat model must assume the
    update path exists and be hardened accordingly; the broker cannot be the
    component that catches a supply-chain failure it had no part in designing.
 
@@ -228,7 +228,7 @@ compromised UI component; it is a potential credential consumer.
    later compromised.
 
 5. **Name the blast radius honestly in the addon model.** The addon review
-   process (Fas 5) must state, explicitly, what a compromised or malicious
+   process (Phase 5) must state, explicitly, what a compromised or malicious
    addon *can and cannot* reach, with the credential broker named as one of the
    protected assets. A review that says "addons are sandboxed" without
    enumerating the broker as a boundary is not a completed threat model.
@@ -239,13 +239,13 @@ The broker must not create a path for an agent to self-grant new tool access
 without operator approval. This is not a feature request; it is a constraint
 carried directly from `cortxt-agent-platform-target-architecture.md` §28:
 
-> *Control Plane äger mandat; agenten äger inte sitt eget scope.*
+> *The Control Plane owns the mandate; the agent does not own its own scope.*
 
 and from §32.3:
 
-> *En kandidat kan aldrig ge sig själv nya rättigheter. Nya nätverksmål,
-> credentials, externa mutationer och irreversibla effekter kräver uttrycklig
-> promotion enligt Control Plane policy.*
+> *A candidate can never grant itself new rights. New network targets,
+> credentials, external mutations, and irreversible effects require explicit
+> promotion per Control Plane policy.*
 
 Concrete implications for the broker:
 
@@ -268,17 +268,17 @@ traceable to an operator or explicitly pre-approved policy decision.
 
 ## 5. Out of scope (stated explicitly)
 
-- Implementing the broker — that is Fas 4, and this document clears its
+- Implementing the broker — that is Phase 4, and this document clears its
   prerequisite, it does not do its work.
-- Pricing, naming, and the addon review process — those are Fas 6 / Fas 5 and
+- Pricing, naming, and the addon review process — those are Phase 6 / Phase 5 and
   are flagged as open questions in vision doc §6 and in
   `docs/adr/021-reopen-adr-015-for-v02-admin-surface-and-widget-ui.md`.
 - The hosted-vs-local decision for the admin surface — this document assumes
   local and flags the hosted case as requiring its own threat model.
 
-## 6. Minimum acceptance before Fas 4 may start
+## 6. Minimum acceptance before Phase 4 may start
 
-Fas 4 may begin when the implementation plan for the broker can answer, for each
+Phase 4 may begin when the implementation plan for the broker can answer, for each
 of the four areas above, "what is our concrete design, and how does it satisfy
 the recommendation in this document." A broker design that hand-waves any of the
 four areas — especially write-path operator gating, no credential enumeration,
@@ -286,7 +286,7 @@ and the §28 no-self-grant constraint — is not ready to implement.
 
 ## 7. Document status
 
-Proposed, 2026-08-18. Written to clear the Fas 1 blocker in
+Proposed, 2026-08-18. Written to clear the Phase 1 blocker in
 `rian010194/cortxt#158` as part of the v.02 wayfinder. Not an ADR; not
-implementation; not a substitute for the Fas 4 design doc or the Fas 5 addon
+implementation; not a substitute for the Phase 4 design doc or the Phase 5 addon
 review process.

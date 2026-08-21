@@ -3,11 +3,11 @@
 **Status:** Proposed
 **Date:** 2026-08-20
 **Deciders:** Rikard Andersson (operator), with the six open questions resolved by Codex per operator direction
-**Technical Story:** `docs/superpowers/specs/2026-08-20-unattended-daemon-credential-security-model-v1-design.md`
+**Technical Story:** (internal design archive)
 
 ## Context
 
-`docs/superpowers/specs/2026-08-19-supervisor-daemon-v1-design.md` designs
+(internal design archive) designs
 a long-running, largely unattended daemon that scans GitHub Issues, routes
 them to an engine, and dispatches through `Coordinator` for hours at a
 time. That spec explicitly deferred its own credential/security model as

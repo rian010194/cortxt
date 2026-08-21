@@ -1,9 +1,9 @@
-"""Fas 5 exit-criterion proof, Coding class (target-architecture §23).
+"""Phase 5 exit-criterion proof, Coding class (target-architecture §23).
 
-Mirrors Fas 4's real-inference discipline: structural/stub tests (Tasks 1-12)
+Mirrors Phase 4's real-inference discipline: structural/stub tests (Tasks 1-12)
 prove the mechanism; THIS test is the actual empirical exit-criterion
 evidence and must be run against a live model, not skipped or stubbed as a
-pass. Like Fas 4's test_m1, it SKIPS loudly when no live model is configured
+pass. Like Phase 4's test_m1, it SKIPS loudly when no live model is configured
 (a skipped test is NOT a passed exit proof).
 
 Environment needed to run this for real (not skip):
@@ -107,4 +107,4 @@ def test_rlm_beats_baseline_on_coding_long_context_class(tmp_path):
                               run_rlm_fn=run_rlm_fn, run_baseline_fn=run_baseline_fn)
 
     assert outcome.rlm_pass is True, (
-        f"Fas 5 exit criterion NOT met on Coding class: {outcome.rounds}")
+        f"Phase 5 exit criterion NOT met on Coding class: {outcome.rounds}")

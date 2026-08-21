@@ -28,5 +28,5 @@ testpaths = ["tests"]
 pythonpath = [".", ".."]
 markers = [
     "real_inference: opt-in test that makes real (L0) model calls; excluded by default",
-    "docker_required: opt-in test that needs a running Docker daemon; excluded by default. These are Fas 3's container-boundary proof — a skip is NOT a pass.",
+    "docker_required: opt-in test that needs a running Docker daemon; excluded by default. These are Phase 3's container-boundary proof — a skip is NOT a pass.",
 ]

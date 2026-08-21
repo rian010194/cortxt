@@ -34,8 +34,8 @@ expected_output:
     basis_annex: null
   obligations_assessed: []
   decision_brief:
-    language: sv
-    text: Systemet CitizenScore är förbjudet enligt Artikel 5(1)(c) i AI-förordningen eftersom det utgör social bedömning av enskilda personer av offentliga myndigheter. Ytterligare skyldighetsbedömning är inte relevant.
+    language: en
+    text: The CitizenScore system is prohibited under Article 5(1)(c) of the AI Act because it constitutes social scoring of individuals by public authorities. Further obligations assessment is not relevant.
   uncertainties: []
   schema_validation_passed: true
 deterministic_assertions:
@@ -50,9 +50,9 @@ deterministic_assertions:
   expected_value: []
 - path: /decision_brief/language
   operator: equals
-  expected_value: sv
+  expected_value: en
 model_assisted_assertions:
-- rubric: The decision brief should clearly state in Swedish that the system is prohibited (förbjudet) and cite Article 5.
+- rubric: The decision brief should clearly state in English that the system is prohibited and cite Article 5.
   required_model_capabilities:
   - structured-output
 human_review_required: false

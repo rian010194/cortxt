@@ -5,14 +5,14 @@ import {
 } from 'lucide-react';
 
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Översikt' },
-  { to: '/flow', icon: GitBranch, label: 'Flöde' },
-  { to: '/agents', icon: Users, label: 'Agenter' },
+  { to: '/', icon: LayoutDashboard, label: 'Overview' },
+  { to: '/flow', icon: GitBranch, label: 'Flow' },
+  { to: '/agents', icon: Users, label: 'Agents' },
   { to: '/skills', icon: Wrench, label: 'Capabilities' },
   { to: '/kanban', icon: KanbanSquare, label: 'Kanban' },
   { to: '/dispatch', icon: Send, label: 'Dispatch' },
   { to: '/verticals', icon: Boxes, label: 'Verticals' },
-  { to: '/assess', icon: Scale, label: 'AI Act Bedömning' },
+  { to: '/assess', icon: Scale, label: 'AI Act Assessment' },
   { to: '/telemetry', icon: Activity, label: 'Economics' },
 ];
 
@@ -49,7 +49,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="p-2 rounded-md bg-amber-900/20 border border-amber-800/40 text-amber-200 mb-2">
             Preview / static data
           </div>
-          <div className="text-slate-400">Senast uppdaterad: okänt</div>
+          <div className="text-slate-400">Last updated: unknown</div>
           <div>Profile: coordinator</div>
           <div className="mt-2 text-slate-600">v0.1.0 prototype</div>
         </div>

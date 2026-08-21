@@ -24,7 +24,7 @@ def test_run_node_decomposes_to_depth_2_within_total_children_budget(tmp_path, f
                                                      max_total_children=6))
     assert result["status"] == "succeeded"
     assert result["depth_reached"] == 2
-    # combinatorics from spec beslut 2: 3 direct children consume 3 of 6; the
+    # combinatorics from spec decision 2: 3 direct children consume 3 of 6; the
     # remaining pool (3) splits across those 3 children, so at most one
     # grandchild per child — exactly what the fixture (fake_spawner_decomposing)
     # is built to exercise.

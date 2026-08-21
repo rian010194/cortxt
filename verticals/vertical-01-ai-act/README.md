@@ -18,7 +18,7 @@ For a single system description input, the vertical:
 1. Determines whether the described system falls within the material scope of the AI Act (Articles 2-3, Annex I).
 2. Classifies whether the system is prohibited (Article 5) or high-risk (Article 6, including 6.3-6.4; Annex III).
 3. Identifies the applicable obligations for the classified system (Articles 9-12, with Annex IV supporting Article 11).
-4. Produces a validated structured JSON result and a short Swedish decision brief.
+4. Produces a validated structured JSON result and a short English decision brief.
 
 ## What v0.1 does NOT decide (non-goals)
 
@@ -60,7 +60,7 @@ verticals/vertical-01-ai-act/
 |   |-- boundary-cases/           # 3 fixtures
 |   `-- uncertainty-cases/        # 3 fixtures
 |-- templates/
-    `-- decision-brief-sv.md      # Swedish decision brief template
+    `-- decision-brief-en.md      # English decision brief template
 ```
 
 ## Usage
@@ -70,7 +70,7 @@ verticals/vertical-01-ai-act/
 3. The classification stage consumes `instructions/system-prompt-classify.md`.
 4. The obligations stage consumes `instructions/system-prompt-obligations.md`.
 5. Output is validated against `schemas/ai-act-assessment-output.schema.json`.
-6. The harness renders `templates/decision-brief-sv.md` into the final result.
+6. The harness renders `templates/decision-brief-en.md` into the final result.
 
 ## Synthetic evaluation
 
@@ -89,7 +89,7 @@ This package assists classification; it does not provide binding legal advice. E
 1. Package loads cleanly (`vertical.yaml` + all schemas valid).
 2. At least one fixture per category exists.
 3. All output JSON schemas are syntactically valid.
-4. Swedish brief template is non-empty and in Swedish.
+4. English brief template is non-empty and in English.
 5. Deterministic structural checks are expressible in the schemas.
 6. Uncertainty cases can be represented.
 7. No secrets or real documents in any file.

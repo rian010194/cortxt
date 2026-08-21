@@ -2,10 +2,10 @@
 name: demo-researcher
 version: 2.1.0
 category: research
-description: L0-syntetisk mock-skill för portabilitetstest
+description: L0-synthetic mock skill for portability testing
 linked_files:
   - templates/brief.md
 ---
 # Demo Researcher
 
-L0-syntetisk mock-skill. Exempel på en forskningsassistent-arbetsförmåga.
+L0-synthetic mock skill. Example of a research-assistant capability.

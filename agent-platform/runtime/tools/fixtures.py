@@ -1,4 +1,4 @@
-"""Fixture-reading tool (Fas 2, moved unchanged into the tools package)."""
+"""Fixture-reading tool (Phase 2, moved unchanged into the tools package)."""
 from __future__ import annotations
 import json
 from .gate import ToolExecutionError, ToolGate

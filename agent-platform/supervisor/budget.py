@@ -1,6 +1,6 @@
 """Post-hoc budget rollover between sequential children (design spec decision
 7). Only unused surplus from an already-terminal child rolls forward; there is
-no mid-flight borrowing, since Fas 4 v0.1's M1/M2 scenarios never run two
+no mid-flight borrowing, since Phase 4 v0.1's M1/M2 scenarios never run two
 children that both need to draw against the same pool concurrently.
 """
 from __future__ import annotations
@@ -38,7 +38,7 @@ def split_rlm_config(config: RLMConfig, n: int) -> list[RLMConfig]:
     slots of the parent's own pool, so only the REMAINDER
     (config.max_total_children - n, floored at 0) is available for those
     children's own further decomposition — matches the spec's combinatorial
-    analysis (beslut 2). The other five bounds are consumable resources, not
+    analysis (decision 2). The other five bounds are consumable resources, not
     spawn-slot counts, so they divide the parent's full value n ways.
     """
     from reasoning.recursive.bounds import RLMConfig as _RLMConfig

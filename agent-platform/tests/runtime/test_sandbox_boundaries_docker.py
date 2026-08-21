@@ -1,8 +1,8 @@
 """Container boundary proof (design spec decision 3 and decision 7's Network row).
 
-THESE ARE THE TESTS THAT PROVE FAS 3'S CONTAINMENT CLAIM. They require a
+THESE ARE THE TESTS THAT PROVE PHASE 3'S CONTAINMENT CLAIM. They require a
 running Docker daemon and are excluded from the default suite by the
-docker_required marker. Fas 3 is NOT proven until this file has been seen green
+docker_required marker. Phase 3 is NOT proven until this file has been seen green
 in an environment with a live daemon — this machine with Docker Desktop
 started, or GitHub Actions' hosted Ubuntu runner (see Task 13).
 

@@ -6,10 +6,10 @@ import Assess from '../../pages/Assess';
 // uncertain / needs_more_info => warning-amber + AlertTriangle regardless of
 // the boolean applicability result; safe positive => red, safe negative => green.
 const FIXTURES: Record<string, { label: string; riskLabel: string; appliesText: string }> = {
-  unc: { label: 'Knapphändig beskrivning (osäkerhet)', riskLabel: 'Osäker', appliesText: 'Tillämpas inte' },
-  bnd: { label: 'Crowd-räkning utan identifiering (gränsfall)', riskLabel: 'Osäker', appliesText: 'AI-förordningen tillämpas' },
-  pos: { label: 'Högrisk medicinsk diagnos (positiv)', riskLabel: 'Hög risk', appliesText: 'AI-förordningen tillämpas' },
-  neg: { label: 'Traditionell bokföringsprogramvara (negativ)', riskLabel: 'Minimal risk', appliesText: 'Tillämpas inte' },
+  unc: { label: 'Sparse description (uncertainty)', riskLabel: 'Uncertain', appliesText: 'Not applicable' },
+  bnd: { label: 'Crowd counting without identification (boundary)', riskLabel: 'Uncertain', appliesText: 'AI Act applies' },
+  pos: { label: 'High-risk medical diagnosis (positive)', riskLabel: 'High risk', appliesText: 'AI Act applies' },
+  neg: { label: 'Traditional accounting software (negative)', riskLabel: 'Minimal risk', appliesText: 'Not applicable' },
 };
 
 describe('Assess applicability badges — fully confidence-aware (#54 + P2)', () => {
@@ -29,8 +29,8 @@ describe('Assess applicability badges — fully confidence-aware (#54 + P2)', ()
   it('negative + needs_more_info renders amber with AlertTriangle, never green/red', () => {
     render(<Assess />);
     addFixture(FIXTURES.unc.label);
-    // applicability badge showing "Tillämpas inte"
-    const appBadge = Array.from(screen.getAllByText('Tillämpas inte'))
+    // applicability badge showing "Not applicable"
+    const appBadge = Array.from(screen.getAllByText('Not applicable'))
       .map(n => n.closest('span'))
       .find(s => s && s.className.includes('badge')) as HTMLElement;
     expect(appBadge.className).toContain('badge-amber');
@@ -39,8 +39,8 @@ describe('Assess applicability badges — fully confidence-aware (#54 + P2)', ()
     // AlertTriangle icon present (a lucide svg inside the badge)
     const tri = appBadge.querySelector('svg');
     expect(tri).toBeTruthy();
-    // risk-class "Osäker" is amber too
-    const risk = screen.getAllByText('Osäker').map(n => n.closest('span')) as HTMLElement[];
+    // risk-class "Uncertain" is amber too
+    const risk = screen.getAllByText('Uncertain').map(n => n.closest('span')) as HTMLElement[];
     expect(risk.some(n => n?.className?.includes('badge-amber'))).toBe(true);
     expect(risk.some(n => n?.className?.includes('badge-green'))).toBe(false);
   });
@@ -48,7 +48,7 @@ describe('Assess applicability badges — fully confidence-aware (#54 + P2)', ()
   it('positive + uncertain renders amber with AlertTriangle, never green/red', () => {
     render(<Assess />);
     addFixture(FIXTURES.bnd.label);
-    const appBadge = Array.from(screen.getAllByText('AI-förordningen tillämpas'))
+    const appBadge = Array.from(screen.getAllByText('AI Act applies'))
       .map(n => n.closest('span'))
       .find(s => s && s.className.includes('badge')) as HTMLElement;
     expect(appBadge.className).toContain('badge-amber');
@@ -61,13 +61,13 @@ describe('Assess applicability badges — fully confidence-aware (#54 + P2)', ()
     render(<Assess />);
     // safe positive
     addFixture(FIXTURES.pos.label);
-    let app = Array.from(screen.getAllByText('AI-förordningen tillämpas'))
+    let app = Array.from(screen.getAllByText('AI Act applies'))
       .map(n => n.closest('span')).find(s => s && s.className.includes('badge')) as HTMLElement;
     expect(app.className).toContain('badge-red');
     expect(app.className).not.toContain('badge-amber');
     // safe negative
     addFixture(FIXTURES.neg.label);
-    app = Array.from(screen.getAllByText('Tillämpas inte'))
+    app = Array.from(screen.getAllByText('Not applicable'))
       .map(n => n.closest('span')).find(s => s && s.className.includes('badge') && s.className.includes('badge-green')) as HTMLElement;
     expect(app.className).toContain('badge-green');
   });

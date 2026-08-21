@@ -1,8 +1,8 @@
-"""EvidenceClassifier — typed evidence for the controlled learning loop (Fas 8, Beslut 10c).
+"""EvidenceClassifier — typed evidence for the controlled learning loop (Phase 8, Decision 10c).
 
 Architecture borrowed as DESIGN INSPIRATION from Cloudflare Agent Memory (operator directive 2026-08-18):
 a ``verifier`` runs checks before a memory is classified into one of four types, and retrieval is
-multi-channel. Fas 8 uses the idea, NOT the Cloudflare service (no SLA, unknown pricing).
+multi-channel. Phase 8 uses the idea, NOT the Cloudflare service (no SLA, unknown pricing).
 
 Two phases (Kimi P2.6):
 - ``phase_a`` (at submit): initial classification of a candidate's payload/provenance into the four types

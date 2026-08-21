@@ -11,7 +11,7 @@ vllm:num_requests_waiting_by_reason{engine="0",model_name="Qwen/Qwen3-8B-AWQ",re
 vllm:kv_cache_usage_perc{engine="0",model_name="Qwen/Qwen3-8B-AWQ"} 0.42
 """
 # Fixture captured verbatim (metric names/labels) against a live vLLM 0.27.1
-# instance during Fas B provisioning, 2026-08-17 -- vLLM's real metric name is
+# instance during Phase B provisioning, 2026-08-17 -- vLLM's real metric name is
 # `kv_cache_usage_perc`, not `gpu_cache_usage_perc` as an earlier draft assumed.
 
 def test_parse_liveness_healthy_with_metrics():
@@ -23,7 +23,7 @@ def test_parse_liveness_healthy_with_metrics():
 def test_parse_liveness_health_down_ignores_metrics():
     sample = parse_liveness(health_ok=False, metrics_text=VLLM_METRICS_FIXTURE)
     assert sample.alive is False
-    assert sample.vram_pct is None  # degraderat, inte fabricerat
+    assert sample.vram_pct is None  # degraded, not fabricated
 
 def test_parse_liveness_malformed_metrics_degrades_not_crashes():
     sample = parse_liveness(health_ok=True, metrics_text="not prometheus format")
@@ -53,7 +53,7 @@ def test_probe_success_calls_parse_liveness(monkeypatch):
 
 
 def test_probe_sends_bearer_auth_header_from_env(monkeypatch):
-    # Fas 7's real Vast.ai deployment fronts vLLM with a Caddy proxy requiring
+    # Phase 7's real Vast.ai deployment fronts vLLM with a Caddy proxy requiring
     # Authorization: Bearer <token> (verified live, 2026-08-17) -- the probe
     # must send it, same convention as TextInferencePort/EmbeddingPort.
     captured = {}

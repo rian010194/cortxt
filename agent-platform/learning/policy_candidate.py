@@ -1,4 +1,4 @@
-"""Policy-candidate adapter + concrete policy-constraint safety rules (Fas 8, Beslut 1/10a; P1.1).
+"""Policy-candidate adapter + concrete policy-constraint safety rules (Phase 8, Decision 1/10a; P1.1).
 
 P1.1 correction: a ``CandidatePathScore`` weight-set is 7 scalars, NOT a graph node — so the geometric
 ``AttractorDetector``/``contradiction`` operators (which operate on ``ProblemSpace`` + node_id) do NOT apply
@@ -11,7 +11,7 @@ the §12.4 normalization contract:
 
 These are registered as ``kind="safety"`` ``PromotionRule``s, so a violating weight candidate is REJECTed by
 the gate purely as data. (For FUTURE candidate types where a candidate IS a graph node, AttractorDetector can
-be reused as a genuine geometric safety-rule — noted in the spec's "Vägen till det större målet", not v1.)
+be reused as a genuine geometric safety-rule — noted in the spec's "The Road to the Bigger Goal", not v1.)
 """
 from __future__ import annotations
 

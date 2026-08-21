@@ -34,19 +34,19 @@ describe('Layout — false-freshness (static preview)', () => {
   it('shows an honest unknown last-updated instead of the render date', () => {
     renderLayout();
     // Honest unknown timestamp is shown.
-    expect(screen.getByText(/Senast uppdaterad: okänt/)).toBeTruthy();
+    expect(screen.getByText(/Last updated: unknown/)).toBeTruthy();
     // The (fake) current date must NOT be rendered as the data's update time.
     expect(screen.queryByText(new RegExp(fakeDateStr))).toBeNull();
-    // No accidental "Senast uppdaterad: <date>" pattern.
-    expect(screen.queryByText(/Senast uppdaterad: \d{4}-\d{2}-\d{2}/)).toBeNull();
+    // No accidental "Last updated: <date>" pattern.
+    expect(screen.queryByText(/Last updated: \d{4}-\d{2}-\d{2}/)).toBeNull();
   });
 
   it('is independent of actual system time (does not read Date for freshness)', () => {
     // Change the fake time to a different day; output must be unchanged.
     vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
     renderLayout();
-    expect(screen.getByText(/Senast uppdaterad: okänt/)).toBeTruthy();
-    expect(screen.queryByText(/Senast uppdaterad: \d{4}-\d{2}-\d{2}/)).toBeNull();
+    expect(screen.getByText(/Last updated: unknown/)).toBeTruthy();
+    expect(screen.queryByText(/Last updated: \d{4}-\d{2}-\d{2}/)).toBeNull();
     expect(screen.queryByText('2030-01-01')).toBeNull();
   });
 });

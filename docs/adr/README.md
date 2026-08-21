@@ -1,45 +1,45 @@
-# ADR-index (Architecture Decision Records)
+# ADR Index (Architecture Decision Records)
 
-Auktoritativt index över arkitekturbesluten i detta repo. Status per decision-state-regeln i
-`docs/style-guide.md` / ADR-mönstret: **Accepted** = normativt inom sitt scope; **Proposal** = reviewbart
-förslag, inte implementeringsauktoritet; **Superseded** = historisk referens, ersatt av nyare beslut.
+Authoritative index of the architecture decisions in this repo. Status per the decision-state rule in
+`docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
+proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Uppdaterat: 2026-08-21 (ADR-031 tillagd).
+Updated: 2026-08-21 (ADR-031 added).
 
-| # | Titel | Status | Notis |
+| # | Title | Status | Notes |
 | --- | --- | --- | --- |
-| 011 | Model Router for Coordinator Fallback | **Superseded** (ADR-017) | Predaterar F0/F1; statisk fallback-kedja ersatt av providerneutral inference (ADR-016) + reasoning (ADR-017) |
-| 012 | Disaster Recovery for Profiles, Skills, and Memory | **Superseded** (ADR-017) | Predaterar F0/F1; portabilitet förskjuts mot Cortxt-ägda portar/tillstånd |
-| 013 | Skill Composition Model | **Superseded** (ADR-017) | Predaterar F0/F1; statisk skill-pack-modell ersatt av providerneutral arkitektur |
-| 014 | Cortxt Product Vision and First User (F0) | **Accepted** (amended 2026-08-16 för proof-env-namn per ADR-020) | Produktvision + första användare |
-| 015 | Cortxt First Wedge and Product Surface (F1) | **Accepted** (amended 2026-08-16 för proof-env-namn per ADR-020) | Wedge B: provider-/dataklassstyrd långvarig analys; repository+CLI |
-| 016 | Agent Platform bounded context, InferencePort och provider-assurance | **Accepted** (amended 2026-08-14 för reasoning/ per ADR-017) | Bounded context + InferencePort + dataklass→gate; reasoning/ nu tracked/Accepted |
-| 017 | Agent Platform — reasoning-kärnan accepterad som tracked arkitektur | **Accepted** (post-review) | Vertikalt slice DM1–4 (PR #113, commit `09f1d8a`) bevisar behovet; `agent-platform/reasoning/` → tracked |
-| 018 | Workflow-state carrier — GitHub Issue labels | **Accepted** | `workflow:*`-labels är tillståndsbärare (ADR-018); Project 4 frusen legacy |
-| 019 | Coding execution — permanent multi-engine routing, not Pi/Hermes replacement | **Accepted** | Pi/Hermes/Codex (+ framtida Copilot) permanenta routingval jämte egen Coding Agent; upphäver §24.2-ersättningskriterier i target-architecture.md |
-| 020 | Proof environment naming — redact product/partner name from public surface | **Accepted** | Terminologiredaktion: "Norcom/CSL" → "proof environment B" framåt; ADR-014/015 oredigerade och kvar Accepted för sakinnehållet |
-| 021 | Reopen ADR-015 for v.02 admin surface + widget UI (F2 treatment) | **Accepted** | ADR-015 review-trigger observerad; beslutar endast produktyta-komplement (widget + adminyta ovanpå CLI), inte wedge, naming, säkerhetsmodell, pris eller addon-granskning; Fas 2+ i v.02-wayfindern nu auktoritativt |
-| 022 | Fas 3 v0.1 — capability manifest shape and engine-selection criteria | **Accepted** | Motoragnostiskt capability-manifest + deterministisk `route()`; löser ADR-019:s öppna urvalskriterie-punkt |
-| 023 | Cortxt supports both bottom-up and top-down integration, not one exclusively | **Accepted** | Top-down internt permanent + avsiktligt bottom-up-konsumerbar utåt; beslutar riktningen, inte ytan (deferrat till Fas 6) |
-| 024 | External integration surface takes the form of an MCP server | **Accepted** | Beslutar ADR-023:s deferrade ytform: MCP-server, inte SDK/REST, för initial skiva |
-| 025 | Geometric Reasoning's decisive vs. diagnostic metrics (§27 #8) | **Accepted** | Formaliserar vilka av §12.2:s tio mått som styr beslut idag (5) kontra bara rapporterar (5); löser upp `w1`/`information_gain`-namnkollisionen; löser upp Fas 6:s blockerande exitkriterium |
-| 026 | Engine adapter-registry (cordis-inspirerad DI) hålls separat från `route()`s selection | **Accepted** (amended 2026-08-19 för service-broker-mönster per ADR-027) | `route()`/`engine_manifest.py` orört; nytt `EngineAdapter`/`EngineContext`-lager ersätter `unified_cli.py`s if/elif-dispatch, inte selection-logiken |
-| 027 | `EngineContext` antar service-broker-mönstret (Cordis §6.2), inte exclusive binding | **Accepted** | `engine_id` blir en broker-nyckel som kan bära flera providers utan att störa konsumenter; v1 bygger bara skelettet (en provider = passthrough), ingen routningspolicy förrän en andra provider faktiskt registreras |
-| 028 | Orchestrator multi-engine resume via opak per-adapter `session_id`, CodexAdapter tillagd | **Accepted** | `EngineAdapter.invoke()` får additivt `session_id`; `/engine`-kommando i chat-REPL; implementerat och mergat 2026-08-20 |
-| 029 | Unattended daemon credential isolation — allowlistad subprocess-env, delad launch-discipline, broker som read-only caller | **Proposed** | Spec-only, ej implementerad; stänger env-inheritance-gapet i `invoke_hermes()`/`CodexAdapter.invoke()` och generaliserar Windows-shim-fixen |
-| 030 | Plan-vs-actual divergence tracking — YAML-sidecar + explicit-only korrelation, ghost-markers på riktig tidsaxel | **Proposed** (Del 1 implementerad) | `plan_task_ref`-fältet finns och flödar genom pipelinen (Del 1, 2026-08-20); reconciliation/rendering (Del 2) fortfarande bara spec |
-| 031 | Open-source license — Apache-2.0 | **Accepted** | `LICENSE` → verbatim Apache-2.0 (copyright Rikard Andersson); ersätter "viewable, not open source"; grund för produktpaketering/bidrag |
+| 011 | Model Router for Coordinator Fallback | **Superseded** (ADR-017) | Predates F0/F1; static fallback chain replaced by provider-neutral inference (ADR-016) + reasoning (ADR-017) |
+| 012 | Disaster Recovery for Profiles, Skills, and Memory | **Superseded** (ADR-017) | Predates F0/F1; portability shifts toward Cortxt-owned ports/state |
+| 013 | Skill Composition Model | **Superseded** (ADR-017) | Predates F0/F1; static skill-pack model replaced by provider-neutral architecture |
+| 014 | Cortxt Product Vision and First User (F0) | **Accepted** (amended 2026-08-16 for proof-env naming per ADR-020) | Product vision + first user |
+| 015 | Cortxt First Wedge and Product Surface (F1) | **Accepted** (amended 2026-08-16 for proof-env naming per ADR-020) | Wedge B: provider-/data-class-driven long-running analysis; repository+CLI |
+| 016 | Agent Platform bounded context, InferencePort and provider-assurance | **Accepted** (amended 2026-08-14 for reasoning/ per ADR-017) | Bounded context + InferencePort + data-class→gate; reasoning/ now tracked/Accepted |
+| 017 | Agent Platform — reasoning core accepted as tracked architecture | **Accepted** (post-review) | Vertical slice DM1–4 (PR #113, commit `09f1d8a`) proves the need; `agent-platform/reasoning/` → tracked |
+| 018 | Workflow-state carrier — GitHub Issue labels | **Accepted** | `workflow:*` labels are the state carrier (ADR-018); Project 4 frozen legacy |
+| 019 | Coding execution — permanent multi-engine routing, not Pi/Hermes replacement | **Accepted** | Pi/Hermes/Codex (+ future Copilot) permanent routing choices alongside own Coding Agent; supersedes the §24.2 replacement criteria in target-architecture.md |
+| 020 | Proof environment naming — redact product/partner name from public surface | **Accepted** | Terminology redaction: "Norcom/CSL" → "proof environment B" going forward; ADR-014/015 unedited and remain Accepted for their substance |
+| 021 | Reopen ADR-015 for v.02 admin surface + widget UI (F2 treatment) | **Accepted** | ADR-015 review trigger observed; decides only product-surface additions (widget + admin surface on top of CLI), not wedge, naming, security model, pricing, or add-on review; Phase 2+ in the v.02 wayfinder now authoritative |
+| 022 | Phase 3 v0.1 — capability manifest shape and engine-selection criteria | **Accepted** | Engine-agnostic capability manifest + deterministic `route()`; resolves ADR-019's open selection-criteria point |
+| 023 | Cortxt supports both bottom-up and top-down integration, not one exclusively | **Accepted** | Top-down permanently internal + deliberately bottom-up-consumable outward; decides the direction, not the surface (deferred to Phase 6) |
+| 024 | External integration surface takes the form of an MCP server | **Accepted** | Decides ADR-023's deferred surface form: MCP server, not SDK/REST, for the initial slice |
+| 025 | Geometric Reasoning's decisive vs. diagnostic metrics (§27 #8) | **Accepted** | Formalizes which of §12.2's ten metrics drive decisions today (5) versus merely report (5); resolves the `w1`/`information_gain` name collision; resolves Phase 6's blocking exit criterion |
+| 026 | Engine adapter-registry (Cordis-inspired DI) kept separate from `route()`'s selection | **Accepted** (amended 2026-08-19 for service-broker pattern per ADR-027) | `route()`/`engine_manifest.py` untouched; new `EngineAdapter`/`EngineContext` layer replaces `unified_cli.py`'s if/elif dispatch, not the selection logic |
+| 027 | `EngineContext` adopts the service-broker pattern (Cordis §6.2), not exclusive binding | **Accepted** | `engine_id` becomes a broker key that can carry multiple providers without disturbing consumers; v1 builds only the skeleton (one provider = passthrough), no routing policy until a second provider is actually registered |
+| 028 | Orchestrator multi-engine resume via opaque per-adapter `session_id`, CodexAdapter added | **Accepted** | `EngineAdapter.invoke()` gains additive `session_id`; `/engine` command in chat-REPL; implemented and merged 2026-08-20 |
+| 029 | Unattended daemon credential isolation — allowlisted subprocess-env, shared launch discipline, broker as read-only caller | **Proposed** | Spec-only, not implemented; closes the env-inheritance gap in `invoke_hermes()`/`CodexAdapter.invoke()` and generalizes the Windows shim fix |
+| 030 | Plan-vs-actual divergence tracking — YAML-sidecar + explicit-only correlation, ghost markers on real timeline | **Proposed** (Part 1 implemented) | `plan_task_ref` field exists and flows through the pipeline (Part 1, 2026-08-20); reconciliation/rendering (Part 2) still spec-only |
+| 031 | Open-source license — Apache-2.0 | **Accepted** | `LICENSE` → verbatim Apache-2.0 (copyright Rikard Andersson); replaces "viewable, not open source"; basis for product packaging/contributions |
 
-## Beslut och auktoritet
+## Decisions and Authority
 
-- **Reasoning-kärnan** (`agent-platform/reasoning/`) är **tracked/Accepted** per ADR-017, backat av vertikala
-  slicet DM1–4 i `main` (PR #113, commit `09f1d8a`; 58 pytest, 93 % cov, `test_no_external_deps`).
-- **`agent-platform/adapters/` och övriga agent-platform-paket** förblir **Proposal/Untracked** tills egna
+- **The reasoning core** (`agent-platform/reasoning/`) is **tracked/Accepted** per ADR-017, backed by the vertical
+  slice DM1–4 in `main` (PR #113, commit `09f1d8a`; 58 pytest, 93 % cov, `test_no_external_deps`).
+- **`agent-platform/adapters/` and other agent-platform packages** remain **Proposal/Untracked** until their own
   vertical slices (ADR-016/017).
-- **ADR-016** är **Accepted** efter amendment 2026-08-14 (partiellt upphävt untracked-scaffold-beslut för
-  reasoning/); InferencePort + provider-assurance står fast.
+- **ADR-016** is **Accepted** after amendment 2026-08-14 (partially lifting the untracked-scaffold decision for
+  reasoning/); InferencePort + provider-assurance stand.
 
-## Sökbar status
+## Searchable Status
 
-Använd `grep -n "Status:" docs/adr/*.md` för aktuell status per fil. Inga filer utanför `docs/adr/`
-skapar arkitekturauktoritet; `docs/style-guide.md` hanterar modul-/skrivregler.
+Use `grep -n "Status:" docs/adr/*.md` for the current status per file. No files outside `docs/adr/`
+create architectural authority; `docs/style-guide.md` handles module/writing rules.

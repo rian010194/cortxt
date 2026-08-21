@@ -30,8 +30,8 @@ export default function Kanban() {
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">Kanban & Swarm</h1>
         <p className="text-slate-400 max-w-3xl">
-          Hermes Kanban board <code>cortxt-cp</code> är execution ledger. Swarm-mode skapar automatiska grafer
-          med workers → verifier → synthesizer.
+          The Hermes Kanban board <code>cortxt-cp</code> is the execution ledger. Swarm mode creates automatic graphs
+          with workers → verifier → synthesizer.
         </p>
       </div>
 
@@ -41,7 +41,7 @@ export default function Kanban() {
           <KanbanSquare className="w-5 h-5 text-brand-400" />
           <h2 className="text-xl font-semibold text-white">cortxt-cp Board</h2>
           <span className="badge badge-blue text-xs">
-            <Radio className="w-3 h-3 mr-1" /> Gateway dispatch aktiv
+            <Radio className="w-3 h-3 mr-1" /> Gateway dispatch active
           </span>
         </div>
         <div className="flex gap-4 min-w-max">
@@ -89,7 +89,7 @@ export default function Kanban() {
           <GitBranch className="w-5 h-5 text-brand-400" />
           <h2 className="text-xl font-semibold text-white">Swarm Graph</h2>
           <span className="badge badge-green text-xs">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> Demonstrerad
+            <CheckCircle2 className="w-3 h-3 mr-1" /> Demonstrated
           </span>
         </div>
 
@@ -116,7 +116,7 @@ export default function Kanban() {
           {/* Arrow down */}
           <div className="flex items-center gap-2 text-slate-500">
             <ArrowRight className="w-4 h-4 rotate-90" />
-            <span className="text-xs">Alla workers done → verifier aktiveras</span>
+            <span className="text-xs">All workers done → verifier activated</span>
           </div>
 
           {/* Verifier */}
@@ -131,7 +131,7 @@ export default function Kanban() {
           {/* Arrow down */}
           <div className="flex items-center gap-2 text-slate-500">
             <ArrowRight className="w-4 h-4 rotate-90" />
-            <span className="text-xs">Verifier done → synthesizer aktiveras</span>
+            <span className="text-xs">Verifier done → synthesizer activated</span>
           </div>
 
           {/* Synthesizer */}
@@ -149,10 +149,10 @@ export default function Kanban() {
             <Clock className="w-4 h-4" /> Observed behaviour
           </div>
           <p className="text-sm text-slate-400">
-            I ticket #9 swarm-demo auto-completades tre researcher workers, men verifier och synthesizer
-            tasks stannade i <code>ready</code> tills de manuellt claimades. Gateway dispatch är bevisad för
-            scratch-workspace profiler; terminal-lane profiler (coordinator för verification/synthesis)
-            kräver manuell claim.
+            In ticket #9's swarm demo, three researcher workers auto-completed, but the verifier and synthesizer
+            tasks stayed in <code>ready</code> until manually claimed. Gateway dispatch is proven for
+            scratch-workspace profiles; terminal-lane profiles (coordinator for verification/synthesis)
+            require manual claim.
           </p>
         </div>
       </div>
@@ -170,17 +170,17 @@ export default function Kanban() {
           <div className="p-4 rounded-lg bg-slate-800/50">
             <div className="text-slate-500 text-xs mb-1">Cron schedule</div>
             <div className="text-white font-mono">*/10 * * * *</div>
-            <div className="text-slate-500 text-xs mt-1">Var 10:e minut</div>
+            <div className="text-slate-500 text-xs mt-1">Every 10 minutes</div>
           </div>
           <div className="p-4 rounded-lg bg-slate-800/50">
             <div className="text-slate-500 text-xs mb-1">Script</div>
             <div className="text-white font-mono text-sm">mirror-kanban-to-github.py</div>
-            <div className="text-slate-500 text-xs mt-1">Poll done-tasks, post som kommentar</div>
+            <div className="text-slate-500 text-xs mt-1">Poll done tasks, post as comment</div>
           </div>
           <div className="p-4 rounded-lg bg-slate-800/50">
             <div className="text-slate-500 text-xs mb-1">Output</div>
-            <div className="text-white text-sm">Resultat-envelope som issue-kommentar</div>
-            <div className="text-slate-500 text-xs mt-1">Inkluderar status, artifacts, evidence</div>
+            <div className="text-white text-sm">Result envelope as issue comment</div>
+            <div className="text-slate-500 text-xs mt-1">Includes status, artifacts, evidence</div>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-"""Fas 8 Task 11 — skill/tool candidate adapters (mechanism-hooked, honest v1.x scope, P1.6)."""
+"""Phase 8 Task 11 — skill/tool candidate adapters (mechanism-hooked, honest v1.x scope, P1.6)."""
 from __future__ import annotations
 
 from learning.candidate import Candidate
@@ -33,7 +33,7 @@ def test_skill_executable_helper_requires_operator():
 
 # --- tool adapter: external-mutation always AWAIT_OPERATOR ---------------------
 def test_tool_external_mutation_always_await_operator():
-    """P0.2/Beslut 5: a tool with external-mutation effect is ALWAYS AWAIT_OPERATOR regardless of eval."""
+    """P0.2/Decision 5: a tool with external-mutation effect is ALWAYS AWAIT_OPERATOR regardless of eval."""
     adapter = ToolCandidateAdapter()
     cand = adapter.to_candidate(name="send-notice", version="v1",
                                 effect_class="external_mutation")

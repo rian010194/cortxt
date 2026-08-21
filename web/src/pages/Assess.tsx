@@ -14,11 +14,11 @@ const riskStyles: Record<string, string> = {
   minimal_risk: 'badge-green', uncertain: 'badge-amber',
 };
 const riskLabel: Record<string, string> = {
-  prohibited: 'Förbjuden', high_risk: 'Hög risk', limited_risk: 'Begränsad risk',
-  minimal_risk: 'Minimal risk', uncertain: 'Osäker',
+  prohibited: 'Prohibited', high_risk: 'High risk', limited_risk: 'Limited risk',
+  minimal_risk: 'Minimal risk', uncertain: 'Uncertain',
 };
 const confLabel: Record<string, string> = {
-  certain: 'Säker', probable: 'Sannolik', uncertain: 'Osäker', needs_more_info: 'Kräver mer info',
+  certain: 'Certain', probable: 'Probable', uncertain: 'Uncertain', needs_more_info: 'Needs more info',
 };
 
 interface Entry {
@@ -50,8 +50,8 @@ function demoPlaceholder(input: AssessmentInput): AssessmentOutput {
     applicability: { ai_act_applies: false, confidence: 'needs_more_info', basis_articles: ['Art2', 'Art3'] },
     classification: { system_risk_class: 'uncertain', basis_annex: null },
     obligations_assessed: [],
-    decision_brief: { language: 'sv', text: `Detta är en DEMO-platshållare för "${input.system_description.name || 'okänt system'}". Bedömningen har inte körts mot en runtime. Anslut harness/dispatch (Phase 2 Session B) för att få en riktig klassificering och skyldigheter.` },
-    uncertainties: [{ topic: 'Ingen runtime-anslutning', reason: 'Input accepteras av schemat men inget model/runtime-harness körs ännu i webb-UI:et.', suggested_research: 'Koppla webb-UI:et mot dispatch-manual.sh / harness och dispatcha ärendet som ett Ready GitHub-issue.' }],
+    decision_brief: { language: 'sv', text: `This is a DEMO placeholder for "${input.system_description.name || 'unknown system'}". The assessment has not been run against a runtime. Connect the harness/dispatch (Phase 2 Session B) to get a real classification and obligations.` },
+    uncertainties: [{ topic: 'No runtime connection', reason: 'Input is accepted by the schema but no model/runtime harness runs in the web UI yet.', suggested_research: 'Connect the web UI to dispatch-manual.sh / the harness and dispatch the case as a Ready GitHub issue.' }],
     schema_validation_passed: true,
     _provenance: 'demo_placeholder',
   };
@@ -119,7 +119,7 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
         <div className="flex items-center gap-3">
           <Scale className="w-5 h-5 text-brand-400" />
           <h3 className="text-lg font-semibold text-white">
-            {input.system_description.name || 'Nytt system'}
+            {input.system_description.name || 'New system'}
           </h3>
           {r && (
             <span className={`badge text-xs ${riskStyles[r.classification.system_risk_class]}`}>
@@ -129,7 +129,7 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
         </div>
         <button type="button" onClick={() => onChange({ ...entry, id: '__delete__' })}
           className="p-2 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-900/20 transition-colors"
-          title="Ta bort system">
+          title="Remove system">
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
@@ -148,20 +148,20 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1.5">Systemnamn <span className="text-rose-400">*</span></label>
+        <label className="block text-xs font-medium text-slate-400 mb-1.5">System name <span className="text-rose-400">*</span></label>
         <input value={input.system_description.name} onChange={e => setDesc({ name: e.target.value })} className="inp" />
       </div>
       <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1.5">Syfte <span className="text-rose-400">*</span></label>
-        <textarea value={input.system_description.purpose} onChange={e => setDesc({ purpose: e.target.value })} rows={2} className="inp" placeholder="Beskriv systemets syfte (max 2000 tecken)" />
+        <label className="block text-xs font-medium text-slate-400 mb-1.5">Purpose <span className="text-rose-400">*</span></label>
+        <textarea value={input.system_description.purpose} onChange={e => setDesc({ purpose: e.target.value })} rows={2} className="inp" placeholder="Describe the system's purpose (max 2000 characters)" />
       </div>
       <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1.5">Avsedd marknad</label>
-        <input value={input.system_description.intended_market} onChange={e => setDesc({ intended_market: e.target.value })} className="inp" placeholder="t.ex. EU sjukhus och kliniker" />
+        <label className="block text-xs font-medium text-slate-400 mb-1.5">Intended market</label>
+        <input value={input.system_description.intended_market} onChange={e => setDesc({ intended_market: e.target.value })} className="inp" placeholder="e.g. EU hospitals and clinics" />
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1.5">Systemkapaciteter <span className="text-rose-400">*</span></label>
+        <label className="block text-xs font-medium text-slate-400 mb-1.5">System capabilities <span className="text-rose-400">*</span></label>
         <CapabilityPicker input={input} onCaps={(caps) => set({ system_capabilities: caps })} />
         <textarea
           value={input.system_capabilities.filter(c => !capabilityPresets.some(p => p.label === c)).join('\n')}
@@ -170,7 +170,7 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
             const presets = input.system_capabilities.filter(c => capabilityPresets.some(p => p.label === c));
             set({ system_capabilities: [...presets, ...custom] });
           }}
-          rows={2} className="inp font-mono mt-2" placeholder="eller lägg till egna kapaciteter (en per rad)"
+          rows={2} className="inp font-mono mt-2" placeholder="or add your own capabilities (one per line)"
         />
       </div>
 
@@ -199,38 +199,38 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
       <button type="button" onClick={onRun} disabled={entry.running}
         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-semibold transition-colors disabled:opacity-50">
         {entry.running ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-        {entry.running ? 'Kör…' : 'Kör bedömning'}
+        {entry.running ? 'Running…' : 'Run assessment'}
       </button>
 
       {r && (
         <div className="space-y-3 pt-2 border-t border-slate-700/60">
           <div className="flex items-center gap-2">
             <FileJson className="w-4 h-4 text-emerald-400" />
-            <span className="text-sm font-medium text-white">Resultat</span>
+            <span className="text-sm font-medium text-white">Result</span>
             <span className={`badge text-xs ${r._provenance === 'fixture_reference' ? 'badge-green' : 'badge-blue'}`}>
-              {r._provenance === 'fixture_reference' ? 'Referens (fixture)' : 'Demo-platshållare'}
+              {r._provenance === 'fixture_reference' ? 'Reference (fixture)' : 'Demo placeholder'}
             </span>
           </div>
 
           <div className="p-3 rounded-lg bg-slate-800/50 flex items-center justify-between">
-            <span className="text-xs text-slate-500">Tillämplighet</span>
+            <span className="text-xs text-slate-500">Applicability</span>
             <div className="flex items-center gap-2">
               <span className={`badge text-xs ${
                 r.applicability.confidence === 'uncertain' || r.applicability.confidence === 'needs_more_info'
                   ? 'badge-amber'
                   : (r.applicability.ai_act_applies ? 'badge-red' : 'badge-green')
               }`}>
-                {r.applicability.ai_act_applies ? 'AI-förordningen tillämpas' : 'Tillämpas inte'}
+                {r.applicability.ai_act_applies ? 'AI Act applies' : 'Not applicable'}
                 {(r.applicability.confidence === 'uncertain' || r.applicability.confidence === 'needs_more_info') && (
                   <AlertTriangle className="w-3 h-3 inline ml-1" />
                 )}
               </span>
-              <span className="text-xs text-slate-400">Konfidens: <span className="text-white">{confLabel[r.applicability.confidence]}</span></span>
+              <span className="text-xs text-slate-400">Confidence: <span className="text-white">{confLabel[r.applicability.confidence]}</span></span>
             </div>
           </div>
 
           <div className="p-3 rounded-lg bg-slate-800/50 flex items-center justify-between">
-            <span className="text-xs text-slate-500">Riskklassificering</span>
+            <span className="text-xs text-slate-500">Risk classification</span>
             <span className={`badge text-xs ${riskStyles[r.classification.system_risk_class]}`}>
               {riskLabel[r.classification.system_risk_class]}{r.classification.basis_annex ? ` · ${r.classification.basis_annex}` : ''}
             </span>
@@ -238,14 +238,14 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
 
           {r.decision_brief.text && (
             <div className="p-3 rounded-lg bg-slate-800/50">
-              <div className="flex items-center gap-2 text-xs text-slate-500 mb-1.5"><BookOpen className="w-4 h-4" /> Beslutsunderlag ({r.decision_brief.language})</div>
+              <div className="flex items-center gap-2 text-xs text-slate-500 mb-1.5"><BookOpen className="w-4 h-4" /> Decision basis ({r.decision_brief.language})</div>
               <p className="text-sm text-slate-200 leading-relaxed">{r.decision_brief.text}</p>
             </div>
           )}
 
           {r.obligations_assessed.length > 0 && (
             <div className="p-3 rounded-lg bg-slate-800/50">
-              <div className="flex items-center gap-2 text-xs text-slate-500 mb-1.5"><FileText className="w-4 h-4" /> Skyldigheter</div>
+              <div className="flex items-center gap-2 text-xs text-slate-500 mb-1.5"><FileText className="w-4 h-4" /> Obligations</div>
               <div className="space-y-1.5">
                 {r.obligations_assessed.map((o, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm">
@@ -263,7 +263,7 @@ function EntryCard({ entry, onChange, onRun }: { entry: Entry; onChange: (e: Ent
 
           {r.uncertainties.length > 0 && (
             <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-800/40">
-              <div className="flex items-center gap-2 text-xs text-blue-300 mb-1.5"><CircleHelp className="w-4 h-4" /> Osäkerheter</div>
+              <div className="flex items-center gap-2 text-xs text-blue-300 mb-1.5"><CircleHelp className="w-4 h-4" /> Uncertainties</div>
               <div className="space-y-1.5">
                 {r.uncertainties.map((u, i) => (
                   <div key={i} className="text-xs">
@@ -335,22 +335,22 @@ export default function Assess() {
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-1">AI Act Bedömning</h1>
+          <h1 className="text-3xl font-bold text-white mb-1">AI Act Assessment</h1>
           <p className="text-slate-400 max-w-3xl">
-            Portföljbedömning mot <code className="text-brand-300">vertical-01-ai-act</code> — Art 2-3, 5, 6, Annex I/III, skyldigheter 9-12.
+            Portfolio assessment against <code className="text-brand-300">vertical-01-ai-act</code> — Art 2-3, 5, 6, Annex I/III, obligations 9-12.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className="badge badge-blue">vertical-01-ai-act v0.1.0</span>
-          <span className="badge badge-amber"><AlertTriangle className="w-3 h-3 mr-1" /> Demo-UI</span>
+          <span className="badge badge-amber"><AlertTriangle className="w-3 h-3 mr-1" /> Demo UI</span>
         </div>
       </div>
 
       <div className="p-3 rounded-lg bg-amber-900/20 border border-amber-800/40 text-sm text-amber-200">
-        <div className="flex items-center gap-2 font-medium mb-1"><AlertTriangle className="w-4 h-4" /> Förhandsversion — inte en riktig modelkörning</div>
+        <div className="flex items-center gap-2 font-medium mb-1"><AlertTriangle className="w-4 h-4" /> Preview — not a real model run</div>
         <p className="text-slate-400">
-          Laddar du en syntetisk fixture visas paketets godkända <strong>referensutfall</strong>; fria indata returnerar en tydligt märkt
-          platshållare tills webb-UI:et kopplas till dispatcher/harness (Phase 2 Session B). Inget här är juridiskt bindande.
+          Loading a synthetic fixture shows the package's approved <strong>reference outcomes</strong>; free-form input returns a clearly marked
+          placeholder until the web UI is connected to the dispatcher/harness (Phase 2 Session B). Nothing here is legally binding.
         </p>
       </div>
 
@@ -358,20 +358,20 @@ export default function Assess() {
       <div className="card">
         <div className="flex items-center gap-3 mb-4">
           <Layers className="w-5 h-5 text-brand-400" />
-          <h2 className="text-xl font-semibold text-white">Portfölj</h2>
-          <span className="text-sm text-slate-400">{entries.length} system</span>
+          <h2 className="text-xl font-semibold text-white">Portfolio</h2>
+          <span className="text-sm text-slate-400">{entries.length} systems</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <Stat label="Bedömda" value={assessed} total={entries.length} />
-          <Stat label="Omfattas av AIA" value={applicable} color={applicable > 0 ? 'text-rose-300' : 'text-slate-200'} />
-          <Stat label="Hög risk / förbjuden" value={countByRisk('high_risk') + countByRisk('prohibited')} color="text-rose-300" />
-          <Stat label="Osäkra" value={countByRisk('uncertain')} color="text-blue-300" />
+          <Stat label="Assessed" value={assessed} total={entries.length} />
+          <Stat label="Covered by AIA" value={applicable} color={applicable > 0 ? 'text-rose-300' : 'text-slate-200'} />
+          <Stat label="High risk / prohibited" value={countByRisk('high_risk') + countByRisk('prohibited')} color="text-rose-300" />
+          <Stat label="Uncertain" value={countByRisk('uncertain')} color="text-blue-300" />
         </div>
         <div className="flex flex-wrap gap-2 mt-4">
           <button type="button" onClick={addEmpty} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition-colors">
-            <Plus className="w-4 h-4" /> Lägg till system
+            <Plus className="w-4 h-4" /> Add system
           </button>
-          <span className="text-xs text-slate-500 self-center mx-1">eller fyll från fixture:</span>
+          <span className="text-xs text-slate-500 self-center mx-1">or populate from fixture:</span>
           {assessFixtures.map(fx => (
             <button key={fx.fixture_id} type="button" onClick={() => addFixture(fx.fixture_id)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-xs hover:border-brand-600 hover:text-white transition-colors">
@@ -392,7 +392,7 @@ export default function Assess() {
 
       <div className="flex items-center gap-2 text-xs text-slate-500">
         <ArrowRight className="w-3 h-3" />
-        Nästa steg i produktionsflödet: skicka som Ready-issue → dispatch → Review → din approval (Done).
+        Next step in the production flow: submit as a Ready issue → dispatch → Review → your approval (Done).
       </div>
     </div>
   );

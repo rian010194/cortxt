@@ -1,6 +1,6 @@
-"""Cortxt-ägd, formatneutral portabilitets- och tillståndspaket (ADR-012-komplement).
+"""Cortxt-owned, format-neutral portability and state package (ADR-012 complement).
 
-Cortxt äger det neutrala kontraktet; Hermes är en adapter/provider bakom porten
-(samma mönster som adapters/inference i Fas 2A). Kärnan beror bara på de neutrala
-artefakterna och importerar aldrig Hermes-runtime.
+Cortxt owns the neutral contract; Hermes is an adapter/provider behind the port
+(same pattern as adapters/inference in Phase 2A). The core depends only on the neutral
+artifacts and never imports the Hermes runtime.
 """

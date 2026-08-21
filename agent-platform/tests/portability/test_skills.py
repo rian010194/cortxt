@@ -1,4 +1,4 @@
-"""P3-DM1: neutralt SkillManifest + Hermes-adapter + registry — deterministiska tester (0 model-anrop)."""
+"""P3-DM1: neutral SkillManifest + Hermes adapter + registry — deterministic tests (0 model calls)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _loaded_skills():
 
 
 def test_hermes_roundtrip():
-    """AC: adapter läser Hermes-fixtur → neutralt manifest → export → import → fält==."""
+    """AC: adapter reads Hermes fixture → neutral manifest → export → import → fields equal."""
     adapter = HermesSkillAdapter()
     reg = SkillRegistry()
     for d in sorted(FIXTURES.iterdir()):
@@ -35,14 +35,14 @@ def test_hermes_roundtrip():
     export = reg.export_json()
     restored = SkillRegistry.from_export_json(export)
     assert len(restored) == len(reg)
-    # fält-för-fält
+    # field-by-field
     assert restored.get("demo-receptionist", "0.1.0") is not None
     assert restored.get("demo-receptionist") == reg.get("demo-receptionist")
     assert restored.get("demo-researcher") == reg.get("demo-researcher")
 
 
 def test_registry_idempotent_load():
-    """AC: samma skill laddad två gånger → identiska hash-sumror."""
+    """AC: the same skill loaded twice → identical hash sums."""
     reg1 = _loaded_skills()
     reg2 = _loaded_skills()
     assert reg1.manifest_hashes() == reg2.manifest_hashes()
@@ -50,7 +50,7 @@ def test_registry_idempotent_load():
 
 
 def test_linked_files_collected():
-    """Adapter insamlar linked_files (references/ + templates/) deterministiskt."""
+    """Adapter collects linked_files (references/ + templates/) deterministically."""
     reg = _loaded_skills()
     rec = reg.get("demo-receptionist")
     assert rec is not None
@@ -61,7 +61,7 @@ def test_linked_files_collected():
 
 
 def test_validation_rejects_missing_name(tmp_path):
-    """AC: saknad name ger PortabilityValidationError."""
+    """AC: a missing name raises PortabilityValidationError."""
     skill = tmp_path / "broken"
     skill.mkdir()
     (skill / "SKILL.md").write_text("---\nversion: 1.0\n---\nbody\n", encoding="utf-8")

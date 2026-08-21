@@ -31,8 +31,8 @@ expected_output:
     basis_annex: null
   obligations_assessed: []
   decision_brief:
-    language: sv
-    text: Beskrivningen av Project X är för knapphändig för att göra en säker bedömning. Ytterligare information om syfte, marknad och teknisk arkitektur krävs.
+    language: en
+    text: The description of Project X is too sparse to make a reliable assessment. Additional information about purpose, market, and technical architecture is required.
   uncertainties:
   - topic: Insufficient system description
     reason: The purpose is too vague ('internal use'), intended_market is 'Unknown', and capabilities list contains only a generic phrase.
@@ -55,7 +55,7 @@ deterministic_assertions:
   operator: equals
   expected_value: []
 model_assisted_assertions:
-- rubric: The decision brief should explicitly request more information in Swedish.
+- rubric: The decision brief should explicitly request more information in English.
   required_model_capabilities:
   - structured-output
 human_review_required: false

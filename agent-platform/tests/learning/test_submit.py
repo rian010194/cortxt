@@ -1,4 +1,4 @@
-"""Fas 8 Task 3 — submit_candidate ingress + EvidenceClassifier phase (a)."""
+"""Phase 8 Task 3 — submit_candidate ingress + EvidenceClassifier phase (a)."""
 from __future__ import annotations
 
 import pytest

@@ -1,6 +1,6 @@
 """Geometric operators over the problem space (target architecture §10.2).
 
-First operator set (Fas 6, deterministic): ``change_perspective`` builds a sub-graph viewed
+First operator set (Phase 6, deterministic): ``change_perspective`` builds a sub-graph viewed
 from an alternative standpoint via ``alternative_to`` / ``analogous_to`` relations; degrades
 to an empty graph + ``changed=False`` when no such relation exists. ``compare_paths`` (relative
 to path scoring) lives here but is populated once ``score_path`` lands (Task 6).

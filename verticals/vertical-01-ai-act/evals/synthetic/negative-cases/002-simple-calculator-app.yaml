@@ -30,8 +30,8 @@ expected_output:
     basis_annex: null
   obligations_assessed: []
   decision_brief:
-    language: sv
-    text: Systemet CalcSimple är en enkel kalkylator utan AI-funktionalitet och omfattas därför inte av AI-förordningen.
+    language: en
+    text: The CalcSimple system is a simple calculator without AI functionality and is therefore not covered by the AI Act.
   uncertainties: []
   schema_validation_passed: true
 deterministic_assertions:

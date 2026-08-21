@@ -1,4 +1,4 @@
-"""PromotionGate — rule-driven executor (Fas 8, Beslut 3 / 9.3; P0.2, P0.3, P1.7).
+"""PromotionGate — rule-driven executor (Phase 8, Decision 3 / 9.3; P0.2, P0.3, P1.7).
 
 Design (from the approved spec, refined by Kimi re-review):
 - ``PromotionRule`` is frozen data carrying enough semantics (candidate_type/kind/metric/threshold/comparator)
@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 # candidate types whose effect class mandates a human gate (§31/§32.2) — never bypassable.
-# "addon" added for Fas 5 (v.02 wayfinder): a community addon can install
+# "addon" added for Phase 5 (v.02 wayfinder): a community addon can install
 # executable logic (vision doc §6), same self-approval-impossible guarantee
 # as "tool". See learning/addon_review.py for the Codex-security precondition
 # gate this alone does not express (MANDATORY_OPERATOR_GATES short-circuits

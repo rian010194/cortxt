@@ -1,4 +1,4 @@
-"""Controlled learning loop — Fas 8. See docs/superpowers/specs/2026-08-18-fas8-controlled-learning-loop-v01-design.md."""
+"""Controlled learning loop — Phase 8. See (internal design archive)."""
 from __future__ import annotations
 
 from .active_policy import resolve_active_policy

@@ -4,7 +4,7 @@ description: >
   Ships the same unfixed ranges.py as 001-off-by-one, plus stats.py with its
   own independent bug (divides by n - 1 instead of n). declared_scope
   DELIBERATELY excludes ranges.py -- this child cannot fix ranges.py itself,
-  so test_average_to_five can only pass once Fas 4's M2 handoff has already
+  so test_average_to_five can only pass once Phase 4's M2 handoff has already
   applied child 1's ranges.py fix. Used as M2's dependent second child.
 workspace_dir: ./workspace
 declared_scope:

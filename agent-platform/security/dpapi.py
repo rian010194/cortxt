@@ -1,7 +1,7 @@
 """Windows DPAPI wrapper -- the real `encrypt`/`decrypt` CredentialBroker is
 built to accept.
 
-Per the Fas 1 threat model (§3.1.1): "Use OS-level key storage where
+Per the Phase 1 threat model (§3.1.1): "Use OS-level key storage where
 available (Windows DPAPI...) so the master key is bound to the operator's
 login session and not a static file next to the encrypted store." DPAPI's
 `CryptProtectData` derives its key from the current Windows user's login

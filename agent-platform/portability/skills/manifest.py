@@ -1,4 +1,4 @@
-"""Neutralt SkillManifest — formatoberoende, användarägd skill-representation."""
+"""Neutral SkillManifest — format-independent, user-owned skill representation."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from typing import Any
 
 @dataclass(frozen=True)
 class SkillManifest:
-    """En formatneutral, versionerad skill.
+    """A format-neutral, versioned skill.
 
-    Innehåller INGA Hermes-specifika fält — kontraktet ägs av Cortxt och kan
-    konsumeras av vilken runtime som helst (Hermes är en adapter bakom denna port).
+    Contains NO Hermes-specific fields — the contract is owned by Cortxt and can
+    be consumed by any runtime (Hermes is an adapter behind this port).
     """
 
     name: str
