@@ -189,6 +189,110 @@ class HermesAdapter:
             return None
 
 
+@dataclass
+class DshWorkerAdapter:
+    """Invokes the DeepSeek Harness Python SDK as a one-shot worker turn.
+
+    The DSH-integration experiment's engine adapter (agent-platform's
+    routing.dsh_invoker.invoke_dsh, wrapped by runtime/adapters/dsh_adapter.py)
+    is the worker-invocation piece #122's dispatcher was missing. This adapter
+    wires the same WorkerAdapter protocol (dispatcher.py's claim/run-identity
+    layer) to that invocation, so a claimed run with runtime="dsh" dispatches
+    through DSH exactly like hermes-researcher dispatches through the hermes CLI.
+
+    Envelope discipline matches HermesAdapter: raw stdout/stderr never enters
+    the envelope (AGENTS.md: no model reasoning in GitHub) -- it goes to a
+    local, gitignored run log under RUN_LOG_DIR, and `artifacts` carries the
+    path as a content-free reference. Cost and usage are reported as
+    `unknown (not measured)` unless the SDK result actually reports them --
+    the same honest-unknown stance as HermesAdapter (#58/#71).
+
+    The DSH Python SDK is not yet installed in every environment; a missing
+    SDK or a runtime that cannot start surfaces as a failed envelope (via
+    DshInvocationError), not an exception -- matching the adapter contract
+    ("must never raise for an ordinary worker failure").
+    """
+
+    invoke_dsh: Callable = field(default=None)  # type: ignore[assignment]
+    log_dir: Path = field(default=RUN_LOG_DIR)
+
+    def _call(self, run: Run, task_prompt: str, timeout_seconds: int) -> dict:
+        # Default resolved at call time (not as a class-attribute default) so
+        # tests can inject a fake and the import stays lazy: the DSH SDK may
+        # be absent entirely.
+        if self.invoke_dsh is None:
+            from routing.dsh_invoker import invoke_dsh as _default
+
+            return _default(task_prompt, timeout_seconds=timeout_seconds, cwd=Path.cwd())
+        return self.invoke_dsh(task_prompt, timeout_seconds=timeout_seconds, cwd=Path.cwd())
+
+    def invoke(self, run: Run, task_prompt: str, timeout_seconds: int) -> dict:
+        started = time.time()
+        try:
+            result = self._call(run, task_prompt, timeout_seconds)
+        except Exception as exc:  # noqa: BLE001 - DshInvocationError and friends
+            return {
+                "_status": "failed",
+                "runtime": "dsh",
+                "worker_role": run.worker_role,
+                "model": "unknown",
+                "usage": "unknown (worker never started)",
+                "cost": "unknown (not measured)",
+                "artifacts": [],
+                "evidence": f"worker never started: {type(exc).__name__}: {exc}",
+                "error": {
+                    "category": "runtime_unavailable",
+                    "recovery": f"{type(exc).__name__}: {exc}",
+                },
+                "_elapsed_seconds": time.time() - started,
+            }
+
+        status = result.get("status", "failed")
+        stdout = result.get("stdout", "")
+        stderr = result.get("stderr", "")
+        log_path = self._write_run_log(run, stdout=stdout, stderr=stderr)
+        log_note = f"see local run log {log_path}" if log_path else "local run log could not be written"
+        error = None
+        if status != "succeeded":
+            error = {
+                "category": "worker_nonzero_exit" if status == "failed" else status,
+                # Never the raw stderr tail here -- same "model reasoning in
+                # GitHub" problem evidence was fixed for; point at the local log.
+                "recovery": f"dsh reported status={status}; {log_note}",
+            }
+        return {
+            "_status": status,
+            "runtime": "dsh",
+            "worker_role": run.worker_role,
+            "model": "unknown (not captured by this adapter)",
+            "usage": "unknown (not captured by this adapter)",
+            "cost": "unknown (not measured)",
+            "artifacts": [log_path] if log_path else [],
+            "evidence": (
+                f"dsh reported status={status}; "
+                f"finish_reason={result.get('finish_reason')}; {log_note}"
+            ),
+            "error": error,
+            "_elapsed_seconds": time.time() - started,
+        }
+
+    def _write_run_log(self, run: Run, stdout: "str | None", stderr: "str | None") -> "str | None":
+        """Write raw stdout/stderr to a local, gitignored file. Returns the
+        path as a string, or None if writing failed (never raises -- a
+        logging failure must not turn a real result into a worker error)."""
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = self.log_dir / f"{run.run_id}.log"
+            log_path.write_text(
+                f"=== stdout ===\n{stdout or ''}\n=== stderr ===\n{stderr or ''}\n",
+                encoding="utf-8",
+                errors="replace",
+            )
+            return str(log_path)
+        except OSError:
+            return None
+
+
 class UnknownRuntimeError(RuntimeError):
     pass
 
@@ -196,6 +300,10 @@ class UnknownRuntimeError(RuntimeError):
 ADAPTER_REGISTRY: dict[str, WorkerAdapter] = {
     "hermes-researcher": HermesAdapter(profile="researcher"),
     "hermes-coordinator": HermesAdapter(profile="coordinator"),
+    # DSH-integration experiment: the DSH Python-SDK worker (route() picks
+    # engine_id "dsh" for research/background-task; dispatcher.py's run.runtime
+    # carries that engine_id, so the adapter key matches it directly).
+    "dsh": DshWorkerAdapter(),
 }
 
 
