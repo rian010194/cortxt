@@ -3,9 +3,26 @@
 Status: proposed target architecture  
 Authority: architectural proposal; does not override the current operating model  
 Date: 2026-08-12 (original)  
-Last updated: 2026-08-17  
+Last updated: 2026-08-21  
 Owner: Rikard  
 Review trigger: before implementation scope is approved and whenever a major platform boundary changes
+
+> **Reconciliation notice (2026-08-21).** This document is a long-term target
+> and is partially implemented. Read it together with the current state:
+> - `docs/agents/current-operating-model.md` — what is verified today.
+> - Accepted ADRs in `docs/adr/` — the normative record of decisions. Several
+>   sections of this target document have since been decided or partially
+>   built by ADRs: reasoning kernel accepted and tracked (ADR-017), workflow
+>   labels as state carrier (ADR-018), permanent multi-engine routing
+>   (ADR-019), admin surface + widget complement (ADR-021), capability
+>   manifest + selection criteria (ADR-022), bottom-up and top-down
+>   integration (ADR-023), MCP server as external surface (ADR-024),
+>   geometric-reasoning decisive metrics (ADR-025), engine adapter registry
+>   (ADR-026) and service-broker `EngineContext` (ADR-027), orchestrator
+>   multi-engine resume (ADR-028), unattended daemon credential isolation
+>   (ADR-029), plan-vs-actual divergence tracking (ADR-030), and the
+>   Apache-2.0 license (ADR-031).
+> - Where a section here contradicts an Accepted ADR, the ADR is authoritative.
 
 > Cortxt is to evolve from a control plane that primarily orchestrates external
 > agent engines into its own, vendor-neutral agent platform. The platform is to

@@ -3,7 +3,7 @@
 Status: target state, not current reality
 Authority: describes the destination defined by ADR-014/015; does not itself
 create or override decisions
-Last reconciled: 2026-08-15
+Last reconciled: 2026-08-21
 
 ## Why this file exists
 
@@ -102,3 +102,11 @@ pre-committed now. Do not treat wedge C as roadmap until a new ADR says so.
 - **ADR-016 / ADR-017 / ADR-018** — the architectural decisions (bounded
   context, reasoning acceptance, workflow-state carrier) that Milestone 1
   and 2 depend on operationally.
+- **ADR-019/020/021/023/024/025/026/027/028/029/030/031** — later accepted
+  decisions this file references: permanent multi-engine routing (019),
+  proof-environment naming (020), admin surface + widget as CLI complement
+  (021), bottom-up and top-down integration (023), MCP server as the external
+  integration surface (024), engine adapter registry and service broker
+  (026/027), orchestrator multi-engine resume (028), unattended daemon
+  credential isolation (029), plan-vs-actual divergence tracking (030), and
+  the Apache-2.0 open-source license (031).
