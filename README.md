@@ -1,9 +1,9 @@
-﻿# Cortxt
+# Cortxt
 
 > A provider-neutral platform for creating, steering, resuming, and verifying
 > long-running AI work under human mandate — built solo, in the open, as a
-> working portfolio of the approach. See [`LICENSE`](LICENSE): viewable,
-> not open source.
+> working portfolio of the approach. Licensed under the
+> [Apache License 2.0](LICENSE) (open source).
 
 > **Foundation phase.** The repository name `ai-workspace-control-plane` and
 > much of its backlog describe an earlier system. They are retained for history,
