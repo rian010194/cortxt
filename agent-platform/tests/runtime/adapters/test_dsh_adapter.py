@@ -86,3 +86,68 @@ def test_dsh_adapter_passes_timeout_seconds_as_keyword_only():
     DshAdapter(invoke_dsh=fake_invoke_dsh).invoke("researcher", "do it", timeout_seconds=42)
 
     assert captured["timeout_seconds"] == 42
+
+
+def test_dsh_adapter_reads_provider_model_from_env_when_not_explicit():
+    # Issue #204: the dispatch path must be provider-neutral and configurable.
+    # Explicit args win; otherwise CORTXT_DSH_PROVIDER / CORTXT_DSH_MODEL are
+    # read; only when neither is present do the SDK defaults apply.
+    captured = {}
+
+    def fake_invoke_dsh(prompt, **kwargs):
+        captured.update(kwargs)
+        return {"status": "succeeded", "stdout": "ok"}
+
+    import os
+    os.environ["CORTXT_DSH_PROVIDER"] = "some-neutral-provider"
+    os.environ["CORTXT_DSH_MODEL"] = "full/model-id"
+    try:
+        DshAdapter(invoke_dsh=fake_invoke_dsh).invoke("researcher", "do it", timeout_seconds=42)
+    finally:
+        del os.environ["CORTXT_DSH_PROVIDER"]
+        del os.environ["CORTXT_DSH_MODEL"]
+
+    assert captured["provider"] == "some-neutral-provider"
+    assert captured["model"] == "full/model-id"
+
+
+def test_dsh_adapter_explicit_provider_model_win_over_env():
+    # Opartisk routing: an explicit argument must always beat the env config.
+    import os
+    os.environ["CORTXT_DSH_PROVIDER"] = "env-provider"
+    os.environ["CORTXT_DSH_MODEL"] = "env/model"
+    captured = {}
+
+    def fake_invoke_dsh(prompt, **kwargs):
+        captured.update(kwargs)
+        return {"status": "succeeded", "stdout": "ok"}
+
+    try:
+        DshAdapter(invoke_dsh=fake_invoke_dsh).invoke(
+            "researcher", "do it", timeout_seconds=42,
+            provider="explicit-provider", model="explicit/model",
+        )
+    finally:
+        del os.environ["CORTXT_DSH_PROVIDER"]
+        del os.environ["CORTXT_DSH_MODEL"]
+
+    assert captured["provider"] == "explicit-provider"
+    assert captured["model"] == "explicit/model"
+
+
+def test_dsh_adapter_no_env_falls_back_to_none():
+    # No env config and no explicit args: invoke_dsh receives None for both,
+    # and the SDK's own defaults apply (never a hardcoded vendor here).
+    import os
+    os.environ.pop("CORTXT_DSH_PROVIDER", None)
+    os.environ.pop("CORTXT_DSH_MODEL", None)
+    captured = {}
+
+    def fake_invoke_dsh(prompt, **kwargs):
+        captured.update(kwargs)
+        return {"status": "succeeded", "stdout": "ok"}
+
+    DshAdapter(invoke_dsh=fake_invoke_dsh).invoke("researcher", "do it", timeout_seconds=42)
+
+    assert captured["provider"] is None
+    assert captured["model"] is None

@@ -234,7 +234,7 @@ check("both labels moved independently", gh5.labels["o/r#6"] == ["workflow:revie
 print("== DshWorkerAdapter.invoke: succeeded envelope, no raw stdout in evidence, cost unknown ==")
 dsh_log_dir = new_log_dir()
 dsh_adapter = wa.DshWorkerAdapter(
-    invoke_dsh=lambda prompt, timeout_seconds, cwd: {
+    invoke_dsh=lambda prompt, timeout_seconds, cwd, provider=None, model=None: {
         "status": "succeeded", "stdout": "the answer", "stderr": "",
         "session_id": "sess-1", "finish_reason": "completed", "elapsed_seconds": 1.2,
     },
@@ -251,7 +251,7 @@ check("dsh raw stdout lives in the local log, not the envelope", "the answer" in
 
 print("== DshWorkerAdapter.invoke: failed status -> failed envelope, raw stderr stays local ==")
 dsh_adapter2 = wa.DshWorkerAdapter(
-    invoke_dsh=lambda prompt, timeout_seconds, cwd: {
+    invoke_dsh=lambda prompt, timeout_seconds, cwd, provider=None, model=None: {
         "status": "failed", "stdout": "", "stderr": "boom: bad prompt",
         "session_id": None, "finish_reason": None, "elapsed_seconds": 0.4,
     },
@@ -265,7 +265,7 @@ check("dsh recovery points at the local log", "run log" in dsh_env2["error"]["re
 check("dsh raw stderr still captured in the local log", "boom" in Path(dsh_env2["artifacts"][0]).read_text())
 
 print("== DshWorkerAdapter.invoke: DshInvocationError -> failed envelope, not an exception ==")
-def _raising_invoke(prompt, timeout_seconds, cwd):
+def _raising_invoke(prompt, timeout_seconds, cwd, provider=None, model=None):
     raise RuntimeError("deepseek-harness-sdk is not installed")
 dsh_adapter3 = wa.DshWorkerAdapter(invoke_dsh=_raising_invoke, log_dir=new_log_dir())
 dsh_env3 = dsh_adapter3.invoke(run, "do the thing", timeout_seconds=60)
@@ -280,7 +280,7 @@ check("default dsh adapter is a DshWorkerAdapter",
 print("== dispatch_async: end-to-end dsh run reaches dispatcher.complete() ==")
 disp_dsh, gh_dsh = new_dispatcher({"o/r#8": ["workflow:ready"]})
 wa.register_adapter("test-dsh-ok", wa.DshWorkerAdapter(
-    invoke_dsh=lambda prompt, timeout_seconds, cwd: {
+    invoke_dsh=lambda prompt, timeout_seconds, cwd, provider=None, model=None: {
         "status": "succeeded", "stdout": "worked", "stderr": "",
         "session_id": "sess-x", "finish_reason": "completed", "elapsed_seconds": 1.0,
     },
