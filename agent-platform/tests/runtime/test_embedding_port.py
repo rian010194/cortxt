@@ -161,7 +161,7 @@ def test_call_backend_raises_on_expected_dim_mismatch(tmp_path, monkeypatch):
 def test_embedding_port_is_drop_in_compatible_with_geometric_embedder_surface(tmp_path, monkeypatch):
     """CandidatePathScore.embedder / GraphMetrics.semantic_closeness accept any
     Callable[[str], list[float]] -- an EmbeddingPort instance must satisfy that directly,
-    with no adapter/wrapper glue, per the Fas 6 §27#10 decision doc's 'drop-in' claim."""
+    with no adapter/wrapper glue, per the Phase 6 §27#10 decision doc's 'drop-in' claim."""
     from reasoning.geometric.metrics import GraphMetrics
     from reasoning.geometric.graph_space import ProblemSpace
 

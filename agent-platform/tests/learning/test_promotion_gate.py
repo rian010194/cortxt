@@ -1,4 +1,4 @@
-"""Fas 8 Task 4 — PromotionGate: rule-driven executor, internal rule resolution, self-approval safe."""
+"""Phase 8 Task 4 — PromotionGate: rule-driven executor, internal rule resolution, self-approval safe."""
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError

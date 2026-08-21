@@ -387,7 +387,7 @@ def write_snapshot(
 ) -> None:
     """Atomically write the JSON snapshot the widget polls.
 
-    `runtimes`/`credentials`/`daemon` are optional admin-surface data (Fas 4) the
+    `runtimes`/`credentials`/`daemon` are optional admin-surface data (Phase 4) the
     widget can render alongside sessions. Every call to this function
     rewrites the whole document, but not every caller knows about all
     keys (`_run_runtimes` only has `runtimes`, `_refresh_credentials_snapshot`

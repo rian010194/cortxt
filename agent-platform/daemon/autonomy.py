@@ -1,7 +1,7 @@
 """Earned unattended autonomy per (engine_id, task_shape) class (spec:
 "Autonomy model - earned, not assumed"). Mirrors the N=3
 consecutive-clean-runs rule target-architecture.md §23 already applies to
-Fas 4+ exit criteria, applied here to the daemon's own track record instead
+Phase 4+ exit criteria, applied here to the daemon's own track record instead
 of a new invented threshold."""
 from __future__ import annotations
 

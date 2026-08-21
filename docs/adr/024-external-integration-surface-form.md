@@ -5,13 +5,13 @@
 **Deciders:** Rikard (operator) — via this session's explicit, time-boxed
 autonomy grant, not a synchronous round-trip; Claude Code (draft)
 **Technical Story:** v.02 swarm orchestration, Track 3
-(`docs/superpowers/specs/2026-08-19-v02-swarm-orchestration-model-design.md`);
-spike `docs/superpowers/specs/2026-08-19-track3-external-surface-spike.md`
+((internal design archive));
+spike (internal design archive)
 
 > **Acceptance provenance:** this ADR was self-accepted by the Claude Code
 > session that drafted it, under an explicit, time-boxed full-autonomy grant
 > documented in
-> `docs/superpowers/specs/2026-08-19-v02-swarm-orchestration-model-design.md`
+> (internal design archive)
 > section "Session authorization (explicit, time-boxed)". That section states
 > the operator granted full autonomy for this session only, including
 > accepting ADRs without a per-step confirmation gate, superseding the
@@ -30,8 +30,8 @@ Cortxt should be bottom-up-consumable externally: other frameworks
 able to call into Cortxt's control plane as a service, without adopting
 Cortxt's own orchestration loop. ADR-023 explicitly left the concrete form of
 that surface undecided: SDK, MCP server, or REST API was named as a later
-question, not resolved there. ADR-023 assigned this form question to Fas 6's
-installable-package work ('löses där, inte här'); this ADR answers it earlier
+question, not resolved there. ADR-023 assigned this form question to Phase 6's
+installable-package work ('resolved there, not here'); this ADR answers it earlier
 than that, for the reasons given in the Alternatives Considered section,
 without changing ADR-023's direction decision.
 
@@ -46,7 +46,7 @@ declare-then-select shape, which is also the shape MCP's tool-list-then-call
 convention is built around.
 
 The spike doc
-(`docs/superpowers/specs/2026-08-19-track3-external-surface-spike.md`)
+((internal design archive))
 compared SDK, REST API, and MCP server against: (a) what the control plane's
 surface concretely is today (`engine_manifest.route()` plus
 `unified_cli.py`'s admin subcommands, both already returning structured
@@ -55,7 +55,7 @@ HTTP framework; two dependencies total: `pyyaml`, `jsonschema`), and (c) who
 the concretely-named external consumers actually are — not hypothetical
 polyglot application code, but agent runtimes: Pi and the operator's own
 coding agent (both named in
-`docs/superpowers/specs/2026-08-19-v02-swarm-orchestration-model-design.md`
+(internal design archive)
 section "Engine expansion: Pi and the own coding agent"), plus the frameworks
 named in ADR-023 itself (LangGraph, CrewAI, Vercel AI SDK).
 
@@ -116,7 +116,7 @@ not decided here.
   with what mandate) is unspecified. Choosing MCP does not resolve this — it
   is still an open item that must be specified before the server is actually
   implemented and exposed beyond a purely local/loopback context, with the
-  same discipline ADR-023 points to (the Fas 1 credential-broker threat
+  same discipline ADR-023 points to (the Phase 1 credential-broker threat
   model).
 - If the MCP tool surface is built to mirror only what the local CLI happens
   to need today, it risks the same "coded a single consumer's assumptions in
@@ -144,7 +144,7 @@ not decided here.
    a future addition once one exists.
 3. **Defer the form decision further, wait for an actual external
    integration request** — rejected: the same reasoning ADR-023 itself used
-   to reject waiting on Fas 6 packaging applies here — waiting only moves
+   to reject waiting on Phase 6 packaging applies here — waiting only moves
    the same decision to a point where more code already assumes no external
    form, and the spike already produced a groundable, non-speculative
    comparison (this is a form choice grounded in the existing codebase and

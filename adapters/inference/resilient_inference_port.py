@@ -94,8 +94,8 @@ class ResilientInferencePort:
             {
                 "role": "system",
                 "content": (
-                    "Du svarar ENDAST med ett enda heltal (inget annat, ingen förklaring). "
-                    "Beräkna summan av alla heltal i indata."
+                    "Reply with a single integer only (nothing else, no explanation). "
+                    "Calculate the sum of all integers in the input."
                 ),
             },
             {"role": "user", "content": task_body},

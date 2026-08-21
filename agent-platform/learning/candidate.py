@@ -1,4 +1,4 @@
-"""Candidate datamodel for the controlled learning loop (Fas 8, Beslut 9.1 / P0.1 / P2.4).
+"""Candidate datamodel for the controlled learning loop (Phase 8, Decision 9.1 / P0.1 / P2.4).
 
 A ``Candidate`` is an immutable, type-agnostic improvement proposal: a versioned payload that
 the loop can evaluate and (if verified) promote. Key design points (from the approved spec,
@@ -57,5 +57,5 @@ class Candidate:
         object.__setattr__(self, "manifest_hash", _payload_hash(locked))
 
     @property
-    def id(self) -> str:  # noqa: A003 - id is the contract name (Beslut 9.1 / P2.4)
+    def id(self) -> str:  # noqa: A003 - id is the contract name (Decision 9.1 / P2.4)
         return f"{self.type}@{self.name}@{self.version}"

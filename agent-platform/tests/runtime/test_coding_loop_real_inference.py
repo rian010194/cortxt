@@ -1,4 +1,4 @@
-"""Fas 3 exit-criterion proof: the vertical-02 off-by-one fixture solved by
+"""Phase 3 exit-criterion proof: the vertical-02 off-by-one fixture solved by
 CodingLoop end to end -- a real model call proposing the fix, a real container
 running the test suite -- without Pi or Hermes. Excluded from default CI by
 BOTH opt-in markers (same convention as every other real_inference-marked
@@ -6,8 +6,8 @@ test in this repo, and as Task 8/13's docker_required tests): run manually
 once CORTXT_INFERENCE_URL/CORTXT_INFERENCE_API_KEY are set,
 cortxt_resilient_inference is installed, a Docker daemon is reachable, and
 Task 8's BASE_IMAGE digest has been resolved. See
-docs/superpowers/specs/2026-08-16-fas3-coding-agent-v01-design.md and
-docs/superpowers/plans/2026-08-16-fas3-exit-criterion-checklist.md.
+(internal design archive) and
+(internal design archive)
 """
 from __future__ import annotations
 

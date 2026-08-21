@@ -1,5 +1,5 @@
 """Post-hoc cost aggregation over a (possibly recursive) RunTreeIndex — no
-real-time aggregation across process boundaries (spec beslut 2/6)."""
+real-time aggregation across process boundaries (spec decision 2/6)."""
 from __future__ import annotations
 
 from supervisor.run_tree import RunTreeIndex

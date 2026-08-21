@@ -1,11 +1,11 @@
-"""Fas 2A Delmål 2 — L0-fixtur + vertikal integration mot RIKTIG (opt-in) InferencePort.
+"""Phase 2A Milestone 2 — L0 fixture + vertical integration against a REAL (opt-in) InferencePort.
 
-Opt-in via ``@pytest.mark.real_inference``; körs ENDAST med ``pytest -m real_inference``
-OCH när ``CORTXT_INFERENCE_*``-env. Default-sviten (``-m "not real_inference"``) använder
-alltid mockad inference och är oförändrad.
+Opt-in via ``@pytest.mark.real_inference``; runs ONLY with ``pytest -m real_inference``
+AND when the ``CORTXT_INFERENCE_*`` env is set. The default suite (``-m "not real_inference"``)
+always uses mocked inference and is unchanged.
 
-Budget: varje scenario gör exakt 1 riktigt anrop; BudgetGate (env ``FAS2A_INFERENCE_BUDGET_MAX``)
-fail-closed vid budgettak. L0-fixture innehåller endast syntetiska heltal.
+Budget: each scenario makes exactly 1 real call; BudgetGate (env ``FAS2A_INFERENCE_BUDGET_MAX``)
+fails closed at the budget cap. The L0 fixture contains only synthetic integers.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Fas 8 Task 2 — CandidateRegistry: SQLite persist, type@name@version key, active-pointer + promoted_from."""
+"""Phase 8 Task 2 — CandidateRegistry: SQLite persist, type@name@version key, active-pointer + promoted_from."""
 from __future__ import annotations
 
 import sqlite3

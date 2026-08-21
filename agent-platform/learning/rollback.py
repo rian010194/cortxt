@@ -1,4 +1,4 @@
-"""rollback — atomic pointer restore (Fas 8, Beslut 7; P1.5).
+"""rollback — atomic pointer restore (Phase 8, Decision 7; P1.5).
 
 Rollback is a CONSEQUENCE of versioned state: restoring the active-pointer to ``promoted_from``. It is
 atomic (Kimi F-02: pointer restore + audit mark happen in ONE registry transaction), audited (the displaced

@@ -1,4 +1,4 @@
-"""Path scoring tests (Fas 6, Task 6)."""
+"""Path scoring tests (Phase 6, Task 6)."""
 
 from reasoning.geometric import CandidatePathScore, ProblemSpace, ReasoningNode, score_path
 

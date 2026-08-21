@@ -1,136 +1,139 @@
-# ADR-022: Fas 3 v0.1 — capability manifest shape and engine-selection criteria
+# ADR-022: Phase 3 v0.1 — capability manifest shape and engine-selection criteria
 
 **Status:** Accepted
 **Date:** 2026-08-18
-**Deciders:** Rikard (operatör), Claude Code (utkast)
-**Technical Story:** rian010194/cortxt#166 (Fas 2, klar), v.02-milstolpens Fas 3 (`.hermes/plans/2026-08-18-v02-milestone-wayfinder.md`)
+**Deciders:** Rikard (operator), Claude Code (draft)
+**Technical Story:** rian010194/cortxt#166 (Phase 2, done), the v.02 milestone's Phase 3 (`.hermes/plans/2026-08-18-v02-milestone-wayfinder.md`)
 
 ## Context
 
-ADR-019 (Accepted 2026-08-16) beslutade att routing mellan kodningsmotorer ska vara
-dynamisk och per-uppgiftsklass (kostnad, kapabilitet, dataklass, tillgänglighet) — inte
-en migrationsplan mot en enda motor. Dess egen valideringslista lämnade dock uttryckligen
-öppet: *"Urvalskriterier (vilken uppgiftsklass → egen Coding Agent vs extern motor)
-definierade — spåras som öppet beslut, inte avgjort av detta ADR."* Sökning i hela repot
-(2026-08-18) bekräftar att inget urvalsmekanism, capability-manifest eller
-routing-funktion existerar än — bara den öppna frågan i v.02-visionens §6 (commit
-`7ea503c`, ren dokumentation) och ADR-019:s obockade checklisterad.
+ADR-019 (Accepted 2026-08-16) decided that routing between coding engines should be
+dynamic and per task class (cost, capability, data class, availability) — not
+a migration plan toward a single engine. Its own validation checklist, however,
+explicitly left open: *"Selection criteria (which task class → own Coding Agent vs
+external engine) defined — tracked as an open decision, not settled by this ADR."* A
+search across the whole repo (2026-08-18) confirms that no selection mechanism,
+capability manifest, or routing function exists yet — only the open question in the
+v.02 vision's §6 (commit `7ea503c`, pure documentation) and ADR-019's unchecked
+checklist item.
 
-Samma kväll gav två Hermes-dispatches på samma uppgift (issue #165, #166) konkret
-evidens för varför statiska antaganden om "vilken motor" är farliga: `deepseek-v4-flash`
-var periodvis overksam (429 "all replicas at capacity"), en Hermes-worktree grenade av
-fel bas pga ett verktygsfel, och ett dispatch-försök byggde fel yta trots en detaljerad
-uppgiftsbeskrivning. Operatören har uttryckt att slutmålet är betydligt bredare än ett
-statiskt val mellan två motorer: routingbeslutet ska på sikt kunna välja Hermes, Pi,
-Claude direkt, eller en kedja av flera motorer i olika ordning, beroende på
-uppgiftsklass — och att dagens Hermes-profiler (satta upp innan worktree-stödet fanns)
-kan vila på föråldrade antaganden.
+That same evening, two Hermes dispatches on the same task (issues #165, #166) provided
+concrete evidence of why static assumptions about "which engine" are dangerous:
+`deepseek-v4-flash` was periodically idle (429 "all replicas at capacity"), a Hermes
+worktree branched off the wrong base due to a tool error, and a dispatch attempt built
+the wrong surface despite a detailed task description. The operator has expressed that
+the end goal is considerably broader than a static choice between two engines: the
+routing decision should in time be able to choose Hermes, Pi, Claude directly, or a
+chain of several engines in different orders, depending on task class — and that
+today's Hermes profiles (set up before worktree support existed) may rest on outdated
+assumptions.
 
-Detta ADR beslutar **inte** den fullständiga visionen (kedjad multi-motor-orkestrering).
-Det beslutar den smala v0.1-skiva som Fas 3 kan bygga nu, utan att låsa in en design som
-måste rivas upp när kedjning/inlärd tillförlitlighet läggs till senare.
+This ADR does **not** decide the full vision (chained multi-engine orchestration).
+It decides the narrow v0.1 slice that Phase 3 can build now, without locking in a
+design that must be torn up when chaining/learned reliability is added later.
 
-**Viktigt att inte tappa bort:** target-architecture.md §29 punkt 5 slår redan fast att
-"RLM och geometric reasoning ägs av Cortxt Agent Core" — orkestratorns routingbeslut är
-alltså inte tänkt att för alltid vara den deterministiska `route()`-funktionen nedan.
-Fas 5 (RLM v1) och Fas 6 (Geometric Reasoning v1) har redan design/implementation i
-`agent-platform/reasoning/geometric/` och motsvarande specs
-(`docs/superpowers/specs/2026-08-17-fas5-rlm-v1-design.md`,
-`...fas6-geometric-reasoning-v01-design.md`). När v0.1:s statiska
-mönstermatchning visar sig otillräcklig är den avsedda efterträdaren *den befintliga*
-Geometric Reasoning-motorn i den här kodbasen — inte en ny, ouppfunnen ML-mekanism. Det
-här ADR:et bygger v0.1 som en medveten bootstrap mot det målet, inte som en konkurrerande
-permanent lösning.
+**Important not to lose sight of:** target-architecture.md §29 point 5 already
+establishes that "RLM and geometric reasoning are owned by Cortxt Agent Core" — the
+orchestrator's routing decision is thus not intended to forever be the deterministic
+`route()` function below. Phase 5 (RLM v1) and Phase 6 (Geometric Reasoning v1)
+already have design/implementation in `agent-platform/reasoning/geometric/` and
+corresponding specs (internal design archive). When v0.1's static
+pattern matching proves insufficient, the intended successor is *the existing*
+Geometric Reasoning engine in this codebase — not a new, uninvented ML mechanism. This
+ADR builds v0.1 as a deliberate bootstrap toward that goal, not as a competing
+permanent solution.
 
 ## Decision
 
-**v0.1-omfattning (Fas 3):**
+**v0.1 scope (Phase 3):**
 
-1. **Capability-manifest — motoragnostiskt format.** Varje registrerad motor deklarerar:
-   - `engine_id` (str) — t.ex. `claude-direct`, `hermes`
-   - `task_shapes` (list[str]) — fria taggar motorn hanterar, t.ex. `tdd`, `widget-ui`,
-     `research`, `security-review`. Inte NLP-klassificerade — uppgiften taggas av
-     avsändaren (samma mönster som Fas 3-forskningsdokumentets §2.5 "capability tags":
-     typad uppifrån, inte ett plattformskontrakt än).
+1. **Capability manifest — engine-agnostic format.** Each registered engine declares:
+   - `engine_id` (str) — e.g. `claude-direct`, `hermes`
+   - `task_shapes` (list[str]) — free-form tags the engine handles, e.g. `tdd`,
+     `widget-ui`, `research`, `security-review`. Not NLP-classified — the task is
+     tagged by the sender (the same pattern as the Phase 3 research document's §2.5
+     "capability tags": typed from the top, not yet a platform contract).
    - `cost_class` (str: `free` | `cheap` | `metered`)
-   - `reliability_class` (str: `verified` | `unverified` | `degraded`) — satt manuellt,
-     inte inlärt i v0.1. Ikvällens `deepseek-v4-flash`-incident är exemplet: en motor kan
-     markeras `degraded` för hand utan kodändring.
-   - `notes` (str, valfri) — fri text för operatörskontext (t.ex. "profiler satta upp
-     innan worktree-stöd fanns, verifiera before trust").
+   - `reliability_class` (str: `verified` | `unverified` | `degraded`) — set manually,
+     not learned in v0.1. Tonight's `deepseek-v4-flash` incident is the example: an
+     engine can be marked `degraded` by hand without a code change.
+   - `notes` (str, optional) — free text for operator context (e.g. "profiles set up
+     before worktree support existed, verify before trust").
 
-2. **Routing-funktion — enkel, deterministisk mönstermatchning.** `route(task_tags:
-   list[str]) -> EngineChoice` väljer bland manifest vars `task_shapes` skär mot
-   `task_tags`, filtrerar bort `degraded`, sorterar på `cost_class` (free före cheap
-   före metered), och returnerar första träffen plus skälet (vilken tagg matchade, vilka
-   uteslöts och varför). Ingen träff → deterministisk fallback till `claude-direct`
-   (ikvällens erfarenhet: den enda motorn som inte behövde en omstart eller gav fel yta),
-   med skälet loggat, inte tyst.
+2. **Routing function — simple, deterministic pattern matching.**
+   `route(task_tags: list[str]) -> EngineChoice` selects among manifests whose
+   `task_shapes` intersect `task_tags`, filters out `degraded`, sorts by `cost_class`
+   (free before cheap before metered), and returns the first match plus the reason
+   (which tag matched, which were excluded and why). No match → deterministic fallback
+   to `claude-direct` (tonight's experience: the only engine that didn't need a
+   restart or produce the wrong surface), with the reason logged, not silently.
 
-3. **Två registrerade motorer i v0.1:** `claude-direct` och `hermes`. Pi, Codex, Copilot
-   läggs till som adaptrar när de faktiskt kopplas in (ADR-019 håller dem som permanenta
-   routingval, men "adapter finns" ≠ "adapter registrerad i v0.1-manifestet" — att gissa
-   deras `task_shapes`/`reliability_class` innan de faktiskt körts vore att koda in
-   antaganden ingen verifierat).
+3. **Two registered engines in v0.1:** `claude-direct` and `hermes`. Pi, Codex,
+   Copilot are added as adapters when they are actually wired in (ADR-019 keeps them
+   as permanent routing choices, but "adapter exists" ≠ "adapter registered in the
+   v0.1 manifest" — guessing their `task_shapes`/`reliability_class` before they have
+   actually run would be coding in assumptions no one has verified).
 
-**Explicit inte v0.1 (för att undvika att bygga fel abstraktion nu):**
-- Kedjning av flera motorer i sekvens för en uppgift.
-- Inlärd/dynamisk `reliability_class` baserad på faktisk track record (kräver Fas 8:s
-  learning-loop-mekanik, inte uppfunnen på nytt här).
-- ML- eller embedding-baserad uppgiftsklassificering (samma "bygg inte spekulativt"-regel
-  som Fas 3-forskningsdokumentets §3.1 redan tillämpar på task-shape-igenkänning).
-- Pi/Codex/Copilot-manifest (adaptrarna finns inte kopplade in än).
+**Explicitly not v0.1 (to avoid building the wrong abstraction now):**
+- Chaining multiple engines in sequence for one task.
+- Learned/dynamic `reliability_class` based on actual track record (requires Phase 8's
+  learning-loop mechanics, not reinvented here).
+- ML- or embedding-based task classification (the same "don't build speculatively"
+  rule that the Phase 3 research document's §3.1 already applies to task-shape
+  recognition).
+- Pi/Codex/Copilot manifest (the adapters are not wired in yet).
 
 ## Consequences
 
 ### Positive
-- Löser ADR-019:s öppna punkt med en skiva liten nog att verifiera ikväll, utan att
-  gissa på kedjning eller inlärning som ingen data finns för än.
-- Manifestformatet är motoragnostiskt från start — att lägga till Pi/Codex senare är att
-  lägga till en post, inte en omdesign (samma mönster som Fas 3-forskningens
-  dict-constant-att-YAML-serialiseringsresonemang, applicerat på routing istället för
-  tool-kontrakt).
-- `reliability_class: degraded` ger en konkret, kodfri väg att agera på ikvällens
-  Hermes-erfarenhet utan att vänta på en inlärningsmekanism.
+- Resolves ADR-019's open point with a slice small enough to verify tonight, without
+  guessing at chaining or learning for which no data exists yet.
+- The manifest format is engine-agnostic from the start — adding Pi/Codex later is
+  adding an entry, not a redesign (the same pattern as the Phase 3 research's
+  dict-constant-to-YAML-serialization reasoning, applied to routing instead of tool
+  contracts).
+- `reliability_class: degraded` provides a concrete, code-free way to act on tonight's
+  Hermes experience without waiting for a learning mechanism.
 
 ### Negative
-- Statiskt/manuellt satta `reliability_class`-fält kräver att någon (operatören eller
-  Claude) faktiskt uppdaterar dem när en motor visar sig otillförlitlig — inget
-  automatiskt facit än.
-- Fallback-till-`claude-direct` betyder att routingbeslutet i praktiken favoriserar en
-  motor tills fler är verifierade — en medveten bias, inte en neutral algoritm.
+- Statically/manually set `reliability_class` fields require someone (the operator or
+  Claude) to actually update them when an engine proves unreliable — no automatic
+  ground truth yet.
+- Fallback-to-`claude-direct` means the routing decision in practice favors one engine
+  until more are verified — a deliberate bias, not a neutral algorithm.
 
 ### Risks
-- Om Pi/Codex läggs till utan att uppdatera `task_shapes` ärligt (gissade taggar istället
-  för verifierade) uppstår samma "kodade in gissningar som kontrakt"-misstag ADR-016
-  redan varnat för på ett annat lager.
-- Fri-text `task_shapes` utan normalisering (samma öppna fråga som Fas 3-forskningens §7
-  punkt 3, ärvd hit) kan drifta mot inkonsekventa taggar mellan avsändare.
+- If Pi/Codex are added without honestly updating `task_shapes` (guessed tags instead
+  of verified ones), the same "coded-in guesses as contracts" mistake ADR-016 already
+  warned about at another layer recurs.
+- Free-text `task_shapes` without normalization (the same open question as the Phase 3
+  research's §7 point 3, inherited here) can drift toward inconsistent tags across
+  senders.
 
 ## Alternatives Considered
-1. **Bygg kedjad multi-motor-orkestrering direkt** — förkastad: ingen verifierad data om
-   vilka uppgiftsklasser som faktiskt gynnas av kedjning; skulle gissa en arkitektur
-   ADR-019 själv varnar för att låsa fast för tidigt.
-2. **Behåll status quo (allt via Hermes-profiler)** — förkastad: exakt det ADR-019
-   beslutade emot, och ikvällens två misslyckade dispatches är direkt evidens mot att
-   lita blint på en enda motor.
-3. **Inlärd routing (embeddings/ML) från start** — förkastad: samma
-   bygg-inte-spekulativt-regel som redan gäller task-shape-igenkänning i
-   Fas 3-forskningsdokumentet; ingen träningsdata finns.
+1. **Build chained multi-engine orchestration directly** — rejected: no verified data
+   on which task classes actually benefit from chaining; it would guess an architecture
+   ADR-019 itself warns against locking in too early.
+2. **Keep the status quo (everything via Hermes profiles)** — rejected: exactly what
+   ADR-019 decided against, and tonight's two failed dispatches are direct evidence
+   against trusting a single engine blindly.
+3. **Learned routing (embeddings/ML) from the start** — rejected: the same
+   don't-build-speculatively rule that already applies to task-shape recognition in
+   the Phase 3 research document; no training data exists.
 
 ## Validation
-- [ ] Manifest-schema implementerat och testat (minst `claude-direct` + `hermes`)
-- [ ] `route()`-funktion har testtäckning för: träff, ingen träff (fallback), degraded
-      motor exkluderad, kostnadssortering
-- [ ] Ikvällens Hermes-attempt-1/attempt-2-erfarenhet manuellt kodad som exempel i
-      `hermes`-manifestets `notes`-fält (spårbarhet, inte bara i minnesloggen)
-- [ ] Dokumentation uppdaterad: `.hermes/plans/2026-08-18-v02-milestone-wayfinder.md`
-      Fas 3-avsnittet pekar hit istället för mot `ADAPTER_REGISTRY`
+- [ ] Manifest schema implemented and tested (at least `claude-direct` + `hermes`)
+- [ ] `route()` function has test coverage for: match, no match (fallback), degraded
+      engine excluded, cost sorting
+- [ ] Tonight's Hermes attempt-1/attempt-2 experience manually coded as an example in
+      the `hermes` manifest's `notes` field (traceability, not just in the memory log)
+- [ ] Documentation updated: `.hermes/plans/2026-08-18-v02-milestone-wayfinder.md`
+      Phase 3 section points here instead of at `ADAPTER_REGISTRY`
 
 ## Expiry/Review Trigger
 - Review by: 2026-09-18
-- Trigger: en tredje motor (Pi, Codex, eller Copilot) faktiskt kopplas in och behöver ett
-  verkligt manifest, ELLER track record-data visar att statisk `reliability_class` inte
-  räcker och en inlärningsmekanism (Fas 8-mönster) behövs, ELLER Geometric
-  Reasoning-motorn (Fas 5/6) är redo att ta över `route()`:s roll — se Context-notisen
-  om target-architecture.md §29 punkt 5.
+- Trigger: a third engine (Pi, Codex, or Copilot) is actually wired in and needs a
+  real manifest, OR track-record data shows that static `reliability_class` is not
+  enough and a learning mechanism (Phase 8 pattern) is needed, OR the Geometric
+  Reasoning engine (Phase 5/6) is ready to take over `route()`'s role — see the
+  Context note about target-architecture.md §29 point 5.

@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-08-20
 **Deciders:** Rikard Andersson (operator)
-**Technical Story:** `docs/superpowers/specs/2026-08-20-orchestrator-engine-resume-and-codex-adapter-v1-design.md`
+**Technical Story:** (internal design archive)
 
 ## Context
 

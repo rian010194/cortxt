@@ -1,4 +1,4 @@
-"""Addon review gate — Fas 5, extending PromotionGate rather than building a
+"""Addon review gate — Phase 5, extending PromotionGate rather than building a
 fourth candidate-review system (v.02 vision doc §6, operator's own framing).
 
 Operator decision (2026-08-18): community addons go through two steps —

@@ -1,7 +1,7 @@
-"""Fas 8 Task 10 — exit criterion: better promotes, worse rejects, violating weights rejected, production
+"""Phase 8 Task 10 — exit criterion: better promotes, worse rejects, violating weights rejected, production
 untouched (double-direction, N=3 fixture paths).
 
-Reuses the evaluation pattern from Fas 5/6/7 and geometric `score_path` / `CandidatePathScore`. The exit
+Reuses the evaluation pattern from Phase 5/6/7 and geometric `score_path` / `CandidatePathScore`. The exit
 criterion (spec §23): no automatic change reaches production without verified promotion. Kimi Task8-11 fixes:
 - N≥3 distinct path fixtures (was N=1, mechanism-tautological).
 - policy-constraint safety rules ACTUALLY exercised via `constraint_matrix()` (was passed by accident).
@@ -16,7 +16,7 @@ from learning.promotion_gate import PromotionGate
 from learning.registry import CandidateRegistry
 from learning.rollback import rollback
 
-# --- geometry fixture surface: N=3 distinct paths (reused geometry from Fas 6) ----------------------
+# --- geometry fixture surface: N=3 distinct paths (reused geometry from Phase 6) ----------------------
 def _space_for(seed: int):
     from reasoning.geometric import ProblemSpace, ReasoningNode
     s = ProblemSpace()

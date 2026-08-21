@@ -1,7 +1,7 @@
-"""Process entrypoint for one RLM tree node (design spec beslut 1/2).
+"""Process entrypoint for one RLM tree node (design spec decision 1/2).
 
 Spawned by Coordinator.run_node (supervisor/coordinator.py, Task 6) exactly
-like Fas 4's coding_loop_cli.py is spawned by run_m1/run_m2 — but this
+like Phase 4's coding_loop_cli.py is spawned by run_m1/run_m2 — but this
 entrypoint can itself decompose and spawn its own children, becoming a
 Coordinator in its own right (see run_node_body's decompose branch).
 """
@@ -33,7 +33,7 @@ def decide_child_refs(context_ref: ContextReference, config: Any, depth: int,
     Returns [] for a leaf decision, or the list of child ContextReferences to
     spawn for a decompose decision. Used by Coordinator.run_node (Task 6) to
     decide how many child processes to spawn WITHOUT needing an inference
-    port — Coordinator itself never calls a model directly (Fas 3 §32.1: the
+    port — Coordinator itself never calls a model directly (Phase 3 §32.1: the
     Supervisor never does domain work itself). run_node_body (below) is the
     combined decide+execute function used only inside a spawned process's own
     main(), which always has a real inference port available.
@@ -77,7 +77,7 @@ HEARTBEAT_INTERVAL_SECONDS = 5.0
 
 
 def _start_heartbeat(writer, interval: float) -> threading.Event:
-    """Verbatim of coding_loop_cli.py's own helper (Fas 4 decision 9) —
+    """Verbatim of coding_loop_cli.py's own helper (Phase 4 decision 9) —
     SessionWriter has no heartbeat methods itself; the caller owns the timer
     thread and the stop Event."""
     stop = threading.Event()
@@ -129,11 +129,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     from pathlib import Path as _Path
-    from adapters.inference.budget_gate import BudgetGate  # existing, Fas 3/4
+    from adapters.inference.budget_gate import BudgetGate  # existing, Phase 3/4
     from reasoning.recursive.bounds import RLMConfig
     from runtime import session_state as state
     from runtime.session_writer import SessionWriter
-    from runtime.text_inference_port import TextInferencePort  # existing, Fas 3
+    from runtime.text_inference_port import TextInferencePort  # existing, Phase 3
 
     # payload["rlm"] carries the RLMConfig fields; the sibling keys carry
     # inference wiring (model/provider/data-class) — see Task 6's
@@ -205,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # this process now becomes a spawner for its own children — the
         # concrete instance of "a node that decomposes further runs a full
-        # Coordinator" (spec beslut 2)
+        # Coordinator" (spec decision 2)
         from supervisor.coordinator import Coordinator
         coordinator = Coordinator(store=store)
         result = coordinator.run_node(task_id=args.session_id, context_ref=context_ref,

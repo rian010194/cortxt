@@ -1,4 +1,4 @@
-"""Agent Runtime's coding loop (Fas 3 v0.1) -- the coding sibling of agent_loop.py.
+"""Agent Runtime's coding loop (Phase 3 v0.1) -- the coding sibling of agent_loop.py.
 
 claim -> materialize a disposable workspace -> baseline verification (must
 fail) -> discover -> kernel (CODING_ASSISTED strategy: propose, apply+diff+

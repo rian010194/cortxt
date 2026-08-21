@@ -39,8 +39,8 @@ export default function Telemetry() {
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">Telemetry & Cost</h1>
         <p className="text-slate-400 max-w-3xl">
-          Kostnadsöversikt för AI Workspace-körningar. Auto-kalkylation tokens → USD är aktiv.
-          Gratis-modeller (kimi-k2.6:free, qwen3-coder:free) med dagliga kvoter visas nedan.
+          Cost overview for AI Workspace runs. Automatic token → USD calculation is active.
+          Free models (kimi-k2.6:free, qwen3-coder:free) with daily quotas are shown below.
         </p>
       </div>
 
@@ -52,7 +52,7 @@ export default function Telemetry() {
           </div>
           <div>
             <div className="text-2xl font-bold text-white">${totalCost.toFixed(2)}</div>
-            <div className="text-sm text-slate-400">Total idag</div>
+            <div className="text-sm text-slate-400">Total today</div>
           </div>
         </div>
         <div className="card flex items-center gap-4">
@@ -61,7 +61,7 @@ export default function Telemetry() {
           </div>
           <div>
             <div className="text-2xl font-bold text-white">${avgCost.toFixed(2)}</div>
-            <div className="text-sm text-slate-400">Snitt/4h</div>
+            <div className="text-sm text-slate-400">Avg/4h</div>
           </div>
         </div>
         <div className="card flex items-center gap-4">
@@ -79,7 +79,7 @@ export default function Telemetry() {
           </div>
           <div>
             <div className="text-2xl font-bold text-white">{profiles.length}</div>
-            <div className="text-sm text-slate-400">Profiler aktiva</div>
+            <div className="text-sm text-slate-400">Active profiles</div>
           </div>
         </div>
       </div>
@@ -88,9 +88,9 @@ export default function Telemetry() {
       <div className="card">
         <div className="flex items-center gap-3 mb-5">
           <Gift className="w-5 h-5 text-emerald-400" />
-          <h2 className="text-xl font-semibold text-white">Gratis-kvoter idag</h2>
+          <h2 className="text-xl font-semibold text-white">Free quotas today</h2>
           <span className="badge badge-green text-xs">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> Auto-trackade
+            <CheckCircle2 className="w-3 h-3 mr-1" /> Auto-tracked
           </span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -117,15 +117,15 @@ export default function Telemetry() {
                 <div className="text-xs text-slate-500">
                   {isCritical ? (
                     <span className="text-rose-400 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> Nästan slut — fallback aktiveras
+                      <AlertTriangle className="w-3 h-3" /> Almost exhausted — fallback activated
                     </span>
                   ) : isLow ? (
                     <span className="text-amber-400 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> Låg kvot — spara för viktiga körningar
+                      <AlertTriangle className="w-3 h-3" /> Low quota — save for important runs
                     </span>
                   ) : (
                     <span className="text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> {status.limit - status.used} kvar idag
+                      <CheckCircle2 className="w-3 h-3" /> {status.limit - status.used} left today
                     </span>
                   )}
                 </div>
@@ -139,9 +139,9 @@ export default function Telemetry() {
       <div className="card">
         <div className="flex items-center gap-3 mb-5">
           <Shield className="w-5 h-5 text-brand-400" />
-          <h2 className="text-xl font-semibold text-white">Fallback-kedjor</h2>
+          <h2 className="text-xl font-semibold text-white">Fallback Chains</h2>
           <span className="badge badge-blue text-xs">
-            <ArrowRight className="w-3 h-3 mr-1" /> Dispatch-order
+            <ArrowRight className="w-3 h-3 mr-1" /> Dispatch order
           </span>
         </div>
         <div className="space-y-4">
@@ -182,7 +182,7 @@ export default function Telemetry() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-xs text-slate-500 mb-1.5">Profil</label>
+              <label className="block text-xs text-slate-500 mb-1.5">Profile</label>
               <select
                 value={calcProfile}
                 onChange={e => setCalcProfile(e.target.value)}
@@ -243,7 +243,7 @@ export default function Telemetry() {
               <div className="p-3 rounded-lg bg-amber-900/20 border border-amber-700/40 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                 <span className="text-sm text-amber-300">
-                  Denna körning uppskattas kosta mer än $5. Överväg att använda nemotron-3-ultra (free tier) för planering/routing.
+                  This run is estimated to cost more than $5. Consider using nemotron-3-ultra (free tier) for planning/routing.
                 </span>
               </div>
             )}
@@ -251,8 +251,8 @@ export default function Telemetry() {
               <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-700/40 flex items-center gap-2">
                 <Gift className="w-4 h-4 text-blue-400 shrink-0" />
                 <span className="text-sm text-blue-300">
-                  Denna profil har en daglig kvot på {calcProfileData.dailyLimit} requests.
-                  När kvoten tar slut faller dispatch tillbaka till nästa profil i fallback-kedjan.
+                  This profile has a daily quota of {calcProfileData.dailyLimit} requests.
+                  When the quota is exhausted, dispatch falls back to the next profile in the fallback chain.
                 </span>
               </div>
             )}
@@ -264,7 +264,7 @@ export default function Telemetry() {
       <div className="card">
         <div className="flex items-center gap-3 mb-5">
           <Activity className="w-5 h-5 text-brand-400" />
-          <h2 className="text-xl font-semibold text-white">Kostnad över tid (24h)</h2>
+          <h2 className="text-xl font-semibold text-white">Cost over time (24h)</h2>
         </div>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
@@ -297,7 +297,7 @@ export default function Telemetry() {
         <div className="card">
           <div className="flex items-center gap-3 mb-5">
             <BarChart3 className="w-5 h-5 text-brand-400" />
-            <h2 className="text-xl font-semibold text-white">Pris per profil (USD / 1M tokens)</h2>
+            <h2 className="text-xl font-semibold text-white">Price per profile (USD / 1M tokens)</h2>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -320,7 +320,7 @@ export default function Telemetry() {
         <div className="card">
           <div className="flex items-center gap-3 mb-5">
             <DollarSign className="w-5 h-5 text-brand-400" />
-            <h2 className="text-xl font-semibold text-white">Kostnad per 10k tokens (in + out)</h2>
+            <h2 className="text-xl font-semibold text-white">Cost per 10k tokens (in + out)</h2>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -349,8 +349,8 @@ export default function Telemetry() {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-800/80 text-slate-400 text-xs uppercase">
               <tr>
-                <th className="px-5 py-3 font-medium">Profil</th>
-                <th className="px-5 py-3 font-medium">Modell</th>
+                <th className="px-5 py-3 font-medium">Profile</th>
+                <th className="px-5 py-3 font-medium">Model</th>
                 <th className="px-5 py-3 font-medium">Provider</th>
                 <th className="px-5 py-3 font-medium">Input/1M</th>
                 <th className="px-5 py-3 font-medium">Output/1M</th>

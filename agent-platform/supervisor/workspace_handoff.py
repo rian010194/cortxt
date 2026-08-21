@@ -1,6 +1,6 @@
-"""M2 workspace handoff: reshape child 1's file_contents into Fas 3's
+"""M2 workspace handoff: reshape child 1's file_contents into Phase 3's
 apply_patch changes schema and apply it to child 2's fresh copy-in workspace,
-before child 2 starts. No new patch-application logic — Fas 3's apply_patch is
+before child 2 starts. No new patch-application logic — Phase 3's apply_patch is
 reused unmodified (design spec decision 5's "Implementation refinement").
 """
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Fas 8 Task 1 — Candidate datamodel: immutable, id ≡ type@name@version, hash over serialized payload."""
+"""Phase 8 Task 1 — Candidate datamodel: immutable, id ≡ type@name@version, hash over serialized payload."""
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError

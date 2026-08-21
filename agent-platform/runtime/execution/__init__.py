@@ -1,4 +1,4 @@
-"""Execution subpackage for the Fas 3 coding runtime.
+"""Execution subpackage for the Phase 3 coding runtime.
 
 Holds the pure write-policy functions (Task 3) and the container-backed
 ``ExecutionSandbox`` (Task 8). This ``__init__.py`` is required for

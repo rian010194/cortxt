@@ -232,16 +232,14 @@ def build_chat_prompt(user_text: str, projection: dict[str, Any]) -> tuple[str, 
 
 def local_conversation_reply(value: str) -> str | None:
     """Handle trivial social turns locally: no model cost and no state disclosure."""
-    normalized = re.sub(r"[^\wåäö]+", " ", value.casefold()).strip()
+    normalized = re.sub(r"[^\w]+", " ", value.casefold()).strip()
     greetings = {
         "hello", "hi", "hey", "hello there", "hi there",
-        "hej", "hallå", "tjena", "god morgon", "god kväll",
+        "good morning", "good evening",
     }
     if normalized not in greetings:
         return None
-    if normalized in {"hello", "hi", "hey", "hello there", "hi there"}:
-        return "Hello! I’m the Cortxt orchestrator. What would you like to work on?"
-    return "Hej! Jag är Cortxt-orkestratorn. Vad vill du arbeta med?"
+    return "Hello! I’m the Cortxt orchestrator. What would you like to work on?"
 
 
 def transcript_record(

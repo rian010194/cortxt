@@ -1,6 +1,6 @@
 """RunTreeIndex: a derived, rebuildable, structurally-unwritable projection of
 an RLM node's session log and (recursively) its children's (design spec
-decision 3, extending Fas 4 decision 4 to arbitrary depth). The only
+decision 3, extending Phase 4 decision 4 to arbitrary depth). The only
 constructor is build_index(); there is no mutation API.
 """
 from __future__ import annotations

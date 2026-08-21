@@ -1,4 +1,4 @@
-"""Operator tests — change_perspective (Fas 6, Task 5). compare_paths tested in Task 6."""
+"""Operator tests — change_perspective (Phase 6, Task 5). compare_paths tested in Task 6."""
 
 from reasoning.geometric import (
     PerspectiveResult,

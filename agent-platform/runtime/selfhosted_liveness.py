@@ -1,4 +1,4 @@
-"""Liveness probes for a self-hosted vLLM endpoint (Fas 7, Beslut 5).
+"""Liveness probes for a self-hosted vLLM endpoint (Phase 7, Decision 5).
 
 Two layers:
 - ``parse_liveness``: a pure function that normalizes vLLM ``/health`` and

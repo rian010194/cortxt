@@ -1,5 +1,5 @@
-"""Credential broker core -- Fas 4, implementing the design cleared by
-`docs/security/credential-broker-threat-model.md` (Fas 1).
+"""Credential broker core -- Phase 4, implementing the design cleared by
+`docs/security/credential-broker-threat-model.md` (Phase 1).
 
 This is a control-plane-owned store of third-party bearer credentials. It
 is deliberately narrow: no enumeration API, no unconfirmed writes, no

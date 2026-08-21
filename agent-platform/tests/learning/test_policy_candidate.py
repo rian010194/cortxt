@@ -1,4 +1,4 @@
-"""Fas 8 Task 8 — policy-candidate adapter + concrete policy-constraint safety rules (P1.1)."""
+"""Phase 8 Task 8 — policy-candidate adapter + concrete policy-constraint safety rules (P1.1)."""
 from __future__ import annotations
 
 from learning.candidate import Candidate

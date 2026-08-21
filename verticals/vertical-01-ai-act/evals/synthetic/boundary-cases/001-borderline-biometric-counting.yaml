@@ -33,8 +33,8 @@ expected_output:
     basis_annex: null
   obligations_assessed: []
   decision_brief:
-    language: sv
-    text: "Systemet CrowdCount AI kan omfattas av AI-förordningen, men riskklassificeringen är osäker. Det är oklart om siluettbaserad trängselräkning över huvud taget utgör biometrisk behandling enligt Art 3(34)/GDPR Art 4(14), eftersom den varken identifierar individer eller lagrar ansiktsdata. Avgörs det att tekniken är biometrisk återstår Annex III-gränsen. Primärkällsverifiering krävs."
+    language: en
+    text: "The CrowdCount AI system may be covered by the AI Act, but the risk classification is uncertain. It is unclear whether silhouette-based crowd counting constitutes biometric processing at all under Art 3(34)/GDPR Art 4(14), since it neither identifies individuals nor stores facial data. If the technology is determined to be biometric, the Annex III boundary remains. Primary-source verification is required."
   uncertainties:
   - topic: Whether silhouette crowd-counting constitutes biometric processing (AI Act Art 3(34)/GDPR Art 4(14))
     reason: The decision to treat silhouettes as biometric data is not yet established. Biometric data under Art 3(34) requires data relating to physical characteristics that allow or confirm the UNIQUE identification of a natural person; this system neither identifies nor stores facial data. It is therefore uncertain whether silhouette-based crowd counting constitutes biometric processing at all.
@@ -60,7 +60,7 @@ deterministic_assertions:
   operator: equals
   expected_value: []
 model_assisted_assertions:
-- rubric: The decision brief should be in Swedish and express uncertainty (osäker) about whether silhouette crowd-counting constitutes biometric processing, per AI Act Art 3(34)/GDPR Art 4(14).
+- rubric: The decision brief should be in English and express uncertainty about whether silhouette crowd-counting constitutes biometric processing, per AI Act Art 3(34)/GDPR Art 4(14).
   required_model_capabilities:
   - structured-output
 human_review_required: true

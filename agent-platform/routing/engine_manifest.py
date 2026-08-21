@@ -1,4 +1,4 @@
-"""Fas 3 v0.1: engine-agnostic capability manifest and deterministic routing.
+"""Phase 3 v0.1: engine-agnostic capability manifest and deterministic routing.
 
 ADR-022 (`docs/adr/022-fas3-capability-manifest-and-engine-selection-criteria.md`)
 resolves ADR-019's open engine-selection-criteria item with a narrow, verifiable
@@ -28,7 +28,7 @@ class EngineManifest:
     """One engine's self-declared capability, per ADR-022's manifest shape.
 
     `task_shapes` are free tags supplied by the caller, not inferred (same
-    "typed from above, not a platform contract yet" stance as the Fas 3
+    "typed from above, not a platform contract yet" stance as the Phase 3
     research doc's capability tags). `reliability_class` is set by hand --
     v0.1 has no learned/dynamic scoring, per ADR-022's explicit deferral.
     `checkpoint_required` defaults to `True` — an engine is only exempted once
@@ -74,15 +74,15 @@ DEFAULT_MANIFESTS: tuple[EngineManifest, ...] = (
         task_shapes=("general", "review", "adr-drafting", "widget-ui", "cli", "security-sensitive"),
         cost_class="metered",
         reliability_class="verified",
-        notes="Fas 2/ADR-022 bootstrap fallback: the only engine that finished "
-        "Fas 2 (issue #166) without an off-track dispatch or a wasted iteration budget.",
+        notes="Phase 2/ADR-022 bootstrap fallback: the only engine that finished "
+        "Phase 2 (issue #166) without an off-track dispatch or a wasted iteration budget.",
     ),
     EngineManifest(
         engine_id="hermes",
         task_shapes=("research", "background-task", "parallel-dispatch"),
         cost_class="cheap",
         reliability_class="unverified",
-        notes="Two Fas 2 dispatch attempts (issue #165, #166) missed the target -- "
+        notes="Two Phase 2 dispatch attempts (issue #165, #166) missed the target -- "
         "one exhausted its iteration budget, the other wired the wrong widget surface "
         "and added an unjustified HTTP server despite an explicit issue describing "
         "exactly what to avoid. Reliable for research/background dispatch; not yet "

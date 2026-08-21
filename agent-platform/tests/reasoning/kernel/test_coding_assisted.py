@@ -1,6 +1,6 @@
 """CODING_ASSISTED: additive extension, injected callables only, zero new imports.
 
-Same shape as Fas 2's test_model_assisted.py — the operators must delegate and
+Same shape as Phase 2's test_model_assisted.py — the operators must delegate and
 never do hidden work of their own, and every existing solver must be unaffected.
 """
 from __future__ import annotations
@@ -62,7 +62,7 @@ def test_falsify_fix_sets_confidence_one_only_when_the_verifier_says_so():
 
 
 def test_operators_never_invent_a_value_of_their_own():
-    """No hidden arithmetic, no fallback — same assertion Fas 2 made about
+    """No hidden arithmetic, no fallback — same assertion Phase 2 made about
     inspect_with_model / verify_against_schema."""
     state = new_problem({"values": [1, 2, 3]})
     state._computed = PROPOSAL
