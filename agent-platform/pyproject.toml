@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["pyyaml>=6", "jsonschema>=4"]
 
+[project.optional-dependencies]
+mcp = ["mcp>=1.2"]
+
 [project.scripts]
 cortxt = "cortxt_entrypoint:main"
 
@@ -18,7 +21,7 @@ py-modules = ["cortxt_entrypoint"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["reasoning*", "portability*", "runtime*", "routing*", "security*", "cli*", "widget*", "learning*", "supervisor*", "context_store*", "harness*", "daemon*"]
+include = ["reasoning*", "portability*", "runtime*", "routing*", "security*", "cli*", "widget*", "learning*", "supervisor*", "context_store*", "harness*", "daemon*", "mcp*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
