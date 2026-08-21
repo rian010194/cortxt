@@ -28,3 +28,14 @@ def test_codex_has_a_provider():
 def test_claude_has_a_provider():
     context = build_default_engine_context()
     assert context.get("claude").has_provider is True
+
+
+def test_dsh_has_a_provider():
+    # DSH-integration experiment (lab/dsh-integration): the DSH SDK adapter
+    # is registered in the default engine context like hermes/codex/claude,
+    # so `cortxt orchestrator --engine dsh` can invoke it without touching
+    # route()'s selection (ADR-026: registration and selection are separate
+    # layers). route() now picks dsh for research/background-task via its
+    # DEFAULT_MANIFESTS entry (operator decision 2026-08-21).
+    context = build_default_engine_context()
+    assert context.get("dsh").has_provider is True

@@ -88,6 +88,19 @@ DEFAULT_MANIFESTS: tuple[EngineManifest, ...] = (
         "exactly what to avoid. Reliable for research/background dispatch; not yet "
         "verified for specification-heavy build tasks. Reassess (see ADR-022 §Expiry).",
     ),
+    EngineManifest(
+        engine_id="dsh",
+        task_shapes=("research", "background-task"),
+        cost_class="cheap",
+        reliability_class="unverified",
+        notes="DSH-integration experiment (lab/dsh-integration): the DeepSeek Harness "
+        "Python-SDK adapter (routing.dsh_invoker + runtime/adapters/dsh_adapter) is "
+        "registered and live-proved end-to-end (2026-08-21: invoke_dsh against "
+        "nous/deepseek-v4-flash-0731 via the node runtime carrier, finish_reason=completed). "
+        "Takes research/background-task over hermes on the cheap tie-break (engine_id "
+        "'dsh' < 'hermes'); hermes keeps parallel-dispatch. Reassess once a real "
+        "workflow:ready dispatch has run (see ADR-022 §Expiry).",
+    ),
 )
 
 

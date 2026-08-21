@@ -753,10 +753,10 @@ def _run_dispatch(
             )
             state.append(store, session_id, 0, "session.terminal", {"status": result["status"]})
             # Kept as "hermes_result" even though the broker is generic:
-            # hermes is the only engine with a registered adapter today, so
-            # renaming this key would be a real (if currently invisible)
-            # evidence-shape change with no engine that would exercise the
-            # difference -- not something this plan does speculatively.
+            # dsh now also routes here (research/background-task, operator
+            # decision 2026-08-21), but renaming this key would be a real
+            # (if currently invisible) evidence-shape change with no consumer
+            # that would exercise the difference -- not done speculatively.
             evidence["hermes_result"] = {k: v for k, v in result.items() if k != "stdout"}
             status = "succeeded" if result["status"] == "succeeded" else "failed"
         else:
