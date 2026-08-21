@@ -157,14 +157,37 @@ def test_route_rejects_empty_task_tags():
 # --- default v0.1 registry (ADR-022) ---
 
 
-def test_default_manifests_register_claude_direct_and_hermes():
+def test_default_manifests_register_claude_direct_hermes_and_dsh():
     ids = {m.engine_id for m in DEFAULT_MANIFESTS}
-    assert ids == {"claude-direct", "hermes"}
+    assert ids == {"claude-direct", "hermes", "dsh"}
 
 
 def test_hermes_default_manifest_notes_cite_tonights_incidents():
     hermes = next(m for m in DEFAULT_MANIFESTS if m.engine_id == "hermes")
     assert "165" in hermes.notes or "166" in hermes.notes
+
+
+def test_dsh_default_manifest_is_cheap_unverified_and_takes_research():
+    # DSH-integration experiment: dsh is a live-proved, cheap headless engine
+    # (lab/dsh-integration live-proof 2026-08-21). It competes with hermes on
+    # research/background-task and wins the cheap tie-break ("dsh" < "hermes"
+    # lexicographically), while hermes keeps parallel-dispatch. This is a
+    # deliberate operator decision, not a default flip.
+    dsh = next(m for m in DEFAULT_MANIFESTS if m.engine_id == "dsh")
+    assert set(dsh.task_shapes) == {"research", "background-task"}
+    assert dsh.cost_class == "cheap"
+    assert dsh.reliability_class == "unverified"
+    assert dsh.checkpoint_required is True
+
+
+def test_route_over_default_manifests_takes_dsh_for_research():
+    choice = route(["research"], DEFAULT_MANIFESTS)
+    assert choice.engine_id == "dsh"
+
+
+def test_route_over_default_manifests_keeps_hermes_for_parallel_dispatch():
+    choice = route(["parallel-dispatch"], DEFAULT_MANIFESTS)
+    assert choice.engine_id == "hermes"
 
 
 def test_route_over_default_manifests_falls_back_to_claude_direct_for_unknown_shape():

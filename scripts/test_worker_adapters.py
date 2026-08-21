@@ -231,6 +231,70 @@ t5b.join(timeout=5)
 check("both runs reached succeeded", disp5.query(run5a.run_id)["status"] == "succeeded" and disp5.query(run5b.run_id)["status"] == "succeeded")
 check("both labels moved independently", gh5.labels["o/r#6"] == ["workflow:review"] and gh5.labels["o/r#7"] == ["workflow:review"])
 
+print("== DshWorkerAdapter.invoke: succeeded envelope, no raw stdout in evidence, cost unknown ==")
+dsh_log_dir = new_log_dir()
+dsh_adapter = wa.DshWorkerAdapter(
+    invoke_dsh=lambda prompt, timeout_seconds, cwd: {
+        "status": "succeeded", "stdout": "the answer", "stderr": "",
+        "session_id": "sess-1", "finish_reason": "completed", "elapsed_seconds": 1.2,
+    },
+    log_dir=dsh_log_dir,
+)
+dsh_env = dsh_adapter.invoke(run, "do the thing", timeout_seconds=60)
+check("dsh status succeeded", dsh_env["_status"] == "succeeded")
+check("dsh evidence does NOT carry raw stdout (AGENTS.md)", "the answer" not in dsh_env["evidence"])
+check("dsh evidence is short and bounded", len(dsh_env["evidence"]) < 200)
+check("dsh cost reported unknown, not zero", "unknown" in dsh_env["cost"].lower())
+check("dsh error is None on success", dsh_env["error"] is None)
+check("dsh artifacts has exactly one local log reference", len(dsh_env["artifacts"]) == 1)
+check("dsh raw stdout lives in the local log, not the envelope", "the answer" in Path(dsh_env["artifacts"][0]).read_text())
+
+print("== DshWorkerAdapter.invoke: failed status -> failed envelope, raw stderr stays local ==")
+dsh_adapter2 = wa.DshWorkerAdapter(
+    invoke_dsh=lambda prompt, timeout_seconds, cwd: {
+        "status": "failed", "stdout": "", "stderr": "boom: bad prompt",
+        "session_id": None, "finish_reason": None, "elapsed_seconds": 0.4,
+    },
+    log_dir=new_log_dir(),
+)
+dsh_env2 = dsh_adapter2.invoke(run, "do the thing", timeout_seconds=60)
+check("dsh status failed", dsh_env2["_status"] == "failed")
+check("dsh error category worker_nonzero_exit", dsh_env2["error"]["category"] == "worker_nonzero_exit")
+check("dsh raw stderr NOT in error.recovery", "boom" not in dsh_env2["error"]["recovery"])
+check("dsh recovery points at the local log", "run log" in dsh_env2["error"]["recovery"])
+check("dsh raw stderr still captured in the local log", "boom" in Path(dsh_env2["artifacts"][0]).read_text())
+
+print("== DshWorkerAdapter.invoke: DshInvocationError -> failed envelope, not an exception ==")
+def _raising_invoke(prompt, timeout_seconds, cwd):
+    raise RuntimeError("deepseek-harness-sdk is not installed")
+dsh_adapter3 = wa.DshWorkerAdapter(invoke_dsh=_raising_invoke, log_dir=new_log_dir())
+dsh_env3 = dsh_adapter3.invoke(run, "do the thing", timeout_seconds=60)
+check("dsh status failed on raise", dsh_env3["_status"] == "failed")
+check("dsh error category runtime_unavailable", dsh_env3["error"]["category"] == "runtime_unavailable")
+
+print("== ADAPTER_REGISTRY: dsh registered by default ==")
+check("dsh present in registry", "dsh" in wa.ADAPTER_REGISTRY)
+check("default dsh adapter is a DshWorkerAdapter",
+      isinstance(wa.ADAPTER_REGISTRY["dsh"], wa.DshWorkerAdapter))
+
+print("== dispatch_async: end-to-end dsh run reaches dispatcher.complete() ==")
+disp_dsh, gh_dsh = new_dispatcher({"o/r#8": ["workflow:ready"]})
+wa.register_adapter("test-dsh-ok", wa.DshWorkerAdapter(
+    invoke_dsh=lambda prompt, timeout_seconds, cwd: {
+        "status": "succeeded", "stdout": "worked", "stderr": "",
+        "session_id": "sess-x", "finish_reason": "completed", "elapsed_seconds": 1.0,
+    },
+    log_dir=new_log_dir(),
+))
+run_dsh = disp_dsh.claim("o/r#8", "wedge-b", "researcher", "test-dsh-ok", 60)
+thread_dsh = wa.dispatch_async(disp_dsh, run_dsh, "do the thing")
+thread_dsh.join(timeout=5)
+check("dsh thread finished", not thread_dsh.is_alive())
+q_dsh = disp_dsh.query(run_dsh.run_id)
+check("dsh run completed via complete()", q_dsh["status"] == "succeeded")
+check("dsh label moved to workflow:review (top-level run)", gh_dsh.labels["o/r#8"] == ["workflow:review"])
+check("dsh result envelope has no leaked internal keys", "_status" not in q_dsh["result"] and "_elapsed_seconds" not in q_dsh["result"])
+
 if fail:
     print(f"\n{len(fail)} check(s) failed: {fail}")
     sys.exit(1)

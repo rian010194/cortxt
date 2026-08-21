@@ -13,13 +13,15 @@ def _sessions(store: Path):
     return [state.load(store, d.name) for d in store.iterdir() if d.is_dir()]
 
 
-def test_dispatch_routes_research_tag_to_hermes_and_invokes_it(tmp_path):
+def test_dispatch_routes_parallel_dispatch_tag_to_hermes_and_invokes_it(tmp_path):
+    # research/background-task now route to dsh (cheap tie-break on engine_id,
+    # deliberate operator decision 2026-08-21); hermes keeps parallel-dispatch.
     store = tmp_path / "sessions"
     fake_result = {"status": "succeeded", "profile": "researcher", "stdout": "done", "stderr": "", "elapsed_seconds": 1.2}
     with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake_invoke:
         exit_code = main([
             "dispatch",
-            "--tags", "research",
+            "--tags", "parallel-dispatch",
             "--task-id", "survey-something",
             "--prompt", "survey the landscape",
             "--store", str(store),
@@ -40,7 +42,7 @@ def test_dispatch_writes_the_widget_snapshot_on_success(tmp_path):
     with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result):
         main([
             "dispatch",
-            "--tags", "research",
+            "--tags", "parallel-dispatch",
             "--task-id", "snapshot-on-success",
             "--prompt", "survey the landscape",
             "--store", str(store),
@@ -74,7 +76,7 @@ def test_dispatch_writes_the_widget_snapshot_on_hermes_failure(tmp_path):
     with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result):
         main([
             "dispatch",
-            "--tags", "research",
+            "--tags", "parallel-dispatch",
             "--task-id", "snapshot-on-failure",
             "--prompt", "survey the landscape",
             "--store", str(store),
@@ -93,7 +95,7 @@ def test_dispatch_writes_the_widget_snapshot_when_invoker_raises(tmp_path):
     with patch("routing.hermes_invoker.invoke_hermes", side_effect=RuntimeError("hermes not found")):
         main([
             "dispatch",
-            "--tags", "research",
+            "--tags", "parallel-dispatch",
             "--task-id", "snapshot-on-raise",
             "--prompt", "survey the landscape",
             "--store", str(store),
@@ -116,7 +118,7 @@ def test_dispatch_default_snapshot_path_matches_sessions_default(tmp_path, monke
     with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result):
         main([
             "dispatch",
-            "--tags", "research",
+            "--tags", "parallel-dispatch",
             "--task-id", "default-snapshot-path",
             "--prompt", "survey the landscape",
         ])
@@ -137,7 +139,7 @@ def test_dispatch_logs_a_warning_when_snapshot_write_fails_without_masking_resul
          caplog.at_level(logging.WARNING):
         exit_code = main([
             "dispatch",
-            "--tags", "research",
+            "--tags", "parallel-dispatch",
             "--task-id", "snapshot-write-fails",
             "--prompt", "survey the landscape",
             "--store", str(store),
@@ -146,77 +148,107 @@ def test_dispatch_logs_a_warning_when_snapshot_write_fails_without_masking_resul
     assert any("snapshot" in record.message.lower() for record in caplog.records)
 
 
-def test_dispatch_defaults_research_tag_to_researcher_hermes_profile(tmp_path):
+def _context_with_fake_dsh_adapter(profile_log):
+    """A default-shaped EngineContext whose dsh adapter records the profile
+    argument it was invoked with (and the prompt) -- lets main()'s
+    dispatch path exercise profile inference end-to-end without a real
+    SDK/runtime."""
+    from runtime.engine_registry import EngineContext
+
+    class _FakeDshAdapter:
+        def invoke(self, profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
+            profile_log.append((profile, prompt))
+            return {"status": "succeeded", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
+
+    context = EngineContext()
+    context.register("dsh", _FakeDshAdapter())
+    return context
+
+
+def _patch_default_context(monkeypatch, profile_log):
+    # _run_dispatch imports build_default_engine_context from
+    # runtime.default_engine_context at call time; patch the source module.
+    import runtime.default_engine_context as dec
+
+    monkeypatch.setattr(dec, "build_default_engine_context", lambda: _context_with_fake_dsh_adapter(profile_log))
+
+
+def test_dispatch_research_tag_routes_to_dsh_and_passes_researcher_profile(tmp_path, monkeypatch):
     """Tonight's evidence: the `builder` profile is where both Fas 2
     Kanban-dispatch failures (#165, #166) and both admin-surface-CLI
-    failures (#174, #175) happened. A research-shaped task defaulting to
-    `builder` just because that was --hermes-profile's flag default,
-    regardless of what actually matched, was never a deliberate choice."""
+    failures (#174, #175) happened. A research-shaped task must default to
+    `researcher`, not `builder` -- route() now picks dsh for research, and
+    the profile argument is still threaded through to the winning adapter."""
+    profile_log = []
+    _patch_default_context(monkeypatch, profile_log)
     store = tmp_path / "sessions"
-    fake_result = {"status": "succeeded", "profile": "researcher", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
-    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake_invoke:
-        main([
-            "dispatch",
-            "--tags", "research",
-            "--task-id", "survey-something-else",
-            "--prompt", "survey the landscape",
-            "--store", str(store),
-        ])
-    assert fake_invoke.call_args.args[0] == "researcher"
+    exit_code = main([
+        "dispatch",
+        "--tags", "research",
+        "--task-id", "survey-something-else",
+        "--prompt", "survey the landscape",
+        "--store", str(store),
+    ])
+    assert exit_code == 0
+    assert profile_log[0][0] == "researcher"
 
 
-def test_dispatch_defaults_to_researcher_even_when_research_is_not_the_matched_tag(tmp_path):
+def test_dispatch_defaults_to_researcher_even_when_research_is_not_the_matched_tag(tmp_path, monkeypatch):
     """Review finding: route() picks matched_tag as the alphabetically-first
     tag in the intersection with the winning engine's task_shapes --
     "parallel-dispatch" sorts before "research", so --tags
     research,parallel-dispatch would silently fall back to "builder" if the
     profile lookup only checked choice.matched_tag instead of the full
-    supplied tag set."""
+    supplied tag set. dsh wins the research tie-break here, but the profile
+    inference must still see the full supplied tag set."""
+    profile_log = []
+    _patch_default_context(monkeypatch, profile_log)
     store = tmp_path / "sessions"
-    fake_result = {"status": "succeeded", "profile": "researcher", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
-    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake_invoke:
-        main([
-            "dispatch",
-            "--tags", "research,parallel-dispatch",
-            "--task-id", "research-shaped-background-task",
-            "--prompt", "survey the landscape",
-            "--store", str(store),
-        ])
-    assert fake_invoke.call_args.args[0] == "researcher"
+    exit_code = main([
+        "dispatch",
+        "--tags", "research,parallel-dispatch",
+        "--task-id", "research-shaped-background-task",
+        "--prompt", "survey the landscape",
+        "--store", str(store),
+    ])
+    assert exit_code == 0
+    assert profile_log[0][0] == "researcher"
 
 
-def test_dispatch_explicit_hermes_profile_overrides_the_tag_default(tmp_path):
+def test_dispatch_explicit_hermes_profile_overrides_the_tag_default(tmp_path, monkeypatch):
+    profile_log = []
+    _patch_default_context(monkeypatch, profile_log)
     store = tmp_path / "sessions"
-    fake_result = {"status": "succeeded", "profile": "coordinator", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
-    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake_invoke:
-        main([
-            "dispatch",
-            "--tags", "research",
-            "--task-id", "survey-with-override",
-            "--prompt", "survey the landscape",
-            "--store", str(store),
-            "--hermes-profile", "coordinator",
-        ])
-    assert fake_invoke.call_args.args[0] == "coordinator"
+    exit_code = main([
+        "dispatch",
+        "--tags", "research",
+        "--task-id", "survey-with-override",
+        "--prompt", "survey the landscape",
+        "--store", str(store),
+        "--hermes-profile", "coordinator",
+    ])
+    assert exit_code == 0
+    assert profile_log[0][0] == "coordinator"
 
 
-def test_dispatch_explicit_empty_hermes_profile_is_not_treated_as_unset(tmp_path):
+def test_dispatch_explicit_empty_hermes_profile_is_not_treated_as_unset(tmp_path, monkeypatch):
     """Review finding: `args.hermes_profile or next(...)` treated an
     explicitly-passed empty string the same as "not given", silently
     substituting the tag-inferred default instead of honoring the
     caller's (admittedly unusual, but explicit) empty value."""
+    profile_log = []
+    _patch_default_context(monkeypatch, profile_log)
     store = tmp_path / "sessions"
-    fake_result = {"status": "succeeded", "profile": "", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
-    with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result) as fake_invoke:
-        main([
-            "dispatch",
-            "--tags", "research",
-            "--task-id", "explicit-empty-profile",
-            "--prompt", "survey the landscape",
-            "--store", str(store),
-            "--hermes-profile", "",
-        ])
-    assert fake_invoke.call_args.args[0] == ""
+    exit_code = main([
+        "dispatch",
+        "--tags", "research",
+        "--task-id", "explicit-empty-profile",
+        "--prompt", "survey the landscape",
+        "--store", str(store),
+        "--hermes-profile", "",
+    ])
+    assert exit_code == 0
+    assert profile_log[0][0] == ""
 
 
 def test_dispatch_leaves_no_orphaned_running_session_when_invoke_raises(tmp_path):
@@ -227,7 +259,7 @@ def test_dispatch_leaves_no_orphaned_running_session_when_invoke_raises(tmp_path
     with patch("routing.hermes_invoker.invoke_hermes", side_effect=RuntimeError("hermes not found")):
         exit_code = main([
             "dispatch",
-            "--tags", "research",
+            "--tags", "parallel-dispatch",
             "--task-id", "invoker-raises",
             "--prompt", "survey the landscape",
             "--store", str(store),
@@ -293,7 +325,7 @@ def test_dispatch_records_routing_reason_in_evidence(tmp_path, capsys):
     with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result):
         main([
             "dispatch",
-            "--tags", "research",
+            "--tags", "parallel-dispatch",
             "--task-id", "survey-something",
             "--prompt", "survey the landscape",
             "--store", str(store),
@@ -313,7 +345,7 @@ def test_dispatch_records_checkpoint_required_in_evidence(tmp_path, capsys):
     with patch("routing.hermes_invoker.invoke_hermes", return_value=fake_result):
         exit_code = main([
             "dispatch",
-            "--tags", "research",
+            "--tags", "parallel-dispatch",
             "--task-id", "checkpoint-evidence",
             "--prompt", "survey the landscape",
             "--store", str(store),

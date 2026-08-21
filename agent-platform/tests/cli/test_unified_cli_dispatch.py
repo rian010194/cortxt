@@ -22,6 +22,16 @@ class _FakeHermesAdapter:
         return self._response
 
 
+class _FakeDshAdapter:
+    def __init__(self, response):
+        self._response = response
+        self.calls = []
+
+    def invoke(self, profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
+        self.calls.append((profile, prompt, timeout_seconds, model, provider))
+        return self._response
+
+
 def _make_args(tmp_path, *, tags, hermes_profile=None):
     return argparse.Namespace(
         tags=tags,
@@ -37,16 +47,35 @@ def _make_args(tmp_path, *, tags, hermes_profile=None):
 
 
 def test_hermes_routed_task_invokes_the_registered_adapter(tmp_path):
-    adapter = _FakeHermesAdapter({"status": "succeeded", "profile": "researcher"})
+    # hermes keeps parallel-dispatch; research/background-task now go to dsh
+    # (cheap tie-break on engine_id, deliberate operator decision 2026-08-21).
+    # parallel-dispatch has no _HERMES_PROFILE_BY_TAG entry, so the profile
+    # default is "builder".
+    adapter = _FakeHermesAdapter({"status": "succeeded", "profile": "builder"})
     context = EngineContext()
     context.register("hermes", adapter)
+
+    args = _make_args(tmp_path, tags="parallel-dispatch")
+    result = _run_dispatch(args, engine_context=context)
+
+    assert result.status == "succeeded"
+    assert adapter.calls == [("builder", "do the thing", 60, None, None)]
+    assert result.evidence[0]["engine"] == "hermes"
+    assert result.evidence[0]["hermes_result"]["status"] == "succeeded"
+
+
+def test_dsh_routed_task_invokes_the_registered_adapter(tmp_path):
+    # DSH-integration experiment: research now routes to dsh over hermes.
+    adapter = _FakeDshAdapter({"status": "succeeded", "stdout": "done"})
+    context = EngineContext()
+    context.register("dsh", adapter)
 
     args = _make_args(tmp_path, tags="research")
     result = _run_dispatch(args, engine_context=context)
 
     assert result.status == "succeeded"
     assert adapter.calls == [("researcher", "do the thing", 60, None, None)]
-    assert result.evidence[0]["engine"] == "hermes"
+    assert result.evidence[0]["engine"] == "dsh"
     assert result.evidence[0]["hermes_result"]["status"] == "succeeded"
 
 
@@ -76,7 +105,7 @@ def test_explicit_hermes_profile_overrides_tag_based_default(tmp_path):
     context = EngineContext()
     context.register("hermes", adapter)
 
-    args = _make_args(tmp_path, tags="research", hermes_profile="custom-profile")
+    args = _make_args(tmp_path, tags="parallel-dispatch", hermes_profile="custom-profile")
     _run_dispatch(args, engine_context=context)
 
     assert adapter.calls[0][0] == "custom-profile"
