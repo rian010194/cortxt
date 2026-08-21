@@ -15,7 +15,7 @@ Usage:
         --channel <uuid> --content "Run complete: run-xxx [DONE]"
     python harness/scripts/buzz-return.py send ... --dry-run   # no network; prints payload
 
-Assumes `buzz.exe` on system (C:\\Users\\rikar\\AppData\\Local\\Buzz\\buzz.exe) or on PATH.
+Assumes `buzz.exe` is discoverable (for example under `%LOCALAPPDATA%\\Buzz\\buzz.exe`) or on PATH.
 """
 from __future__ import annotations
 
