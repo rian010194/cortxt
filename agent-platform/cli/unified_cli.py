@@ -1032,6 +1032,31 @@ def _run_daemon(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
+def _run_mcp(args: argparse.Namespace) -> ResultEnvelope:
+    """`cortxt mcp serve` -- MCP stdio server exposing routing/admin tools.
+
+    Blocks in the foreground until the client disconnects (EOF on stdin),
+    same shape as `_run_widget` blocking until Ctrl+C -- an MCP client owns
+    this process's lifecycle, not the operator.
+    """
+    try:
+        if args.mcp_command != "serve":
+            return ResultEnvelope(status="failed", error={"category": "invalid_args", "message": "unknown mcp_command"})
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from mcp.server import serve as mcp_serve
+
+        mcp_serve(
+            allow_dispatch=args.allow_dispatch,
+            allow_credentials=args.allow_credentials,
+            store=args.store,
+        )
+        return ResultEnvelope(status="succeeded", artifacts=["mcp:stopped"])
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
 def main(argv: list[str] | None = None) -> int:
     """Unified CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1155,6 +1180,23 @@ def main(argv: list[str] | None = None) -> int:
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
     widget_parser.set_defaults(func=_run_widget)
+
+    # mcp subcommand
+    mcp_parser = sub.add_parser("mcp", help="MCP server (stdio transport) exposing routing/admin tools")
+    mcp_sub = mcp_parser.add_subparsers(dest="mcp_command", required=True)
+    mcp_serve_parser = mcp_sub.add_parser("serve", help="Start the MCP stdio server (blocks until the client disconnects)")
+    mcp_serve_parser.add_argument(
+        "--allow-dispatch", action="store_true",
+        help="Unlock tier 1 tools (cortxt_dispatch, cortxt_addons_submit, cortxt_daemon_status)",
+    )
+    mcp_serve_parser.add_argument(
+        "--allow-credentials", action="store_true",
+        help="Unlock tier 2 tools (scaffolding -- no credential tools exist yet)",
+    )
+    mcp_serve_parser.add_argument(
+        "--store", type=Path, help="Session store path for audit logging (default: agent-platform/.sessions)",
+    )
+    mcp_serve_parser.set_defaults(func=_run_mcp)
 
     # dispatch subcommand
     dispatch_parser = sub.add_parser("dispatch", help="Route a tagged task to an engine and invoke it (Orchestrator Dispatch v0.1)")
