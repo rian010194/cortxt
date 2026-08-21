@@ -1,9 +1,9 @@
-"""Fas 2 exit-criterion proof: one real synthetic AI Act fixture, solved by
+"""Phase 2 exit-criterion proof: one real synthetic AI Act fixture, solved by
 AgentLoop without Hermes, using a real model call. Excluded from default CI
 (same convention as every other real_inference-marked test in this repo) --
 run manually once CORTXT_INFERENCE_URL/CORTXT_INFERENCE_API_KEY are set and
 cortxt_resilient_inference is installed. See
-docs/superpowers/specs/2026-08-15-fas2-agent-runtime-v01-design.md.
+(internal design archive)
 """
 from __future__ import annotations
 

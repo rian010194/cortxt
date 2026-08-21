@@ -663,7 +663,7 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
 
 
 # Which Hermes profile a matched task_shape defaults to, when --hermes-profile
-# isn't given explicitly. Evidence-based, not speculative: tonight both Fas 2
+# isn't given explicitly. Evidence-based, not speculative: tonight both Phase 2
 # Kanban-dispatch failures (#165, #166) and both admin-surface-CLI failures
 # (#174, #175) happened on "builder" -- a research-shaped task defaulting to
 # "builder" just because that was the flag's own default was never a real
@@ -676,7 +676,7 @@ def _run_dispatch(
     args: argparse.Namespace, *, engine_context: "EngineContext | None" = None
 ) -> ResultEnvelope:
     """Orchestrator Dispatch v0.1: route a tagged task to an engine, invoke
-    it, and record the outcome in the same session_state Fas 2 already
+    it, and record the outcome in the same session_state Phase 2 already
     tracks. See .hermes/plans/2026-08-19-orchestrator-dispatch-v01.md.
 
     Invocation goes through an EngineContext broker (ADR-026/027) instead of
@@ -805,12 +805,12 @@ def _run_dispatch(
 
 
 def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
-    """List known agent runtimes and whether each is on PATH (Fas 4 admin surface).
+    """List known agent runtimes and whether each is on PATH (Phase 4 admin surface).
 
     Refreshes the widget snapshot's `runtimes` key on every call, same
     best-effort-but-visible pattern _run_dispatch uses for `sessions`: a
     snapshot write failure is logged, never masks this command's own
-    result (Track 1, docs/superpowers/plans/2026-08-19-track1-admin-ui-wiring.md).
+    result (Track 1, (internal design archive)).
     """
     try:
         ap_path = _get_agent_platform_path()
@@ -851,7 +851,7 @@ def _run_runtimes(args: argparse.Namespace) -> ResultEnvelope:
 
 
 def _run_credentials(args: argparse.Namespace) -> ResultEnvelope:
-    """Admin surface over security.credential_broker.CredentialBroker (Fas 4).
+    """Admin surface over security.credential_broker.CredentialBroker (Phase 4).
 
     `store` reads the secret from stdin, never a CLI argument -- an
     argument would leak into shell history and the process list. `inject`
@@ -924,7 +924,7 @@ def _refresh_credentials_snapshot(args: argparse.Namespace, ap_path: Path, broke
 
 
 def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
-    """Admin surface over learning.addon_review.AddonReviewGate (Fas 5).
+    """Admin surface over learning.addon_review.AddonReviewGate (Phase 5).
 
     Only the `submit` action: run one candidate through the review gate
     and print the verdict. No addon registry/list here -- none exists yet
@@ -934,7 +934,7 @@ def _run_addons(args: argparse.Namespace) -> ResultEnvelope:
     Records each submission as a session_state entry tagged
     `addon:<candidate_id>` instead of a bespoke addon registry -- reusing
     the sessions mechanism the widget already renders gives visibility for
-    free (Track 1, docs/superpowers/plans/2026-08-19-track1-admin-ui-wiring.md).
+    free (Track 1, (internal design archive)).
     """
     try:
         ap_path = _get_agent_platform_path()

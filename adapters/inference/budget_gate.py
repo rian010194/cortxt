@@ -83,7 +83,7 @@ class BudgetGate:
         self._last_task_id = task_id
 
     def set_route_id(self, route_id: str) -> None:
-        """Attach the route for the next spend rows (Fas7 Beslut 6 route isolation).
+        """Attach the route for the next spend rows (Phase 7 Decision 6 route isolation).
 
         Default stays ``l0-default`` so behaviour is unchanged until a caller
         (e.g. ``TextInferencePort``) names its route.

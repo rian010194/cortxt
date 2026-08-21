@@ -1,4 +1,4 @@
-"""Idle-stop + cold-start lifecycle for a self-hosted Vast.ai vLLM instance (Fas 7, Beslut 8).
+"""Idle-stop + cold-start lifecycle for a self-hosted Vast.ai vLLM instance (Phase 7, Decision 8).
 
 Task 4: ``should_stop_for_idle`` -- the decision logic as a pure function (no I/O).
 Task 5: ``_VastAiControlAdapter`` (Vast.ai REST boundary) + ``ensure_running()``
@@ -47,7 +47,7 @@ class _VastAiControlAdapter:
     """Vast.ai REST boundary for one instance.
 
     Real HTTP implementation is exercised only against the live platform in
-    Fas B; the deterministic TDD scope (this task) drives it via a FakeControl
+    Phase B; the deterministic TDD scope (this task) drives it via a FakeControl
     with the same ``InstanceControl`` shape. ``api_key_env`` names the environ
     variable holding the credential -- the value is never logged or stored.
     """
@@ -119,7 +119,7 @@ def ensure_running(
     poll_interval_s: float = 5,
     max_wait_s: float = 120,
 ) -> None:
-    """Bring an instance to healthy, starting it if needed (Beslut 8).
+    """Bring an instance to healthy, starting it if needed (Decision 8).
 
     If ``control.status()`` is not "running", start it, then poll the liveness
     ``probe`` until ``alive=True`` or ``max_wait_s`` elapses. On timeout raise

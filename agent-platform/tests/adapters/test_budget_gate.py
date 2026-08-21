@@ -1,4 +1,4 @@
-"""Unit tests for BudgetGate (Fas 2A DM3 AC1 + CP1.1 P2-fix)."""
+"""Unit tests for BudgetGate (Phase 2A DM3 AC1 + CP1.1 P2-fix)."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def test_failed_call_still_counts_attempt(monkeypatch, tmp_path):
 
 
 def test_attempt_started_row_uses_set_route_id(tmp_path):
-    """Fas7 Beslut 6 route isolation: found via a live Fas B run, 2026-08-17 --
+    """Phase 7 Decision 6 route isolation: found via a live Phase B run, 2026-08-17 --
     the upfront attempt_started record() call didn't pass route_id, so every
     attempt row always showed the "l0-default" default regardless of
     set_route_id(), even though the later success/failed rows did it right.

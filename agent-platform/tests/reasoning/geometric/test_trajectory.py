@@ -1,4 +1,4 @@
-"""TrajectoryReport tests (Fas 6, Task 7). Determinism + serialization contract."""
+"""TrajectoryReport tests (Phase 6, Task 7). Determinism + serialization contract."""
 
 import json
 
@@ -28,7 +28,7 @@ def _report():
 def test_to_json_is_deterministic():
     r1 = _report().to_json()
     r2 = _report().to_json()
-    assert r1 == r2  # samma space+path+scoring -> identisk serialisering
+    assert r1 == r2  # same space+path+scoring -> identical serialization
 
 
 def test_to_json_contains_nodes_edges_and_metadata():

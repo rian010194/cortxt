@@ -5,10 +5,10 @@
 **Deciders:** Rikard  
 **Technical Story:** Addresses W-10 (No disaster recovery/backup)
 
-> **LEGACY-NOTIS (2026-08-14):** Denna ADR predaterar F0/F1 och gav backup/restore av `~/.hermes/` men
-> inte export för inter-operabilitet/portabilitet. Inom F0-ägarhypotesen (ADR-014) och den
-> providerneutrala arkitekturen förskjuts portabilitetsfrågan mot Cortxt-ägda portar/tillstånd
-> (ADR-016/017). Innehållet är historisk referens, inte giltig aktuell auktoritet.
+> **LEGACY NOTICE (2026-08-14):** This ADR predates F0/F1 and provided backup/restore of `~/.hermes/` but
+> no export for interoperability/portability. Under the F0 ownership hypothesis (ADR-014) and the
+> provider-neutral architecture, the portability question shifts toward Cortxt-owned ports/state
+> (ADR-016/017). Its content is historical reference, not valid current authority.
 
 ## Context
 No backup/export mechanism exists for:

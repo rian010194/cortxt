@@ -2,69 +2,69 @@
 
 **Status:** Accepted  \
 **Date:** 2026-08-16  \
-**Deciders:** Rikard (operatör)  \
-**Technical Story:** Repo-publicering (rian010194/cortxt going public); ADR-014/015 namnger internt verktygs-/samarbetsnamnet "Norcom/CSL" som proof environment för Wedge B. Namnet är inte klarlagt för offentlig exponering — det kan bli ett eget internt/lanserat verktyg, ej en tredjeparts kunddata.
+**Deciders:** Rikard (operator)  \
+**Technical Story:** Repo publication (rian010194/cortxt going public); ADR-014/015 name the internal tool/partnership name "Norcom/CSL" as the proof environment for Wedge B. The name is not cleared for public exposure — it may become its own internal/launched tool, not a third-party customer data.
 
 ## Context
 
-ADR-014 (F0, rad 43) och ADR-015 (F1, rad 20/30/36/37/49) namnger "Norcom/CSL" som proof environment
-för wedge B-valideringen (T3). Vid repo-publicering flaggades detta: namnet är sökbart i två godkända
-beslutsdokument samt i tre GitHub-issues (#101, #116, #124 — redan redigerade 2026-08-16) och en merged
-PR (#100 — hanteras separat).
+ADR-014 (F0, line 43) and ADR-015 (F1, lines 20/30/36/37/49) name "Norcom/CSL" as the proof environment
+for the wedge B validation (T3). At repo publication this was flagged: the name is searchable in two approved
+decision documents as well as in three GitHub issues (#101, #116, #124 — already edited 2026-08-16) and one merged
+PR (#100 — handled separately).
 
-Beslutsinnehållet i ADR-014/015 (F0-vision, Wedge B-val) är inte ifrågasatt — det är fortfarande korrekt
-och Accepted. Enda problemet är att en specifik namngiven identitet syns på en yta som blir publik, innan
-ägaren avgjort om namnet ska vara internt eller lanserat.
+The decision content in ADR-014/015 (F0 vision, Wedge B choice) is not questioned — it is still correct
+and Accepted. The only problem is that a specific named identity appears on a surface that becomes public, before
+the owner has decided whether the name should be internal or launched.
 
-Per detta repos regel skrivs beslutsdokument (register) aldrig om i efterhand — blir något fel skrivs ett
-nytt dokument som supersedes. Detta är inte "beslutet var fel", utan en avgränsad terminologiredaktion:
-ADR-014/015 förblir Accepted och normativa för sitt sakinnehåll; endast identifierarens synlighet ändras
-framåt.
+Per this repo's rule, decision documents (the record) are never rewritten retroactively — if something is wrong, a
+new document that supersedes is written. This is not "the decision was wrong", but a bounded terminology redaction:
+ADR-014/015 remain Accepted and normative for their substance; only the identifier's visibility changes
+going forward.
 
 ## Decision
 
-Från och med denna ADR refereras proof environment för wedge B som **"proof environment B"** (kort:
-**PE-B**) i alla nya och framtida dokument, issues, och kommunikation — inte det tidigare namnet.
+From this ADR onward, the proof environment for wedge B is referred to as **"proof environment B"** (short:
+**PE-B**) in all new and future documents, issues, and communication — not the earlier name.
 
-ADR-014 och ADR-015 förblir oredigerade och Accepted för sitt sakbeslut. Vardera filen får en
-STATUS-AMENDMENT-notis (samma mönster som ADR-016/017) som pekar hit, så att en läsare som stöter på det
-gamla namnet förstår att det ska läsas som "proof environment B" framåt.
+ADR-014 and ADR-015 remain unedited and Accepted for their decision. Each file gets a
+STATUS-AMENDMENT notice (the same pattern as ADR-016/017) pointing here, so that a reader who encounters the
+old name understands that it should be read as "proof environment B" going forward.
 
-Detta dokument, GitHub-issues #101/#116/#124 och PR #100 (om ägaren beslutar) är de enda platser där en
-historisk referens till det gamla namnet kvarstår kontrollerat; nya artefakter använder enbart PE-B.
+This document, GitHub issues #101/#116/#124 and PR #100 (if the owner decides) are the only places where a
+historical reference to the old name remains in a controlled way; new artifacts use only PE-B.
 
 ## Consequences
 
 ### Positive
-- Terminologin är entydig framåt utan att bryta registerregeln (ADR-014/015 orörda).
-- Den enda produktnamn-exponeringen som kvarstår är i de två historiska ADR-filerna själva (inte
-  issues/PR, som redan redigerats) — en läsare som öppnar just de filerna ser det gamla namnet, men
-  README/issue-ytan och all sökbar frontyta gör det inte.
+- The terminology is unambiguous going forward without breaking the record rule (ADR-014/015 untouched).
+- The only product-name exposure that remains is in the two historical ADR files themselves (not
+  issues/PRs, which have already been edited) — a reader who opens exactly those files sees the old name, but
+  the README/issue surface and all searchable front surface do not.
 
 ### Negative
-- Namnet är fortfarande tekniskt läsbart för den som öppnar `docs/adr/014-*.md` eller
-  `docs/adr/015-*.md` direkt, eller `git log`/`git blame`. Detta är inte ett fullständigt scrub — bara
-  redigering av filerna på plats (ett medvetet valt alternativ, ej detta) skulle uppnå det, till priset
-  av att bryta registerregeln.
+- The name is still technically readable by anyone who opens `docs/adr/014-*.md` or
+  `docs/adr/015-*.md` directly, or `git log`/`git blame`. This is not a complete scrub — only
+  editing the files in place (a deliberately considered alternative, not this one) would achieve that, at the cost
+  of breaking the record rule.
 
 ### Risks
-- Om namnet senare bekräftas vara känsligt på en nivå som kräver fullständig borttagning (t.ex. avtal om
-  konfidentialitet), räcker inte denna ADR — då krävs ett explicit beslut att bryta registerregeln för
-  just ADR-014/015, eller BFG/git-filter-repo-historikstädning före ev. publicering.
+- If the name is later confirmed to be sensitive at a level requiring complete removal (e.g. a confidentiality
+  agreement), this ADR is not enough — then an explicit decision to break the record rule for
+  exactly ADR-014/015 is required, or BFG/git-filter-repo history cleaning before any publication.
 
 ## Alternatives Considered
-1. **Redigera ADR-014/015 direkt** — förkastad: bryter registerregeln utan att beslutsinnehållet
-   faktiskt var fel.
-2. **Lämna namnet synligt i alla dokument** — förkastad: exponerar ett obeslutat produktnamn i publika
-   beslutsdokument utan att ägaren tagit ställning.
-3. **Terminologi-amendment via ny ADR (vald).**
+1. **Edit ADR-014/015 directly** — rejected: breaks the record rule without the decision content
+   actually being wrong.
+2. **Leave the name visible in all documents** — rejected: exposes an undecided product name in public
+   decision documents without the owner having taken a position.
+3. **Terminology amendment via a new ADR (chosen).**
 
 ## Validation
-- [x] ADR-014/015 fick STATUS-AMENDMENT-notis som pekar hit.
-- [x] docs/adr/README.md uppdaterad med ADR-020.
-- [ ] PR #100 hanterad separat (väntar på ägarbeslut).
+- [x] ADR-014/015 received a STATUS-AMENDMENT notice pointing here.
+- [x] docs/adr/README.md updated with ADR-020.
+- [ ] PR #100 handled separately (waiting on owner decision).
 
 ## Expiry/Review Trigger
 - Review by: 2026-11-16
-- Trigger: ägaren avgör namnets slutliga offentlighetsstatus (lanserat verktyg vs. permanent internt),
-  eller repot flippas till publikt utan att detta beslut är verkställt.
+- Trigger: the owner decides the name's final publicity status (launched tool vs. permanently internal),
+  or the repo is flipped public without this decision being executed.

@@ -23,8 +23,8 @@ export default function Skills() {
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">Skill Registry</h1>
         <p className="text-slate-400 max-w-3xl">
-          Alla skills med manifests, semver, error taxonomy, retry policy och profile mapping.
-          {skills.length} skills registrerade.
+          All skills with manifests, semver, error taxonomy, retry policy and profile mapping.
+          {skills.length} skills registered.
         </p>
       </div>
 
@@ -34,7 +34,7 @@ export default function Skills() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
-            placeholder="Sök skills, profiler..."
+            placeholder="Search skills, profiles..."
             value={filter}
             onChange={e => setFilter(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-500"
@@ -67,7 +67,7 @@ export default function Skills() {
                   : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'
               }`}
             >
-              {m === 'All' ? 'Alla mognader' : m}
+              {m === 'All' ? 'All maturities' : m}
             </button>
           ))}
         </div>
@@ -80,11 +80,11 @@ export default function Skills() {
             <thead className="bg-slate-800/80 text-slate-400 text-xs uppercase">
               <tr>
                 <th className="px-5 py-3 font-medium">Skill</th>
-                <th className="px-5 py-3 font-medium">Kategori</th>
-                <th className="px-5 py-3 font-medium">Primär profil</th>
+                <th className="px-5 py-3 font-medium">Category</th>
+                <th className="px-5 py-3 font-medium">Primary profile</th>
                 <th className="px-5 py-3 font-medium">Load</th>
-                <th className="px-5 py-3 font-medium">Mognad</th>
-                <th className="px-5 py-3 font-medium">Beskrivning</th>
+                <th className="px-5 py-3 font-medium">Maturity</th>
+                <th className="px-5 py-3 font-medium">Description</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/50">
@@ -128,7 +128,7 @@ export default function Skills() {
           </table>
         </div>
         <div className="px-5 py-3 border-t border-slate-700/50 text-xs text-slate-500">
-          Visar {filtered.length} av {skills.length} skills
+          Showing {filtered.length} of {skills.length} skills
         </div>
       </div>
     </div>

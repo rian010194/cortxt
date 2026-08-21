@@ -35,8 +35,8 @@ expected_output:
     basis_annex: null
   obligations_assessed: []
   decision_brief:
-    language: sv
-    text: Systemet EduMood Analytics innehåller känsligenkänning i utbildningsmiljö, vilket är förbjudet enligt Artikel 5(1)(f). Trots att huvudsyftet är pedagogiskt anpassning, är den förbjudna komponenten dominerande.
+    language: en
+    text: The EduMood Analytics system includes emotion recognition in an educational environment, which is prohibited under Article 5(1)(f). Although the primary purpose is pedagogical adaptation, the prohibited component is dominant.
   uncertainties:
   - topic: Whether the emotion-recognition component is severable from the educational adaptation
     reason: If the emotion recognition is technically separable, the remaining system might be high-risk under Annex III (education) rather than prohibited.
@@ -53,7 +53,7 @@ deterministic_assertions:
   operator: equals
   expected_value: true
 model_assisted_assertions:
-- rubric: The decision brief should clearly state in Swedish that the system is prohibited because of emotion recognition in an education context (utbildningsmiljö).
+- rubric: The decision brief should clearly state in English that the system is prohibited because of emotion recognition in an education context.
   required_model_capabilities:
   - structured-output
 human_review_required: true

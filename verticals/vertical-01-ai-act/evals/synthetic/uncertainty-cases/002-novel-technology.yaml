@@ -34,8 +34,8 @@ expected_output:
     basis_annex: null
   obligations_assessed: []
   decision_brief:
-    language: sv
-    text: Systemet GenSynBio Alpha använder ny teknik (hybrid generativ AI och kvantkemi) som inte entydigt matchar nuvarande riskkategorier. Klassificeringen är osäker. Primärkällsverifiering krävs.
+    language: en
+    text: The GenSynBio Alpha system uses novel technology (hybrid generative AI and quantum chemistry) that does not unambiguously match current risk categories. The classification is uncertain. Primary-source verification is required.
   uncertainties:
   - topic: Novel technology outside Annex III enumerated categories
     reason: The system combines generative AI with synthetic biology in a way not explicitly covered by Annex III high-risk use cases.
@@ -58,7 +58,7 @@ deterministic_assertions:
   operator: equals
   expected_value: []
 model_assisted_assertions:
-- rubric: The decision brief should mention in Swedish that the technology is novel (ny teknik) and that classification is uncertain (osäker).
+- rubric: The decision brief should mention in English that the technology is novel and that classification is uncertain.
   required_model_capabilities:
   - structured-output
 human_review_required: false

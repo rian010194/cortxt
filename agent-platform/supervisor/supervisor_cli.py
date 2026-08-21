@@ -1,4 +1,4 @@
-"""Operator entry point for Fas 4 Supervisor -- proves the exit criterion is
+"""Operator entry point for Phase 4 Supervisor -- proves the exit criterion is
 reachable without Hermes as an intermediary."""
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def _status(store: Path, root_session_id: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Fas 4 Supervisor operator CLI")
+    parser = argparse.ArgumentParser(description="Phase 4 Supervisor operator CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
     status_parser = sub.add_parser("status")

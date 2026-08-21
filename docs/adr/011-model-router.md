@@ -5,10 +5,10 @@
 **Deciders:** Rikard  \
 **Technical Story:** Addresses W-01 (Coordinator model lock-in)
 
-> **LEGACY-NOTIS (2026-08-14):** Denna ADR predaterar F0/F1 (ADR-014/015/016/017) och beskrev en statisk
-> fallback-kedja för modellval. Den ersätts av den dynamiska, providerneutrala modell-/inferensarkitekturen
-> (ADR-016 InferencePort + provider-assurance dataklass→gate) och ADR-017 (reasoning).
-> Innehållet är historisk referens, inte giltig aktuell auktoritet.
+> **LEGACY NOTICE (2026-08-14):** This ADR predates F0/F1 (ADR-014/015/016/017) and described a static
+> fallback chain for model selection. It is replaced by the dynamic, provider-neutral model/inference architecture
+> (ADR-016 InferencePort + provider-assurance data-class→gate) and ADR-017 (reasoning).
+> Its content is historical reference, not valid current authority.
 
 ## Context
 The `coordinator` profile is hardcoded to Nemotron-3-ultra via OpenRouter (free tier). This creates:

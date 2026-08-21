@@ -1,4 +1,4 @@
-"""Fas 5 exit-criterion proof, research/document class (target-architecture §23).
+"""Phase 5 exit-criterion proof, research/document class (target-architecture §23).
 
 Same discipline as test_exit_criterion_coding.py (Task 13) — real model
 required. Like Task 13 it SKIPS loudly when no live model is configured; a
@@ -99,4 +99,4 @@ def test_rlm_beats_baseline_on_research_long_context_class(tmp_path):
                               run_rlm_fn=run_rlm_fn, run_baseline_fn=run_baseline_fn)
 
     assert outcome.rlm_pass is True, (
-        f"Fas 5 exit criterion NOT met on research class: {outcome.rounds}")
+        f"Phase 5 exit criterion NOT met on research class: {outcome.rounds}")

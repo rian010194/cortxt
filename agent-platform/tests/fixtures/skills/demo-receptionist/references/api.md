@@ -1,3 +1,3 @@
-# Demo API (L0-syntetisk)
+# Demo API (L0-synthetic)
 
-Fiktivt API-referensdokument. Innehåller enbart syntetiska, offentliga exempel.
+Fictional API reference document. Contains only synthetic, public examples.

@@ -174,7 +174,7 @@ def _patch_default_context(monkeypatch, profile_log):
 
 
 def test_dispatch_research_tag_routes_to_dsh_and_passes_researcher_profile(tmp_path, monkeypatch):
-    """Tonight's evidence: the `builder` profile is where both Fas 2
+    """Tonight's evidence: the `builder` profile is where both Phase 2
     Kanban-dispatch failures (#165, #166) and both admin-surface-CLI
     failures (#174, #175) happened. A research-shaped task must default to
     `researcher`, not `builder` -- route() now picks dsh for research, and

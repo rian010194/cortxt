@@ -2,114 +2,118 @@
 
 **Status:** Accepted
 **Date:** 2026-08-19
-**Deciders:** Rikard (operatör), Claude Code (utkast)
-**Technical Story:** Operatörsdiskussion 2026-08-19 (jämförelse mot [Hindsight](https://hindsight.vectorize.io/)); v.02-visionens §6 (`docs/superpowers/specs/2026-08-18-v02-vision-admin-surface-and-distribution-design.md`, tillägg 2026-08-19)
+**Deciders:** Rikard (operator), Claude Code (draft)
+**Technical Story:** Operator discussion 2026-08-19 (comparison with [Hindsight](https://hindsight.vectorize.io/)); the v.02 vision's §6 ((internal design archive), addendum 2026-08-19)
 
 ## Context
 
-Cortxts README-tagline ("Users own the work's state, memory, tools, evidence, and
+Cortxt's README tagline ("Users own the work's state, memory, tools, evidence, and
 evolution; models, inference providers, and external agent engines remain replaceable
-resources behind Cortxt-owned contracts") beskriver en **top-down**-arkitektur: Cortxt
-äger kontrollplanet, externa motorer (Hermes, Pi, Codex, Claude Code) är utbytbara
-resurser bakom Cortxt-ägda kontrakt. Alla mönster byggda i v.02-milstolpen hittills
-(routing/`engine_manifest.py`, `credential_broker.py`, `addon_review.py`) förutsätter
-den riktningen — de fungerar bara för att Cortxt äger orkestreringsloopen.
+resources behind Cortxt-owned contracts") describes a **top-down** architecture: Cortxt
+owns the control plane, external engines (Hermes, Pi, Codex, Claude Code) are
+replaceable resources behind Cortxt-owned contracts. Every pattern built in the
+v.02 milestone so far (routing/`engine_manifest.py`, `credential_broker.py`,
+`addon_review.py`) assumes that direction — they only work because Cortxt owns the
+orchestration loop.
 
-Operatören jämförde 2026-08-19 mot Hindsight, en specialiserad minnestjänst för
-AI-agenter. Hindsights integrationsstruktur är motsatt: **bottom-up** — en smal,
-väldefinierad tjänst som *andra* ramverk (LangGraph/LangChain, CrewAI, Vercel AI SDK)
-och coding-agenter (Claude Code, Codex CLI, Cursor CLI, m.fl.) kopplar in sig mot, utan
-att Hindsight äger deras orkestrering.
+The operator compared against Hindsight on 2026-08-19, a specialized memory service
+for AI agents. Hindsight's integration structure is the opposite: **bottom-up** — a
+narrow, well-defined service that *other* frameworks (LangGraph/LangChain, CrewAI,
+Vercel AI SDK) and coding agents (Claude Code, Codex CLI, Cursor CLI, etc.) hook into,
+without Hindsight owning their orchestration.
 
-Jämförelsen synliggjorde en verklig avvägning, inte bara en stilfråga:
+The comparison surfaced a real trade-off, not just a matter of style:
 
-- **Bottom-up** vinner på adoptionshastighet (lägg till en integration, inget
-  stackbyte) och lågt inlåsning för den som integrerar — men kan aldrig garantera
-  helhetsegenskaper (mandat, audit, no-self-approval) över en uppgifts hela
-  livscykel, bara inom sin egen skiva.
-- **Top-down** vinner på att kunna hålla ihop precis de invarianter ADR-019 och
-  ADR-022 redan bygger på — men kräver en mycket större yta byggd rätt innan något
-  är användbart, och en tyngre första-ask till en ny användare.
+- **Bottom-up** wins on adoption speed (add an integration, no stack swap) and low
+  lock-in for whoever integrates — but can never guarantee whole-system properties
+  (mandate, audit, no-self-approval) across a task's entire lifecycle, only within its
+  own slice.
+- **Top-down** wins on being able to hold together exactly the invariants ADR-019 and
+  ADR-022 already build on — but requires a much larger surface built correctly before
+  anything is usable, and a heavier first ask of a new user.
 
-Detta är inte en avvägning som måste lösas åt ena hållet. Ingenting hindrar Cortxt
-från att vara top-down internt (mot de engines den förvaltar) samtidigt som den
-erbjuds bottom-up utåt (till andra ramverk/agenter som vill konsumera dess
-kontrollplan som en tjänst) — samma sätt Hindsight själv erbjuds till Claude
-Code/Cursor/CrewAI idag, fast med Cortxt som tjänsten istället för minnet.
+This is not a trade-off that must be resolved in one direction. Nothing prevents Cortxt
+from being top-down internally (toward the engines it manages) while also being offered
+bottom-up externally (to other frameworks/agents that want to consume its control plane
+as a service) — the same way Hindsight itself is offered to Claude
+Code/Cursor/CrewAI today, except with Cortxt as the service instead of the memory.
 
 ## Decision
 
-**Cortxt är top-down internt, permanent — det ändras inte av detta beslut.**
-Kontrollplanet äger routing, mandat, audit och kontrakt mot alla engines den
-förvaltar (ADR-019, ADR-022). Inget av detta öppnas upp.
+**Cortxt is top-down internally, permanently — that is not changed by this decision.**
+The control plane owns routing, mandate, audit, and contracts toward all engines it
+manages (ADR-019, ADR-022). None of this is opened up.
 
-**Cortxt blir också avsiktligt bottom-up-konsumerbar utåt, som en andra,
-parallell integrationsväg — inte en ersättning för den första.** Andra ramverk
-(LangGraph/LangChain, CrewAI, Vercel AI SDK, m.fl.) eller andra coding-agenter ska
-på sikt kunna anropa in i Cortxts kontrollplan som en tjänst (t.ex. "ge mig
-mandat-verifierad routing/audit för den här uppgiften"), utan att själva behöva
-flytta sin egen orkestrering till Cortxt.
+**Cortxt also deliberately becomes consumable bottom-up externally, as a second,
+parallel integration path — not a replacement for the first.** Other frameworks
+(LangGraph/LangChain, CrewAI, Vercel AI SDK, etc.) or other coding agents should in
+time be able to call into Cortxt's control plane as a service (e.g. "give me
+mandate-verified routing/audit for this task"), without having to move their own
+orchestration to Cortxt themselves.
 
-**Detta ADR beslutar riktningen, inte ytan.** Vilken konkret form den bottom-up-vända
-integrationen tar (Python/TypeScript/Go-SDK, MCP-server, REST-API) är **inte**
-beslutat här — det är samma öppna fråga som Fas 6:s "installerbara paket" (§4.1 i
-visionsdokumentet) redan brottas med, och löses där, inte här. Det här ADR:et
-säkerställer bara att det arbetet designas med en extern konsument i åtanke, inte
-bara den lokala CLI/widget-operatören.
+**This ADR decides the direction, not the surface.** What concrete form the
+bottom-up-facing integration takes (Python/TypeScript/Go SDK, MCP server, REST API) is
+**not** decided here — it is the same open question that Phase 6's "installable
+packages" (§4.1 in the vision document) already wrestles with, and it is resolved
+there, not here. This ADR only ensures that work is designed with an external consumer
+in mind, not just the local CLI/widget operator.
 
 ## Consequences
 
 ### Positive
-- Löser upp en falsk motsättning: v.02-arbetet hittills (routing, credential broker,
-  addon-gate) behöver inte överges eller kompromissas för att också stödja externa
-  konsumenter — de är ortogonala, inte konkurrerande, riktningar.
-- Öppnar en adoptionsväg som inte kräver att någon flyttar sin befintliga
-  LangGraph/CrewAI-stack till Cortxt för att få nytta av dess mandat-/audit-garantier.
-- Ger ett konkret ramverk för att utvärdera framtida API-designbeslut: "fungerar
-  detta för en extern konsument, inte bara den interna CLI:n?" blir en verklig fråga
-  att ställa, inte en eftertanke.
+- Resolves a false dichotomy: the v.02 work so far (routing, credential broker,
+  addon gate) does not need to be abandoned or compromised to also support external
+  consumers — they are orthogonal, not competing, directions.
+- Opens an adoption path that does not require anyone to move their existing
+  LangGraph/CrewAI stack to Cortxt to benefit from its mandate/audit guarantees.
+- Provides a concrete framework for evaluating future API design decisions: "does
+  this work for an external consumer, not just the internal CLI?" becomes a real
+  question to ask, not an afterthought.
 
 ### Negative
-- Två integrationsytor att underhålla i längden (intern kontrollplans-API + extern
-  konsument-yta) istället för en.
-- Risk att den externa ytan byggs för smalt (bara det den interna CLI:n råkar
-  behöva) om den inte designas medvetet — samma typ av misstag ADR-016 redan
-  varnat för på ett annat lager (att koda in en enda användares antaganden som ett
-  plattformskontrakt).
+- Two integration surfaces to maintain over time (internal control-plane API +
+  external consumer surface) instead of one.
+- Risk that the external surface is built too narrowly (only what the internal CLI
+  happens to need) if it is not designed deliberately — the same type of mistake
+  ADR-016 already warned about at another layer (coding a single user's assumptions
+  in as a platform contract).
 
 ### Risks
-- Utan en tydlig prioritetsordning kan "bygg i båda riktningarna" tolkas som
-  "bygg allt samtidigt" — inte avsikten. Fas-sekvensen (topp-down-arbetet pågår
-  redan, Fas 4/5/6) fortsätter före den externa ytan; detta ADR ändrar inte
-  ordningen, bara bekräftar att den externa riktningen inte är avfärdad.
-- Den externa ytans säkerhetsmodell (vem/vad får anropa in i kontrollplanet
-  utifrån, med vilket mandat) är inte specad här — kräver ett eget avsnitt när
-  arbetet faktiskt påbörjas, samma disciplin som credential-broker-hotmodellen
-  (Fas 1) höll för den interna ytan.
+- Without a clear priority order, "build in both directions" could be read as
+  "build everything at once" — not the intent. The phase sequence (the top-down work
+  is already underway, Phases 4/5/6) continues ahead of the external surface; this
+  ADR does not change the order, only confirms that the external direction is not
+  dismissed.
+- The external surface's security model (who/what may call into the control plane
+  from outside, with what mandate) is not specified here — it requires its own
+  section when the work actually begins, the same discipline the credential-broker
+  threat model (Phase 1) held for the internal surface.
 
 ## Alternatives Considered
-1. **Enbart top-down, avfärda extern konsumtion** — förkastad: stänger av en
-   adoptionsväg utan verklig kostnad att hålla öppen just nu (ingen kod behöver
-   skrivas för att bara *inte stänga dörren*), och matchar inte operatörens
-   uttalade avsikt att jobba i båda riktningarna.
-2. **Enbart bottom-up, bygg om Cortxt som en tjänst andra orkestrerar** —
-   förkastad: river upp hela v.02-milstolpens grundpremiss (kontrollplanet äger
-   mandat/audit) och gör redan byggda mönster (ADR-019, ADR-022,
-   credential-brokern) meningslösa.
-3. **Vänta med beslutet tills Fas 6:s paketeringsfråga är löst** — förkastad:
-   riktningen (båda) påverkar hur Fas 6-arbetet designas; att vänta skulle bara
-   flytta samma beslut till en punkt där mer kod redan antar bara-top-down.
+1. **Top-down only, dismiss external consumption** — rejected: closes off an
+   adoption path with no real cost to keep open right now (no code needs to be
+   written just to *not close the door*), and does not match the operator's stated
+   intention to work in both directions.
+2. **Bottom-up only, rebuild Cortxt as a service others orchestrate** —
+   rejected: tears up the entire v.02 milestone's founding premise (the control
+   plane owns mandate/audit) and makes already-built patterns (ADR-019, ADR-022,
+   the credential broker) meaningless.
+3. **Wait with the decision until Phase 6's packaging question is resolved** —
+   rejected: the direction (both) affects how the Phase 6 work is designed; waiting
+   would only move the same decision to a point where more code already assumes
+   top-down-only.
 
 ## Validation
-- [ ] Fas 6:s "installerbara paket"-arbete (§4.1) refererar till detta ADR när
-      den externa integrationsytans form specas.
-- [ ] Ingen framtida kontrollplans-API designas utan att uttryckligen fråga "hur
-      ser detta ut för en extern konsument?"
-- [ ] Ett eget säkerhets-/mandatavsnitt skrivs för den externa ytan innan den
-      implementeras, inte efteråt.
+- [ ] Phase 6's "installable packages" work (§4.1) references this ADR when
+      the external integration surface's form is specified.
+- [ ] No future control-plane API is designed without explicitly asking "what
+      does this look like for an external consumer?"
+- [ ] A dedicated security/mandate section is written for the external surface
+      before it is implemented, not afterwards.
 
 ## Expiry/Review Trigger
 - Review by: 2026-11-19
-- Trigger: Fas 6:s paketeringsarbete når en punkt där den externa ytans konkreta
-  form (SDK/MCP/REST) måste väljas, ELLER en extern integrationsförfrågan
-  (t.ex. någon vill koppla LangGraph mot Cortxt) gör frågan akut tidigare.
+- Trigger: Phase 6's packaging work reaches a point where the external surface's
+  concrete form (SDK/MCP/REST) must be chosen, OR an external integration request
+  (e.g. someone wants to connect LangGraph to Cortxt) makes the question urgent
+  earlier.

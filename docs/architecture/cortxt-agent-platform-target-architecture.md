@@ -1,4 +1,4 @@
-# Cortxt Agent Platform — målarkitektur
+# Cortxt Agent Platform — Target Architecture
 
 Status: proposed target architecture  
 Authority: architectural proposal; does not override the current operating model  
@@ -7,128 +7,128 @@ Last updated: 2026-08-17
 Owner: Rikard  
 Review trigger: before implementation scope is approved and whenever a major platform boundary changes
 
-> Cortxt ska utvecklas från ett kontrollplan som huvudsakligen styr externa
-> agentmotorer till en egen, leverantörsneutral agentplattform. Plattformen ska
-> äga agentens tillstånd, reasoning, rekursion, minne, verifiering och
-> livscykel. Modeller, inferencekapacitet och externa körmotorer ska förbli
-> utbytbara resurser.
+> Cortxt is to evolve from a control plane that primarily orchestrates external
+> agent engines into its own, vendor-neutral agent platform. The platform is to
+> own the agent's state, reasoning, recursion, memory, verification, and
+> lifecycle. Models, inference capacity, and external execution engines are to
+> remain replaceable resources.
 
-## Dokumentets roll
+## The document's role
 
-Detta dokument beskriver den långsiktiga målbilden och en stegvis väg dit. Det
-är inte en beskrivning av vad som är produktionsverifierat idag.
+This document describes the long-term target state and a step-by-step path to
+it. It is not a description of what is production-verified today.
 
-Vid konflikt gäller dokumentationsordningen nedan (ADR-016 planerade en
-`docs/authority-map` för detta, men den punkten i ADR-016:s Validation-lista
-är fortfarande ogjord — `docs/README.md` finns inte i repot). Framför allt:
+In case of conflict, the documentation order below governs (ADR-016 planned a
+`docs/authority-map` for this, but that item in ADR-016's Validation list is
+still undone — `docs/README.md` does not exist in the repo). Most importantly:
 
-- `docs/agents/current-operating-model.md` beskriver dagens verifierade väg;
-- `docs/architecture/dispatch-contract.md` är fortsatt normativt för dispatch,
-  run identity och result envelope;
-- `docs/architecture/runtime-and-evaluation-harness.md` är fortsatt normativt
-  för isolering och utvärdering;
-- detta dokument beskriver vart arkitekturen ska utvecklas.
+- `docs/agents/current-operating-model.md` describes today's verified path;
+- `docs/architecture/dispatch-contract.md` remains normative for dispatch,
+  run identity, and the result envelope;
+- `docs/architecture/runtime-and-evaluation-harness.md` remains normative
+  for isolation and evaluation;
+- this document describes where the architecture is to evolve.
 
-## 1. Sammanfattning
+## 1. Summary
 
-Cortxt ska inte kasta bort dagens kontrollplan. Systemet ska kompletteras med
-den agentiska kärna som hittills huvudsakligen har tillhandahållits av Hermes,
-Pi och andra externa agentharness.
+Cortxt should not throw away today's control plane. The system is to be
+complemented with the agentic core that has so far been provided mainly by
+Hermes, Pi, and other external agent harnesses.
 
-Målprodukten består av:
+The target product consists of:
 
-1. ett kontrollplan för mandat, policy, budget, workflow och godkännanden;
-2. en egen supervisor för mål, sessionslivscykel och koordinering;
-3. en egen agentruntime för coding, research och andra agentprofiler;
-4. en reasoning kernel med flera valbara strategier;
-5. en egen RLM-motor för rekursiv problemlösning över extern kontext;
-6. ett geometriskt reasoning-lager med explicit problem- och relationsmodell;
-7. en inference gateway som kan använda både egenhostade och externa modeller;
-8. en isolerad execution runtime för verktyg och kod;
-9. ett oberoende evaluation- och evidenslager;
-10. versionsstyrda vertical packages för domänspecifika förmågor.
+1. a control plane for mandate, policy, budget, workflow, and approvals;
+2. its own supervisor for goals, session lifecycle, and coordination;
+3. its own agent runtime for coding, research, and other agent profiles;
+4. a reasoning kernel with several selectable strategies;
+5. its own RLM engine for recursive problem solving over external context;
+6. a geometric reasoning layer with an explicit problem and relation model;
+7. an inference gateway that can use both self-hosted and external models;
+8. an isolated execution runtime for tools and code;
+9. an independent evaluation and evidence layer;
+10. versioned vertical packages for domain-specific capabilities.
 
-Hermes koordinerande roll används under migrationen som adapter, fallback och
-benchmark och ersätts stegvis av Cortxt Supervisor (§24.1). Hermes, Pi och
-Codex som kodningsmotorer är däremot permanenta parallella routingval enligt
-ADR-019 (2026-08-16) — de ersätts inte, oavsett hur Cortxt Agent Platform
-utvecklas (se §22.3/§24.2).
+Hermes's coordinating role is used during the migration as an adapter, fallback,
+and benchmark and is incrementally replaced by the Cortxt Supervisor (§24.1).
+Hermes, Pi, and Codex as coding engines, by contrast, are permanent parallel
+routing choices per ADR-019 (2026-08-16) — they are not replaced, regardless of
+how the Cortxt Agent Platform evolves (see §22.3/§24.2).
 
-## 2. Produktvision
+## 2. Product vision
 
-Cortxt Agent Platform ska vara ett agentiskt operativsystem för långvarigt,
-spårbart och verifierbart kunskaps- och kodarbete.
+The Cortxt Agent Platform is to be an agentic operating system for long-running,
+traceable, and verifiable knowledge and coding work.
 
-Plattformens differentierande tes är:
+The platform's differentiating thesis:
 
-> Reasoning kan behandlas som transformationer av ett explicit, dynamiskt
-> problemrum. Rekursiv inference utforskar problemrummet, medan verifiering och
-> evidens avgör vilka banor som håller.
+> Reasoning can be treated as transformations of an explicit, dynamic
+> problem space. Recursive inference explores the problem space, while
+> verification and evidence determine which paths hold.
 
-Coding Agent är den första kompletta applikationen av plattformen, inte den
-slutliga produktgränsen. Samma kärna ska senare kunna bära research,
-arkitekturarbete, dokumentanalys och vertikala verksamhetsflöden.
+Coding Agent is the first complete application of the platform, not the final
+product boundary. The same core should later be able to carry research,
+architecture work, document analysis, and vertical business flows.
 
-## 3. Designmål
+## 3. Design goals
 
-### 3.1 Funktionella mål
+### 3.1 Functional goals
 
-- Lösa avgränsade koduppgifter utan Hermes eller Pi.
-- Köra research- och analysuppgifter över material som överstiger en modells
+- Solve bounded coding tasks without Hermes or Pi.
+- Run research and analysis tasks over material that exceeds a model's
   context window.
-- Skapa, pausa, återuppta och avbryta långvariga agentsessioner.
-- Dela upp arbete rekursivt med hårda tak för djup, grenar, tid och kostnad.
-- Representera hypoteser, evidens, motsägelser och öppna frågor explicit.
-- Välja modell och inferenceprovider utan att förändra reasoning-kärnan.
-- Verifiera resultat med deterministiska tester, oberoende modeller och
-  mänskliga beslutspunkter.
-- Lära från verifierade trajectories utan att produktionsbeteendet ändras
-  tyst eller oåterkalleligt.
+- Create, pause, resume, and cancel long-running agent sessions.
+- Split work recursively with hard caps on depth, branches, time, and cost.
+- Represent hypotheses, evidence, contradictions, and open questions explicitly.
+- Choose the model and inference provider without changing the reasoning core.
+- Verify results with deterministic tests, independent models, and
+  human decision points.
+- Learn from verified trajectories without the production behavior changing
+  silently or irreversibly.
 
-### 3.2 Kvalitetsmål
+### 3.2 Quality goals
 
-- Leverantörsneutralitet.
-- Återupptagbarhet efter process- eller klientavbrott.
-- Förklarbar routing och mätbar reasoning-strategi.
-- Fail-closed vid policy-, budget- eller isoleringsfel.
-- Inga externa sidoeffekter utan uttryckligt mandat.
-- Ingen lagring av privat chain-of-thought.
-- Reproducerbara evals och versionslåsta resultat.
-- Minsta nödvändiga behörighet för varje agent och verktyg.
+- Vendor neutrality.
+- Resumability after a process or client interruption.
+- Explainable routing and measurable reasoning strategy.
+- Fail-closed on policy, budget, or isolation errors.
+- No external side effects without explicit mandate.
+- No storage of private chain-of-thought.
+- Reproducible evals and version-pinned results.
+- Least necessary privilege for every agent and tool.
 
-### 3.3 Icke-mål för första produktgenerationen
+### 3.3 Non-goals for the first product generation
 
-- Att träna en egen generell grundmodell.
-- Att skriva en egen CUDA-baserad inference engine.
-- Att konkurrera som global GPU-marknadsplats.
-- Obegränsad självmodifiering eller rekursion.
-- Att ersätta GitHub som dagens kanoniska task record innan ett separat beslut.
-- Att automatisera bort operatörens mandat över irreversibla beslut.
+- Training a general foundation model of its own.
+- Writing its own CUDA-based inference engine.
+- Competing as a global GPU marketplace.
+- Unlimited self-modification or recursion.
+- Replacing GitHub as today's canonical task record before a separate decision.
+- Automating away the operator's mandate over irreversible decisions.
 
-## 4. Stabil begreppsmodell
+## 4. Stable conceptual model
 
-| Begrepp | Ansvar |
+| Concept | Responsibility |
 | --- | --- |
-| Control Plane | Äger scope, policy, workflow state, budgetram, evidens och operatörsgrindar. |
-| Agent Platform | Hela Cortxts agentiska exekveringssystem under kontrollplanet. |
-| Supervisor | Äger mål, sessionslivscykel, delegering, beroenden, återhämtning och koordinering. |
-| Agent Runtime | Kör en agentsession och förvaltar agentloop, context, tools och session state. |
-| Agent Profile | Versionsstyrd konfiguration av roll, operatorer, verktyg, behörighet, minne, modellpolicy och verifiering. |
-| Reasoning Kernel | Väljer reasoning-strategi och nästa tillåtna transformation av Problem State. |
-| Problem State | Explicit och beständigt tillstånd för mål, claims, hypoteser, evidens, motsägelser och öppna frågor. |
-| Reasoning Graph | Typad graf som representerar objekten och relationerna i Problem State. |
-| Reasoning Strategy | Algoritm för hur problemrummet utforskas, exempelvis direct, recursive eller geometric. |
-| Reasoning Operator | En avgränsad transformation, exempelvis decompose, challenge eller integrate. |
-| RLM Engine | Utför rekursiv dekomposition, context inspection, child calls och syntes inom budget. |
-| Inference Gateway | Leverantörsneutral gräns för model invocations, routing, usage och fel. |
-| Inference Provider | Tjänst eller lokal endpoint som kör en modell, exempelvis InferX eller egenhostad vLLM. |
-| Agent Harness | Programlager runt en modell för tools, context, memory och agentloop. Cortxt Agent Runtime är målbildens primära harness. |
-| Execution Runtime | Isolerad miljö där shell, kod och andra verktyg faktiskt körs. |
-| Evaluation Harness | Oberoende lager för assertions, graders, jämförelser och verdicts. |
-| Vertical Package | Domänpaket med workflows, scheman, instruktioner, fixtures och evals. |
-| Trajectory | Strukturerad följd av tillstånd, beslut, actions och verifierade utfall; inte privat chain-of-thought. |
+| Control Plane | Owns scope, policy, workflow state, budget framework, evidence, and operator gates. |
+| Agent Platform | The entire Cortxt agentic execution system under the control plane. |
+| Supervisor | Owns goals, session lifecycle, delegation, dependencies, recovery, and coordination. |
+| Agent Runtime | Runs an agent session and manages the agent loop, context, tools, and session state. |
+| Agent Profile | Versioned configuration of role, operators, tools, permissions, memory, model policy, and verification. |
+| Reasoning Kernel | Selects the reasoning strategy and the next allowed transformation of the Problem State. |
+| Problem State | Explicit and persistent state for goals, claims, hypotheses, evidence, contradictions, and open questions. |
+| Reasoning Graph | Typed graph representing the objects and relations in the Problem State. |
+| Reasoning Strategy | Algorithm for how the problem space is explored, e.g. direct, recursive, or geometric. |
+| Reasoning Operator | A bounded transformation, e.g. decompose, challenge, or integrate. |
+| RLM Engine | Performs recursive decomposition, context inspection, child calls, and synthesis within budget. |
+| Inference Gateway | Vendor-neutral boundary for model invocations, routing, usage, and errors. |
+| Inference Provider | Service or local endpoint that runs a model, e.g. InferX or a self-hosted vLLM. |
+| Agent Harness | Program layer around a model for tools, context, memory, and the agent loop. The Cortxt Agent Runtime is the target state's primary harness. |
+| Execution Runtime | Isolated environment where shell, code, and other tools actually run. |
+| Evaluation Harness | Independent layer for assertions, graders, comparisons, and verdicts. |
+| Vertical Package | Domain package with workflows, schemas, instructions, fixtures, and evals. |
+| Trajectory | Structured sequence of states, decisions, actions, and verified outcomes; not private chain-of-thought. |
 
-## 5. Målarkitektur
+## 5. Target architecture
 
 ```text
 Operator / API / UI
@@ -166,52 +166,52 @@ tests | graders | adversarial verification | evidence
 CONTROL PLANE / OPERATOR GATE
 ```
 
-### 5.1 Ansvarsregel
+### 5.1 Responsibility rule
 
-Modellen får föreslå nästa reasoning-step eller action. Den komponent som äger
-auktoritativ state måste validera och verkställa förslaget.
+The model may propose the next reasoning step or action. The component that owns
+authoritative state must validate and enforce the proposal.
 
-Exempel:
+Example:
 
-- modellen föreslår att ett underproblem skapas;
-- Reasoning Kernel kontrollerar reasoning-budgeten;
-- Supervisor skapar child run och identitet;
-- Execution Runtime upprätthåller behörighet och isolering;
-- Control Plane stoppar externa eller irreversibla effekter vid grind.
+- the model proposes that a subproblem be created;
+- the Reasoning Kernel checks the reasoning budget;
+- the Supervisor creates the child run and identity;
+- the Execution Runtime enforces permissions and isolation;
+- the Control Plane stops external or irreversible effects at the gate.
 
 ## 6. Control Plane
 
-Det befintliga kontrollplanet behålls. Det ansvarar fortsatt för:
+The existing control plane is retained. It remains responsible for:
 
-- kanoniskt scope och acceptance criteria;
-- dataklass, riskklass och policyversion;
+- canonical scope and acceptance criteria;
+- data class, risk class, and policy version;
 - route eligibility;
-- total budget och hårda ceilings;
-- claim, `run_id` och workflow state;
-- operatörsgodkännanden;
-- evidens- och resultatreferenser;
-- beslut om merge, deploy, publicering och Done.
+- total budget and hard ceilings;
+- claim, `run_id`, and workflow state;
+- operator approvals;
+- evidence and result references;
+- decisions about merge, deploy, publishing, and Done.
 
-Kontrollplanet ska inte innehålla domänreasoning eller modellberoende
-agentlogik.
+The control plane must not contain domain reasoning or model-dependent
+agent logic.
 
 ## 7. Cortxt Supervisor
 
-Supervisor ersätter stegvis Hermes koordinerande ansvar.
+The Supervisor incrementally replaces Hermes's coordinating responsibility.
 
-### 7.1 Ansvar
+### 7.1 Responsibilities
 
-- ta emot ett godkänt dispatch request;
-- skapa eller återuppta en root session;
-- tilldela agent profile och reasoning policy;
-- skapa och övervaka child sessions;
-- fördela delbudget utan att höja totalbudgeten;
-- hantera beroenden och join-punkter;
-- ge querybar status och heartbeat;
-- utföra cancellation och timeout;
-- återhämta sessioner efter processavbrott;
-- integrera terminala delresultat;
-- producera ett fullständigt result envelope.
+- receive an approved dispatch request;
+- create or resume a root session;
+- assign the agent profile and reasoning policy;
+- create and monitor child sessions;
+- allocate sub-budgets without raising the total budget;
+- manage dependencies and join points;
+- provide queryable status and heartbeat;
+- perform cancellation and timeout;
+- recover sessions after a process interruption;
+- integrate terminal partial results;
+- produce a complete result envelope.
 
 ### 7.2 Supervisor state machine
 
@@ -226,54 +226,54 @@ ADMITTED
   -> WAITING_FOR_OPERATOR | SUCCEEDED | BLOCKED | FAILED
 ```
 
-Varje övergång ska vara explicit, versionsstyrd och möjlig att läsa tillbaka.
+Every transition must be explicit, version-controlled, and readable back.
 
 ### 7.3 Child runs
 
-Varje child run ska ha:
+Every child run must have:
 
-- eget `child_run_id`;
-- samma `issue_id` och root `run_id`;
-- avgränsat syfte och output schema;
-- tilldelad delbudget;
-- relevant context reference, inte okontrollerad kopia av hela parent context;
-- maximalt rekursionsdjup;
-- querybar status;
-- terminalt strukturerat resultat.
+- its own `child_run_id`;
+- the same `issue_id` and root `run_id`;
+- a bounded purpose and output schema;
+- an allocated sub-budget;
+- a relevant context reference, not an uncontrolled copy of the entire parent context;
+- a maximum recursion depth;
+- queryable status;
+- a terminal structured result.
 
-### 7.4 Statusmappning mot result envelope
+### 7.4 Status mapping to the result envelope
 
-Supervisorns state machine (§7.2) och dispatch-kontraktets normativa
-result-envelope-status använder inte samma vokabulär. Mappningen:
+The Supervisor's state machine (§7.2) and the dispatch contract's normative
+result-envelope statuses do not use the same vocabulary. The mapping:
 
-| Supervisor state / händelse | Result envelope status |
+| Supervisor state / event | Result envelope status |
 | --- | --- |
-| ADMITTED … VERIFYING, WAITING_FOR_OPERATOR | inget envelope ännu (icke-terminalt) |
+| ADMITTED … VERIFYING, WAITING_FOR_OPERATOR | no envelope yet (non-terminal) |
 | SUCCEEDED | `succeeded` |
 | BLOCKED | `blocked` |
 | FAILED | `failed` |
 | timeout | `timed_out` |
-| budgettak nått | `budget_exceeded` |
+| budget cap reached | `budget_exceeded` |
 | cancellation | `cancelled` |
-| child status `lost` (Fas 4, §27 #4) | root `blocked` med reason som pekar till förlorat barn |
+| child status `lost` (Phase 4, §27 #4) | root `blocked` with a reason pointing to the lost child |
 
-Envelopen i §19.2 utökas inte av denna tabell — dispatch-kontraktet är
-normativt och ändras bara via separat godkännande (§19.1). Verifierat mot
-Fas 4-koden (final-fix-rapport, Fix 1): Supervisor v0.1 mappar i praktiken
-timeout till `blocked` med reason, inte till ett eget `timed_out`-fält.
-Målbilden bör lyfta `timed_out` och `budget_exceeded` till förstaklassiga
-terminalorsaker i en senare fas.
+The envelope in §19.2 is not extended by this table — the dispatch contract is
+normative and only changes through separate approval (§19.1). Verified against
+the Phase 4 code (final-fix report, Fix 1): Supervisor v0.1 in practice maps
+timeout to `blocked` with a reason, not to a dedicated `timed_out` field.
+The target state should promote `timed_out` and `budget_exceeded` to
+first-class terminal causes in a later phase.
 
 ## 8. Agent Runtime
 
-Agent Runtime är Cortxts egna agent harness. Den kompletterar Pi, Hermes och
-Codex som ett permanent parallellt routingval för kodningsuppgifter (ADR-019,
-se §22.3/§24.2) — den ersätter dem inte.
+The Agent Runtime is Cortxt's own agent harness. It complements Pi, Hermes, and
+Codex as a permanent parallel routing choice for coding tasks (ADR-019,
+see §22.3/§24.2) — it does not replace them.
 
-### 8.1 Gemensam runtime
+### 8.1 Common runtime
 
-Coding, research och coordinator ska inte vara separata tekniska produkter.
-De är profiler på samma runtime:
+Coding, research, and coordinator must not be separate technical products.
+They are profiles on the same runtime:
 
 ```yaml
 agent_profile:
@@ -287,23 +287,23 @@ agent_profile:
   verification_policy: tests-plus-independent-review-v1
 ```
 
-### 8.2 Runtimeansvar
+### 8.2 Runtime responsibilities
 
-- agentloop och turhantering;
-- prompt- och context assembly;
-- tool discovery och tool admission;
-- model invocation genom Inference Gateway;
+- agent loop and turn handling;
+- prompt and context assembly;
+- tool discovery and tool admission;
+- model invocation through the Inference Gateway;
 - context compaction;
-- session persistence och resume;
+- session persistence and resume;
 - structured output;
 - trajectory events;
-- koppling till Supervisor och Execution Runtime.
+- connection to the Supervisor and the Execution Runtime.
 
-Runtime får inte själv godkänna externa sidoeffekter eller utöka budget.
+The runtime must not itself approve external side effects or expand the budget.
 
-## 9. Problem State och Reasoning Graph
+## 9. Problem State and Reasoning Graph
 
-Problem State är den centrala domänmodellen för reasoning.
+Problem State is the central domain model for reasoning.
 
 ```text
 ProblemState
@@ -323,7 +323,7 @@ ProblemState
 `- termination_state
 ```
 
-### 9.1 Nodtyper
+### 9.1 Node types
 
 - `goal`
 - `constraint`
@@ -336,7 +336,7 @@ ProblemState
 - `question`
 - `candidate_conclusion`
 
-### 9.2 Relationstyper
+### 9.2 Relation types
 
 - `supports`
 - `contradicts`
@@ -349,70 +349,70 @@ ProblemState
 - `alternative_to`
 - `observed_from`
 
-### 9.3 Minsta metadata
+### 9.3 Minimal metadata
 
-Varje nod och relation ska kunna bära:
+Every node and relation must be able to carry:
 
-- stabil identitet;
+- stable identity;
 - provenance;
-- confidence och confidence source;
-- evidensreferenser;
-- dataklass;
-- skapande `reasoning_step_id`;
+- confidence and confidence source;
+- evidence references;
+- data class;
+- the creating `reasoning_step_id`;
 - timestamps;
-- status och version.
+- status and version.
 
-### 9.4 Lagringsprincip
+### 9.4 Storage principle
 
-Första implementationen ska använda enkla, portabla format och en vanlig
-databas. En separat grafdatabas införs först när mätbara query- eller
-skalningsbehov motiverar den.
+The first implementation should use simple, portable formats and an ordinary
+database. A separate graph database is introduced only when measurable query or
+scaling needs justify it.
 
 ## 10. Reasoning Kernel
 
-Reasoning Kernel väljer hur Problem State ska utvecklas. Den får inte reduceras
-till en enda stor systemprompt.
+The Reasoning Kernel chooses how the Problem State is to evolve. It must not be
+reduced to a single large system prompt.
 
-### 10.1 Strategier
+### 10.1 Strategies
 
-- `direct`: ett begränsat model invocation och verifiering;
-- `retrieval_augmented`: hämta riktad extern kontext före svar;
-- `tool_augmented`: använd verktyg för att observera eller förändra miljön;
-- `recursive`: dela upp, lös och integrera rekursivt;
-- `geometric`: utforska problemrummets struktur och alternativa banor;
-- `recursive_geometric`: geometriskt val av rekursiva grenar;
-- `adversarial`: försök falsifiera aktuell kandidat;
-- `ensemble`: jämför oberoende lösningskandidater;
-- `human_escalation`: stoppa och begär ett materiellt beslut.
+- `direct`: a bounded model invocation and verification;
+- `retrieval_augmented`: retrieve targeted external context before answering;
+- `tool_augmented`: use tools to observe or change the environment;
+- `recursive`: decompose, solve, and integrate recursively;
+- `geometric`: explore the structure of the problem space and alternative paths;
+- `recursive_geometric`: geometric selection of recursive branches;
+- `adversarial`: attempt to falsify the current candidate;
+- `ensemble`: compare independent solution candidates;
+- `human_escalation`: stop and request a material decision.
 
-### 10.2 Operatorer
+### 10.2 Operators
 
-| Operator | Syfte |
+| Operator | Purpose |
 | --- | --- |
-| `inspect` | Läs en avgränsad del av extern kontext. |
-| `decompose` | Skapa beroende eller oberoende underproblem. |
-| `abstract` | Sök en gemensam princip bakom flera observationer. |
-| `concretize` | Testa en abstrakt idé mot ett konkret fall. |
-| `change_perspective` | Modellera problemet från en annan position. |
-| `find_contradiction` | Sök inkompatibla claims, constraints eller evidens. |
-| `find_missing_dimension` | Sök en variabel eller relation som problemmodellen saknar. |
-| `generate_counterexample` | Försök falsifiera en hypotes. |
-| `compare_paths` | Jämför alternativa reasoning trajectories. |
-| `integrate` | Sammanför kompatibla delresultat. |
-| `escape_attractor` | Tvinga fram en oberoende alternativ modell eller bana. |
-| `verify` | Kör lämpliga verifierare mot en kandidat. |
+| `inspect` | Read a bounded part of external context. |
+| `decompose` | Create dependent or independent subproblems. |
+| `abstract` | Search for a common principle behind several observations. |
+| `concretize` | Test an abstract idea against a concrete case. |
+| `change_perspective` | Model the problem from another position. |
+| `find_contradiction` | Search for incompatible claims, constraints, or evidence. |
+| `find_missing_dimension` | Search for a variable or relation the problem model lacks. |
+| `generate_counterexample` | Attempt to falsify a hypothesis. |
+| `compare_paths` | Compare alternative reasoning trajectories. |
+| `integrate` | Combine compatible partial results. |
+| `escape_attractor` | Force an independent alternative model or path. |
+| `verify` | Run appropriate verifiers against a candidate. |
 
 ### 10.3 Reasoning step
 
-Privat chain-of-thought ska inte lagras. Systemet lagrar strukturerade och
-granskningsbara tillståndsförändringar:
+Private chain-of-thought must not be stored. The system stores structured and
+auditable state transitions:
 
 ```yaml
 reasoning_step_id: step-00042
 operator: generate_counterexample
 input_refs: [hypothesis-12, evidence-7]
 output_refs: [counterexample-3, contradiction-4]
-decision_summary: "Hypotesen testades mot ett gränsfall."
+decision_summary: "The hypothesis was tested against a boundary case."
 confidence_before: 0.78
 confidence_after: 0.51
 model_invocation_ref: invocation-81
@@ -421,10 +421,10 @@ evidence_refs: [artifact://run/source-14]
 
 ## 11. RLM Engine
 
-RLM Engine behandlar stora kontexter som extern, adresserbar data och använder
-rekursiva child calls som en programmerbar operation.
+The RLM Engine treats large contexts as external, addressable data and uses
+recursive child calls as a programmable operation.
 
-### 11.1 Grundloop
+### 11.1 Basic loop
 
 ```text
 inspect problem and context references
@@ -437,9 +437,9 @@ inspect problem and context references
   -> stop, recurse or escalate
 ```
 
-### 11.2 Hårda gränser
+### 11.2 Hard limits
 
-Varje RLM-körning ska ha:
+Every RLM run must have:
 
 - `max_depth`;
 - `max_branches_per_node`;
@@ -449,72 +449,73 @@ Varje RLM-körning ska ha:
 - `max_runtime_seconds`;
 - `max_cost`;
 - `max_output_size`;
-- explicit stop policy.
+- an explicit stop policy.
 
-### 11.3 Stoppvillkor
+### 11.3 Stop conditions
 
-- acceptance criteria är verifierade;
-- förväntad informationsvinst är under tröskel;
-- återstående budget räcker inte till en meningsfull gren;
-- alla relevanta grenar är integrerade;
-- en materiell motsägelse kräver operatör eller ny evidens;
-- policy eller säkerhetsgräns stoppar fortsatt arbete.
+- acceptance criteria are verified;
+- expected information gain is below the threshold;
+- remaining budget is not enough for a meaningful branch;
+- all relevant branches are integrated;
+- a material contradiction requires an operator or new evidence;
+- a policy or security limit stops further work.
 
-### 11.4 Dataklass vid context-ingest
+### 11.4 Data class at context ingest
 
-Inläst kontext ärver och behåller sin dataklass. Aggregerad kontext i Problem
-State klassas som den högsta ingående dataklassen. Klassen ska vara synlig för
-Tool Gateway och provider eligibility (ADR-016 dataklass→gate) vid varje
-efterföljande anrop som konsumerar den aggregerade kontexten. Detta bygger på
-dataklass-metadata som redan krävs per nod och relation (§9.3).
+Ingested context inherits and retains its data class. Aggregated context in the
+Problem State is classed as the highest incoming data class. The class must be
+visible to the Tool Gateway and provider eligibility (ADR-016 data class → gate)
+at every subsequent call that consumes the aggregated context. This builds on
+the data-class metadata already required per node and relation (§9.3).
 
 ## 12. Geometric Reasoning Engine
 
-Geometric reasoning v1 är en operationell systemmodell, inte ett påstående om
-att informationsgeometri är en etablerad fysisk naturkraft.
+Geometric reasoning v1 is an operational system model, not a claim that
+information geometry is an established physical force of nature.
 
-### 12.1 Arbetsdefinition
+### 12.1 Working definition
 
-Reasoning behandlas som banor och transformationer i ett strukturerat
-problemrum:
+Reasoning is treated as paths and transformations in a structured
+problem space:
 
-- noder och relationer ger explicit grafstruktur;
-- embeddings ger mjuk semantisk närhet;
-- mål och constraints påverkar vilka riktningar som är relevanta;
-- motsägelser skapar mätbar spänning;
-- verifiering förändrar confidence och frontier;
-- stabila slutsatsfamiljer kan identifieras som attractorer.
+- nodes and relations provide explicit graph structure;
+- embeddings provide soft semantic closeness;
+- goals and constraints influence which directions are relevant;
+- contradictions create measurable tension;
+- verification changes confidence and the frontier;
+- stable conclusion families can be identified as attractors.
 
-### 12.2 Geometriska mått i första versionen
+### 12.2 Geometric metrics in the first version
 
-- semantisk närhet mellan noder;
-- grafavstånd till mål eller acceptance criterion;
-- evidenstäckning;
-- motsägelsegrad;
-- centralitet;
+- semantic closeness between nodes;
+- graph distance to the goal or acceptance criterion;
+- evidence coverage;
+- contradiction degree;
+- centrality;
 - novelty;
-- stabilitet under perspektivbyte;
-- antal återbesök till samma slutsatsfamilj;
+- stability under perspective change;
+- number of revisits to the same conclusion family;
 - path diversity;
 - information gain per reasoning step.
 
-### 12.3 Attractor-detektering
+### 12.3 Attractor detection
 
-En kandidat attractor föreligger när systemet återkommer till samma
-slutsatsfamilj trots en eller flera av följande interventioner:
+A candidate attractor is present when the system returns to the same
+conclusion family despite one or more of the following interventions:
 
-- ny evidens;
-- perspektivbyte;
-- explicit motexempel;
-- oberoende child run;
-- förändrad branch order.
+- new evidence;
+- perspective change;
+- explicit counterexample;
+- independent child run;
+- changed branch order.
 
-Detta ska utlösa `escape_attractor`, starkare adversarial verification eller
-mänsklig eskalering. Det ska inte automatiskt tolkas som att slutsatsen är sann.
+This must trigger `escape_attractor`, stronger adversarial verification, or
+human escalation. It must not automatically be interpreted as the conclusion
+being true.
 
-### 12.4 Första sökfunktionen
+### 12.4 First scoring function
 
-En kandidatbana kan rankas med en versionsstyrd funktion baserad på:
+A candidate path can be ranked with a version-controlled function based on:
 
 ```text
 expected_information_gain
@@ -526,27 +527,27 @@ expected_information_gain
 - policy_risk
 ```
 
-Vikter och trösklar är policydata och ska utvärderas mot fixtures, inte döljas
-i prompttext.
+Weights and thresholds are policy data and must be evaluated against fixtures,
+not hidden in prompt text.
 
 ## 13. Coding Agent
 
-Coding Agent är den första fullständiga vertikalen på Agent Runtime.
+Coding Agent is the first complete vertical on the Agent Runtime.
 
-### 13.1 Förmågor
+### 13.1 Capabilities
 
-- läsa repositoryinstruktioner;
-- kartlägga filer, symboler och beroenden;
-- formulera och testa felhypoteser;
-- läsa och ändra endast godkänt workspace;
-- skapa minimala patchar;
-- köra tester och statiska kontroller;
-- inspektera diff mot scope;
-- upptäcka scope expansion;
-- producera artifacts, evidence och result envelope;
-- återuppta arbetet efter kontrollerat avbrott.
+- read repository instructions;
+- map files, symbols, and dependencies;
+- formulate and test bug hypotheses;
+- read and modify only the approved workspace;
+- create minimal patches;
+- run tests and static checks;
+- inspect the diff against scope;
+- detect scope expansion;
+- produce artifacts, evidence, and the result envelope;
+- resume work after a controlled interruption.
 
-### 13.2 Kodspecifika operatorer
+### 13.2 Coding-specific operators
 
 - `locate_ownership`
 - `build_dependency_map`
@@ -559,196 +560,198 @@ Coding Agent är den första fullständiga vertikalen på Agent Runtime.
 - `inspect_diff_against_scope`
 - `falsify_fix`
 
-### 13.3 Säkerhetsgräns
+### 13.3 Security boundary
 
-Coding Agent kör inte shell eller kod direkt i agentprocessen. Den begär actions
-genom Tool Gateway och Execution Runtime, som validerar workspace, kommando,
-nätverk, timeout och artifact policy.
+Coding Agent does not run shell or code directly in the agent process. It
+requests actions through the Tool Gateway and Execution Runtime, which validate
+workspace, command, network, timeout, and artifact policy.
 
-## 14. Inference Gateway och egen inference
+## 14. Inference Gateway and self-hosted inference
 
 ### 14.1 Inference Gateway
 
-Inference Gateway ska byggas tidigt och ägas av Cortxt. Den normaliserar:
+The Inference Gateway must be built early and owned by Cortxt. It normalizes:
 
-- provider och exakt modellversion;
-- messages och structured outputs;
+- provider and exact model version;
+- messages and structured outputs;
 - tool calling;
-- reasoning- och outputinställningar där de finns;
-- input-, output-, cache- och reasoning tokens;
-- latency, timeout och cancellations;
-- kostnad och cost confidence;
-- retries och felklassificering;
-- dataklass och provider eligibility.
+- reasoning and output settings where they exist;
+- input, output, cache, and reasoning tokens;
+- latency, timeout, and cancellations;
+- cost and cost confidence;
+- retries and error classification;
+- data class and provider eligibility.
 
-Agentkärnan ska endast bero på ett internt `InferencePort`.
+The agent core must depend only on an internal `InferencePort`.
 
 ### 14.2 Inference providers
 
-Följande kan existera parallellt bakom gatewayn:
+The following can exist in parallel behind the gateway:
 
-- externa endpoints, exempelvis InferX;
-- Prime Inference eller andra tjänster;
-- OpenAI-kompatibla gateways;
-- lokala modeller;
-- Cortxt-hostad vLLM eller SGLang;
-- framtida egen servinginfrastruktur.
+- external endpoints, e.g. InferX;
+- Prime Inference or other services;
+- OpenAI-compatible gateways;
+- local models;
+- Cortxt-hosted vLLM or SGLang;
+- future self-hosted serving infrastructure.
 
-### 14.3 Vägen till en egen inferenceprodukt
+### 14.3 The path to a self-hosted inference product
 
-1. Eget gateway-API och egna kontrakt.
-2. En extern provideradapter för bootstrap.
-3. En lokal eller hyrd GPU med öppen modell.
-4. Modellpool, liveness och lastbalansering.
-5. Caching, batching och kapacitetsmätning.
-6. Multi-tenant-isolering och usage accounting.
-7. Kundexponerat inference-API först efter separat produkt- och säkerhetsbeslut.
+1. Own gateway API and own contracts.
+2. An external provider adapter for bootstrap.
+3. A local or rented GPU with an open model.
+4. Model pool, liveness, and load balancing.
+5. Caching, batching, and capacity measurement.
+6. Multi-tenant isolation and usage accounting.
+7. A customer-exposed inference API only after a separate product and security decision.
 
-En egen inferenceprodukt innebär inte att Cortxt måste skriva en egen låg-nivå
-inference engine i första generationen.
+A self-hosted inference product does not mean Cortxt must write its own
+low-level inference engine in the first generation.
 
-## 15. Tool Gateway och Execution Runtime
+## 15. Tool Gateway and Execution Runtime
 
-Tool Gateway är den enda vägen från Agent Runtime till externa handlingar.
+The Tool Gateway is the only path from the Agent Runtime to external actions.
 
-Execution Runtime äger:
+The Execution Runtime owns:
 
-- sandbox och containerpolicy;
+- sandbox and container policy;
 - writable scope;
-- nätverks- och egresspolicy;
+- network and egress policy;
 - process limits;
 - command timeout;
-- credential injection utan persistence;
+- credential injection without persistence;
 - artifact capture;
-- logg- och usagegränser;
+- log and usage limits;
 - deterministic cleanup.
 
-Reasoning och exekvering ska vara separata failure domains. En persistent
-reasoning-session får inte i sig innebära persistent operativsystemsbehörighet.
+Reasoning and execution must be separate failure domains. A persistent
+reasoning session must not in itself imply persistent OS-level permissions.
 
-## 16. Memory och context
+## 16. Memory and context
 
-### 16.1 Minnestyper
+### 16.1 Memory types
 
-| Minne | Scope | Exempel |
+| Memory | Scope | Example |
 | --- | --- | --- |
-| Turn context | En modellturn | Utvald input till nästa invocation. |
-| Session state | En agentsession | Problem State, frontier och aktiva handles. |
-| Run memory | Root run och barn | Strukturerade delresultat och artifacts. |
-| Project memory | Ett repository/projekt | Godkända konventioner och verifierade fakta. |
-| Skill memory | En capabilityversion | Procedurer, schemas och verktygsinstruktioner. |
-| Evidence memory | Tvärgående utvärdering | Aggregerade, innehållsminimerade utfall. |
+| Turn context | One model turn | Selected input to the next invocation. |
+| Session state | One agent session | Problem State, frontier, and active handles. |
+| Run memory | Root run and children | Structured partial results and artifacts. |
+| Project memory | One repository/project | Approved conventions and verified facts. |
+| Skill memory | One capability version | Procedures, schemas, and tool instructions. |
+| Evidence memory | Cross-cutting evaluation | Aggregated, content-minimized outcomes. |
 
 ### 16.2 Context assembly
 
-Agent Runtime ska sätta samman nästa modellinput från:
+The Agent Runtime should assemble the next model input from:
 
-- aktuellt mål;
-- relevant del av Problem State;
-- vald reasoning operation;
-- explicit hämtad extern kontext;
+- the current goal;
+- the relevant part of the Problem State;
+- the selected reasoning operation;
+- explicitly retrieved external context;
 - tool schemas;
-- policy- och output constraints.
+- policy and output constraints.
 
-Hela sessionhistoriken ska inte okontrollerat återges vid varje invocation.
+The entire session history must not be replayed uncontrolled at every
+invocation.
 
 ### 16.3 Compaction
 
-Compaction får sammanfatta konversation och rå observation, men får inte ersätta
-auktoritativa strukturer såsom:
+Compaction may summarize conversation and raw observation, but must not replace
+authoritative structures such as:
 
-- mål och constraints;
-- öppna motsägelser;
+- goals and constraints;
+- open contradictions;
 - budget;
 - run identity;
-- evidensreferenser;
-- operator- och verifieringsstatus.
+- evidence references;
+- operator and verification status.
 
-## 17. Verification och Evaluation
+## 17. Verification and Evaluation
 
-Verifiering är en separat fas och ibland en separat aktör.
+Verification is a separate phase and sometimes a separate actor.
 
-Prioritetsordning:
+Priority order:
 
-1. deterministiska assertions och tester;
-2. schema- och policyvalidering;
-3. property- och metamorphic tests;
-4. adversarial reasoning och counterexamples;
-5. oberoende modellgranskning;
-6. domänexpert eller operatör när beslutet kräver det.
+1. deterministic assertions and tests;
+2. schema and policy validation;
+3. property and metamorphic tests;
+4. adversarial reasoning and counterexamples;
+5. independent model review;
+6. domain expert or operator when the decision requires it.
 
-### 17.1 Reasoning-mått
+### 17.1 Reasoning metrics
 
 - task success;
 - first-attempt success;
-- evidenstäckning;
-- olösta materiella motsägelser;
+- evidence coverage;
+- unresolved material contradictions;
 - confidence calibration;
 - branch efficiency;
 - information gain per invocation;
-- attractor escapes som förbättrade resultatet;
-- total kostnad per verifierad arbetsenhet;
-- operatörsingripanden;
-- stabilitet mellan repetitioner.
+- attractor escapes that improved the result;
+- total cost per verified unit of work;
+- operator interventions;
+- stability across repetitions.
 
-### 17.2 Jämförelsekrav
+### 17.2 Comparison requirements
 
-En ny reasoning-strategi ska jämföras mot minst en enklare baseline med samma:
+A new reasoning strategy must be compared against at least one simpler baseline
+with the same:
 
 - task fixture;
-- modell och provider när strategin isoleras;
-- tool- och nätverksgränser;
-- totalbudget;
-- verifieringsmetod;
-- startstate.
+- model and provider when the strategy is isolated;
+- tool and network limits;
+- total budget;
+- verification method;
+- start state.
 
-## 18. Learning och självförbättring
+## 18. Learning and self-improvement
 
-Cortxt ska kunna förbättras från verifierade trajectories, men produktion får
-inte självmodifieras utan kontroll.
+Cortxt must be able to improve from verified trajectories, but production must
+not self-modify without control.
 
-### 18.1 Två loopar
+### 18.1 Two loops
 
 ```text
-Inre loop:
-agenten löser aktuell uppgift inom låst policy och budget
+Inner loop:
+the agent solves the current task within a locked policy and budget
 
-Yttre loop:
-evalsystemet analyserar flera verifierade trajectories och skapar en kandidat
-till ändrad strategy, operator, prompt, memory rule eller agent profile
+Outer loop:
+the eval system analyzes several verified trajectories and creates a candidate
+for a changed strategy, operator, prompt, memory rule, or agent profile
 ```
 
 ### 18.2 Promotion
 
-Varje förbättringskandidat ska:
+Every improvement candidate must:
 
-1. ha provenance och motivering;
-2. vara en separat versionslåst artifact;
-3. testas mot regression- och säkerhetsfixtures;
-4. jämföras mot aktiv baseline;
-5. kunna rullas tillbaka;
-6. godkännas enligt policy innan produktion.
+1. have provenance and rationale;
+2. be a separate version-pinned artifact;
+3. be tested against regression and safety fixtures;
+4. be compared against the active baseline;
+5. be rollback-able;
+6. be approved per policy before production.
 
-### 18.3 När träning blir relevant
+### 18.3 When training becomes relevant
 
-Modellträning övervägs när det finns tillräckligt med kvalitetsmärkta data för
-ett avgränsat mål, exempelvis:
+Model training is considered when there is enough quality-labeled data for a
+bounded goal, e.g.:
 
-- val av nästa reasoning operator;
+- selection of the next reasoning operator;
 - branch ranking;
 - context selection;
 - stop prediction;
-- verifieringsbehov;
+- verification needs;
 - attractor escape policy.
 
-Träning av en generell grundmodell är inte ett beroende för RLM eller
+Training a general foundation model is not a dependency for RLM or
 geometric reasoning v1.
 
-## 19. Kontrakt
+## 19. Contracts
 
-### 19.1 Utökad dispatch request
+### 19.1 Extended dispatch request
 
-Målkontraktet behöver på sikt kompletteras med:
+The target contract will need to be extended over time with:
 
 ```yaml
 agent_profile: coding-v1
@@ -764,13 +767,13 @@ verification_policy: tests-plus-adversarial-v1
 memory_policy: run-scoped-v1
 ```
 
-Det befintliga dispatch-kontraktet ändras inte förrän schema, kompatibilitet och
-migration har godkänts separat.
+The existing dispatch contract is not changed until schema, compatibility, and
+migration have been approved separately.
 
-### 19.2 Utökat result envelope
+### 19.2 Extended result envelope
 
-Se §7.4 för mappningen mellan Supervisorns interna state machine och
-statusfälten nedan.
+See §7.4 for the mapping between the Supervisor's internal state machine and
+the status fields below.
 
 ```yaml
 agent:
@@ -794,58 +797,60 @@ verification:
   verdict: passed
 ```
 
-## 20. Säkerhetsmodell
+## 20. Security model
 
-### 20.1 Grundregler
+### 20.1 Ground rules
 
-- Modellen är aldrig en policy authority.
-- Reasoning Kernel får inte ge sig själv större budget.
-- Supervisor får inte skapa barn utanför root runens mandat.
-- Tool Gateway avslår actions utanför verktygs- och dataklasspolicy.
-- Execution Runtime använder minsta möjliga behörighet.
-- Reviewer får inte mergea, deploya eller sätta Done.
-- Learning loop får inte tyst ändra aktiv produktionskonfiguration.
-- Privat chain-of-thought, credentials och kundinnehåll får inte hamna i
-  evidensregistret.
+- The model is never a policy authority.
+- The Reasoning Kernel must not grant itself a larger budget.
+- The Supervisor must not create children outside the root run's mandate.
+- The Tool Gateway rejects actions outside tool and data-class policy.
+- The Execution Runtime uses the least privilege possible.
+- A reviewer must not merge, deploy, or set Done.
+- The learning loop must not silently change active production configuration.
+- Private chain-of-thought, credentials, and customer content must not end up
+  in the evidence registry.
 
-### 20.2 Prompt injection och främmande instruktioner
+### 20.2 Prompt injection and foreign instructions
 
-Extern text, repositories, webbsidor och dokument betraktas som data. De kan
-inte ändra systempolicy eller ge nya behörigheter. Tool actions kräver separat
-admission även när instruktionen kommer från material som agenten analyserar.
+External text, repositories, web pages, and documents are treated as data. They
+cannot change system policy or grant new permissions. Tool actions require
+separate admission even when the instruction comes from material the agent is
+analyzing.
 
-### 20.3 Rekursionsrisk
+### 20.3 Recursion risk
 
-Rekursion får aldrig vara den enda stoppmekanismen. Hårda ceilings verkställs
-utanför modellen och gäller root samt samtliga barn tillsammans som mål.
+Recursion must never be the only stop mechanism. Hard ceilings are enforced
+outside the model and apply to the root and all children combined as the
+target.
 
-Mekanismen skiljer sig från målet: i v0.1 (detacherade processer, Fas 4)
-verkställs detta genom disjunkt förallokerad delbudget per barn plus
-post-hoc rollover vid integrering, inte genom realtidsaggregering av
-kostnad/tokens över processgränser. Realtidsaggregering över detacherade
-barn är ett öppet beslut (§27).
+The mechanism differs from the goal: in v0.1 (detached processes, Phase 4)
+this is enforced through a disjoint pre-allocated sub-budget per child plus
+post-hoc rollover at integration, not through real-time aggregation of
+cost/tokens across process boundaries. Real-time aggregation across detached
+children is an open decision (§27).
 
-## 21. Observability och evidens
+## 21. Observability and evidence
 
-Varje run ska kunna följas utan att exponera privat reasoning:
+Every run must be followable without exposing private reasoning:
 
-- root och child run identity;
+- root and child run identity;
 - state transitions;
-- reasoning strategy och operatornamn;
+- reasoning strategy and operator names;
 - model invocation metadata;
-- tool actions och resultatstatus;
-- budgetförbrukning;
-- artifacts och hashvärden;
-- verifieringsutfall;
+- tool actions and result status;
+- budget consumption;
+- artifacts and hashes;
+- verification outcomes;
 - termination reason;
-- operator gates och beslut.
+- operator gates and decisions.
 
-Telemetry och product/customer payloads ska hållas separata.
+Telemetry and product/customer payloads must be kept separate.
 
-## 22. Migration från dagens system
+## 22. Migration from today's system
 
-Migrationen följer ett strangler pattern. Gammal och ny exekveringsväg kan
-samexistera bakom kontrollplanets routeval.
+The migration follows a strangler pattern. Old and new execution paths can
+coexist behind the control plane's route selection.
 
 ```text
 Approved Dispatch
@@ -855,316 +860,323 @@ Routing policy
   |                              |
   v                              v
 Hermes/Pi                     Cortxt Agent Platform
-kodning: permanent routingval   target path
-(ADR-019); koordinering: migreras (§24.1)
+coding: permanent routing       target path
+choice (ADR-019); coordination: migrated (§24.1)
   |                              |
   +-------> common result envelope and evaluation
 ```
 
-### 22.1 Vad som behålls
+### 22.1 What is retained
 
-- kontrollplan och operatörsgrindar;
-- dispatch- och resultkontraktens grundprinciper;
-- run identity och claims;
-- runtime-/sandboxkrav;
-- evaluation harness;
+- the control plane and operator gates;
+- the core principles of the dispatch and result contracts;
+- run identity and claims;
+- runtime/sandbox requirements;
+- the evaluation harness;
 - vertical packages;
-- leverantörsneutral routing;
-- evidence registry;
-- befintliga fixtures och verifierade arbetssätt.
+- provider-neutral routing;
+- the evidence registry;
+- existing fixtures and verified working practices.
 
-### 22.2 Vad som ersätts stegvis
+### 22.2 What is replaced incrementally
 
-| Nuvarande ansvar | Målkomponent |
+| Current responsibility | Target component |
 | --- | --- |
-| Hermes koordinering | Cortxt Supervisor |
-| Hermes agentprofiler | Cortxt Agent Profiles |
-| Extern agent-memory | Cortxt Problem State och Memory |
-| Ad hoc agentdekomposition | Cortxt RLM Engine |
-| Modellbunden tool loop | Cortxt Agent Runtime + Tool Gateway |
+| Hermes coordination | Cortxt Supervisor |
+| Hermes agent profiles | Cortxt Agent Profiles |
+| External agent memory | Cortxt Problem State and Memory |
+| Ad hoc agent decomposition | Cortxt RLM Engine |
+| Model-bound tool loop | Cortxt Agent Runtime + Tool Gateway |
 
-Pi coding harness stod tidigare i denna tabell som en ersättningsrad. Per
-ADR-019 (2026-08-16) är det inte längre korrekt: Cortxt Agent Runtime +
-Coding Profile är ett **tillägg** till, inte en ersättning för, Pi. Se 22.3.
+Pi coding harness previously stood in this table as a replacement row. Per
+ADR-019 (2026-08-16) that is no longer correct: the Cortxt Agent Runtime +
+Coding Profile is an **addition** to Pi, not a replacement for it. See 22.3.
 
-### 22.3 Övergångs- och permanenta roller
+### 22.3 Transitional and permanent roles
 
-Hermes koordinerande roll, Prime Agent och andra icke-kodningsmotorer kan
-under migrationen användas som:
+Hermes's coordinating role, Prime Agent, and other non-coding engines can
+during the migration be used as:
 
 - benchmark;
 - fallback;
-- kompatibilitetsadapter;
-- inspirations- eller referensimplementation;
-- experimentväg för att testa hypoteser innan egen implementation är klar.
+- compatibility adapter;
+- inspiration or reference implementation;
+- an experimental path for testing hypotheses before Cortxt's own
+  implementation is ready.
 
-**Kodningsmotorer (Pi, Hermes, Codex, framtida GitHub Copilot) är undantagna
-från detta migrationsmönster per ADR-019.** De är permanenta routingval i
-Cortxts kodningspolicy, jämte Cortxts egen Coding Agent (Fas 3 och framåt).
-Ersättningskriterierna i 24.2 gäller inte längre kodningsmotorer.
+**Coding engines (Pi, Hermes, Codex, future GitHub Copilot) are exempt
+from this migration pattern per ADR-019.** They are permanent routing choices in
+Cortxt's coding policy, alongside Cortxt's own Coding Agent (Phase 3 and
+onward). The replacement criteria in 24.2 no longer apply to coding engines.
 
-Ingen extern agentruntime ska vara ett dolt beroende i Cortxt Agent Core.
+No external agent runtime must be a hidden dependency in Cortxt Agent Core.
 
-## 23. Implementationstrappa
+## 23. Implementation ladder
 
-Trappans numrering är en planeringsordning, inte ett bevisat byggförlopp.
-Enligt ADR-017 landade delar av Reasoning Kernel, RLM Engine och Geometric
-Engine i main redan före Fas 2 (PR #113, 2026-08-14), med stubbad inference.
-Detta ändrar inte målbilden men läsaren ska inte anta att fasnumret speglar
-faktisk landningsordning i koden.
+The ladder's numbering is a planning order, not a proven build sequence.
+Per ADR-017, parts of the Reasoning Kernel, RLM Engine, and Geometric
+Engine landed in `main` already before Phase 2 (PR #113, 2026-08-14), with
+stubbed inference. This does not change the target state, but the reader
+should not assume that the phase number reflects the actual landing order
+in the code.
 
-Från och med Fas 4 och framåt gäller: ett exit-kriterium räknas som uppfyllt
-först vid minst tre (N=3) konsekutiva gröna körningar av dess bevis, inte ett
-engångsbevis. Detta gäller inte retroaktivt Fas 0–3.
+From Phase 4 onward: an exit criterion counts as met only after at least
+three (N=3) consecutive green runs of its proof, not a one-off proof.
+This does not apply retroactively to Phases 0–3.
 
-### Fas 0 — Arkitektur och baseline
+### Phase 0 — Architecture and baseline
 
-Leverabler:
+Deliverables:
 
-- godkänd begreppsmodell;
-- beslut om package boundary;
-- en fixturekorpus dimensionerad mot en strategi×mått-täckningsmatris (inte
-  ett fast intervall) — minimum per cell eller en motiverad tom-cell-policy
-  ska framgå av matrisen, inte antas från "10–20 fixtures";
-- baseline från dagens Hermes/Pi-väg;
-- initiala schemas för Agent State och Model Invocation.
+- approved conceptual model;
+- decision on package boundary;
+- a fixture corpus sized against a strategy×metric coverage matrix (not
+  a fixed interval) — a minimum per cell or a justified empty-cell policy
+  must be evident from the matrix, not assumed from "10–20 fixtures";
+- baseline from today's Hermes/Pi path;
+- initial schemas for Agent State and Model Invocation.
 
 Exit:
 
-- vi kan mäta kvalitet, kostnad, ledtid och reviewfynd för dagens väg;
-- målarkitekturen motsäger inte normativa säkerhetskontrakt;
-- strategi×mått-täckningsmatrisen existerar och är godkänd.
+- we can measure quality, cost, lead time, and review findings for today's path;
+- the target architecture does not contradict normative security contracts;
+- the strategy×metric coverage matrix exists and is approved.
 
-### Fas 1 — Inference Gateway
+### Phase 1 — Inference Gateway
 
-Leverabler:
+Deliverables:
 
-- internt `InferencePort`;
-- en extern provideradapter;
+- internal `InferencePort`;
+- one external provider adapter;
 - structured output;
-- usage, cost och timeout;
-- fixtures och contract tests.
+- usage, cost, and timeout;
+- fixtures and contract tests.
 
 Exit:
 
-- samma agentkod kan byta mellan minst två godkända endpoints utan ändring i
-  reasoning-kärnan.
+- the same agent code can switch between at least two approved endpoints
+  without change in the reasoning core.
 
-### Fas 2 — Agent Runtime v0.1
+### Phase 2 — Agent Runtime v0.1
 
-Leverabler:
+Deliverables:
 
-- sessionsstate;
-- enkel agentloop;
+- session state;
+- simple agent loop;
 - tool admission;
-- persistence och resume;
+- persistence and resume;
 - result envelope;
 - read-only research profile.
 
 Exit:
 
-- en researchfixture kan lösas utan Hermes.
+- a research fixture can be solved without Hermes.
 
-### Fas 3 — Coding Agent v0.1
+### Phase 3 — Coding Agent v0.1
 
-Leverabler:
+Deliverables:
 
 - repository discovery;
 - read/search/patch/test/diff tools;
-- Tool Gateway v0.1: schema-, permission- och effektklassvalidering (§32.1)
-  före varje tool-anrop — ersätter direkta funktionsanrop (t.ex. dagens
-  `apply_patch`-anrop direkt från Supervisor);
+- Tool Gateway v0.1: schema, permission, and effect-class validation (§32.1)
+  before each tool call — replacing direct function calls (e.g. today's
+  `apply_patch` calls directly from the Supervisor);
 - execution sandbox;
 - bounded write policy;
-- kodspecifika operatorer.
+- coding-specific operators.
 
 Exit:
 
-- en enkel kodfixture kan lösas och verifieras utan Pi eller Hermes;
-- workspace-, nätverks- och budgettak är maskinellt bevisade;
-- ingen tool-exekvering sker utan att passera Tool Gateway.
+- a simple coding fixture can be solved and verified without Pi or Hermes;
+- workspace, network, and budget ceilings are machine-proven;
+- no tool execution happens without passing through the Tool Gateway.
 
-Detta exit-kriterium bevisar kapacitet, inte en avsikt att göra Pi eller
-Hermes onödiga — de förblir permanenta routingval per ADR-019.
+This exit criterion proves capability, not an intention to make Pi or
+Hermes unnecessary — they remain permanent routing choices per ADR-019.
 
-### Fas 4 — Supervisor v0.1
+### Phase 4 — Supervisor v0.1
 
-Leverabler:
+Deliverables:
 
-- root och child sessions;
-- querybar status;
+- root and child sessions;
+- queryable status;
 - heartbeat;
 - cancellation;
-- budgetallokering;
+- budget allocation;
 - recovery;
 - dependency joins.
 
 Exit:
 
-- två avgränsade child runs kan genomföras och integreras utan Hermes.
+- two bounded child runs can be executed and integrated without Hermes.
 
-v0.1 exponerar status och kontroll via CLI/query (operator-CLI, querybar
-status); integration mot operatörens faktiska ytor (Hermes desktop primärt,
-Buzz som komplement, per current-operating-model) är inte bevisad och krävs
-innan Supervisor kan ta huvudvägsansvar (jfr §24.1). Live heartbeat till en
-mänsklig operatör i UI/dashboard-form är explicit out of scope för v0.1.
+v0.1 exposes status and control via CLI/query (operator CLI, queryable
+status); integration with the operator's actual surfaces (Hermes desktop
+primarily, Buzz as complement, per the current operating model) is not proven
+and is required before the Supervisor can take primary-path responsibility
+(cf. §24.1). Live heartbeat to a human operator in UI/dashboard form is
+explicitly out of scope for v0.1.
 
-### Fas 5 — RLM v1
+### Phase 5 — RLM v1
 
-Leverabler:
+Deliverables:
 
-- extern context store;
+- external context store;
 - bounded recursion;
 - context slicing;
 - branch budget;
 - structured synthesis;
-- RLM-specifika evals;
-- skalning av Supervisor från Fas 4:s v0.1-tak (2 barn, djup 1, se §25) till
-  det djup och den branch-budget RLM kräver (jfr §19.1: max_depth 2,
-  max_total_children 6) — detta är en egen leverabel, inte ett antagande.
+- RLM-specific evals;
+- scaling the Supervisor from Phase 4's v0.1 ceiling (2 children, depth 1,
+  see §25) to the depth and branch budget RLM requires (cf. §19.1:
+  max_depth 2, max_total_children 6) — this is a deliverable of its own,
+  not an assumption.
 
 Exit:
 
-- RLM slår enklare baseline med en i förväg definierad marginal på minst en
-  långkontextklass inom godkänd total kostnad.
-- Om detta inte uppnås efter tre (N=3) oberoende utvärderingsrundor: RLM-
-  spåret nedgraderas, genom operatörsbeslut, till experimentell/diagnostisk
-  strategi bakom Reasoning Kernel med enklare baseline som default. Se
-  "Nedtrappningsvägar" nedan för konsekvensen för Fas 6.
+- RLM beats a simpler baseline with a predefined margin on at least one
+  long-context class within approved total cost.
+- If this is not achieved after three (N=3) independent evaluation rounds:
+  the RLM track is downgraded, by operator decision, to an
+  experimental/diagnostic strategy behind the Reasoning Kernel with a simpler
+  baseline as default. See "De-escalation paths" below for the consequence
+  for Phase 6.
 
-### Fas 6 — Geometric Reasoning v1
+### Phase 6 — Geometric Reasoning v1
 
-Leverabler:
+Deliverables:
 
 - Problem State schema;
 - reasoning graph;
-- embeddings (källa: se §27, öppet och blockerande beslut);
-- första operatoruppsättningen;
-- contradiction- och attractor-detektering;
+- embeddings (source: see §27, open and blocking decision);
+- first operator set;
+- contradiction and attractor detection;
 - path scoring;
-- trajectory viewer eller rapport.
+- trajectory viewer or report.
 
 Exit:
 
-- vilket/vilka mått i §12.2 som är beslutande (till skillnad från
-  diagnostiska) är avgjort innan detta exit-kriterium utvärderas (§27 #8);
-- strategin ger mätbar förbättring på det/de beslutande måtten utan
-  regression över säkerhetsfixtures;
-- om Fas 5 nedtrappats enligt ovan: `recursive_geometric` (§10.1) får
-  fortsätta utvecklas men blir inte default-strategi förrän RLM-spåret är
-  återupprättat.
+- which metric(s) in §12.2 are decisive (as opposed to
+  diagnostic) is decided before this exit criterion is evaluated (§27 #8);
+- the strategy yields measurable improvement on the decisive metric(s)
+  without regression across safety fixtures;
+- if Phase 5 has been de-escalated as above: `recursive_geometric` (§10.1) may
+  continue to be developed but does not become the default strategy until the
+  RLM track is re-established.
 
-### Fas 7 — Egenhostad inference
+### Phase 7 — Self-hosted inference
 
-Leverabler:
+Deliverables:
 
-- en öppen modell på lokal eller hyrd GPU;
-- liveness och capacity metrics;
-- samma InferencePort;
-- jämförbar cost/quality telemetry.
+- an open model on a local or rented GPU;
+- liveness and capacity metrics;
+- the same InferencePort;
+- comparable cost/quality telemetry.
 
 Exit:
 
-- minst en godkänd task class kan köras utan extern inferenceprovider.
+- at least one approved task class can run without an external inference
+  provider.
 
-### Fas 8 — Kontrollerad learning loop
+### Phase 8 — Controlled learning loop
 
-Leverabler:
+Deliverables:
 
-- versionerade förbättringskandidater;
-- offline eval och promotion flow;
+- versioned improvement candidates;
+- offline eval and promotion flow;
 - rollback;
-- eventuellt tränad operator- eller routingpolicy;
-- Skill Platform-promotion (§31) och Tool Platform-evolution (§32.3) som
-  fungerande byggd pipeline, inte bara en beskriven modell.
+- possibly a trained operator or routing policy;
+- Skill Platform promotion (§31) and Tool Platform evolution (§32.3) as a
+  working built pipeline, not just a described model.
 
 Exit:
 
-- ingen automatisk ändring kan nå produktion utan verifierad promotion.
+- no automatic change can reach production without verified promotion.
 
-### Nedtrappningsvägar
+### De-escalation paths
 
-Denna sektion beskriver konsekvensen om ett fas-experiment inte levererar
-mätbar nytta — §28-invarianten ("Ett misslyckat experiment får inte förstöra
-den verifierade operativa vägen") skyddar produktionen men säger inget om
-själva fasens eller de beroende fasernas öde. Konkret:
+This section describes the consequence if a phase experiment does not deliver
+measurable benefit — the §28 invariant ("a failed experiment must not destroy
+the verified operational path") protects production but says nothing about
+the fate of the phase itself or its dependent phases. Concretely:
 
-- Fas 5 (RLM): se nedtrappningsvillkoret i Fas 5-exit ovan.
-- Fas 6 (Geometric Reasoning): om Fas 6:s eget exit-kriterium inte uppnås
-  efter tre oberoende utvärderingsrundor, beslutar operatören om Geometric
-  Reasoning nedgraderas till diagnostiskt lager (mätvärden loggas, men
-  påverkar inte routing) eller pausas helt. §2:s tes om reasoning som
-  transformationer i ett problemrum kvarstår som produktvision oavsett utfall
-  — plattformens övriga lager (Supervisor, Agent Runtime, RLM, Inference
-  Gateway) är inte beroende av att Geometric Reasoning lyckas.
-- Nedtrappning är alltid ett operatörsbeslut, aldrig automatik — i linje med
-  §28 ("Modellen föreslår; auktoritativ kod validerar och verkställer").
+- Phase 5 (RLM): see the de-escalation condition in the Phase 5 exit above.
+- Phase 6 (Geometric Reasoning): if Phase 6's own exit criterion is not met
+  after three independent evaluation rounds, the operator decides whether
+  Geometric Reasoning is downgraded to a diagnostic layer (metrics are
+  logged but do not affect routing) or paused entirely. §2's thesis about
+  reasoning as transformations in a problem space remains as product vision
+  regardless of the outcome — the platform's other layers (Supervisor, Agent
+  Runtime, RLM, Inference Gateway) do not depend on Geometric Reasoning
+  succeeding.
+- De-escalation is always an operator decision, never automation — in line
+  with §28 ("The model proposes; authoritative code validates and enforces").
 
-## 24. Ersättningskriterier
+## 24. Replacement criteria
 
-### 24.1 Hermes kan lämna huvudvägen när
+### 24.1 Hermes can leave the primary path when
 
-- Supervisor kan skapa, pausa, återuppta och avbryta sessions;
-- child runs har querybar status och heartbeat;
-- budget, timeout och recursion ceilings upprätthålls;
-- beroenden och integration fungerar efter processrestart;
-- operatörsgrindar och result envelope är kompletta;
-- evalresultat är minst likvärdiga för migrerade task classes.
+- the Supervisor can create, pause, resume, and cancel sessions;
+- child runs have queryable status and heartbeat;
+- budget, timeout, and recursion ceilings are enforced;
+- dependencies and integration work after a process restart;
+- operator gates and the result envelope are complete;
+- eval results are at least equivalent for migrated task classes.
 
-### 24.2 Historisk: Pi som huvudväg (upphävd av ADR-019)
+### 24.2 Historical: Pi as primary path (overridden by ADR-019)
 
-Denna sektion beskrev tidigare villkor för att Pi skulle lämna huvudvägen.
-Per ADR-019 (2026-08-16) ersätts inte Pi — Pi, Hermes och Codex är permanenta
-routingval jämte Cortxts egen Coding Agent. Villkoren nedan står kvar som
-kvalitetsgolv för när Cortxts Coding Agent är ett **giltigt routingval** för
-en uppgiftsklass, inte som ersättningskriterier:
+This section previously described conditions for Pi to leave the primary path.
+Per ADR-019 (2026-08-16), Pi is not replaced — Pi, Hermes, and Codex are
+permanent routing choices alongside Cortxt's own Coding Agent. The conditions
+below remain as a quality floor for when Cortxt's Coding Agent is a **valid
+routing choice** for a task class, not as replacement criteria:
 
-- Coding Agent kan orientera sig i repositoryt;
-- Execution Runtime upprätthåller skriv- och nätverksgränser;
-- patch, test och diff fungerar reproducerbart;
-- scope expansion upptäcks och stoppar körningen;
-- artifacts, cost och cleanup är verifierade;
-- säkerhets- och kodfixtures passerar.
+- Coding Agent can navigate the repository;
+- the Execution Runtime enforces write and network limits;
+- patch, test, and diff work reproducibly;
+- scope expansion is detected and stops the run;
+- artifacts, cost, and cleanup are verified;
+- safety and coding fixtures pass.
 
-### 24.3 Extern inference kan lämna en task class när
+### 24.3 External inference can leave a task class when
 
-- en egenhostad modell uppfyller dess quality floor;
-- latency, tillgänglighet och total kostnad är accepterade;
-- dataskydd och drift är verifierade;
-- fallback fortfarande finns för kontrollerad återhämtning.
+- a self-hosted model meets its quality floor;
+- latency, availability, and total cost are accepted;
+- data protection and operations are verified;
+- a fallback still exists for controlled recovery.
 
-## 25. Första produktinkrementet
+## 25. First product increment
 
-Cortxt Agent Platform v0.1 bör vara medvetet litet:
+The Cortxt Agent Platform v0.1 should be deliberately small:
 
 ```text
-En användare skickar en avgränsad research- eller koduppgift
-  -> Control Plane skapar godkänd dispatch
-  -> Cortxt Agent Runtime skapar Problem State
-  -> Reasoning Kernel väljer direct eller bounded recursive
-  -> Agenten använder godkända read/search/tool operations
-  -> Codingprofilen kan göra en begränsad patch och köra tester
-  -> Verification skapar verdict
-  -> Result envelope och trajectory reference returneras
-  -> operatören beslutar eventuell merge/Done
+A user sends a bounded research or coding task
+  -> Control Plane creates an approved dispatch
+  -> Cortxt Agent Runtime creates Problem State
+  -> Reasoning Kernel chooses direct or bounded recursive
+  -> The agent uses approved read/search/tool operations
+  -> The coding profile can make a bounded patch and run tests
+  -> Verification creates a verdict
+  -> Result envelope and trajectory reference are returned
+  -> the operator decides on any merge/Done
 ```
 
-Begränsningar:
+Limitations:
 
-- högst rekursionsdjup 1;
-- högst två child runs;
-- en skrivbar workspace;
-- inga deployments eller publiceringar;
-- en extern inferenceadapter;
-- en enkel persistent databas;
-- ingen automatisk harness refinement.
+- at most recursion depth 1;
+- at most two child runs;
+- one writable workspace;
+- no deployments or publications;
+- one external inference adapter;
+- one simple persistent database;
+- no automatic harness refinement.
 
 ## 26. Initial package boundary
 
-**Historisk:** Denna paketgräns ersattes av §33 (ADR-016, Decision 1). Den
-behålls här för spårbarhet, inte som aktuell auktoritet.
+**Historical:** This package boundary was replaced by §33 (ADR-016, Decision 1).
+It is retained here for traceability, not as current authority.
 
-Den nya koden introduceras utan omedelbar flytt av befintliga filer:
+The new code is introduced without an immediate move of existing files:
 
 ```text
 agent-platform/
@@ -1191,130 +1203,133 @@ harness/
 `- evaluation/
 ```
 
-Packagegränsen ska provas i en vertikal implementation innan större
-repositoryomstrukturering beslutas.
+The package boundary must be exercised in a vertical implementation before any
+larger repository restructuring is decided.
 
-## 27. Öppna beslut
+## 27. Open decisions
 
-Följande ska avgöras innan respektive implementation:
+The following must be decided before the respective implementation:
 
-1. Implementationsspråk för Supervisor och Agent Runtime.
-2. Processmodell för root och child sessions.
-3. Första persistensformatet för Problem State och trajectories.
-4. ~~Första execution sandbox på Windows och Linux.~~ Delvis löst (verifierat
-   2026-08-16, Kimi K2.7-code-review av Fas 3 mot main: hela `docker_required`-
-   sviten kördes live på Windows med Docker Desktop, alla 8 boundary-tester
-   gröna, inklusive nätverksisolering/DNS/timeout-proberna). Docker-baserad
-   execution sandbox (`agent-platform/runtime/execution/subprocess_sandbox.py`)
-   fungerar på Windows och Linux och är CI-gated (`docker_required`-jobbet i
-   `.github/workflows/ci.yml`) — OS-isoleringsfrågan A4 avsåg är löst. Kvarstår
-   öppet: ingen subprocess-only-fallback finns när Docker saknas (Fas 4:s
-   `sandbox_degraded`-fält förutsätter en sådan väg, men den måste byggas från
-   grunden), och portabla minnes-/CPU-tak för sandboxen är fortfarande out of
-   scope (assumption A10 i Fas 3-specen).
-5. Vilken extern provideradapter som används som bootstrap.
-6. Vilka fixtures som utgör quality floor för (a) Hermes koordinerande roll
-   som ersätts av Supervisor (§24.1), och (b) Cortxt Coding Agent som giltigt
-   routingval jämte Pi/Hermes/Codex (§24.2) — Pi, Hermes och Codex som
-   kodningsmotorer ersätts inte per ADR-019, så "ersättning" gäller bara (a).
-7. Om Agent Platform initialt ligger i detta repo eller i ett eget package med
-   separat releasecykel.
-8. ~~Vilka geometric metrics som är beslutande respektive endast diagnostiska.~~
-   Löst (ADR-025, `docs/adr/025-geometric-reasoning-decisive-vs-diagnostic-
-   metrics.md`, 2026-08-19): fem mått är beslutande (redan konsumerade av
-   `score_path`/`guidance`/`AttractorDetector` — graf-avstånd till mål,
-   evidenstäckning, motsägelsegrad, novelty, stability); fem förblir
-   diagnostiska (semantic_closeness, centrality, revisit_ratio,
-   path_diversity, information_gain) tills en ny, explicit versionerad
-   policy promoverar dem. `information_gain` fick en riktig call site
-   (`reasoning.geometric.apply_confidence_update`) för första gången.
-9. När egenhostad inference har affärsvärde jämfört med hyrd kapacitet.
-10. Embeddings-provider för Fas 6 (§12.2 semantisk närhet). InferencePort
-    (§14.1) normaliserar idag inte embeddings, och ingen fas levererar det.
-    Blockerande för Fas 6-start.
-11. Realtidsaggregering av kostnad/token-budget över detacherade
-    processgränser (§20.3) — v0.1 verkställer bara via disjunkt
-    förallokering plus post-hoc rollover, inte löpande aggregering.
+1. Implementation language for the Supervisor and Agent Runtime.
+2. Process model for root and child sessions.
+3. First persistence format for Problem State and trajectories.
+4. ~~First execution sandbox on Windows and Linux.~~ Partially resolved
+   (verified 2026-08-16, Kimi K2.7 code review of Phase 3 against `main`: the
+   entire `docker_required` suite ran live on Windows with Docker Desktop, all
+   8 boundary tests green, including the network-isolation/DNS/timeout probes).
+   The Docker-based execution sandbox
+   (`agent-platform/runtime/execution/subprocess_sandbox.py`)
+   works on Windows and Linux and is CI-gated (the `docker_required` job in
+   `.github/workflows/ci.yml`) — the OS-isolation question A4 concerned is
+   resolved. Remains open: no subprocess-only fallback exists when Docker is
+   missing (Phase 4's `sandbox_degraded` field presupposes such a path, but it
+   must be built from scratch), and portable memory/CPU limits for the sandbox
+   are still out of scope (assumption A10 in the Phase 3 spec).
+5. Which external provider adapter is used as bootstrap.
+6. Which fixtures constitute the quality floor for (a) the Hermes coordinating
+   role that the Supervisor replaces (§24.1), and (b) the Cortxt Coding Agent
+   as a valid routing choice alongside Pi/Hermes/Codex (§24.2) — Pi, Hermes,
+   and Codex as coding engines are not replaced per ADR-019, so "replacement"
+   applies only to (a).
+7. Whether the Agent Platform initially lives in this repo or in a separate
+   package with its own release cycle.
+8. ~~Which geometric metrics are decisive versus diagnostic only.~~
+   Resolved (ADR-025, `docs/adr/025-geometric-reasoning-decisive-vs-diagnostic-
+   metrics.md`, 2026-08-19): five metrics are decisive (already consumed by
+   `score_path`/`guidance`/`AttractorDetector` — graph distance to goal,
+   evidence coverage, contradiction degree, novelty, stability); five remain
+   diagnostic (semantic_closeness, centrality, revisit_ratio,
+   path_diversity, information_gain) until a new, explicitly versioned
+   policy promotes them. `information_gain` got a real call site
+   (`reasoning.geometric.apply_confidence_update`) for the first time.
+9. When self-hosted inference has business value compared with rented capacity.
+10. Embeddings provider for Phase 6 (§12.2 semantic closeness). The
+    InferencePort (§14.1) does not currently normalize embeddings, and no
+    phase delivers it. Blocking for Phase 6 start.
+11. Real-time aggregation of cost/token budget across detached
+    process boundaries (§20.3) — v0.1 enforces only via disjoint
+    pre-allocation plus post-hoc rollover, not continuous aggregation.
 
-## 28. Arkitektoniska invariants
+## 28. Architectural invariants
 
-Följande ska förbli sant genom hela migrationen:
+The following must remain true throughout the migration:
 
-- Control Plane äger mandat; agenten äger inte sitt eget scope.
-- Problem State och trajectories ägs av Cortxt och är portabla.
-- Agent Core importerar inte Hermes, Pi, Prime Agent eller en specifik provider.
-- Externa implementationer beror på Cortxts portar och kontrakt, inte tvärtom.
-- Reasoning och execution är separata trust boundaries.
-- Modellen föreslår; auktoritativ kod validerar och verkställer.
-- Varje run och child run har stabil identitet och budget.
-- Verification är skild från produktion och self-approval är förbjudet.
-- Learning sker genom versionsstyrda kandidater och verifierad promotion.
-- Ett misslyckat experiment får inte förstöra den verifierade operativa vägen.
+- The Control Plane owns the mandate; the agent does not own its own scope.
+- Problem State and trajectories are owned by Cortxt and are portable.
+- Agent Core does not import Hermes, Pi, Prime Agent, or a specific provider.
+- External implementations depend on Cortxt's ports and contracts, not the reverse.
+- Reasoning and execution are separate trust boundaries.
+- The model proposes; authoritative code validates and enforces.
+- Every run and child run has stable identity and budget.
+- Verification is separate from production, and self-approval is forbidden.
+- Learning happens through versioned candidates and verified promotion.
+- A failed experiment must not destroy the verified operational path.
 
-## 29. Beslut som denna målbild föreslår
+## 29. Decisions this target architecture proposes
 
-Följande är förslag tills de godkänts genom repositoryts beslutsprocess:
+The following are proposals until approved through the repository's decision
+process:
 
-1. Cortxt bygger en egen Agent Platform inom det befintliga kontrollplanet.
-2. Cortxt Agent Runtime blir på sikt primärt agent harness.
-3. Cortxt Supervisor ersätter på sikt Hermes koordinerande huvudroll.
-4. Cortxt Coding Agent är ett permanent tillägg till routingpolicyn för
-   kodningsuppgifter, inte en ersättning för Pi/Hermes/Codex (upphävd och
-   ersatt av ADR-019, 2026-08-16 — se §22.3/§24.2).
-5. RLM och geometric reasoning ägs av Cortxt Agent Core.
-6. Inference är en utbytbar port; egenhostad inference införs stegvis.
-7. Hermes koordinerande roll och Prime Agent används under migrationen som
-   adapters, fallback eller benchmark och ersätts stegvis, aldrig som dolda
-   kärnberoenden. Hermes, Pi och Codex som kodningsmotorer är permanenta
-   routingval (ADR-019) och migreras inte bort.
-8. Dagens kontroll-, säkerhets- och evalfundament behålls.
+1. Cortxt builds its own Agent Platform within the existing control plane.
+2. The Cortxt Agent Runtime becomes the primary agent harness over time.
+3. The Cortxt Supervisor will over time replace Hermes's coordinating primary role.
+4. The Cortxt Coding Agent is a permanent addition to the routing policy for
+   coding tasks, not a replacement for Pi/Hermes/Codex (overridden and
+   replaced by ADR-019, 2026-08-16 — see §22.3/§24.2).
+5. RLM and geometric reasoning are owned by Cortxt Agent Core.
+6. Inference is a replaceable port; self-hosted inference is introduced incrementally.
+7. Hermes's coordinating role and Prime Agent are used during the migration as
+   adapters, fallback, or benchmark and are replaced incrementally, never as
+   hidden core dependencies. Hermes, Pi, and Codex as coding engines are
+   permanent routing choices (ADR-019) and are not migrated away.
+8. Today's control, security, and eval foundation is retained.
 
-## 30. Nästa planeringssteg
+## 30. Next planning steps
 
-Klart (verifierat mot ADR-registret och koden):
+Done (verified against the ADR registry and the code):
 
-- ADR för Agent Platform som ny bounded context (ADR-016);
-- ADR för `InferencePort` och leverantörsoberoende modellgräns (ADR-016);
-- ett första vertikalt slice (ADR-017);
-- v0.1-schemas för Agent State, Model Invocation och Trajectory Event
+- ADR for the Agent Platform as a new bounded context (ADR-016);
+- ADR for the `InferencePort` and provider-independent model boundary (ADR-016);
+- a first vertical slice (ADR-017);
+- v0.1 schemas for Agent State, Model Invocation, and Trajectory Event
   (`contracts/`, `agent-platform/state/`, `agent-platform/inference/`).
 
-Fortfarande öppet innan nästa större beslutspaket:
+Still open before the next major decision packet:
 
-- en fixturematris med dagens Hermes/Pi-baseline (fixtures finns spridda i
-  repot, men ingen sammanställd matris);
-- threat model för Agent Runtime, Tool Gateway och Execution Runtime (inget
-  sådant dokument finns i `docs/` ännu);
-- beslut om vilka befintliga backlog-items som ska ersättas eller
-  omformuleras;
-- ADR-016:s öppna Validation-punkt om `docs/authority-map` (se noten under
-  "Dokumentets roll" ovan) är fortfarande ogjord.
+- a fixture matrix with today's Hermes/Pi baseline (fixtures are scattered
+  across the repo, but no consolidated matrix exists);
+- threat model for Agent Runtime, Tool Gateway, and Execution Runtime (no
+  such document exists in `docs/` yet);
+- decision on which existing backlog items should be replaced or
+  reformulated;
+- ADR-016's open Validation item about `docs/authority-map` (see the note
+  under "The document's role" above) is still undone.
 
-Implementationen ska börja med ett vertikalt, körbart flöde och inte med en
-omfattande repositoryflytt eller fullständig plattformsinfrastruktur — det
-har den redan gjort (ADR-017).
+Implementation should start with a vertical, runnable flow and not with an
+extensive repository move or complete platform infrastructure — it already
+has (ADR-017).
 
 ## 31. Skill Platform
 
-Skills är förstaklassobjekt i Cortxt Agent Platform. De beskriver
-återanvändbara arbetsmönster och kan komponera reasoning-operatorer och tools.
+Skills are first-class objects in the Cortxt Agent Platform. They describe
+reusable work patterns and can compose reasoning operators and tools.
 
-En skill ska kunna innehålla:
+A skill must be able to contain:
 
-- manifest, identitet och semantisk version;
-- instruktioner och exempel;
-- input- och outputschemas;
-- beroenden och kompatibla agentprofiler;
-- fixtures, tester och evals;
-- deklarerade tools och högsta tillåtna effektklass;
-- provenance, changelog och rollbackinformation;
-- valfria granskade executable helpers.
+- manifest, identity, and semantic version;
+- instructions and examples;
+- input and output schemas;
+- dependencies and compatible agent profiles;
+- fixtures, tests, and evals;
+- declared tools and the highest allowed effect class;
+- provenance, changelog, and rollback information;
+- optional reviewed executable helpers.
 
 ### 31.1 Skill Evolution
 
-Agenten får identifiera återkommande framgångar, misslyckanden och
-reviewkorrigeringar i verifierade trajectories. Systemet kan därefter skapa en
-ny skill-kandidat eller föreslå en avgränsad förbättring.
+The agent may identify recurring successes, failures, and review corrections in
+verified trajectories. The system can then create a new skill candidate or
+propose a bounded improvement.
 
 ```text
 trajectory observation
@@ -1326,27 +1341,27 @@ trajectory observation
   -> canary/active or rejected
 ```
 
-Självförbättring betyder inte att agenten själv får ge kandidaten nya
-behörigheter eller tyst aktivera den. Promotion styrs av förändringens risk,
-fixtures, verifierad förbättring och rollbackmöjlighet.
+Self-improvement does not mean the agent may grant the candidate new
+permissions itself or silently activate it. Promotion is governed by the
+change's risk, fixtures, verified improvement, and rollback ability.
 
-| Förändring | Minsta promotionregel |
+| Change | Minimum promotion rule |
 | --- | --- |
-| Instruktion, exempel eller källa | Eval mot fixtures och regressioner. |
-| Workflow eller reasoning-operator | Jämförelse mot baseline och säkerhetsfixtures. |
-| Executable helper | Sandbox, dependency review och contract tests. Om helpern är agentförfattad krävs dessutom en namngiven mänsklig operatörsgrind innan promotion. |
-| Nytt tool eller ny behörighet | Separat toolgranskning och operatörsbeslut. |
-| Credential, extern effekt eller policy | Alltid operatörsgrind. |
+| Instruction, example, or source | Eval against fixtures and regressions. |
+| Workflow or reasoning operator | Comparison against baseline and safety fixtures. |
+| Executable helper | Sandbox, dependency review, and contract tests. If the helper is agent-authored, a named human operator gate is additionally required before promotion. |
+| New tool or new permission | Separate tool review and operator decision. |
+| Credential, external effect, or policy | Always an operator gate. |
 
 ## 32. Tool Platform
 
-Tools är typade, versionsstyrda operationer som observerar eller påverkar en
-miljö. Agent Runtime anropar dem genom Tool Gateway; den anropar inte shell,
-MCP, providers eller externa API:er direkt.
+Tools are typed, version-controlled operations that observe or affect an
+environment. The Agent Runtime invokes them through the Tool Gateway; it does
+not call shell, MCP, providers, or external APIs directly.
 
 ### 32.1 Tool contract
 
-Ett tool ska minst deklarera:
+A tool must at least declare:
 
 ```yaml
 id: repository.run_tests
@@ -1362,47 +1377,48 @@ idempotency: repeatable
 artifact_policy: result-and-summary
 ```
 
-Tool Gateway validerar schema, profile permission, dataklass, deklarerade
-effekter, budget och runtime eligibility före exekvering.
+The Tool Gateway validates schema, profile permission, data class, declared
+effects, budget, and runtime eligibility before execution.
 
-### 32.2 Effektklasser
+### 32.2 Effect classes
 
-| Klass | Exempel | Kontroll |
+| Class | Example | Control |
 | --- | --- | --- |
-| `observe` | Läsa fil eller söka kod. | Read scope och dataklass. |
-| `local_mutation` | Applicera patch i run workspace. | Writable scope och diffkontroll. |
-| `bounded_execution` | Köra test eller build i sandbox. | Allowlist, resurser och timeout. |
-| `external_mutation` | Skapa issue eller skicka meddelande. | Explicit mandat och read-back. |
-| `irreversible` | Merge, deploy eller delete. | Operatörsgrind. |
-| `credential` | Skapa eller rotera secret. | Separat trust-boundary-beslut. |
+| `observe` | Read a file or search code. | Read scope and data class. |
+| `local_mutation` | Apply a patch in the run workspace. | Writable scope and diff control. |
+| `bounded_execution` | Run a test or build in the sandbox. | Allowlist, resources, and timeout. |
+| `external_mutation` | Create an issue or send a message. | Explicit mandate and read-back. |
+| `irreversible` | Merge, deploy, or delete. | Operator gate. |
+| `credential` | Create or rotate a secret. | Separate trust-boundary decision. |
 
 ### 32.3 Tool Evolution
 
-Agenten får skapa tool-kandidater med implementation, manifest, schemas,
-dokumentation, tester och fixtures. Kandidaten körs i isolering och måste visa:
+The agent may create tool candidates with implementation, manifest, schemas,
+documentation, tests, and fixtures. The candidate runs in isolation and must
+demonstrate:
 
-- korrekt schema- och felbeteende;
-- permission denial för otillåtna actions;
-- timeout och cancellation;
-- credential- och nätverksisolering;
+- correct schema and error behavior;
+- permission denial for disallowed actions;
+- timeout and cancellation;
+- credential and network isolation;
 - output sanitization;
 - deterministic cleanup;
-- dependency- och säkerhetskontroll;
-- regression mot aktiv toolversion.
+- dependency and security review;
+- regression against the active tool version.
 
-En kandidat kan aldrig ge sig själv nya rättigheter. Nya nätverksmål,
-credentials, externa mutationer och irreversibla effekter kräver uttrycklig
-promotion enligt Control Plane policy.
+A candidate can never grant itself new rights. New network targets,
+credentials, external mutations, and irreversible effects require explicit
+promotion per Control Plane policy.
 
-### 32.4 Transportneutralitet
+### 32.4 Transport neutrality
 
-MCP, CLI, REST och browser automation är tool-adaptrar. Skills och reasoning
-ska bero på Cortxts stabila tool-ID och schemas, inte på transportens eller
-leverantörens egna namn.
+MCP, CLI, REST, and browser automation are tool adapters. Skills and reasoning
+should depend on Cortxt's stable tool IDs and schemas, not on the transport's
+or vendor's own names.
 
-## 33. Initial repositorystruktur
+## 33. Initial repository structure
 
-Den första icke-produktiva scaffolden är:
+The first non-production scaffold is:
 
 ```text
 agent-platform/
@@ -1414,7 +1430,7 @@ agent-platform/
 |- skills/
 |- tools/
 |- inference/
-|- portability/            (byggd; motsvaras inte i §26 - historisk)
+|- portability/            (built; has no counterpart in §26 — historical)
 `- profiles/
 
 adapters/
@@ -1423,18 +1439,18 @@ adapters/
 |- tools/
 `- storage/
 
-harness/                   (planerad, inte byggd ännu)
-|- runtime/                (jfr §26:s "execution" - namnet i denna sektion
-|                          följer runtime-and-evaluation-harness.md, rad 68)
+harness/                   (planned, not yet built)
+|- runtime/                (cf. §26's "execution" — the name in this section
+|                          follows runtime-and-evaluation-harness.md, line 68)
 `- evaluation/
 ```
 
-Repositoryts befintliga `skills/` och `tools/` fortsätter innehålla dagens
-konkreta inventory. `agent-platform/skills` och `agent-platform/tools` ska
-innehålla plattformskod för registry, gateway, policy, evolution och promotion.
-Ingen befintlig exekveringsväg flyttas in i scaffolden innan ett vertikalt slice
-och dess kontrakt är verifierade.
+The repo's existing `skills/` and `tools/` continue to contain today's
+concrete inventory. `agent-platform/skills` and `agent-platform/tools` should
+contain platform code for registry, gateway, policy, evolution, and promotion.
+No existing execution path is moved into the scaffold until a vertical slice
+and its contracts are verified.
 
-`harness/runtime/` är den normativa promotion-path som
-`runtime-and-evaluation-harness.md` (rad 68) beskriver — namnet ersätter §26:s
-äldre `harness/execution/`.
+`harness/runtime/` is the normative promotion path that
+`runtime-and-evaluation-harness.md` (line 68) describes — the name replaces §26's
+older `harness/execution/`.

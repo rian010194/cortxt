@@ -2,59 +2,60 @@
 
 **Status:** Accepted
 **Date:** 2026-08-21
-**Deciders:** Rikard (operatör)
+**Deciders:** Rikard (operator)
 **Technical Story:** GitHub issue rian010194/cortxt#182
 
 ## Context
 
-Repot har sedan start varit "viewable, not open source" (all rights reserved;
-visning och fork för personlig, icke-distribuerad referens tillåten, all annan
-användning kräver skriftligt tillstånd). Inför produktpaketeringen — Cortxt som
-en produkt andra utvecklare kan använda och bidra till — beslutade operatören
-2026-08-21 att öppna källkoden. Licensvalet är utgångspunkten för all
-distribution och för bidragsmodellen.
+Since its start the repository has been "viewable, not open source" (all
+rights reserved; viewing and forking for personal, non-distributed reference
+permitted, all other use requires written permission). Ahead of product
+packaging — Cortxt as a product other developers can use and contribute to —
+the operator decided on 2026-08-21 to open the source code. The license choice
+is the starting point for all distribution and for the contribution model.
 
 ## Decision
 
-**Cortxt licensieras under Apache License 2.0.** `LICENSE` ersätts med den
-verbatim Apache-2.0-texten (copyright: Rikard Andersson). Alla spår av
-"viewable, not open source" tas bort ur repo-dokumentationen.
+**Cortxt is licensed under the Apache License 2.0.** `LICENSE` is replaced with
+the verbatim Apache-2.0 text (copyright: Rikard Andersson). All traces of
+"viewable, not open source" are removed from the repository documentation.
 
-Apache-2.0 valdes framför MIT för dess explicita patent-grant (§3) och
-patent-retaliation-klausul — relevant för en plattform med routing- och
-inference-kontrakt — samtidigt som den är kompatibel med de MIT-licensierade
-skills som redan adopterats.
+Apache-2.0 was chosen over MIT for its explicit patent grant (§3) and its
+patent-retaliation clause — relevant for a platform with routing and inference
+contracts — while remaining compatible with the MIT-licensed skills already
+adopted.
 
 ## Consequences
 
 ### Positive
-- Andra utvecklare kan använda, modifiera och bidra; grund för distribution.
-- Explicit patent-grant minskar bidragsgivares och användares patentrisk.
-- Standardlicens med brett ekosystemstöd.
+- Other developers can use, modify, and contribute; a basis for distribution.
+- The explicit patent grant reduces patent risk for contributors and users.
+- A standard license with broad ecosystem support.
 
 ### Negative
-- Copyright hålls hos en person; framtida bidrag kräver en tydlig
-  DCO/CLA-policy (ej beslutad här).
+- Copyright is held by one person; future contributions require a clear
+  DCO/CLA policy (not decided here).
 
 ### Risks
-- Bidragsmodell (DCO/CLA) är ännu ospecificerad — följs upp separat innan
-  externt bidrag tas emot i någon större skala.
+- The contribution model (DCO/CLA) is still unspecified — followed up
+  separately before external contributions are accepted at any larger scale.
 
 ## Alternatives Considered
-1. **MIT** — enklast, men ingen uttrycklig patent-grant; vald bort till förmån
-   för Apache-2.0:s patentskydd.
-2. **AGPL-3.0** — copyleft som omfattar nätverksanvändning; för stark för en
-   plattform som ska konsumeras bottom-up (ADR-023) utan att tvinga consumers
-   till copyleft.
-3. **Behålla "viewable, not open source"** — blockerar användning och bidrag;
-   vald bort som oförenlig med produktmålet.
+1. **MIT** — simplest, but no explicit patent grant; rejected in favor of
+   Apache-2.0's patent protection.
+2. **AGPL-3.0** — copyleft that covers network use; too strong for a platform
+   meant to be consumed bottom-up (ADR-023) without forcing consumers into
+   copyleft.
+3. **Keep "viewable, not open source"** — blocks use and contribution;
+   rejected as incompatible with the product goal.
 
 ## Validation
-- [x] `LICENSE` är verbatim Apache-2.0 (med copyright-rad).
-- [x] Inga "viewable, not open source"-rester kvar i repo-dokumentationen.
-- [x] ADR-index (`docs/adr/README.md`) uppdaterat med 031.
+- [x] `LICENSE` is the verbatim Apache-2.0 text (with the copyright line).
+- [x] No "viewable, not open source" remnants remain in the repository
+      documentation.
+- [x] The ADR index (`docs/adr/README.md`) is updated with 031.
 
 ## Expiry/Review Trigger
 - Review by: 2026-11-21
-- Trigger: en bidrags-/CLA-policy införs, eller ett distributionsbeslut
-  (packaging) kräver omprövning av licensformen.
+- Trigger: a contribution/CLA policy is introduced, or a distribution
+  (packaging) decision requires revisiting the license form.
