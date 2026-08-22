@@ -40,7 +40,7 @@ The current product decisions are recorded as
 | Path | Role today |
 | --- | --- |
 | [`agent-platform/`](agent-platform/) | Cortxt-owned platform boundary (reasoning, runtimes, CLI, MCP server, state, adapters). `agent-platform/reasoning/` is accepted per ADR-017; `agent-platform/adapters/inference/` holds the live provider-neutral inference adapters. |
-| [`verticals/`](verticals/README.md) | Domain packages loaded by the harness — live, not historical. |
+| [`verticals/`](verticals/README.md) | Domain packages consumed by the agent runtime (profiles, CodingLoop) and tests — live, not historical. |
 | [`contracts/`](contracts/README.md) | Interface schemas and contract experiments. |
 | [`schemas/`](schemas/) | Machine-readable schema definitions. |
 | [`scripts/`](scripts/) | Dispatcher, worker adapters, and profile tooling used by the platform. |

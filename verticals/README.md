@@ -1,9 +1,9 @@
 # Verticals
 
-Verticals are versioned domain packages loaded by the generic harness. They
-own workflows, domain schemas, instructions, templates, and approved eval
-fixtures. They do not own dispatch, containers, credentials, or the global
-approval model.
+Verticals are versioned domain packages consumed by the agent runtime
+profiles, CodingLoop, and tests. They own workflows, domain schemas,
+instructions, templates, and approved eval fixtures. They do not own
+dispatch, containers, credentials, or the global approval model.
 
 Only synthetic or explicitly redistributable fixtures may be committed. Real
 case material belongs in an ignored, isolated run workspace outside Git
