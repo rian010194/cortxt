@@ -203,12 +203,28 @@ def _tool_cortxt_daemon_status(arguments: dict[str, Any]) -> dict[str, Any]:
     return _run_daemon(args).to_dict()
 
 
+def _tool_cortxt_run_create(arguments: dict[str, Any], *, mandate_binding: dict) -> dict[str, Any]:
+    from .run_tools import create_run
+    return create_run(arguments, mandate_binding)
+
+
+def _tool_cortxt_run_resume(arguments: dict[str, Any], *, mandate_binding: dict) -> dict[str, Any]:
+    from .run_tools import resume_run
+    return resume_run(arguments, mandate_binding)
+
+
+def _tool_cortxt_run_submit_for_review(arguments: dict[str, Any], *, mandate_binding: dict) -> dict[str, Any]:
+    from .run_tools import submit_for_review
+    return submit_for_review(arguments, mandate_binding)
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
     tier: int
     description: str
     handler: Callable[[dict[str, Any]], Any]
+    mandate_binding: bool = False
 
 
 _SPECS = (
@@ -263,6 +279,13 @@ _SPECS = (
         "Print the daemon section of the widget snapshot (ResultEnvelope).",
         _tool_cortxt_daemon_status,
     ),
+    ToolSpec("cortxt_run_create", TIER_DISPATCH, "Create a mandate-bound run.",
+             _tool_cortxt_run_create, True),
+    ToolSpec("cortxt_run_resume", TIER_DISPATCH, "Resume a mandate-bound run.",
+             _tool_cortxt_run_resume, True),
+    ToolSpec("cortxt_run_submit_for_review", TIER_DISPATCH,
+             "Submit a terminal run result for independent review.",
+             _tool_cortxt_run_submit_for_review, True),
 )
 
 TOOL_REGISTRY: dict[str, ToolSpec] = {spec.name: spec for spec in _SPECS}
@@ -319,4 +342,10 @@ def call_tool(
         decision = verifier.verify(mandate, tool=name, tier=spec.tier, call_context=context)
         if not decision.accepted:
             raise MandateRejectedError(name, decision.reason)
+        if spec.mandate_binding:
+            binding = {key: mandate.get(key) for key in (
+                "mandate_id", "granted_by", "issue_ref", "scope_fingerprint",
+                "budget_usd_max", "max_runtime_seconds", "data_class_max"
+            )}
+            return spec.handler(arguments or {}, mandate_binding=binding)
     return spec.handler(arguments or {})
