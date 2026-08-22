@@ -13,6 +13,11 @@ deliberately ignored: the free route is configured exclusively through
 `CORTXT_FREE_MODEL` / `CORTXT_FREE_PROVIDER` env vars, so an explicit CLI
 override can never silently switch the free route to a different model or
 provider than the operator configured.
+
+Live arm: from ``agent-platform/``, set ``CORTXT_FREE_MODEL``,
+``CORTXT_FREE_PROVIDER``, and the Hermes CLI provider key in the environment,
+then run ``pytest -m real_inference tests/runtime/adapters/test_hermes_free_live.py``.
+Provider keys are environment-only and must never be stored in this repository.
 """
 from __future__ import annotations
 
