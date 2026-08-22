@@ -1057,12 +1057,81 @@ def _run_mcp(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
+def _run_work(args: argparse.Namespace) -> ResultEnvelope:
+    """Create, inspect, resume, or submit contract-backed worker runs."""
+    try:
+        scripts = _get_agent_platform_path().parent / "scripts"
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from work_launcher import default_launcher, parse_scope_file
+
+        registry = args.registry or (_get_agent_platform_path() / ".dispatch" / "runs.json")
+        registry.parent.mkdir(parents=True, exist_ok=True)
+        launcher = default_launcher(registry)
+        if args.work_command == "list":
+            rows = launcher.list_active()
+            print(json.dumps(rows, indent=2))
+            return ResultEnvelope(status="succeeded", evidence=[{"runs": rows}])
+        if args.work_command == "new":
+            block = parse_scope_file(args.scope_file)
+            data = launcher.create(
+                args.repo, block["title"], block["scope"], block["acceptance_criteria"],
+                runtime=args.runtime, worker_role=args.worker_role, workflow=args.workflow,
+                max_runtime_seconds=args.max_runtime_seconds, max_cost_usd=args.max_cost_usd,
+                approved=args.approve,
+            )
+        elif args.work_command == "resume":
+            data = launcher.resume(
+                args.issue_id, runtime=args.runtime, worker_role=args.worker_role,
+                workflow=args.workflow, max_runtime_seconds=args.max_runtime_seconds,
+                prompt=args.prompt,
+            )
+        else:
+            data = launcher.submit(args.run_id, json.loads(args.result_file.read_text(encoding="utf-8")))
+        print(data["run_id"])
+        return ResultEnvelope(issue_id=data.get("issue_id"), run_id=data["run_id"],
+                              status="succeeded", evidence=[data])
+    except Exception as exc:
+        return ResultEnvelope(status="failed", error={"category": "work_error", "message": str(exc)})
+
+
 def main(argv: list[str] | None = None) -> int:
     """Unified CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Cortxt agent platform unified CLI — chains 6 existing CLIs with result envelope and evidence chain."
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    work_parser = sub.add_parser("work", help="Launch and inspect parallel contract-backed work")
+    work_sub = work_parser.add_subparsers(dest="work_command", required=True)
+    work_new = work_sub.add_parser("new", help="Create, approve, claim, and dispatch a scope file")
+    work_new.add_argument("scope_file", type=Path)
+    work_new.add_argument("--repo", required=True)
+    work_new.add_argument("--approve", action="store_true", help="Confirm operator approval")
+    work_new.add_argument("--runtime", default="hermes-coordinator")
+    work_new.add_argument("--worker-role", default="builder")
+    work_new.add_argument("--workflow", default="work-launcher/v1")
+    work_new.add_argument("--max-runtime-seconds", type=int, default=3600)
+    work_new.add_argument("--max-cost-usd", type=float, required=True)
+    work_new.add_argument("--registry", type=Path)
+    work_new.set_defaults(func=_run_work)
+    work_list = work_sub.add_parser("list", help="List active runs")
+    work_list.add_argument("--registry", type=Path)
+    work_list.set_defaults(func=_run_work)
+    work_resume = work_sub.add_parser("resume", help="Claim a ready issue as a fresh run")
+    work_resume.add_argument("issue_id")
+    work_resume.add_argument("--prompt", required=True)
+    work_resume.add_argument("--runtime", default="hermes-coordinator")
+    work_resume.add_argument("--worker-role", default="builder")
+    work_resume.add_argument("--workflow", default="work-launcher/v1")
+    work_resume.add_argument("--max-runtime-seconds", type=int, default=3600)
+    work_resume.add_argument("--registry", type=Path)
+    work_resume.set_defaults(func=_run_work)
+    work_submit = work_sub.add_parser("submit", help="Submit a terminal result for review")
+    work_submit.add_argument("run_id")
+    work_submit.add_argument("result_file", type=Path)
+    work_submit.add_argument("--registry", type=Path)
+    work_submit.set_defaults(func=_run_work)
 
     # provider-policy subcommand
     policy_parser = sub.add_parser("provider-policy", help="Provider policy evaluation")

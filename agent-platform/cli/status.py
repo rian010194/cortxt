@@ -384,6 +384,7 @@ def write_snapshot(
     engines: list[dict[str, Any]] | None = None,
     skills: list[dict[str, Any]] | None = None,
     profiles: list[dict[str, Any]] | None = None,
+    work: list[dict[str, Any]] | None = None,
 ) -> None:
     """Atomically write the JSON snapshot the widget polls.
 
@@ -416,7 +417,7 @@ def write_snapshot(
 
     if (
         runtimes is None or credentials is None or daemon is None or engines is None
-        or skills is None or profiles is None
+        or skills is None or profiles is None or work is None
     ):
         if runtimes is None:
             runtimes = existing.get("runtimes")
@@ -430,6 +431,8 @@ def write_snapshot(
             skills = existing.get("skills")
         if profiles is None:
             profiles = existing.get("profiles")
+        if work is None:
+            work = existing.get("work")
 
     workstreams = build_workstreams(sessions)
     known_workstreams = {item["workstream_id"] for item in workstreams}
@@ -457,6 +460,15 @@ def write_snapshot(
         doc["skills"] = skills
     if profiles is not None:
         doc["profiles"] = profiles
+    if work is None:
+        work = [
+            {"issue_id": item.get("issue_id"), "run_id": item.get("run_id"),
+             "runtime": item.get("runtime"), "worker": item.get("worker_role"),
+             "status": item.get("display_status"), "updated_at": item.get("updated_at"),
+             "issue_url": item.get("issue_url"), "pr_url": item.get("pr_url")}
+            for item in sessions if item.get("run_id") and item.get("display_status") == "running"
+        ]
+    doc["work"] = work
     descriptor, tmp = tempfile.mkstemp(prefix=".snapshot-", suffix=".tmp", dir=snapshot_path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
