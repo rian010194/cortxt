@@ -81,6 +81,7 @@ def make_service(tmp_path, context=None):
         engine_context=context or FakeEngineContext(),
         store=tmp_path / "sessions",
         clock=_clock,
+        worker_start=lambda turn: turn(),
     )
 
 
@@ -320,11 +321,11 @@ def test_create_creates_durable_run_and_invokes_broker(tmp_path):
         mandate=issued.envelope, mandate_verifier=verifier, lifecycle=service,
     )
 
-    assert result["status"] == "succeeded"
+    assert result["status"] == "running"
     assert result["issue_id"] == ISSUE_REF
     assert result["run_id"].startswith("20260822T120000Z_")
-    assert result["session_id"] == "eng-sess-1"
-    assert result["cost"] == 1.5
+    assert result["session_id"] is None
+    assert result["cost"] == 0.0
     assert result["cost_status"] == "unknown"
     assert result["artifacts"] == []
     assert result["review"] is None
@@ -345,7 +346,7 @@ def test_create_creates_durable_run_and_invokes_broker(tmp_path):
     assert adapter.calls[0]["timeout_seconds"] == 60
     doc = state.load(tmp_path / "sessions", sessions[0].name)
     events = [e["event_type"] for e in doc["events"]]
-    assert events == ["session.created", "run.created", "run.engine_turn"]
+    assert events == ["session.created", "run.created", "run.running", "run.engine_turn"]
 
 
 def test_create_claim_conflict_rejected(tmp_path):
@@ -391,7 +392,7 @@ def test_create_after_terminal_run_is_allowed(tmp_path):
         "cortxt_run_create", create_arguments(), allow_dispatch=True, allow_credentials=False,
         mandate=issued.envelope, mandate_verifier=verifier, lifecycle=service,
     )
-    assert first["status"] == "succeeded"
+    assert first["status"] == "running"
     issued2, public_key_hex2 = _issue(allowed_tools=["cortxt_run_create"])
     verifier2 = _real_verifier(issued2.envelope, {"operator-demo": public_key_hex2})
     second = tools.call_tool(
@@ -419,12 +420,12 @@ def test_create_adapter_failure_recorded_as_failed(tmp_path):
     service = make_service(tmp_path, context)
     issued, public_key_hex = _issue(allowed_tools=["cortxt_run_create"])
     verifier = _real_verifier(issued.envelope, {"operator-demo": public_key_hex})
-    with pytest.raises(run_lifecycle.RunLifecycleError) as excinfo:
-        tools.call_tool(
-            "cortxt_run_create", create_arguments(), allow_dispatch=True, allow_credentials=False,
-            mandate=issued.envelope, mandate_verifier=verifier, lifecycle=service,
-        )
-    assert excinfo.value.code == run_lifecycle.CODE_ADAPTER_FAILED
+    created = tools.call_tool(
+        "cortxt_run_create", create_arguments(), allow_dispatch=True, allow_credentials=False,
+        mandate=issued.envelope, mandate_verifier=verifier, lifecycle=service,
+    )
+    assert created["status"] == "running"
+    assert service.status_of(created["run_id"])["status"] == "failed"
     # The run session still exists with a failed engine turn (not orphaned).
     from runtime import session_state as state
 

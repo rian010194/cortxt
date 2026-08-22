@@ -217,6 +217,10 @@ def _tool_cortxt_run_submit_for_review(arguments: dict[str, Any], *, mandate_bin
     return lifecycle.submit_for_review(arguments, mandate_binding)
 
 
+def _tool_cortxt_run_status(arguments: dict[str, Any], *, lifecycle: Any) -> dict[str, Any]:
+    return lifecycle.status_of(arguments["run_id"], arguments.get("issue_ref"))
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
@@ -265,6 +269,9 @@ _SPECS = (
         "One live-progress frame (--watch is not exposed over MCP) (ResultEnvelope).",
         _tool_cortxt_pipeline,
     ),
+    ToolSpec("cortxt_run_status", TIER_READ_ONLY,
+             "Read the durable state of a run (dispatch-contract envelope).",
+             _tool_cortxt_run_status, False, run_lifecycle.STATUS_SCHEMA, True),
     ToolSpec(
         "cortxt_dispatch", TIER_DISPATCH,
         "LEGACY single-call execution path (kept for compatibility during the "
@@ -353,6 +360,10 @@ def call_tool(
     tiers = unlocked_tiers(allow_dispatch=allow_dispatch, allow_credentials=allow_credentials)
     if spec.tier not in tiers:
         raise ToolTierLockedError(name, spec.tier)
+    if spec.lifecycle_required and lifecycle is None:
+        raise RuntimeError(
+            f"tool {name!r} requires a lifecycle service (RunLifecycleService) that was not supplied"
+        )
     if spec.tier >= TIER_DISPATCH:
         from . import mandate as mandate_module
 
@@ -366,10 +377,6 @@ def call_tool(
             # same strict-schema validation and the same issue/scope
             # binding, and a missing service fails closed before anything
             # runs.
-            if lifecycle is None:
-                raise RuntimeError(
-                    f"tool {name!r} requires a lifecycle service (RunLifecycleService) that was not supplied"
-                )
             context = lifecycle.build_call_context(name, arguments or {})
         else:
             context = call_context if call_context is not None else mandate_module.CallContext()
@@ -384,4 +391,7 @@ def call_tool(
             if spec.lifecycle_required:
                 return spec.handler(arguments or {}, mandate_binding=binding, lifecycle=lifecycle)
             return spec.handler(arguments or {}, mandate_binding=binding)
+    if spec.lifecycle_required:
+        lifecycle.build_call_context(name, arguments or {})
+        return spec.handler(arguments or {}, lifecycle=lifecycle)
     return spec.handler(arguments or {})

@@ -17,6 +17,7 @@ TIER0_NAMES = {
     "cortxt_runtimes",
     "cortxt_orchestrator",
     "cortxt_pipeline",
+    "cortxt_run_status",
 }
 TIER1_NAMES = {
     "cortxt_dispatch", "cortxt_addons_submit", "cortxt_daemon_status",

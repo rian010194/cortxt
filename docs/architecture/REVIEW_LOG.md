@@ -6,6 +6,7 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-036 | Added — MCP asynchronous run creation and Tier-0 status polling (Proposed; issue #245) | TBD |
 | 2026-08-22 | ADR-033 | Accepted — MCP mandate key rotation (versioned signing keys, overlap, revocation) approved after implementation + focused/full suite green (issue #241); status Proposed → Accepted | #242 |
 | 2026-08-22 | ADR-033 | Added — MCP mandate key rotation (Proposed); follow-up to ADR-032 key-rotation risk; not yet implemented | #229 |
 | 2026-08-22 | ADR-035 | Accepted — embeddings provider for Phase 6 (Voyage via EmbeddingPort) approved after live Voyage arm re-run PASS posted as issue #233 AC2 evidence; status Proposed → Accepted | #239 |

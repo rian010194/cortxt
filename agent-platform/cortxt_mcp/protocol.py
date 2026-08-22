@@ -208,7 +208,8 @@ def handle_request(
                 audit.record(
                     name, arguments, status="rejected",
                     mandate_id=mandate_id if tier_requires_mandate else None,
-                    mandate_decision=f"rejected:lifecycle:{error.code}",
+                    mandate_decision=f"rejected:lifecycle:{error.code}"
+                    if tier_requires_mandate else None,
                     granted_by=granted_by if tier_requires_mandate else None,
                     kid=kid if tier_requires_mandate else None,
                     run_id=arguments.get("run_id") or error.run_id,
