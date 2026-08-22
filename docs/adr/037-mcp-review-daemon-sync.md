@@ -1,9 +1,9 @@
 # ADR-037: MCP review submission daemon synchronization
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-22
-**Deciders:** Rikard Andersson (operator decision 2026-08-22)
-**Technical Story:** issue #249
+**Deciders:** Rikard Andersson (operator acceptance 2026-08-22)
+**Technical Story:** issue #249; live acceptance proof issue #252
 
 ## Context
 
@@ -50,6 +50,7 @@ The pass performs only the mechanical label transition. It does not approve, mer
 - [x] AC8: network-free boundary tests use a fake run store, GitHub runner, and fixed clock.
 - [x] AC9: ADR index and architecture review log are updated; ADR-034 Q5 is closed here.
 - [x] AC10: focused and full regression suites plus repository hygiene checks are required before handoff.
+- [x] Issue #252 live arm: a real GitHub fixture issue was transitioned to `workflow:review` through the real daemon review-sync pass with the real `gh` CLI, covered by network-free pytest.
 
 ## Open Questions
 
