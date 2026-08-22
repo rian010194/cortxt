@@ -6,6 +6,8 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-039 | Accepted - status Proposed -> Accepted by operator approval 2026-08-22; durable multi-writer store choice remains an open operator decision for build #261 | #267 |
+| 2026-08-22 | ADR-038 | Accepted - status Proposed -> Accepted by operator approval 2026-08-22; unblocks builds #259 and #260 | #267 |
 | 2026-08-22 | ADR-039 | Added - Execution map concurrency claims and prerequisite ordering (Proposed; issue #251/#265) | #266 |
 | 2026-08-22 | ADR-038 | Added - Declarative widget contract and authorized action ports (Proposed; issue #251/#265) | #266 |
 | 2026-08-22 | ADR-037 | Accepted - live daemon review-sync transitioned a real GitHub fixture issue to workflow:review through the real gh CLI (issue #252); status Proposed -> Accepted | #254 |
