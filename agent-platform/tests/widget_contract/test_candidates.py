@@ -189,6 +189,29 @@ def test_cli_visual_path_atomically_writes_contract_artifact(monkeypatch, capsys
     assert result.status == "succeeded"
     assert artifact["widget"] == {"id": "candidates", "version": "0.1"}
     assert artifact["render"]["primitive"] == "stack"
+    assert artifact["repo"] == "o/r"
+    assert artifact["handoffs"] == [
+        {"id": "mark-ready", "operation": "workflow.mark-ready.v1", "port": "github-transition",
+         "effect_class": "workflow-transition", "authorization": {"mode": "operator", "reference": "operator-approval"},
+         "confirm": {"summary": "Move the issue from workflow:inbox to workflow:ready",
+                     "effect_class": "workflow-transition", "required": True},
+         "enabled": True, "reason": "Operator-authorized action: approval reference + confirm required"},
+        {"id": "claim-run", "operation": "workflow.claim-run.v1", "port": "cli",
+         "effect_class": "run-dispatch", "authorization": {"mode": "operator", "reference": "operator-approval"},
+         "confirm": {"summary": "Claim and run the issue through the execution map",
+                     "effect_class": "run-dispatch", "required": True},
+         "enabled": True, "reason": "Operator-authorized action: approval reference + confirm required"},
+    ]
+
+
+def test_widget_renders_open_in_cli_handoff_controls_without_post():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[2] / "widget" / "index.html").read_text(encoding="utf-8")
+    assert "Open in CLI" in html
+    assert "copyCommand" in html
+    assert "candidate-chain" in html
+    assert "cortxt widget action" in html
+    assert "do_POST" not in html
 
 
 def test_cli_json_and_visual_paths_use_the_same_model(monkeypatch, capsys):
