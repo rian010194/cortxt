@@ -21,6 +21,7 @@ not mean that Hermes routing is unverified or should be bypassed.
 
 Durable work for this repository is tracked in GitHub Issues. See
 `docs/agents/issue-tracker.md` for the current planning-state rules.
+Parallel operator dispatch is documented in `docs/agents/work-launcher.md`.
 
 ### Domain docs
 

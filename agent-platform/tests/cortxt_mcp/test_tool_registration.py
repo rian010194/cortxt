@@ -18,7 +18,10 @@ TIER0_NAMES = {
     "cortxt_orchestrator",
     "cortxt_pipeline",
 }
-TIER1_NAMES = {"cortxt_dispatch", "cortxt_addons_submit", "cortxt_daemon_status"}
+TIER1_NAMES = {
+    "cortxt_dispatch", "cortxt_addons_submit", "cortxt_daemon_status",
+    "cortxt_run_create", "cortxt_run_resume", "cortxt_run_submit_for_review",
+}
 
 
 def test_registry_contains_exactly_the_locked_first_slice():
