@@ -42,5 +42,33 @@ render:
     - primitive: table
       props: {label: atlas_maps, columns: [number, title, workflow, area, milestone, open_blocker_count]}
       bindings: {rows: {read: candidates, pointer: /groups/5/rows, type: core.array.v1}}
-actions: []
-capabilities: [read:issues]
+actions:
+  - id: mark-ready
+    port: github-transition
+    operation: workflow.mark-ready.v1
+    input:
+      issue_id: "owner/repo#0"
+    authorization:
+      mode: operator
+      reference: "operator-approval"
+    confirm:
+      summary: "Move the issue from workflow:inbox to workflow:ready"
+      effect_class: workflow-transition
+      required: true
+    result_type: action.status.v1
+    idempotency_key: "mark-ready"
+  - id: claim-run
+    port: cli
+    operation: workflow.claim-run.v1
+    input:
+      issue_id: "owner/repo#0"
+    authorization:
+      mode: operator
+      reference: "operator-approval"
+    confirm:
+      summary: "Claim and run the issue through the execution map"
+      effect_class: run-dispatch
+      required: true
+    result_type: action.status.v1
+    idempotency_key: "claim-run"
+capabilities: [read:issues, act:mark-ready, act:claim-run]

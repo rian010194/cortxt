@@ -3,7 +3,7 @@
 import json
 import subprocess
 import time
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from ..registry import TYPES
 from ..validation import validate
@@ -22,6 +22,31 @@ def issue_ready_list(call: Callable[[Mapping[str, Any]], Any], request: Mapping[
 
 def registered_transition(call: Callable[[str, Mapping[str, Any]], Any], operation: str, request: Mapping[str, Any]) -> Any:
     return call(operation, dict(request))
+
+
+class TransitionDenied(RuntimeError):
+    kind = "transition_denied"
+
+
+def mark_ready_transition(operation: str, request: Mapping[str, Any], *,
+                          issue_reader: Callable[[str], Mapping[str, Any]],
+                          transition: Callable[[str, Mapping[str, Any]], Any]) -> dict[str, Any]:
+    """Exactly one authorized label transition: workflow:inbox -> workflow:ready.
+
+    Re-reads the issue immediately before the write, refuses any target that is
+    not currently `workflow:inbox` (fail closed, no write), and never chains to
+    a run. Not a general label editor: only the fixed inbox->ready swap is
+    issued through the injected transition callable.
+    """
+    issue = issue_reader(request["issue_id"])
+    labels = [x.get("name", "") if isinstance(x, dict) else str(x) for x in issue.get("labels") or []]
+    workflow = [x for x in labels if str(x).lower().startswith("workflow:")]
+    if workflow != ["workflow:inbox"]:
+        raise TransitionDenied(f"issue is not exactly workflow:inbox: {workflow}")
+    result = transition(operation, {"issue_id": request["issue_id"]})
+    if not isinstance(result, dict):
+        raise TransitionDenied("transition result must be an object")
+    return result
 
 
 FIELDS = "number,title,body,labels,state,milestone,url"
@@ -103,7 +128,8 @@ class LastGoodCandidates:
     def __init__(self, clock: Callable[[], float] = time.time):
         self.issues = LastGoodIssues(clock=clock)
 
-    def read(self, repo: str, *, run_subprocess: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
+    def read(self, repo: str, *, run_subprocess: Callable[..., Any] = subprocess.run,
+             actions: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
         raw = (self.issues.read(repo) if run_subprocess is subprocess.run
                else self.issues.read(repo, run_subprocess=run_subprocess))
         blockers: dict[int, dict[str, Any]] = {}
@@ -116,12 +142,13 @@ class LastGoodCandidates:
                    "error": {"kind": exc.kind, "message": str(exc)}}
         model = build_candidates_view(raw["issues"], complete=raw["complete"], status=raw["status"],
                                       age_seconds=raw["age_seconds"], error=raw["error"],
-                                      blocker_statuses=blockers)
+                                      blocker_statuses=blockers, actions=actions)
         validate(model, TYPES["candidates.view.v1"].schema)
         return model
 
 
 def read_candidates_view(repo: str, *, run_subprocess: Callable[..., Any] = subprocess.run,
-                         cache: LastGoodCandidates | None = None) -> dict[str, Any]:
+                         cache: LastGoodCandidates | None = None,
+                         actions: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """Execute the registered candidates read without any GitHub mutation."""
-    return (cache or LastGoodCandidates()).read(repo, run_subprocess=run_subprocess)
+    return (cache or LastGoodCandidates()).read(repo, run_subprocess=run_subprocess, actions=actions)

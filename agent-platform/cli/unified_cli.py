@@ -646,11 +646,14 @@ def _run_pipeline(args: argparse.Namespace) -> ResultEnvelope:
 
 
 def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
-    """Serve the sessions widget (loopback-only static server, widget/serve.py).
+    """Serve the sessions widget or execute a registered widget action.
 
-    Blocks in the foreground until interrupted, same shape as any other
-    local dev-server CLI command. No new logic here -- this just calls the
-    existing, already-tested serve.main().
+    `cortxt widget` without a subcommand serves the sessions widget
+    (loopback-only static server, widget/serve.py) and blocks until
+    interrupted. `--view candidates` renders the candidates view through the
+    widget-contract renderer. `cortxt widget action <id>` dispatches a
+    registered authorized action through ActionExecutor with the operator
+    gate.
     """
     try:
         candidate_mode = getattr(args, "widget_command", None) == "candidates" or getattr(args, "view", None) == "candidates"
@@ -664,9 +667,13 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
             repo = getattr(args, "repo", None)
             if not repo:
                 return ResultEnvelope(status="failed", error={"category": "input_error", "message": "--repo is required for candidates"})
-            model = read_candidates_view(repo)
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "candidates-0.1.yaml")
+            action_descriptors = [{"id": a.id, "operation": a.operation, "port": a.port,
+                                   "effect_class": a.confirm["effect_class"],
+                                   "authorization": dict(a.authorization), "confirm": dict(a.confirm)}
+                                  for a in widget.actions]
+            model = read_candidates_view(repo, actions=action_descriptors)
             if getattr(args, "widget_command", None) is None:
-                widget = load_widget_file(ap_path / "widget_contract" / "specs" / "candidates-0.1.yaml")
                 source_status = model["source"]["status"]
                 tree = render(widget, {"candidates": model}, {"candidates": source_status})
                 output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "candidates.json")
@@ -696,6 +703,8 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
                         print(f"  #{row['number']} {row['title']} | {row['workflow']}{area}{milestone} | blockers:{row['open_blocker_count']}")
             artifacts = [f"candidates:{output_path}"] if getattr(args, "widget_command", None) is None else []
             return ResultEnvelope(status="succeeded", artifacts=artifacts, evidence=[{"candidates": model}])
+        if getattr(args, "widget_command", None) == "action":
+            return _run_widget_action(args)
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
@@ -705,6 +714,105 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="succeeded", artifacts=["widget:stopped"])
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
+def _gh_issue_workflow_labels(issue_id: str) -> list[str]:
+    """Read an issue's workflow labels via gh (injectable for tests)."""
+    import subprocess
+    repo, number = issue_id.rsplit("#", 1)
+    proc = subprocess.run(["gh", "issue", "view", number, "-R", repo, "--json", "labels"],
+                          capture_output=True, text=True, timeout=20)
+    if proc.returncode:
+        raise RuntimeError(proc.stderr.strip())
+    return [x.get("name", "") for x in json.loads(proc.stdout).get("labels", [])]
+
+
+def _gh_inbox_to_ready(issue_id: str) -> dict:
+    """Perform exactly the inbox -> ready label swap via gh (injectable for tests)."""
+    import subprocess
+    repo, number = issue_id.rsplit("#", 1)
+    proc = subprocess.run(["gh", "issue", "edit", number, "-R", repo,
+                           "--remove-label", "workflow:inbox", "--add-label", "workflow:ready"],
+                          capture_output=True, text=True, timeout=20)
+    if proc.returncode:
+        raise RuntimeError(proc.stderr.strip())
+    return {"issue_id": issue_id, "status": "ok"}
+
+
+def _claim_run_resume(issue_id: str, *, registry: Path) -> dict:
+    """Resume a ready issue through the execution-map-gated launcher (injectable for tests)."""
+    scripts = _get_agent_platform_path().parent / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from work_launcher import default_launcher
+    launcher = default_launcher(registry)
+    return launcher.resume(issue_id, runtime="hermes-coordinator", worker_role="builder",
+                           workflow="work-launcher/v1", max_runtime_seconds=3600,
+                           prompt=f"Execute the approved dispatch request for {issue_id} per the issue body.")
+
+
+def _run_widget_action(args: argparse.Namespace) -> ResultEnvelope:
+    """Execute a registered widget action through ActionExecutor with the operator gate.
+
+    Loads the candidates spec, builds the Action from the declared action and
+    CLI input, and dispatches through ActionExecutor with the registered
+    github-transition and cli adapters. The authorize callback enforces the
+    operator approval reference plus the declared confirm requirement; the
+    execution-map gate (claim-run) reports its stable codes on rejection.
+    """
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from widget_contract.action_executor import ActionContext, ActionExecutor, AuthorizationDenied
+        from widget_contract.adapters.cli_ports import ClaimRunDenied, claim_run_via_launcher
+        from widget_contract.adapters.github_ports import TransitionDenied, mark_ready_transition
+        from widget_contract.loader import load_widget_file
+        from widget_contract.models import Action
+
+        widget = load_widget_file(ap_path / "widget_contract" / "specs" / "candidates-0.1.yaml")
+        declared = next((a for a in widget.actions if a.id == args.action_id), None)
+        if declared is None:
+            return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                          "message": f"unknown action {args.action_id}"})
+        issue_id = f"{args.repo}#{args.issue}"
+        action = Action(declared.id, declared.port, declared.operation, {"issue_id": issue_id},
+                        {"mode": declared.authorization["mode"], "reference": args.approval_ref},
+                        declared.confirm, declared.result_type, declared.idempotency_key)
+
+        def _authorize(a: Action, context: ActionContext) -> bool:
+            return (context.authorization_reference == a.authorization.get("reference")
+                    and a.operation in context.approved_operations
+                    and (not a.confirm.get("required") or args.confirm))
+
+        def _mark_ready(operation: str, request: dict) -> dict:
+            def reader(issue_id: str) -> dict:
+                return {"issue_id": issue_id, "labels": [{"name": x} for x in _gh_issue_workflow_labels(issue_id)]}
+
+            def transition(operation: str, request: dict) -> dict:
+                return _gh_inbox_to_ready(request["issue_id"])
+
+            return mark_ready_transition(operation, request, issue_reader=reader, transition=transition)
+
+        def _claim_run(operation: str, request: dict) -> dict:
+            registry = args.registry or (ap_path / ".dispatch" / "runs.json")
+            return claim_run_via_launcher(operation, request,
+                                          resume=lambda issue_id: _claim_run_resume(issue_id, registry=registry))
+
+        executor = ActionExecutor({"github-transition": _mark_ready, "cli": _claim_run}, _authorize)
+        context = ActionContext(args.approval_ref, frozenset({declared.operation}))
+        result = executor.execute(action, context)
+        print(json.dumps(result, indent=2))
+        return ResultEnvelope(status="succeeded", issue_id=issue_id, evidence=[{"action": result}])
+    except AuthorizationDenied as exc:
+        return ResultEnvelope(status="failed", error={"category": "authorization_denied", "message": str(exc)})
+    except (TransitionDenied, ClaimRunDenied) as exc:
+        return ResultEnvelope(status="failed", error={"category": "action_denied", "message": str(exc)})
+    except Exception as exc:
+        if exc.__class__.__name__ == "ExecutionGateError" and hasattr(exc, "code"):
+            return ResultEnvelope(status="failed", error={"category": "execution_map_gate",
+                                                           "code": exc.code, "message": exc.code})
+        return ResultEnvelope(status="failed", error={"category": "action_error", "message": str(exc)})
 
 
 # Which Hermes profile a matched task_shape defaults to, when --hermes-profile
@@ -1325,6 +1433,13 @@ def main(argv: list[str] | None = None) -> int:
     widget_candidates = widget_sub.add_parser("candidates", help="List the canonical actionable frontier and all open issues")
     widget_candidates.add_argument("--repo", required=True, help="GitHub owner/repo")
     widget_candidates.add_argument("--format", choices=["table", "json"], default="table")
+    widget_action = widget_sub.add_parser("action", help="Execute a registered authorized widget action")
+    widget_action.add_argument("action_id", choices=["mark-ready", "claim-run"], help="Registered action id")
+    widget_action.add_argument("--repo", required=True, help="GitHub owner/repo")
+    widget_action.add_argument("--issue", type=int, required=True, help="Target issue number")
+    widget_action.add_argument("--approval-ref", required=True, help="Operator approval reference")
+    widget_action.add_argument("--confirm", action="store_true", help="Confirm the declared effect")
+    widget_action.add_argument("--registry", type=Path, help="Dispatcher run registry path (claim-run)")
     widget_parser.set_defaults(func=_run_widget)
 
     # mcp subcommand
