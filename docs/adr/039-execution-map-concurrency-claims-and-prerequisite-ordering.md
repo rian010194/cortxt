@@ -1,8 +1,8 @@
 # ADR-039: Execution Map Concurrency Claims and Prerequisite Ordering
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-22
-**Deciders:** Rikard Andersson (operator, pending review)
+**Deciders:** Rikard Andersson (operator acceptance 2026-08-22)
 **Technical Story:** issue #251 (widget platform design), issue #265 (materialization); source: `lab/widget-platform/track-c-execution-map.md` + `synthesis.md` §2/§5 (ADR number resolved from the provisional ADR-038 to ADR-039 per synthesis §2)
 
 ## Context
