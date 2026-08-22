@@ -1,8 +1,8 @@
 # ADR-040: Delivery execution paths and workflow-label invariant
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-22
-**Deciders:** Rikard Andersson (operator acceptance pending)
+**Deciders:** Rikard Andersson (operator acceptance 2026-08-22)
 **Technical Story:** issues #259-#262 (coordinator-direct builds); operator question 2026-08-22; see also #257 (fast fix) and #265 (docs materialization)
 
 ## Context
