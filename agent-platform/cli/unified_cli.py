@@ -651,6 +651,32 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
     existing, already-tested serve.main().
     """
     try:
+        candidate_mode = getattr(args, "widget_command", None) == "candidates" or getattr(args, "view", None) == "candidates"
+        if candidate_mode:
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.github_ports import list_all_open_issues, resolve_blocker_status
+            from widget_contract.candidates import build_candidates_view, dependency_targets, render_candidates_tree
+            repo = getattr(args, "repo", None)
+            if not repo:
+                return ResultEnvelope(status="failed", error={"category": "input_error", "message": "--repo is required for candidates"})
+            raw = list_all_open_issues(repo)
+            blocker_statuses = {number: resolve_blocker_status(repo, number)
+                                for number in dependency_targets(raw["issues"])}
+            model = build_candidates_view(raw["issues"], complete=raw["complete"], blocker_statuses=blocker_statuses)
+            if getattr(args, "widget_command", None) is None:
+                print(json.dumps(render_candidates_tree(model), indent=2))
+            elif args.format == "json":
+                print(json.dumps(model, indent=2))
+            else:
+                for group in model["groups"]:
+                    print(f"{group['id']} ({group['count']})")
+                    for row in group["rows"]:
+                        area = f" | {row['area']}" if row["area"] else ""
+                        milestone = f" | {row['milestone']}" if row["milestone"] else ""
+                        print(f"  #{row['number']} {row['title']} | {row['workflow']}{area}{milestone} | blockers:{row['open_blocker_count']}")
+            return ResultEnvelope(status="succeeded", evidence=[{"candidates": model}])
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
@@ -1258,6 +1284,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
+    widget_parser.add_argument("--view", choices=["candidates"], help="Render a named read-only widget view")
+    widget_parser.add_argument("--repo", help="GitHub owner/repo for a named view")
+    widget_sub = widget_parser.add_subparsers(dest="widget_command")
+    widget_candidates = widget_sub.add_parser("candidates", help="List the canonical actionable frontier and all open issues")
+    widget_candidates.add_argument("--repo", required=True, help="GitHub owner/repo")
+    widget_candidates.add_argument("--format", choices=["table", "json"], default="table")
     widget_parser.set_defaults(func=_run_widget)
 
     # mcp subcommand

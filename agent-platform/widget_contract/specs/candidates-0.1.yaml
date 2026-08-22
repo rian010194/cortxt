@@ -1,0 +1,28 @@
+contract_version: "0.1"
+widget:
+  id: candidates
+  version: "0.1"
+  title: Candidates
+data:
+  reads:
+    - id: issues
+      source: github
+      operation: issues.all_open.list.v1
+      input:
+        repo: owner/repo
+      select: []
+      refresh:
+        mode: manual
+      output_type: issues.all-open.list.v1
+      on_error: stale
+render:
+  primitive: table
+  props:
+    columns: [number, title, workflow, area, milestone, open_blocker_count]
+  bindings:
+    rows:
+      read: issues
+      pointer: /issues
+      type: core.array.v1
+actions: []
+capabilities: [read:issues]

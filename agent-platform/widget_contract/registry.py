@@ -54,11 +54,13 @@ SNAPSHOT_SCHEMA = {
 }
 ACTIVE_RUNS_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "runs"], "properties": {"schema_version": {"const": 1}, "runs": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["run_id", "status"], "properties": {"run_id": {"type": "string"}, "issue_number": {"type": "integer"}, "status": {"type": "string"}, "started_at": {"type": "string"}, "updated_at": {"type": "string"}}}}}}
 ISSUES_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "issues"], "properties": {"schema_version": {"const": 1}, "issues": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["number", "title", "state", "workflow"], "properties": {"number": {"type": "integer"}, "title": {"type": "string"}, "state": {"type": "string"}, "workflow": {"type": "string"}}}}}}
+ALL_OPEN_ISSUES_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "complete", "issues"], "properties": {"schema_version": {"const": 1}, "complete": {"const": True}, "issues": {"type": "array"}}}
 
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
     "dispatcher.active-runs.v1": TypeEntry(ACTIVE_RUNS_SCHEMA, "operational"),
     "issues.ready.list.v1": TypeEntry(ISSUES_SCHEMA, "public-metadata"),
+    "issues.all-open.list.v1": TypeEntry(ALL_OPEN_ISSUES_SCHEMA, "public-metadata"),
     "issue.workflow.v1": TypeEntry({"type": "object"}, "public-metadata"),
     "core.string.v1": TypeEntry({"type": "string"}, "public-metadata"),
     "core.number.v1": TypeEntry({"type": "number"}, "public-metadata"),
@@ -72,6 +74,7 @@ READ_OPERATIONS = {
     "sessions.snapshot.v2": ReadOperation("store", JSON_OBJECT, "sessions.snapshot.v2", "operational", 500, 60, 2, "read:sessions"),
     "dispatcher.active-runs.v1": ReadOperation("store", JSON_OBJECT, "dispatcher.active-runs.v1", "operational", 500, 60, 2, "read:active-runs"),
     "issues.ready.list.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100}}}, "issues.ready.list.v1", "public-metadata", 2000, 30, 30, "read:issues"),
+    "issues.all_open.list.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo"], "properties": {"repo": {"type": "string"}}}, "issues.all-open.list.v1", "public-metadata", 30000, 30, 30, "read:issues"),
     "issue.workflow.get.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["issue_number"], "properties": {"issue_number": {"type": "integer", "minimum": 1}}}, "issue.workflow.v1", "public-metadata", 2000, 30, 30, "read:issue-workflow", True),
 }
 
