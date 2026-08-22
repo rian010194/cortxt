@@ -58,6 +58,7 @@ REASON_EXPIRED = "expired"
 REASON_TOOL_NOT_ALLOWED = "tool_not_allowed"
 REASON_INVALID_DATA_CLASS = "invalid_data_class"
 REASON_DATA_CLASS_EXCEEDED = "data_class_exceeded"
+REASON_RUNTIME_EXCEEDED = "runtime_exceeded"
 REASON_BUDGET_EXCEEDED = "budget_exceeded"
 REASON_ISSUE_REF_MISMATCH = "issue_ref_mismatch"
 REASON_SCOPE_FINGERPRINT_MISMATCH = "scope_fingerprint_mismatch"
@@ -122,6 +123,7 @@ class CallContext:
     issue_ref: str = ""
     data_class: str = "L0"
     estimated_cost_usd: float = 0.0
+    estimated_runtime_seconds: float | None = None
     scope_text: str | None = None
     expected_scope_fingerprint: str | None = None
 
@@ -165,11 +167,12 @@ def verify_mandate(
     Checks run in this order (adversarial-review-required order, so an
     attacker cannot use a later check to probe an earlier one): schema
     version -> signature -> nonce -> expiry -> allowed_tools -> data class
-    -> budget -> issue_ref -> scope_fingerprint. The nonce and the budget
-    are both consumed/debited as soon as their check runs, regardless of
-    whether a later check goes on to reject the call -- this closes the
-    replay-via-different-tool-name and the parallel-calls-under-cap bypass
-    classes flagged in the adversarial review (HIGH-1, MED-2).
+    -> runtime -> budget -> issue_ref -> scope_fingerprint. The nonce and
+    the budget are both consumed/debited as soon as their check runs,
+    regardless of whether a later check goes on to reject the call -- this
+    closes the replay-via-different-tool-name and the
+    parallel-calls-under-cap bypass classes flagged in the adversarial
+    review (HIGH-1, MED-2).
     """
     if envelope is None:
         return MandateDecision(False, REASON_MANDATE_MISSING, None)
@@ -225,6 +228,19 @@ def verify_mandate(
         return MandateDecision(False, REASON_INVALID_DATA_CLASS, mandate_id)
     if call_rank > max_rank:
         return MandateDecision(False, REASON_DATA_CLASS_EXCEEDED, mandate_id)
+
+    max_runtime_raw = envelope.get("max_runtime_seconds")
+    if isinstance(max_runtime_raw, bool) or not isinstance(max_runtime_raw, (int, float)):
+        return MandateDecision(False, REASON_MALFORMED_ENVELOPE, mandate_id)
+    try:
+        max_runtime_seconds = int(max_runtime_raw)
+    except (OverflowError, ValueError):
+        return MandateDecision(False, REASON_MALFORMED_ENVELOPE, mandate_id)
+    if max_runtime_seconds != max_runtime_raw or max_runtime_seconds < 0:
+        return MandateDecision(False, REASON_MALFORMED_ENVELOPE, mandate_id)
+    if (call_context.estimated_runtime_seconds is not None
+            and call_context.estimated_runtime_seconds > max_runtime_seconds):
+        return MandateDecision(False, REASON_RUNTIME_EXCEEDED, mandate_id)
 
     try:
         cap = float(envelope.get("budget_usd_max"))

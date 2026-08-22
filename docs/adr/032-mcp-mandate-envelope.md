@@ -43,6 +43,11 @@ exactly these fields: `schema_version`, `mandate_id`, `granted_by`,
 `max_runtime_seconds`, `expires_at`, `nonce`, `scope_fingerprint`,
 `signature`. An envelope missing, adding, or renaming any field is
 rejected as malformed (fail closed), not partially interpreted.
+`max_runtime_seconds` is an enforced v1 authorization bound, not
+informational metadata. A call whose declared `estimated_runtime_seconds`
+exceeds that maximum is rejected before its handler runs. Equality is
+allowed, an omitted estimate remains backward compatible, and malformed
+or negative envelope values fail closed as `malformed_envelope`.
 
 **(b) Fail-closed verification inside `call_tool`, before the handler.**
 `cortxt_mcp.tools.call_tool()` gains a keyword-only `mandate: dict | None`
@@ -63,16 +68,18 @@ envelope's canonical-JSON serialization with `signature` excluded,
 reusing `runtime.session_state.canonical_json` rather than a second
 serialization scheme) -> nonce not already consumed -> `expires_at`
 parses and is in the future -> tool is in `allowed_tools` -> requested
-data class is at or below `data_class_max` -> cumulative spend for this
+data class is at or below `data_class_max` -> declared requested runtime
+is at or below `max_runtime_seconds` -> cumulative spend for this
 `mandate_id` (this call's estimated cost plus everything already debited
 against it) is at or below `budget_usd_max` -> `issue_ref` matches the
 call's expected scope -> `scope_fingerprint` matches the call's expected
-fingerprint. The nonce and the budget debit are both applied as soon as
-their check runs, regardless of whether a later check goes on to reject
-the call -- otherwise an attacker could re-probe a consumed nonce against
-a different tool name, or fire several parallel calls each individually
-under the budget cap before any of them is recorded (adversarial review
-HIGH-1, MED-2).
+fingerprint. Runtime excess is reported as `runtime_exceeded`; malformed
+runtime bounds are reported as `malformed_envelope`. The nonce and the
+budget debit are both applied as soon as their check runs, regardless of
+whether a later check goes on to reject the call -- otherwise an attacker
+could re-probe a consumed nonce against a different tool name, or fire
+several parallel calls each individually under the budget cap before any
+of them is recorded (adversarial review HIGH-1, MED-2).
 
 **(c) Asymmetric signing; the server never holds the private key.**
 Signing is Ed25519 via the `cryptography` package
@@ -205,12 +212,12 @@ only ever sees a public key, which is not secret by construction.
    documented v2 option once the server is exposed beyond loopback.
 
 ## Validation
-- [ ] Implementation matches decision -- adversarial test suite
-      (`tests/cortxt_mcp/test_mandate.py`) and the AC1-AC9 regression
-      tests, plus the AC7 live-client demo (`cortxt_mcp/ac7_client_demo.py`),
-      to be run and confirmed green by the coordinator (not run by the
-      builder in this environment).
-- [ ] Tests cover decision boundaries -- pending coordinator CI run.
+- [ ] Implementation matches decision -- builder runs the focused mandate
+      and protocol tests plus the full `tests/cortxt_mcp/` suite locally;
+      coordinator will independently run and confirm CI before acceptance.
+- [ ] Tests cover decision boundaries -- runtime below, equal to, and above
+      the maximum; omitted requested runtime; malformed envelope runtime;
+      and pre-handler rejection are covered, pending coordinator CI run.
 
 ## Open Questions (deferred, not blocking this ADR)
 - **Operator issuance UX.** `issue_mandate()` is a CLI-callable function
