@@ -605,6 +605,127 @@ def render_global_auto(all_issues: dict, nodes: dict, global_drift: list, sync_t
 
 
 # ---------------------------------------------------------------------------
+# Site page emission (issue #285): render the global roadmap as a static
+# docs page, reusing the same derived data the map bodies use.
+# ---------------------------------------------------------------------------
+
+SITE_PAGE_PATH = "site/src/content/docs/docs/atlas-status.md"
+
+
+def render_site_page(all_issues: dict, nodes: dict, global_drift: list, self_repo: str,
+                     sync_time_iso: str) -> str:
+    """Render the public Atlas status page (markdown) from the same data
+    pipeline the map bodies use. Purely derived and read-only: it never
+    writes GitHub state and contains no interactive logic.
+
+    The page is intentionally a *summary* mirror of the global map's
+    coordinator-owned sections: the canonical roadmap remains the GitHub
+    map issue (#214); this page is a derived publication for the docs
+    site. It includes the sync timestamp so readers can see freshness,
+    and the safe-content scan is applied before the page is ever written.
+    """
+    work_issues = {n: i for n, i in all_issues.items() if not i.is_map}
+    map_issues = [i for i in all_issues.values() if i.is_map]
+    lines = [
+        "---",
+        "title: Status and roadmap (Atlas)",
+        "description: Live-derived status page for the Cortxt roadmap, generated from Atlas maps.",
+        "---",
+        "",
+        "## Roadmap status",
+        "",
+        "This page is derived automatically from the [Atlas roadmap maps](",
+        f"https://github.com/{self_repo}/issues/214) -- the GitHub issues "
+        "remain the single source of truth. Last successful sync: "
+        f"`{sync_time_iso}`.",
+        "",
+    ]
+
+    # Current state (roadmap areas).
+    areas = sorted({parse_area(m.body) for m in map_issues if parse_area(m.body) and parse_area(m.body) != "Global"})
+    area_lines = []
+    for area in areas:
+        milestone_name = None
+        for m in map_issues:
+            if parse_area(m.body) == area:
+                milestone_name = parse_milestone_field(m.body)
+                break
+        _, open_c, closed_c = compute_milestone_progress(all_issues, milestone_name)
+        area_lines.append(f"- **{area}** -- milestone: {milestone_name or '(none)'}, open: {open_c}, closed: {closed_c}")
+    lines += _section("Roadmap areas", area_lines)
+
+    # Actionable frontier + claimed work.
+    frontier, in_progress = compute_frontier(work_issues.keys(), all_issues, nodes)
+    frontier_lines = [f"- {ref(i)}" for i in frontier]
+    frontier_lines.append("")
+    frontier_lines.append("Claimed work in progress (workflow:in-progress):")
+    frontier_lines.extend(f"- {ref(i)}" for i in in_progress)
+    if not in_progress:
+        frontier_lines.append("(none)")
+    lines += _section("Actionable frontier", frontier_lines)
+
+    # Blockers (open prerequisites not yet done).
+    blockers = []
+    for num, node in nodes.items():
+        for b in sorted(node.blocked_by):
+            if b in work_issues and work_issues[b].state == "open" and "workflow:done" not in work_issues[b].labels:
+                blockers.append(f"- {ref(work_issues[num])} blocked by {ref(work_issues[b])}")
+    lines += _section("Blockers", blockers)
+
+    # Milestone overview.
+    milestones = sorted({i.milestone for i in work_issues.values() if i.milestone})
+    ms_lines = []
+    for ms in milestones:
+        _, open_c, closed_c = compute_milestone_progress(all_issues, ms)
+        ms_lines.append(f"- {ms}: open {open_c}, closed {closed_c}")
+    lines += _section("Milestone overview", ms_lines)
+
+    # Discipline violations.
+    violations = compute_discipline_violations(all_issues)
+    violation_lines = [f"- #{n} {t}: labels={labels or '[]'}" for n, t, labels in violations]
+    lines += _section("Discipline violations (one workflow:* label required)", violation_lines)
+
+    # Review evidence presence.
+    evidence_rows = compute_review_evidence(list(work_issues.values()))
+    evidence_lines = []
+    for i, ev in evidence_rows:
+        c = ev["contract_fit"] or "MISSING"
+        r = ev["repository_fit"] or "MISSING"
+        evidence_lines.append(f"- {ref(i)}: contract fit = {c}; repository fit = {r}")
+    lines += _section("Review evidence", evidence_lines)
+
+    # Relationship drift.
+    drift_lines = [f"- {d}" for d in global_drift]
+    lines += _section("Relationship drift", drift_lines)
+
+    lines += _section("Last successful sync", [f"{sync_time_iso}"])
+    return "\n".join(lines)
+
+
+def emit_site_page(*, out_dir: Path, issues: dict, nodes: dict, global_drift: list,
+                   self_repo: str, sync_time_iso: str) -> tuple[Path, bool]:
+    """Render the site page and write it only when the content actually
+    changed (matching the sync's no-op discipline). Returns (path, wrote).
+
+    The safe-content scan (AC12) is applied before writing: a page
+    containing known-bad markers is never written and raises instead, so
+    the daily workflow fails loudly rather than publishing a leak.
+    """
+    page = render_site_page(issues, nodes, global_drift, self_repo, sync_time_iso)
+    bad = scan_unsafe(page)
+    if bad:
+        raise ValueError(f"unsafe content markers detected in site page: {bad}")
+
+    path = out_dir / SITE_PAGE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = path.read_text(encoding="utf-8") if path.exists() else None
+    if existing == page:
+        return path, False
+    path.write_text(page, encoding="utf-8")
+    return path, True
+
+
+# ---------------------------------------------------------------------------
 # Body diffing / marker replacement
 # ---------------------------------------------------------------------------
 
@@ -774,8 +895,16 @@ def main(argv=None) -> int:
     import argparse
     import time
 
-    parser = argparse.ArgumentParser(description="Atlas sync: regenerate roadmap map auto sections.")
+    parser = argparse.ArgumentParser(
+        description="Atlas sync: regenerate roadmap map auto sections and (optionally) emit the site page."
+    )
     parser.add_argument("--repo", required=True, help="owner/repo")
+    parser.add_argument(
+        "--emit-site", metavar="DIR", type=Path, default=None,
+        help="Also render the public Atlas status page into DIR (the repo checkout root, "
+             "e.g. '.' or the workflow checkout); writes the page at "
+             "site/src/content/docs/docs/atlas-status.md only when its content changed",
+    )
     args = parser.parse_args(argv)
 
     gh = GhRunner()
@@ -787,6 +916,17 @@ def main(argv=None) -> int:
     if report.failed:
         print(f"failed: {report.failed}", file=sys.stderr)
         return 1
+
+    if args.emit_site is not None:
+        raw = gh.list_issues(args.repo)
+        issues = {i.number: i for i in (issue_from_dict(d) for d in raw)}
+        nodes, global_drift = build_graph(issues, args.repo)
+        path, wrote = emit_site_page(
+            out_dir=args.emit_site, issues=issues, nodes=nodes,
+            global_drift=global_drift, self_repo=args.repo,
+            sync_time_iso=sync_time_iso,
+        )
+        print(f"site page: {'written' if wrote else 'unchanged'} -> {path}")
     return 0
 
 

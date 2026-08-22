@@ -328,6 +328,67 @@ check("the failing map is recorded in the failed list, not silently dropped",
 check("the healthy global map still synced despite the other map's failure", 900 in report_fail.changed)
 check("no update was written for the failing map", 901 not in gh_fail.updated_bodies)
 
+# ---------------------------------------------------------------------------
+print("== site page emission (issue #285) ==")
+import tempfile
+from pathlib import Path as _Path
+
+gh_site = FakeGh([
+    map_issue(214, "Global", destination="Global destination.", decisions="ADR-018 accepted.",
+              questions="No open questions."),
+    map_issue(215, "MCP lifecycle and dispatch stack", milestone="Open-source product packaging"),
+    work_issue(1, "Wire dispatch loop", state="open", labels=["workflow:ready"], milestone="Open-source product packaging"),
+    work_issue(2, "Done work", state="closed", labels=["workflow:done"], milestone="Open-source product packaging"),
+    work_issue(3, "Blocked issue", state="open", labels=["workflow:blocked"], milestone="M2",
+               body="Blocked by: #1"),
+])
+site_issues = {i["number"]: a.issue_from_dict(i) for i in gh_site.issues}
+site_nodes, site_drift = a.build_graph(site_issues, REPO_ID)
+site_page = a.render_site_page(site_issues, site_nodes, site_drift, REPO_ID, "2026-01-01T00:00:00Z")
+check("site page has frontmatter title", "title: Status and roadmap (Atlas)" in site_page)
+check("site page lists roadmap areas", "MCP lifecycle and dispatch stack" in site_page)
+check("site page lists the actionable frontier", "Wire dispatch loop (#1)" in site_page)
+check("site page lists milestone overview", "Open-source product packaging: open 1, closed 1" in site_page)
+check("site page renders blockers", "Blocked issue (#3) blocked by Wire dispatch loop (#1)" in site_page)
+check("site page has last-sync timestamp", "Last successful sync" in site_page and "2026-01-01T00:00:00Z" in site_page)
+
+with tempfile.TemporaryDirectory() as td:
+    # out_dir is the repo checkout root (emit writes under site/...);
+    # a fresh timestamp renders a fresh page (freshness is part of the page).
+    out = _Path(td)
+    path1, wrote1 = a.emit_site_page(
+        out_dir=out, issues=site_issues, nodes=site_nodes,
+        global_drift=site_drift, self_repo=REPO_ID, sync_time_iso="2026-01-01T00:00:00Z",
+    )
+    check("emit writes the page on first run", wrote1 is True)
+    check("emit writes to the reserved docs path", path1.as_posix().endswith(a.SITE_PAGE_PATH))
+    path2, wrote2 = a.emit_site_page(
+        out_dir=out, issues=site_issues, nodes=site_nodes,
+        global_drift=site_drift, self_repo=REPO_ID, sync_time_iso="2026-01-01T00:00:00Z",
+    )
+    check("emit is idempotent at the same timestamp: writes nothing", wrote2 is False)
+    path3, wrote3 = a.emit_site_page(
+        out_dir=out, issues=site_issues, nodes=site_nodes,
+        global_drift=site_drift, self_repo=REPO_ID, sync_time_iso="2026-01-02T00:00:00Z",
+    )
+    check("emit refreshes the page when the sync timestamp advances", wrote3 is True)
+
+    # Safe-content scan: a leak in an issue title must never reach the page.
+    gh_leak = FakeGh([
+        map_issue(214, "Global"),
+        work_issue(71, "Leaked key AKIAABCDEFGHIJKLMNOP", state="open",
+                   labels=["workflow:ready"], milestone="M"),
+    ])
+    leak_issues = {i["number"]: a.issue_from_dict(i) for i in gh_leak.issues}
+    leak_nodes, leak_drift = a.build_graph(leak_issues, REPO_ID)
+    try:
+        a.emit_site_page(out_dir=out, issues=leak_issues, nodes=leak_nodes,
+                         global_drift=leak_drift, self_repo=REPO_ID,
+                         sync_time_iso="2026-01-01T00:00:00Z")
+        check("emit rejects a page containing known-bad markers", False)
+    except ValueError:
+        check("emit rejects a page containing known-bad markers", True)
+
 if fail:
     print(f"\n{len(fail)} check(s) failed: {fail}")
     sys.exit(1)
