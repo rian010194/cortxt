@@ -15,9 +15,12 @@ neutral model route, PR #205) is already proven; AC 2 is the missing
 mechanical loop. The worker is deterministic (pure Python + git), so no API
 key, prompt, or model reasoning is involved, and the proof is reproducible.
 
-Only the `dsh` registry entry is replaced (after asserting the real manifest
-routes `background-task` to `dsh`), so claim/run identity and the result
-envelope flow through the production registry path.
+The routed engine's registry entry is replaced (after asserting the real
+manifest routes `background-task` deterministically to whichever engine
+wins the cost/tie-break at proof time -- `dsh` before the free-tier
+hermes-free entry (#244) joined the manifest, `hermes-free` today), so
+claim/run identity and the result envelope flow through the production
+registry path without hard-coding one engine.
 
 Rules honored: no secrets/prompts/model reasoning in GitHub; the worker never
 approves/merges/closes; reset is a separate harness cleanup step after the
@@ -122,18 +125,20 @@ def observe_labels(repo: str, issue_num: str, *, expect: set[str], step: str) ->
 class DeterministicCommitAdapter:
     """WorkerAdapter-protocol implementation (scripts/worker_adapters.py) that
     writes one content-free marker file in a pre-created isolated worktree and
-    commits it locally. Replaces the `dsh` registry entry for the proof only.
+    commits it locally. Replaces the routed engine's registry entry for the
+    proof only.
 
     The adapter is invoked from a background thread by dispatch_async(); its
-    worktree path and expected run metadata are fixed at construction.
+    worktree path, expected run metadata, and the routed engine_id it stands
+    in for are fixed at construction.
     """
 
-    runtime = "ci-deterministic/dsh-route-v1"
-
-    def __init__(self, worktree: Path, issue_id: str, log_dir: Path) -> None:
+    def __init__(self, worktree: Path, issue_id: str, log_dir: Path, engine_id: str) -> None:
         self.worktree = worktree
         self.issue_id = issue_id
         self.log_dir = log_dir
+        self.engine_id = engine_id
+        self.runtime = f"ci-deterministic/{engine_id}-route-v1"
         self.invocation_count = 0
 
     # -- git helpers (all against the isolated worktree) ---------------------
@@ -223,7 +228,7 @@ class DeterministicCommitAdapter:
                     f"sha256:{marker_hash}",
                 ],
                 "evidence": [
-                    {"kind": "route", "engine_id": "dsh", "matched_tag": "background-task",
+                    {"kind": "route", "engine_id": self.engine_id, "matched_tag": "background-task",
                      "worker": self.runtime},
                     {"kind": "isolated_worktree", "path_is_worktree": True,
                      "commit_landed": True, "head_before": head_before,
@@ -376,20 +381,30 @@ def run_proof(args: argparse.Namespace) -> dict:
         raise ProofError(f"proof issue body missing required sections: {missing}")
     evidence["preconditions"] = {"labels": sorted(labels), "body_sections_ok": True}
 
-    # 2. Deterministic routing assertion: background-task -> dsh.
+    # 2. Deterministic routing assertion: background-task must resolve to a
+    #    concrete engine, and that engine must be the one we replace. The
+    #    winner is the cheapest cost_class with a deterministic engine_id
+    #    tie-break (routing/engine_manifest.py) -- `dsh` until the free-tier
+    #    hermes-free entry (#244) joined the manifest for background-task,
+    #    `hermes-free` today. We assert the production route rather than a
+    #    hard-coded engine so the proof tracks manifest reality.
     choice = route(["background-task"], DEFAULT_MANIFESTS)
-    if choice.matched_tag != "background-task" or choice.engine_id != "dsh":
+    if choice.matched_tag != "background-task":
         raise ProofError(
-            f"expected route background-task -> dsh, got matched_tag={choice.matched_tag!r} "
-            f"engine_id={choice.engine_id!r}"
+            f"expected matched_tag background-task, got matched_tag={choice.matched_tag!r}"
         )
+    engine_id = choice.engine_id
     manifests = {m.engine_id: m for m in DEFAULT_MANIFESTS}
-    if "dsh" not in manifests or "background-task" not in manifests["dsh"].task_shapes:
-        raise ProofError("dsh manifest missing or does not declare background-task")
-    if not build_default_engine_context().get("dsh").has_provider:
-        raise ProofError("default engine context has no provider registered for dsh")
-    evidence["route"] = {"matched_tag": choice.matched_tag, "engine_id": choice.engine_id}
-    log(f"route asserted: background-task -> dsh")
+    if engine_id not in manifests or "background-task" not in manifests[engine_id].task_shapes:
+        raise ProofError(
+            f"routed engine {engine_id!r} missing from manifests or does not declare background-task"
+        )
+    if not build_default_engine_context().get(engine_id).has_provider:
+        raise ProofError(
+            f"default engine context has no provider registered for routed engine {engine_id!r}"
+        )
+    evidence["route"] = {"matched_tag": choice.matched_tag, "engine_id": engine_id}
+    log(f"route asserted: background-task -> {engine_id}")
 
     # 3. Dispatcher + registry, with the proof issue as the target.
     state_dir = temp_root / "state"
@@ -412,10 +427,11 @@ def run_proof(args: argparse.Namespace) -> dict:
     if not head_before:
         raise ProofError("could not read head_before from worktree")
 
-    # 6. Replace only the dsh registry entry with the deterministic worker.
-    adapter = DeterministicCommitAdapter(worktree, issue_id, run_log_dir)
-    register_adapter("dsh", adapter)
-    assert ADAPTER_REGISTRY["dsh"] is adapter
+    # 6. Replace only the routed engine's registry entry with the
+    #    deterministic worker.
+    adapter = DeterministicCommitAdapter(worktree, issue_id, run_log_dir, engine_id)
+    register_adapter(engine_id, adapter)
+    assert ADAPTER_REGISTRY[engine_id] is adapter
 
     # 7. Invoke through the production path (dispatch_async -> adapter -> complete).
     thread = dispatch_async(dispatcher, run, task_prompt="[ci fixture] see proof issue body")
