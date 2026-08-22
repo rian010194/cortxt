@@ -8,7 +8,8 @@ dispatching work, read these files in order:
 1. `docs/agents/current-operating-model.md`
 2. `docs/architecture/dispatch-contract.md`
 3. `docs/architecture/runtime-and-evaluation-harness.md`
-4. the GitHub issue and any explicitly designated current planning state
+4. `docs/agents/atlas.md` -- roadmap maps derived from GitHub Issues (#210); see also `docs/agents/issue-tracker.md`'s Wayfinding section
+5. the GitHub issue and any explicitly designated current planning state
 
 Do not infer the operating model from one experiment, one Buzz limitation, or
 one runtime README. In particular, a limitation in Buzz-native delegation does
