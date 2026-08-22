@@ -57,7 +57,7 @@ ISSUES_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["
 ALL_OPEN_ISSUES_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "complete", "issues"], "properties": {"schema_version": {"const": 1}, "complete": {"const": True}, "issues": {"type": "array"}}}
 CANDIDATE_DEPENDENCY_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["relation", "target", "target_status", "target_title"], "properties": {"relation": {"type": "string"}, "target": {"type": "integer"}, "target_status": {"type": "string"}, "target_title": {"type": ["string", "null"]}}}
 CANDIDATE_ROW_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["number", "title", "workflow", "area", "milestone", "url", "open_blocker_count", "dependencies", "violations"], "properties": {"number": {"type": "integer"}, "title": {"type": "string"}, "workflow": {"type": "string"}, "area": {"type": ["string", "null"]}, "milestone": {"type": ["string", "null"]}, "url": {"type": ["string", "null"]}, "open_blocker_count": {"type": "integer", "minimum": 0}, "dependencies": {"type": "array", "items": CANDIDATE_DEPENDENCY_SCHEMA}, "violations": {"type": "array", "items": {"type": "string"}}}}
-CANDIDATES_VIEW_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "source", "total", "groups", "handoffs"], "properties": {"schema_version": {"const": 1}, "source": {"type": "object", "additionalProperties": False, "required": ["complete", "status", "age_seconds", "error"], "properties": {"complete": {"type": "boolean"}, "status": {"enum": ["fresh", "stale", "error"]}, "age_seconds": {"type": "integer", "minimum": 0}, "error": {"type": ["object", "null"], "additionalProperties": False, "required": ["kind", "message"], "properties": {"kind": {"type": "string"}, "message": {"type": "string"}}}}}, "total": {"type": "integer", "minimum": 0}, "groups": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["id", "count", "rows"], "properties": {"id": {"type": "string"}, "count": {"type": "integer", "minimum": 0}, "rows": {"type": "array", "items": CANDIDATE_ROW_SCHEMA}}}}, "handoffs": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["id", "enabled", "reason"], "properties": {"id": {"type": "string"}, "enabled": {"type": "boolean"}, "reason": {"type": "string"}}}}}}
+CANDIDATES_VIEW_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "source", "total", "groups", "handoffs"], "properties": {"schema_version": {"const": 1}, "source": {"type": "object", "additionalProperties": False, "required": ["complete", "status", "age_seconds", "error"], "properties": {"complete": {"type": "boolean"}, "status": {"enum": ["fresh", "stale", "error"]}, "age_seconds": {"type": "integer", "minimum": 0}, "error": {"type": ["object", "null"], "additionalProperties": False, "required": ["kind", "message"], "properties": {"kind": {"type": "string"}, "message": {"type": "string"}}}}}, "total": {"type": "integer", "minimum": 0}, "groups": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["id", "count", "rows"], "properties": {"id": {"type": "string"}, "count": {"type": "integer", "minimum": 0}, "rows": {"type": "array", "items": CANDIDATE_ROW_SCHEMA}}}}, "handoffs": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["id", "enabled", "reason"], "properties": {"id": {"type": "string"}, "enabled": {"type": "boolean"}, "reason": {"type": "string"}, "operation": {"type": "string"}, "port": {"type": "string"}, "effect_class": {"type": "string"}, "authorization": {"type": "object"}, "confirm": {"type": "object"}}}}}}
 
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
@@ -83,6 +83,15 @@ READ_OPERATIONS = {
     "issue.workflow.get.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["issue_number"], "properties": {"issue_number": {"type": "integer", "minimum": 1}}}, "issue.workflow.v1", "public-metadata", 2000, 30, 30, "read:issue-workflow", True),
 }
 
+ISSUE_ID_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["issue_id"],
+                   "properties": {"issue_id": {"type": "string"}}}
+ACTIONS: dict[str, ActionEntry] = {
+    "workflow.mark-ready.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",
+                                          "workflow-transition", frozenset({"operator"}), "act:mark-ready", True),
+    "workflow.claim-run.v1": ActionEntry("cli", ISSUE_ID_SCHEMA, "action.status.v1",
+                                         "run-dispatch", frozenset({"operator"}), "act:claim-run", True),
+}
+
 _LAYOUT = ("stack", "row", "grid", "tabs", "panel")
 PRIMITIVES = {name: PrimitiveEntry(frozenset({"label", "columns", "gap"}), {}, "empty", "error") for name in _LAYOUT}
 PRIMITIVES.update({name: PrimitiveEntry(frozenset(), {}, "empty", "error") for name in ("divider", "spacer")})
@@ -99,6 +108,6 @@ PRIMITIVES.update({
 })
 
 TRANSFORMS: dict[str, Any] = {}
-ACTIONS: dict[str, ActionEntry] = {}
 DATA_CLASS_ORDER = {"public-metadata": 0, "operational": 1}
-ALLOWED_CAPABILITIES = frozenset(op.capability for op in READ_OPERATIONS.values())
+ALLOWED_CAPABILITIES = (frozenset(op.capability for op in READ_OPERATIONS.values())
+                        | frozenset(op.capability for op in ACTIONS.values()))

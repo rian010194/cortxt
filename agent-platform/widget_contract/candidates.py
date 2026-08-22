@@ -29,7 +29,8 @@ def _area(issue: dict[str, Any], labels: list[str]) -> tuple[str | None, list[st
 def build_candidates_view(issues: Iterable[dict[str, Any]], *, complete: bool = True,
                           status: str = "fresh", age_seconds: int = 0,
                           error: dict[str, Any] | None = None,
-                          blocker_statuses: dict[int, dict[str, Any]] | None = None) -> dict[str, Any]:
+                          blocker_statuses: dict[int, dict[str, Any]] | None = None,
+                          actions: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
     source = sorted((dict(x) for x in issues if str(x.get("state", "")).upper() == "OPEN"), key=lambda x: x["number"])
     by_number = {x["number"]: x for x in source}
     parsed: dict[int, list[dict[str, Any]]] = {}
@@ -88,10 +89,18 @@ def build_candidates_view(issues: Iterable[dict[str, Any]], *, complete: bool = 
         else: group = "other"
         groups[group].append(row)
     result_groups = [{"id": name, "count": len(rows), "rows": rows} for name, rows in groups.items()]
+    if actions:
+        handoffs = [{"id": action["id"], "operation": action["operation"], "enabled": True,
+                     "port": action["port"], "effect_class": action["effect_class"],
+                     "authorization": dict(action["authorization"]), "confirm": dict(action["confirm"]),
+                     "reason": "Operator-authorized action: approval reference + confirm required"}
+                    for action in actions]
+    else:
+        handoffs = [{"id": "mark-ready", "enabled": False, "reason": "Read-only: no label writes"},
+                    {"id": "claim-run", "enabled": False, "reason": "Read-only: no dispatch callback"}]
     return {"schema_version": 1, "source": {"complete": complete, "status": status,
             "age_seconds": age_seconds, "error": error}, "total": len(source), "groups": result_groups,
-            "handoffs": [{"id": "mark-ready", "enabled": False, "reason": "Read-only: no label writes"},
-                         {"id": "claim-run", "enabled": False, "reason": "Read-only: no dispatch callback"}]}
+            "handoffs": handoffs}
 
 
 def render_candidates_tree(model: dict[str, Any]) -> dict[str, Any]:

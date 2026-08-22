@@ -144,7 +144,8 @@ def test_spec_loads_and_handoffs_are_disabled_without_callbacks():
     from pathlib import Path
     spec = Path(__file__).parents[2] / "widget_contract" / "specs" / "candidates-0.1.yaml"
     widget = load_widget_file(spec)
-    assert widget.id == "candidates" and widget.actions == ()
+    assert widget.id == "candidates" and len(widget.actions) == 2
+    assert {a.id for a in widget.actions} == {"mark-ready", "claim-run"}
     model = build_candidates_view([])
     assert all(x == {**x, "enabled": False} and "callback" not in x for x in model["handoffs"])
 
