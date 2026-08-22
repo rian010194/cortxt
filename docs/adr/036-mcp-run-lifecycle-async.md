@@ -1,9 +1,9 @@
 # ADR-036: MCP run lifecycle asynchronous create and status polling
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-22
-**Deciders:** Rikard Andersson (operator)
-**Technical Story:** issue #245
+**Deciders:** Rikard Andersson (operator; acceptance approved 2026-08-22)
+**Technical Story:** issue #245; accepted after issue #247 dogfood proof
 
 ## Context
 
@@ -44,6 +44,7 @@ Add `cortxt_run_status` as a Tier-0 read-only tool. It requires the lifecycle se
 - [x] Running resume, claim conflict, adapter failure, and unknown-run boundaries are tested.
 - [x] Tier-0 schema, protocol error mapping, and mandate-free audit fields are tested.
 - [x] Documentation updated.
+- [x] Issue #247 implementation evidence: a real external MCP client drove async create, status polling, and review submission end-to-end over stdio with a deterministic network-free engine; covered by pytest in `agent-platform/tests`.
 
 ## Open Questions
 
