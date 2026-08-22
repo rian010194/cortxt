@@ -1,6 +1,6 @@
 # ADR-032: MCP Tier-1+ tool calls require a signed, nonce-bound mandate envelope, verified before execution
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-22
 **Deciders:** Rikard Andersson (operator), scope approved 2026-08-22 (session); design/adversarial analysis by Claude Code and the coordinator
 **Technical Story:** issue #206 step 2b; design documents `artifacts/mandate-envelope-proposal.md`, `lab/mandate-206-scope-block.md`, `lab/mandate-206-adversarial-review.md`, `lab/issue-206-approved-scope.md` (workspace-local, not tracked in this repo)
@@ -212,12 +212,15 @@ only ever sees a public key, which is not secret by construction.
    documented v2 option once the server is exposed beyond loopback.
 
 ## Validation
-- [ ] Implementation matches decision -- builder runs the focused mandate
+- [x] Implementation matches decision -- builder runs the focused mandate
       and protocol tests plus the full `tests/cortxt_mcp/` suite locally;
-      coordinator will independently run and confirm CI before acceptance.
-- [ ] Tests cover decision boundaries -- runtime below, equal to, and above
+      coordinator independently ran and confirmed CI before acceptance
+      (PR #227: focused suite 59 passed, full cortxt_mcp suite 91 passed,
+      `agent-platform-tests` green on CI).
+- [x] Tests cover decision boundaries -- runtime below, equal to, and above
       the maximum; omitted requested runtime; malformed envelope runtime;
-      and pre-handler rejection are covered, pending coordinator CI run.
+      and pre-handler rejection are covered and confirmed by the
+      coordinator CI run.
 
 ## Open Questions (deferred, not blocking this ADR)
 - **Operator issuance UX.** `issue_mandate()` is a CLI-callable function
@@ -242,3 +245,6 @@ only ever sees a public key, which is not secret by construction.
   `create_run`/`resume_run`/`submit_for_review`) that depends on this
   slice, or before the MCP server is exposed beyond loopback, whichever
   comes first.
+- Accepted 2026-08-22 (PR #227 merged): `max_runtime_seconds` is an
+  enforced v1 bound; acceptance limited to the current single-stdio-process,
+  loopback/stdio deployment (see Open Questions on multi-process state).

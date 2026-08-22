@@ -29,6 +29,8 @@ Updated: 2026-08-21 (ADR-031 added).
 | 029 | Unattended daemon credential isolation — allowlisted subprocess-env, shared launch discipline, broker as read-only caller | **Proposed** | Spec-only, not implemented; closes the env-inheritance gap in `invoke_hermes()`/`CodexAdapter.invoke()` and generalizes the Windows shim fix |
 | 030 | Plan-vs-actual divergence tracking — YAML-sidecar + explicit-only correlation, ghost markers on real timeline | **Proposed** (Part 1 implemented) | `plan_task_ref` field exists and flows through the pipeline (Part 1, 2026-08-20); reconciliation/rendering (Part 2) still spec-only |
 | 031 | Open-source license — Apache-2.0 | **Accepted** | `LICENSE` → verbatim Apache-2.0 (copyright Rikard Andersson); replaces "viewable, not open source"; basis for product packaging/contributions |
+| 032 | MCP Tier-1+ tool calls require a signed, nonce-bound mandate envelope, verified before execution | **Accepted** (2026-08-22) | Ed25519 mandate envelope, fail-closed verification inside `call_tool`, durable nonce/budget stores, `max_runtime_seconds` enforced (PR #227); Proposed until 2026-08-22 |
+| 033 | MCP mandate envelopes identify versioned signing keys and support overlap and revocation | **Proposed** | Key rotation follow-up to ADR-032: schema v2 `kid`, overlap rotation bounded by envelope expiry, revocation denylist before signature work; not yet implemented |
 
 ## Decisions and Authority
 
