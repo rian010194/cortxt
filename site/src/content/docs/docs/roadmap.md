@@ -1,18 +1,14 @@
 ---
 title: Status and roadmap
-description: Current product status and the future hook point for Atlas maps.
+description: Current product status and the live-derived Atlas roadmap page.
 ---
 
 ## Current status
 
 Cortxt is CLI-primary, with durable work scope and evidence in GitHub Issues, provider-neutral runtime adapters, a verified dispatcher path, and an MCP external integration surface. Human approval remains the final gate.
 
-## Atlas map hook
+## Atlas roadmap
 
-This route is the reserved publication point for future Atlas map views. Atlas may later turn current status, dependencies, and plan-versus-actual relationships into navigable maps here.
+The [live Atlas status page](./atlas-status) is generated automatically from the Atlas roadmap maps (GitHub issues remain the single source of truth). It shows the current frontier, blockers, milestone overview, discipline violations, and review-evidence presence, refreshed by the daily Atlas sync.
 
-:::note[Deliberately a stub]
-No Atlas visualization, data pipeline, or interactive map is part of the current site build. This page establishes the stable content and route boundary only.
-:::
-
-Until Atlas integration is separately scoped and approved, status remains a concise editorial summary linked to repository evidence.
+The full, canonical roadmap with coordinator-owned prose lives in the Atlas map issues ([global map](https://github.com/rian010194/cortxt/issues/214), [MCP lifecycle and dispatch stack](https://github.com/rian010194/cortxt/issues/215)).
