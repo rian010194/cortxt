@@ -11,6 +11,9 @@ work's state, memory, tools, evidence, and evolution; models, inference
 providers, and external agent engines remain replaceable resources behind
 Cortxt-owned contracts.
 
+Visit [cortxt.io](https://cortxt.io) for the product site and
+[docs.cortxt.io](https://docs.cortxt.io) for documentation.
+
 The current product wedge is long-running research and analysis governed by
 data-class and provider policy, delivered through a repository-native CLI
 (`cortxt`), with a thin widget complement and an MCP server as the external
