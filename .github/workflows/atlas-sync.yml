@@ -1,0 +1,54 @@
+name: Atlas sync
+
+# Regenerates the auto-generated sections of every atlas:map issue (#210).
+# Coordinator-owned sections (Destination, Decisions so far, Open questions)
+# are never touched by this workflow -- see docs/agents/atlas.md.
+
+permissions:
+  contents: read
+  issues: write
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "17 6 * * *" # daily, off the hour to avoid GitHub Actions load spikes
+
+concurrency:
+  group: atlas-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run Atlas sync
+        id: sync
+        run: python scripts/atlas_sync.py --repo "$GITHUB_REPOSITORY"
+        continue-on-error: true
+
+      - name: Report failure without discarding last-good map content
+        if: steps.sync.outcome == 'failure'
+        run: |
+          echo "::error::Atlas sync failed -- last-good map content is preserved (no write happened for the failing map(s)). See the job log above for details."
+          exit 1
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Atlas sync" >> "$GITHUB_STEP_SUMMARY"
+          echo "See individual atlas:map issue comments for the per-map sync summary." >> "$GITHUB_STEP_SUMMARY"
