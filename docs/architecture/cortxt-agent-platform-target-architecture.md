@@ -243,6 +243,12 @@ ADMITTED
   -> WAITING_FOR_OPERATOR | SUCCEEDED | BLOCKED | FAILED
 ```
 
+> Target-state vocabulary. The implemented v0.1 vocabulary is the
+> session_state event set (session.created, child.spawned, join.waiting,
+> join.satisfied, budget.reclaimed, budget.transferred, session.terminal)
+> with terminal statuses succeeded/blocked/failed/cancelled/lost
+> (supervisor/coordinator.py).
+
 Every transition must be explicit, version-controlled, and readable back.
 
 ### 7.3 Child runs
@@ -605,8 +611,9 @@ The agent core must depend only on an internal `InferencePort`.
 
 The following can exist in parallel behind the gateway:
 
-- external endpoints, e.g. InferX;
-- Prime Inference or other services;
+- external endpoints (the current bootstrap provider, referenced in the
+  adapters; "InferX" appears only as an L0/L2 synthetic fixture:
+  `inference/fixtures/l0-inferx-like.json`, `l2-inferx-like.json`);
 - OpenAI-compatible gateways;
 - local models;
 - Cortxt-hosted vLLM or SGLang;
@@ -814,6 +821,12 @@ verification:
   verdict: passed
 ```
 
+ADR-034 (MCP run lifecycle tools, Accepted 2026-08-22) additively extends
+the real dispatch-contract envelope with `session_id` (resume), a
+`review` object (submit_for_review), `cost_status`
+(measured|estimated|unknown) on lifecycle responses, and structured
+artifacts `{ref, sha256}`. See cortxt_mcp/run_lifecycle.py.
+
 ## 20. Security model
 
 ### 20.1 Ground rules
@@ -827,6 +840,9 @@ verification:
 - The learning loop must not silently change active production configuration.
 - Private chain-of-thought, credentials, and customer content must not end up
   in the evidence registry.
+- Tier-1+ MCP tool calls require a signed, nonce-bound mandate envelope,
+  verified inside `call_tool` before any handler side effect (ADR-032);
+  key identity and rotation are versioned per ADR-033 (Proposed).
 
 ### 20.2 Prompt injection and foreign instructions
 
@@ -908,6 +924,11 @@ choice (ADR-019); coordination: migrated (§24.1)
 Pi coding harness previously stood in this table as a replacement row. Per
 ADR-019 (2026-08-16) that is no longer correct: the Cortxt Agent Runtime +
 Coding Profile is an **addition** to Pi, not a replacement for it. See 22.3.
+
+Engine selection and resume use the EngineAdapter/EngineContext
+service-broker layer (ADR-026/027) with opaque per-engine `session_id`
+resume (ADR-028) — see runtime/engine_registry.py,
+runtime/engine_adapter.py, runtime/adapters/.
 
 ### 22.3 Transitional and permanent roles
 
@@ -1180,7 +1201,9 @@ A user sends a bounded research or coding task
 
 Limitations:
 
-- at most recursion depth 1;
+- at most recursion depth 1 (the v0.1 target; the recursive RLM Supervisor
+  on main already exceeds this — depth-2 decomposition with full subtree
+  projection, `supervisor/coordinator.py`);
 - at most two child runs;
 - one writable workspace;
 - no deployments or publications;
@@ -1308,8 +1331,12 @@ Done (verified against the ADR registry and the code):
 - ADR for the Agent Platform as a new bounded context (ADR-016);
 - ADR for the `InferencePort` and provider-independent model boundary (ADR-016);
 - a first vertical slice (ADR-017);
-- v0.1 schemas for Agent State, Model Invocation, and Trajectory Event
-  (`contracts/`, `agent-platform/state/`, `agent-platform/inference/`).
+- the real contract schemas that exist: `contracts/dispatch-request
+  .schema.json` and `contracts/result-envelope.schema.json`;
+- `agent-platform/state/` ledger CLI (run/session state events, not an
+  Agent State schema);
+- `reasoning/geometric/trajectory.py` (trajectory report module, not a
+  committed Trajectory Event schema).
 
 Still open before the next major decision packet:
 
@@ -1330,6 +1357,12 @@ has (ADR-017).
 
 Skills are first-class objects in the Cortxt Agent Platform. They describe
 reusable work patterns and can compose reasoning operators and tools.
+
+Skills and profiles carry the engine-agnostic capability manifest shape
+per ADR-022 (`routing/engine_manifest.py`); the machine-readable
+`schemas/skill-manifest.schema.json` and `schemas/profile-manifest
+.schema.json` exist, and evolution/promotion is implemented in
+`learning/skill_candidate.py` and `portability/skills/registry.py`.
 
 A skill must be able to contain:
 
@@ -1433,41 +1466,44 @@ MCP, CLI, REST, and browser automation are tool adapters. Skills and reasoning
 should depend on Cortxt's stable tool IDs and schemas, not on the transport's
 or vendor's own names.
 
+MCP is the chosen external integration surface (ADR-024); Tier-1+ MCP
+tools carry the signed mandate envelope (ADR-032) and lifecycle tools
+(ADR-034). The transport-neutral principle here applies to internal tool
+IDs and schemas, not to the external surface decision.
+
 ## 33. Initial repository structure
 
-The first non-production scaffold is:
+The current directory set (verified against the tree) is:
 
 ```text
 agent-platform/
+|- adapters/           (inference/ only)
+|- cli/
+|- context_store/
+|- cortxt_mcp/         (MCP server; ADR-024/032/034)
+|- daemon/
+|- harness/
+|  |- eval/            (built: runner, baseline_direct, citation_match,
+|  |                    cost, selfhosted_task_class)
+|  `- fixtures/        (coding_longcontext/, research_longcontext/)
+|- inference/
+|- learning/
+|- portability/
+|- reasoning/          (kernel/, recursive/, geometric/)
+|- routing/
+|- runtime/            (adapters/, coding/, execution/, tools/ + ports)
+|- security/
+|- state/              (ledger CLI)
 |- supervisor/
-|- runtime/
-|- reasoning/
-|- state/
-|- memory/
-|- skills/
-|- tools/
-|- inference/
-|- portability/            (built; has no counterpart in §26 — historical)
-`- profiles/
-
-adapters/
-|- inference/
-|- agent-runtime/
-|- tools/
-`- storage/
-
-harness/                   (planned, not yet built)
-|- runtime/                (cf. §26's "execution" — the name in this section
-|                          follows runtime-and-evaluation-harness.md, line 68)
-`- evaluation/
+`- tests/
 ```
 
-The repo's existing `skills/` and `tools/` continue to contain today's
-concrete inventory. `agent-platform/skills` and `agent-platform/tools` should
-contain platform code for registry, gateway, policy, evolution, and promotion.
-No existing execution path is moved into the scaffold until a vertical slice
-and its contracts are verified.
+Repo-root `skills/` and `tools/` do not exist; today's tool inventory lives
+in `agent-platform/runtime/tools/`. No existing execution path is moved into
+a scaffold until a vertical slice and its contracts are verified.
 
-`harness/runtime/` is the normative promotion path that
-`runtime-and-evaluation-harness.md` (line 68) describes — the name replaces §26's
-older `harness/execution/`.
+Runtime candidates are promoted into the tracked runtime path
+(`agent-platform/runtime/`) once their interfaces, isolation, cleanup,
+observability, and failure behavior are stable — see
+`runtime-and-evaluation-harness.md`; the evaluation side is tracked at
+`agent-platform/harness/eval/`.
