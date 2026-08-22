@@ -1,8 +1,8 @@
 # ADR-038: Declarative Widget Contract and Authorized Action Ports
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-22
-**Deciders:** Rikard Andersson (operator, pending review)
+**Deciders:** Rikard Andersson (operator acceptance 2026-08-22)
 **Technical Story:** issue #251 (widget platform design), issue #265 (materialization); source: `lab/widget-platform/track-a-widget-contract.md` + `synthesis.md` §5
 
 ## Context
