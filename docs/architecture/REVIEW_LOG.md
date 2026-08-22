@@ -6,6 +6,7 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-035 | Accepted — embeddings provider for Phase 6 (Voyage via EmbeddingPort) approved after live Voyage arm re-run PASS posted as issue #233 AC2 evidence; status Proposed → Accepted | #239 |
 | 2026-08-22 | ADR-035 | Added — embeddings provider for Phase 6, Voyage via EmbeddingPort (Proposed); resolves target-architecture §27 #10 (issue #233) | #234 |
 | 2026-08-22 | ADR-034 | Accepted — run lifecycle tools approved after implementation + CI confirmation (PR #231); status Proposed → Accepted | #231 |
 | 2026-08-22 | ADR-034 | Added — MCP run lifecycle tools (Proposed); records the ADR-032 Expiry/Review-Trigger review as a strengthening (issue #230) | #231 |
