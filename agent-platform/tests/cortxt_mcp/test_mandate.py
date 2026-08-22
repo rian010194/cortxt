@@ -203,6 +203,58 @@ def test_data_class_above_max_rejected(keypair):
     assert decision.reason == mandate.REASON_DATA_CLASS_EXCEEDED
 
 
+@pytest.mark.parametrize("requested_runtime", [0.0, 3599.0, 3600.0])
+def test_requested_runtime_at_or_below_max_accepted(keypair, requested_runtime):
+    private_key, public_key_hex = keypair
+    issued = _issue(private_key, max_runtime_seconds=3600)
+    decision = _verify(
+        issued.envelope, {GRANTED_BY: public_key_hex},
+        call_context=mandate.CallContext(
+            issue_ref="owner/repo#206",
+            estimated_runtime_seconds=requested_runtime,
+        ),
+    )
+    assert decision.accepted
+
+
+def test_requested_runtime_above_max_rejected(keypair):
+    private_key, public_key_hex = keypair
+    issued = _issue(private_key, max_runtime_seconds=60)
+    decision = _verify(
+        issued.envelope, {GRANTED_BY: public_key_hex},
+        call_context=mandate.CallContext(
+            issue_ref="owner/repo#206",
+            estimated_runtime_seconds=60.1,
+        ),
+    )
+    assert not decision.accepted
+    assert decision.reason == mandate.REASON_RUNTIME_EXCEEDED
+
+
+def test_undeclared_requested_runtime_is_accepted(keypair):
+    private_key, public_key_hex = keypair
+    issued = _issue(private_key, max_runtime_seconds=0)
+    decision = _verify(
+        issued.envelope, {GRANTED_BY: public_key_hex},
+        call_context=mandate.CallContext(
+            issue_ref="owner/repo#206",
+            estimated_runtime_seconds=None,
+        ),
+    )
+    assert decision.accepted
+
+
+@pytest.mark.parametrize("bad_value", [-1, "not-a-number"])
+def test_malformed_envelope_runtime_rejected(keypair, bad_value):
+    private_key, public_key_hex = keypair
+    issued = _issue(private_key)
+    tampered_unsigned = {**issued.envelope, "max_runtime_seconds": bad_value}
+    resigned = _resign(tampered_unsigned, private_key)
+    decision = _verify(resigned, {GRANTED_BY: public_key_hex})
+    assert not decision.accepted
+    assert decision.reason == mandate.REASON_MALFORMED_ENVELOPE
+
+
 def test_budget_cumulative_exceeded_rejected(keypair):
     private_key, public_key_hex = keypair
     issued = _issue(private_key, budget_usd_max=10.0)
@@ -427,6 +479,33 @@ def test_ac2_valid_envelope_executes_handler_and_disallowed_tool_does_not(keypai
         )
     assert excinfo.value.reason == mandate.REASON_TOOL_NOT_ALLOWED
     assert called["count"] == 1  # second handler never ran
+
+
+def test_ac2_over_max_runtime_does_not_invoke_handler(keypair, monkeypatch):
+    private_key, public_key_hex = keypair
+    called = {"handler_ran": False}
+
+    def spy_handler(_arguments):
+        called["handler_ran"] = True
+        return {"status": "succeeded"}
+
+    monkeypatch.setitem(tools.TOOL_REGISTRY, "cortxt_dispatch",
+                         tools.ToolSpec("cortxt_dispatch", tools.TIER_DISPATCH, "spy", spy_handler))
+    issued = _issue(private_key, max_runtime_seconds=30)
+    context = mandate.CallContext(
+        issue_ref="owner/repo#206",
+        estimated_runtime_seconds=31.0,
+    )
+
+    with pytest.raises(tools.MandateRejectedError) as excinfo:
+        tools.call_tool(
+            "cortxt_dispatch", {}, allow_dispatch=True, allow_credentials=False,
+            mandate=issued.envelope,
+            mandate_verifier=_verifier({GRANTED_BY: public_key_hex}),
+            call_context=context,
+        )
+    assert excinfo.value.reason == mandate.REASON_RUNTIME_EXCEEDED
+    assert called["handler_ran"] is False
 
 
 def test_ac3_same_nonce_twice_second_call_rejected_first_unaffected(keypair, monkeypatch):

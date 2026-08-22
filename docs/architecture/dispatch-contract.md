@@ -1,4 +1,4 @@
-﻿# Dispatch contract
+# Dispatch contract
 
 ## Purpose
 
@@ -77,8 +77,12 @@ documents, prompts, raw reasoning, or unrestricted logs in GitHub.
 ## State transitions
 
 These transitions are contractual and now executable via the designated
-`workflow:*` label carrier (ADR-018), pending the dispatcher implementation
-tracked in issue #122.
+`workflow:*` label carrier (ADR-018), implemented by
+`scripts/dispatcher.py` (claim/run identity and label transitions; see also
+`docs/agents/work-launcher.md` for the parallel `cortxt work` entry point).
+The dispatcher's atomic-claim guarantee is single-process; concurrent
+dispatcher processes remain an open race risk (ADR-018 clarification,
+2026-08-22).
 
 - A valid claim moves the GitHub item from `Ready` to `In progress`.
 - A complete result with required evidence moves it to `Review`.
