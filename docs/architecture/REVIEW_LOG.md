@@ -6,6 +6,7 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-040 | Added - Delivery execution paths and workflow-label invariant (Proposed; issues #259-#262; operator question 2026-08-22) | #272 |
 | 2026-08-22 | ADR-039 | Accepted - status Proposed -> Accepted by operator approval 2026-08-22; durable multi-writer store choice remains an open operator decision for build #261 | #267 |
 | 2026-08-22 | ADR-038 | Accepted - status Proposed -> Accepted by operator approval 2026-08-22; unblocks builds #259 and #260 | #267 |
 | 2026-08-22 | ADR-039 | Added - Execution map concurrency claims and prerequisite ordering (Proposed; issue #251/#265) | #266 |

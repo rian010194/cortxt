@@ -4,7 +4,7 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accepted after issue #247 dogfood evidence, ADR-037 added and accepted after issue #252 live proof, ADR-038/039 added as Proposed from the widget-platform design and accepted by operator approval 2026-08-22).
+Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accepted after issue #247 dogfood evidence, ADR-037 added and accepted after issue #252 live proof, ADR-038/039 added as Proposed from the widget-platform design and accepted by operator approval 2026-08-22, ADR-040 added as Proposed).
 
 | # | Title | Status | Notes |
 | --- | --- | --- | --- |
@@ -37,6 +37,7 @@ Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accep
 | 037 | MCP review submission daemon synchronization | **Accepted** (2026-08-22) | Step 4 consumes durable review submissions and mechanically transitions their issues to `workflow:review`; accepted after the live transition proof (issues #249 and #252) |
 | 038 | Declarative widget contract and authorized action ports | **Accepted** (2026-08-22) | Widget = named allow-listed reads -> typed data -> platform-owned render primitive tree -> named action requests through `cli`/`mcp`/`github-transition` ports; strict versioned validation, explicit capabilities, typed composition with no widening, action-time authorization (ADR-032 for Tier-1+ MCP, operator gate for irreversible effects); no widget code/raw commands/arbitrary access/self-approval (issue #251/#265) |
 | 039 | Execution map concurrency claims and prerequisite ordering | **Accepted** (2026-08-22) | Deterministic prerequisite waves + fail-closed pre-flight claims over issue/run/branch/worktree/label/session/engine-session/writer-domain resources; conditional all-or-nothing acquisition, leases with reconciliation, immutable attempt history, fresh blocker checks; disjoint-resource parallelism, driver/observer separation, receipt is a gate not authority; current JSON/process-local guards insufficient for parallel writers — durable store is an explicit operator decision (issue #251/#265) |
+| 040 | Delivery execution paths and workflow-label invariant | **Proposed** | Three sanctioned paths (dispatched runtime build / coordinator-direct fast fix / docs-ADR materialization) + hard label invariant: a merged delivery PR never leaves its issue at workflow:inbox; Atlas Work kind records kind for rendering only (issues #259-#262; operator question 2026-08-22) |
 
 ## Decisions and Authority
 
