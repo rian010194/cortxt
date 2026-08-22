@@ -6,6 +6,11 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-031 | Amended — license-file representation: `LICENSE` is the verbatim Apache-2.0 text; project copyright notice moved to `NOTICE` | #221 |
+| 2026-08-22 | ADR-021 | Amended — proof-environment identifier reference removed from tracked ADR surface (public-readiness; no decision change) | #221 |
+| 2026-08-22 | ADR-020 | Amended — decision text updated: former proof-environment identifier removed from the tracked ADR surface (public-readiness cleanup) | #221 |
+| 2026-08-22 | ADR-015 | Amended — proof-environment identifier redacted from tracked ADR surface (public-readiness; no decision change) | #221 |
+| 2026-08-22 | ADR-014 | Amended — proof-environment identifier redacted from tracked ADR surface (public-readiness; no decision change) | #221 |
 | 2026-08-21 | ADR-014 | Translated to English (public-readiness; no decision change) | #197 |
 | 2026-08-21 | ADR-015 | Translated to English (public-readiness; no decision change) | #197 |
 | 2026-08-21 | ADR-016 | Translated to English (public-readiness; no decision change) | #197 |
