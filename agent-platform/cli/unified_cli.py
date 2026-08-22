@@ -1135,6 +1135,10 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(issue_id=data.get("issue_id"), run_id=data["run_id"],
                               status="succeeded", evidence=[data])
     except Exception as exc:
+        if exc.__class__.__name__ == "ExecutionGateError" and hasattr(exc, "code"):
+            return ResultEnvelope(status="failed", error={"category": "execution_map_gate",
+                                                           "code": exc.code,
+                                                           "message": exc.code})
         return ResultEnvelope(status="failed", error={"category": "work_error", "message": str(exc)})
 
 

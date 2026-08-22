@@ -193,7 +193,7 @@ class Dispatcher:
         self.max_parallel_workers = max_parallel_workers
         self.delegation_depth = delegation_depth
 
-    def claim(self, issue_id: str, workflow: str, worker_role: str, runtime: str, lease_seconds: int) -> Run:
+    def claim(self, issue_id: str, workflow: str, worker_role: str, runtime: str, lease_seconds: int, run_id: Optional[str] = None) -> Run:
         repo, num = issue_id.split("#")
         with self._lock:
             active = self.registry.active_issue_ids()
@@ -206,7 +206,8 @@ class Dispatcher:
             if LABEL_READY not in labels:
                 raise RuntimeError(f"{issue_id} is not {LABEL_READY} (labels={labels})")
 
-            run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}_{uuid.uuid4().hex[:8]}"
+            if run_id is None:
+                run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}_{uuid.uuid4().hex[:8]}"
             run = Run(
                 run_id=run_id,
                 issue_id=issue_id,
