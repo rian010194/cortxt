@@ -52,6 +52,7 @@ from cortxt_mcp import mandate  # noqa: E402
 GRANTED_BY = "ac7-demo-operator"
 ISSUE_REF = "owner/repo#206"
 WRONG_ISSUE_REF = "owner/repo#999"
+KID = "ac7-demo-key"
 
 
 def _send(proc: subprocess.Popen, request: dict) -> None:
@@ -73,9 +74,12 @@ def _recv(proc: subprocess.Popen) -> dict:
 
 
 def _issue(private_key: Ed25519PrivateKey, *, issue_ref: str) -> dict:
+    public_key_hex = mandate.public_key_hex_from_private_key(private_key)
     return mandate.issue_mandate(
         private_key=private_key,
         granted_by=GRANTED_BY,
+        kid=KID,
+        public_keys={GRANTED_BY: {KID: public_key_hex}},
         issue_ref=issue_ref,
         allowed_tools=["cortxt_daemon_status"],
         data_class_max="L2",
@@ -83,6 +87,7 @@ def _issue(private_key: Ed25519PrivateKey, *, issue_ref: str) -> dict:
         max_runtime_seconds=3600,
         expires_at="2099-01-01T00:00:00Z",
         scope_text="AC7 demo scope",
+        max_envelope_ttl_seconds=10**10,
     ).envelope
 
 
@@ -96,12 +101,16 @@ def main() -> int:
         snapshot_path.write_text(json.dumps({"daemon": {"status": "idle"}}), encoding="utf-8")
         sessions_dir = tmp_path / "sessions"
         mandate_state_dir = tmp_path / "mandate"
+        mandate_state_dir.mkdir()
+        (mandate_state_dir / "revocations.json").write_text(
+            json.dumps({"generation": 1, "revocations": []}), encoding="utf-8"
+        )
 
         accepted_envelope = _issue(private_key, issue_ref=ISSUE_REF)
         denied_envelope = _issue(private_key, issue_ref=WRONG_ISSUE_REF)
 
         env = dict(os.environ)
-        env["CORTXT_MCP_MANDATE_PUBLIC_KEYS"] = json.dumps({GRANTED_BY: public_key_hex})
+        env["CORTXT_MCP_MANDATE_PUBLIC_KEYS"] = json.dumps({GRANTED_BY: {KID: public_key_hex}})
         env["CORTXT_MCP_MANDATE_STATE_DIR"] = str(mandate_state_dir)
         env["PYTHONPATH"] = str(AGENT_PLATFORM_DIR) + os.pathsep + env.get("PYTHONPATH", "")
 

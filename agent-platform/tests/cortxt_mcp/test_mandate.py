@@ -17,6 +17,7 @@ from cortxt_mcp.nonce_store import NonceStore
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 GRANTED_BY = "operator-demo"
+KID = "key-2026-08"
 FIXED_NOW = datetime(2026, 8, 22, 12, 0, 0, tzinfo=timezone.utc)
 
 
@@ -47,6 +48,11 @@ class FakeBudgetStore:
         return total <= cap
 
 
+class FakeRevocationStore:
+    def is_revoked(self, granted_by, kid, at):  # noqa: ARG002
+        return False
+
+
 @pytest.fixture()
 def keypair():
     private_key = Ed25519PrivateKey.generate()
@@ -55,8 +61,10 @@ def keypair():
 
 
 def _issue(private_key, **overrides):
+    public_key_hex = mandate.public_key_hex_from_private_key(private_key)
     defaults = dict(
         granted_by=GRANTED_BY,
+        kid=KID,
         issue_ref="owner/repo#206",
         allowed_tools=["cortxt_dispatch"],
         data_class_max="L2",
@@ -66,11 +74,15 @@ def _issue(private_key, **overrides):
         scope_text="approved scope text for issue #206",
     )
     defaults.update(overrides)
+    defaults.setdefault("public_keys", {defaults["granted_by"]: {defaults["kid"]: public_key_hex}})
     return mandate.issue_mandate(private_key=private_key, **defaults)
 
 
 def _verify(envelope, public_keys, *, tool="cortxt_dispatch", tier=tools.TIER_DISPATCH,
-            call_context=None, nonce_store=None, budget_store=None, clock=_clock):
+            call_context=None, nonce_store=None, budget_store=None, clock=_clock,
+            revocation_store=None):
+    if public_keys and all(isinstance(value, str) for value in public_keys.values()):
+        public_keys = {issuer: {KID: value} for issuer, value in public_keys.items()}
     return mandate.verify_mandate(
         envelope,
         tool=tool,
@@ -79,6 +91,7 @@ def _verify(envelope, public_keys, *, tool="cortxt_dispatch", tier=tools.TIER_DI
         public_keys=public_keys,
         nonce_store=nonce_store or FakeNonceStore(),
         budget_store=budget_store or FakeBudgetStore(),
+        revocation_store=revocation_store or FakeRevocationStore(),
         clock=clock,
     )
 
@@ -406,10 +419,13 @@ def _resign(envelope_without_valid_signature: dict, private_key: Ed25519PrivateK
 # --- Regression through call_tool (AC 1, 2, 3, 9) -------------------------
 
 def _verifier(public_keys, nonce_store=None, budget_store=None):
+    if public_keys and all(isinstance(value, str) for value in public_keys.values()):
+        public_keys = {issuer: {KID: value} for issuer, value in public_keys.items()}
     return mandate.MandateVerifier(
         public_keys=public_keys,
         nonce_store=nonce_store or FakeNonceStore(),
         budget_store=budget_store or FakeBudgetStore(),
+        revocation_store=FakeRevocationStore(),
         clock=_clock,
     )
 
@@ -631,6 +647,150 @@ def test_protocol_maps_mandate_rejection_to_distinct_error_code(keypair):
     assert response["error"]["code"] == -32002
     assert response["error"]["code"] != -32001
     assert response["error"]["data"]["reason"] == mandate.REASON_MANDATE_MISSING
+
+
+# --- ADR-033 AC10-AC20 -------------------------------------------------
+
+def test_ac10_kid_is_signed_and_resolves_exact_key():
+    old_key, new_key = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
+    keys = {GRANTED_BY: {
+        "old": mandate.public_key_hex_from_private_key(old_key),
+        "new": mandate.public_key_hex_from_private_key(new_key),
+    }}
+    issued = _issue(old_key, kid="old", public_keys=keys)
+    assert _verify(issued.envelope, keys).accepted
+    assert _verify({**issued.envelope, "kid": "new"}, keys).reason == mandate.REASON_INVALID_SIGNATURE
+    assert _verify({**issued.envelope, "kid": "missing"}, keys).reason == mandate.REASON_UNKNOWN_KID
+    assert _verify({**issued.envelope, "kid": ""}, keys).reason == mandate.REASON_UNKNOWN_KID
+
+
+def test_ac11_overlap_and_expiry_are_independent():
+    old_key, new_key = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
+    keys = {GRANTED_BY: {
+        "old": mandate.public_key_hex_from_private_key(old_key),
+        "new": mandate.public_key_hex_from_private_key(new_key),
+    }}
+    old = _issue(old_key, kid="old", public_keys=keys, expires_at="2026-08-22T12:01:00Z")
+    new = _issue(new_key, kid="new", public_keys=keys, expires_at="2026-08-22T13:00:00Z")
+    assert _verify(old.envelope, keys).accepted
+    assert _verify(new.envelope, keys).accepted
+    later = lambda: datetime(2026, 8, 22, 12, 2, tzinfo=timezone.utc)
+    assert _verify(old.envelope, keys, clock=later).reason == mandate.REASON_EXPIRED
+
+
+def test_ac12_issuance_requires_selected_registered_matching_key(keypair):
+    private_key, public_key_hex = keypair
+    with pytest.raises(ValueError, match="unknown granted_by/kid"):
+        _issue(private_key, kid="unknown", public_keys={GRANTED_BY: {KID: public_key_hex}})
+    other = Ed25519PrivateKey.generate()
+    with pytest.raises(ValueError, match="does not match"):
+        _issue(other, public_keys={GRANTED_BY: {KID: public_key_hex}})
+
+
+def test_ac13_ttl_accepts_bound_plus_skew_and_rejects_later(keypair):
+    private_key, _ = keypair
+    _issue(private_key, expires_at="2026-08-22T12:01:05Z", max_envelope_ttl_seconds=60,
+           clock_skew_seconds=5, clock=_clock)
+    with pytest.raises(ValueError, match="maximum envelope TTL"):
+        _issue(private_key, expires_at="2026-08-22T12:01:06Z", max_envelope_ttl_seconds=60,
+               clock_skew_seconds=5, clock=_clock)
+
+
+def test_ac14_revocation_precedes_signature_nonce_expiry_and_budget(keypair):
+    private_key, public_key_hex = keypair
+    issued = _issue(private_key, expires_at="2020-01-01T00:00:00Z",
+                    max_envelope_ttl_seconds=10**10, clock=_clock)
+    class Revoked:
+        def is_revoked(self, *args):
+            return True
+    class MustNotRun:
+        def check_and_consume(self, nonce):
+            raise AssertionError("nonce consumed")
+        def record_and_check(self, mandate_id, cost, cap):
+            raise AssertionError("budget debited")
+    decision = _verify({**issued.envelope, "signature": "bad"}, {GRANTED_BY: public_key_hex},
+                       revocation_store=Revoked(), nonce_store=MustNotRun(), budget_store=MustNotRun())
+    assert decision.reason == mandate.REASON_KEY_REVOKED
+
+
+def test_ac19_v1_clean_cutover_is_unknown_schema(keypair):
+    private_key, public_key_hex = keypair
+    issued = _issue(private_key)
+    v1 = dict(issued.envelope)
+    v1.pop("kid")
+    v1["schema_version"] = 1
+    decision = _verify(v1, {GRANTED_BY: public_key_hex})
+    assert decision.reason == mandate.REASON_UNKNOWN_SCHEMA_VERSION
+
+
+def test_ac18_broker_credentials_are_tuple_specific_and_collision_safe(keypair):
+    private_key, _ = keypair
+    from cryptography.hazmat.primitives import serialization
+    pem = private_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                    serialization.NoEncryption())
+    class Broker:
+        def __init__(self): self.values = {}; self.loads = []
+        def store(self, credential_id, value, operator_confirmed):
+            assert operator_confirmed is True; self.values[credential_id] = value
+        def inject(self, credential_id, requesting_runtime, purpose):
+            self.loads.append((credential_id, requesting_runtime, purpose)); return self.values[credential_id]
+    broker = Broker()
+    mandate.store_signing_key_in_broker(pem, granted_by="a/b", kid="c", broker=broker)
+    mandate.store_signing_key_in_broker(pem, granted_by="a", kid="b/c", broker=broker)
+    assert len(broker.values) == 2
+    loaded = mandate.load_signing_key_from_broker(granted_by="a/b", kid="c", broker=broker,
+                                                   purpose="rotate mandate key")
+    assert mandate.public_key_hex_from_private_key(loaded) == mandate.public_key_hex_from_private_key(private_key)
+    assert broker.loads[-1][1:] == ("mandate-cli", "rotate mandate key")
+
+
+@pytest.mark.parametrize("raw", [
+    "not-json",
+    '{"operator":{"kid":123}}',
+    '{"operator":{"kid":"00"}}',
+    '{"operator":{"kid":"0000000000000000000000000000000000000000000000000000000000000000",'
+    '"kid":"1111111111111111111111111111111111111111111111111111111111111111"}}',
+])
+def test_ac17_invalid_nested_config_fails_closed(monkeypatch, tmp_path, raw):
+    from cortxt_mcp import server
+    monkeypatch.setenv(server.MANDATE_PUBLIC_KEYS_ENV, raw)
+    monkeypatch.setenv(server.MANDATE_STATE_DIR_ENV, str(tmp_path))
+    (tmp_path / "revocations.json").write_text(
+        '{"generation":1,"revocations":[]}', encoding="utf-8")
+    verifier = server._build_mandate_verifier_from_env(tmp_path)
+    assert verifier.public_keys == {}
+
+
+def test_ac17_missing_initial_revocations_fails_closed(monkeypatch, tmp_path, keypair):
+    import json
+    from cortxt_mcp import server
+    _, public_key_hex = keypair
+    monkeypatch.setenv(server.MANDATE_PUBLIC_KEYS_ENV,
+                       json.dumps({GRANTED_BY: {KID: public_key_hex}}))
+    monkeypatch.setenv(server.MANDATE_STATE_DIR_ENV, str(tmp_path))
+    verifier = server._build_mandate_verifier_from_env(tmp_path)
+    assert verifier.public_keys == {}
+
+
+def test_ac20_revoked_audit_has_key_identity_without_key_material(keypair, tmp_path, monkeypatch):
+    private_key, public_key_hex = keypair
+    issued = _issue(private_key)
+    class Revoked:
+        def is_revoked(self, *args): return True
+    verifier = mandate.MandateVerifier(
+        public_keys={GRANTED_BY: {KID: public_key_hex}}, nonce_store=FakeNonceStore(),
+        budget_store=FakeBudgetStore(), revocation_store=Revoked(), clock=_clock)
+    audit = AuditLog(tmp_path / "sessions")
+    protocol.handle_request(
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+            "name": "cortxt_dispatch", "arguments": {"mandate": issued.envelope}}},
+        allow_dispatch=True, allow_credentials=False, audit=audit, mandate_verifier=verifier)
+    from runtime import session_state as state
+    session = state.load(tmp_path / "sessions", audit.session_id)
+    row = next(e["payload"] for e in session["events"] if e["event_type"] == "mcp.tool_call")
+    assert row["mandate_decision"] == "rejected:key_revoked"
+    assert (row["granted_by"], row["kid"]) == (GRANTED_BY, KID)
+    assert public_key_hex not in str(row)
 
 
 # --- AC 8: cortxt_mcp server-side source never references the private-key

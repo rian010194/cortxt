@@ -55,9 +55,12 @@ def test_tier1_tool_unlocked_with_allow_dispatch_and_a_valid_mandate(tmp_path):
 
     private_key = Ed25519PrivateKey.generate()
     public_key_hex = mandate.public_key_hex_from_private_key(private_key)
+    public_keys = {"operator-demo": {"key-1": public_key_hex}}
     issued = mandate.issue_mandate(
         private_key=private_key,
         granted_by="operator-demo",
+        kid="key-1",
+        public_keys=public_keys,
         issue_ref="owner/repo#206",
         allowed_tools=["cortxt_addons_submit"],
         data_class_max="L2",
@@ -65,6 +68,7 @@ def test_tier1_tool_unlocked_with_allow_dispatch_and_a_valid_mandate(tmp_path):
         max_runtime_seconds=3600,
         expires_at="2099-01-01T00:00:00Z",
         scope_text="test scope",
+        max_envelope_ttl_seconds=10**10,
     )
 
     class _FakeStore:
@@ -75,7 +79,8 @@ def test_tier1_tool_unlocked_with_allow_dispatch_and_a_valid_mandate(tmp_path):
             return True
 
     verifier = mandate.MandateVerifier(
-        public_keys={"operator-demo": public_key_hex}, nonce_store=_FakeStore(), budget_store=_FakeStore(),
+        public_keys=public_keys, nonce_store=_FakeStore(), budget_store=_FakeStore(),
+        revocation_store=type("AllowRevocations", (), {"is_revoked": lambda self, *args: False})(),
     )
     result = tools.call_tool(
         "cortxt_addons_submit",

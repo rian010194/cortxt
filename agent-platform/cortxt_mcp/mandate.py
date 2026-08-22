@@ -24,7 +24,7 @@ import base64
 import secrets
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -32,11 +32,15 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-SCHEMA_VERSION = 1
-_KNOWN_SCHEMA_VERSIONS = {1}
+SCHEMA_VERSION = 2
+_KNOWN_SCHEMA_VERSIONS = {2}
+DEFAULT_MAX_ENVELOPE_TTL_SECONDS = 24 * 60 * 60
+MAX_ENVELOPE_TTL_ENV = "CORTXT_MCP_MANDATE_MAX_TTL_SECONDS"
+DEFAULT_CLOCK_SKEW_SECONDS = 5 * 60
+CLOCK_SKEW_ENV = "CORTXT_MCP_MANDATE_CLOCK_SKEW_SECONDS"
 
 _REQUIRED_FIELDS = frozenset({
-    "schema_version", "mandate_id", "granted_by", "issue_ref", "allowed_tools",
+    "schema_version", "mandate_id", "granted_by", "kid", "issue_ref", "allowed_tools",
     "data_class_max", "budget_usd_max", "max_runtime_seconds", "expires_at",
     "nonce", "scope_fingerprint", "signature",
 })
@@ -50,6 +54,8 @@ REASON_MANDATE_MISSING = "mandate_missing"
 REASON_MALFORMED_ENVELOPE = "malformed_envelope"
 REASON_UNKNOWN_SCHEMA_VERSION = "unknown_schema_version"
 REASON_UNKNOWN_GRANTED_BY = "unknown_granted_by"
+REASON_UNKNOWN_KID = "unknown_kid"
+REASON_KEY_REVOKED = "key_revoked"
 REASON_MISSING_SIGNATURE = "missing_signature"
 REASON_INVALID_SIGNATURE = "invalid_signature"
 REASON_NONCE_REPLAYED = "nonce_replayed"
@@ -143,13 +149,30 @@ class _NullBudgetStore:
         return False
 
 
+def _valid_public_keyring(public_keys: object) -> bool:
+    if not isinstance(public_keys, Mapping):
+        return False
+    try:
+        for granted_by, keys in public_keys.items():
+            if not isinstance(granted_by, str) or not granted_by or not isinstance(keys, Mapping):
+                return False
+            for kid, material in keys.items():
+                if not isinstance(kid, str) or not kid or not isinstance(material, str):
+                    return False
+                Ed25519PublicKey.from_public_bytes(bytes.fromhex(material))
+    except Exception:
+        return False
+    return True
+
+
 def verify_mandate(
     envelope: dict[str, Any] | None,
     *,
     tool: str,
     tier: int,
     call_context: CallContext,
-    public_keys: Mapping[str, str],
+    public_keys: Mapping[str, Mapping[str, str]],
+    revocation_store: Any,
     nonce_store: Any,
     budget_store: Any,
     clock: Callable[[], datetime] = _default_clock,
@@ -159,14 +182,14 @@ def verify_mandate(
     No I/O of its own: `nonce_store` (an object with
     `check_and_consume(nonce) -> bool`) and `budget_store` (an object with
     `record_and_check(mandate_id, cost, cap) -> bool`) are injected, as is
-    `clock`. `public_keys` maps `granted_by` -> a hex-encoded Ed25519
-    public key (32 raw bytes). Fails closed on every malformed or missing
+    `clock`. `public_keys` maps `granted_by` -> `kid` -> a hex-encoded
+    Ed25519 public key (32 raw bytes). Fails closed on every malformed or missing
     input -- any exception encountered while interpreting the envelope
     itself is treated as a rejection, never propagated.
 
     Checks run in this order (adversarial-review-required order, so an
     attacker cannot use a later check to probe an earlier one): schema
-    version -> signature -> nonce -> expiry -> allowed_tools -> data class
+    version -> key identity -> revocation -> signature -> nonce -> expiry -> allowed_tools -> data class
     -> runtime -> budget -> issue_ref -> scope_fingerprint. The nonce and
     the budget are both consumed/debited as soon as their check runs,
     regardless of whether a later check goes on to reject the call -- this
@@ -176,25 +199,38 @@ def verify_mandate(
     """
     if envelope is None:
         return MandateDecision(False, REASON_MANDATE_MISSING, None)
-    if not isinstance(envelope, dict) or set(envelope) != _REQUIRED_FIELDS:
+    if not isinstance(envelope, dict):
         return MandateDecision(False, REASON_MALFORMED_ENVELOPE, None)
 
     mandate_id_raw = envelope.get("mandate_id")
     mandate_id = mandate_id_raw if isinstance(mandate_id_raw, str) and mandate_id_raw else None
 
-    if envelope.get("schema_version") not in _KNOWN_SCHEMA_VERSIONS:
+    if "schema_version" in envelope and envelope.get("schema_version") not in _KNOWN_SCHEMA_VERSIONS:
         return MandateDecision(False, REASON_UNKNOWN_SCHEMA_VERSION, mandate_id)
+    if set(envelope) != _REQUIRED_FIELDS:
+        return MandateDecision(False, REASON_MALFORMED_ENVELOPE, mandate_id)
 
     granted_by = envelope.get("granted_by")
     if not isinstance(granted_by, str) or granted_by not in public_keys:
         return MandateDecision(False, REASON_UNKNOWN_GRANTED_BY, mandate_id)
+
+    kid = envelope.get("kid")
+    issuer_keys = public_keys.get(granted_by)
+    if not isinstance(kid, str) or not kid or not isinstance(issuer_keys, Mapping) or kid not in issuer_keys:
+        return MandateDecision(False, REASON_UNKNOWN_KID, mandate_id)
+
+    try:
+        if revocation_store.is_revoked(granted_by, kid, clock()):
+            return MandateDecision(False, REASON_KEY_REVOKED, mandate_id)
+    except Exception:
+        return MandateDecision(False, REASON_KEY_REVOKED, mandate_id)
 
     signature_b64 = envelope.get("signature")
     if not isinstance(signature_b64, str) or not signature_b64:
         return MandateDecision(False, REASON_MISSING_SIGNATURE, mandate_id)
 
     try:
-        public_key_bytes = bytes.fromhex(public_keys[granted_by])
+        public_key_bytes = bytes.fromhex(issuer_keys[kid])
         public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
         signature_bytes = base64.b64decode(signature_b64, validate=True)
         public_key.verify(signature_bytes, _canonical_signing_bytes(envelope))
@@ -274,10 +310,15 @@ class MandateVerifier:
     of four separate parameters. Still just plumbing -- `verify()` calls
     the pure `verify_mandate` function above with nothing hidden."""
 
-    public_keys: dict[str, str]
+    public_keys: dict[str, dict[str, str]]
     nonce_store: Any
     budget_store: Any
+    revocation_store: Any
     clock: Callable[[], datetime] = field(default=_default_clock)
+
+    def __post_init__(self) -> None:
+        if not _valid_public_keyring(self.public_keys):
+            self.public_keys = {}
 
     @classmethod
     def unconfigured(cls) -> "MandateVerifier":
@@ -286,7 +327,10 @@ class MandateVerifier:
         every envelope is rejected (REASON_UNKNOWN_GRANTED_BY), and a
         missing envelope is rejected too (REASON_MANDATE_MISSING) --
         matches AC 1's 'no valid config -> no Tier-1 execution' posture."""
-        return cls(public_keys={}, nonce_store=_NullNonceStore(), budget_store=_NullBudgetStore())
+        from .revocation_store import NullKeyRevocationStore
+
+        return cls(public_keys={}, nonce_store=_NullNonceStore(), budget_store=_NullBudgetStore(),
+                   revocation_store=NullKeyRevocationStore())
 
     def verify(self, envelope: dict[str, Any] | None, *, tool: str, tier: int, call_context: CallContext) -> MandateDecision:
         return verify_mandate(
@@ -297,6 +341,7 @@ class MandateVerifier:
             public_keys=self.public_keys,
             nonce_store=self.nonce_store,
             budget_store=self.budget_store,
+            revocation_store=self.revocation_store,
             clock=self.clock,
         )
 
@@ -314,6 +359,8 @@ class IssuedMandate:
 def issue_mandate(
     *,
     granted_by: str,
+    kid: str,
+    public_keys: Mapping[str, Mapping[str, str]],
     issue_ref: str,
     allowed_tools: list[str],
     data_class_max: str,
@@ -325,6 +372,9 @@ def issue_mandate(
     nonce: str | None = None,
     mandate_id: str | None = None,
     schema_version: int = SCHEMA_VERSION,
+    max_envelope_ttl_seconds: float | None = None,
+    clock_skew_seconds: float | None = None,
+    clock: Callable[[], datetime] = _default_clock,
 ) -> IssuedMandate:
     """Operator/CLI-side issuing. Builds and signs one mandate envelope.
 
@@ -339,10 +389,36 @@ def issue_mandate(
     from runtime.session_state import canonical_json
 
     key = private_key or Ed25519PrivateKey.generate()
+    if not isinstance(kid, str) or not kid:
+        raise ValueError("kid must be a non-empty string")
+    if not _valid_public_keyring(public_keys):
+        raise ValueError("invalid public keyring")
+    try:
+        registered_public_key = public_keys[granted_by][kid]
+    except (KeyError, TypeError):
+        raise ValueError("unknown granted_by/kid") from None
+    derived_public_key = public_key_hex_from_private_key(key)
+    if not secrets.compare_digest(derived_public_key, registered_public_key.lower()):
+        raise ValueError("private key does not match registered public key")
+    import os
+    ttl_seconds = float(
+        os.environ.get(MAX_ENVELOPE_TTL_ENV, DEFAULT_MAX_ENVELOPE_TTL_SECONDS)
+        if max_envelope_ttl_seconds is None else max_envelope_ttl_seconds
+    )
+    skew_seconds = float(
+        os.environ.get(CLOCK_SKEW_ENV, DEFAULT_CLOCK_SKEW_SECONDS)
+        if clock_skew_seconds is None else clock_skew_seconds
+    )
+    if ttl_seconds < 0 or skew_seconds < 0:
+        raise ValueError("TTL and clock skew must be non-negative")
+    parsed_expiry = _parse_utc(expires_at)
+    if parsed_expiry > clock().astimezone(timezone.utc) + timedelta(seconds=ttl_seconds + skew_seconds):
+        raise ValueError("expires_at exceeds maximum envelope TTL")
     envelope_without_signature = {
         "schema_version": schema_version,
         "mandate_id": mandate_id or str(uuid.uuid4()),
         "granted_by": granted_by,
+        "kid": kid,
         "issue_ref": issue_ref,
         "allowed_tools": list(allowed_tools),
         "data_class_max": data_class_max,
@@ -372,7 +448,20 @@ def issue_mandate(
     return IssuedMandate(envelope=envelope, private_key_pem=private_key_pem, public_key_hex=public_key_hex)
 
 
-def store_signing_key_in_broker(private_key_pem: bytes, *, broker: Any) -> None:
+def _credential_segment(value: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError("credential identity segments must be non-empty strings")
+    encoded = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
+    if not encoded:
+        raise ValueError("invalid credential identity segment")
+    return encoded
+
+
+def _signing_key_credential_id(granted_by: str, kid: str) -> str:
+    return f"{MANDATE_SIGNING_KEY_CREDENTIAL_ID}/{_credential_segment(granted_by)}/{_credential_segment(kid)}"
+
+
+def store_signing_key_in_broker(private_key_pem: bytes, *, granted_by: str, kid: str, broker: Any) -> None:
     """Operator-only: persist the mandate-signing private key via the
     existing `security.credential_broker.CredentialBroker` (+ `dpapi.py`
     for encryption-at-rest), per ADR-029's credential-isolation principle.
@@ -382,20 +471,21 @@ def store_signing_key_in_broker(private_key_pem: bytes, *, broker: Any) -> None:
     credential. Never called from cortxt_mcp's server-side runtime path.
     """
     broker.store(
-        MANDATE_SIGNING_KEY_CREDENTIAL_ID,
+        _signing_key_credential_id(granted_by, kid),
         private_key_pem.decode("ascii"),
         operator_confirmed=True,
     )
 
 
-def load_signing_key_from_broker(*, broker: Any, purpose: str = "issue_mandate") -> Ed25519PrivateKey:
+def load_signing_key_from_broker(*, granted_by: str, kid: str, broker: Any,
+                                 purpose: str = "issue_mandate") -> Ed25519PrivateKey:
     """Operator-only: load the mandate-signing private key back out of the
     broker for use by `issue_mandate(private_key=...)`. Never called from
     cortxt_mcp's server-side runtime path."""
     from cryptography.hazmat.primitives import serialization
 
     pem = broker.inject(
-        MANDATE_SIGNING_KEY_CREDENTIAL_ID,
+        _signing_key_credential_id(granted_by, kid),
         requesting_runtime="mandate-cli",
         purpose=purpose,
     )
