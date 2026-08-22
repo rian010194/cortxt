@@ -52,6 +52,8 @@ def _render(node: RenderNode, data: Mapping[str, Any], read_states: Mapping[str,
             state = source_state if source_state in ("stale", "denied", "error") else entry.empty_state
         else:
             props[name] = value
+            if source_state in ("stale", "denied", "error"):
+                state = source_state
     children = []
     for child in node.children:
         rendered = _render(child, data, read_states)

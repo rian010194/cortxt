@@ -10,4 +10,5 @@ dist/
 .sessions/
 .daemon-state/
 widget/snapshot.json
+widget/candidates.json
 .credentials/
