@@ -1,0 +1,40 @@
+---
+title: Cortxt documentation
+description: Start with Cortxt concepts, architecture, operating model, and CLI usage.
+template: splash
+hero:
+  tagline: Provider-neutral control for long-running AI work under verifiable human mandate.
+  actions:
+    - text: Quick start
+      link: /docs/quick-start/
+      icon: right-arrow
+      variant: primary
+    - text: Architecture
+      link: /docs/architecture/
+      icon: open-book
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Human mandate" icon="approve-check">
+    Scope, limits, evidence, review, and final approval stay attached to human authority.
+  </Card>
+  <Card title="Provider neutral" icon="seti:config">
+    Models, providers, and external agent engines are replaceable behind Cortxt-owned contracts.
+  </Card>
+  <Card title="CLI primary" icon="seti:shell">
+    The `cortxt` CLI is the primary product surface; MCP is the external integration surface.
+  </Card>
+  <Card title="Inspectable evidence" icon="document">
+    Durable scope and run evidence support independent review before operator approval.
+  </Card>
+</CardGrid>
+
+## Read by intent
+
+- **Run Cortxt:** use the [CLI and MCP quick start](/docs/quick-start/).
+- **Understand the system:** read the [architecture overview](/docs/architecture/) and [current operating model](/docs/operating-model/).
+- **Trace decisions:** consult the [accepted ADR index](/docs/adrs/).
+- **See what comes next:** visit [status and roadmap](/docs/roadmap/).

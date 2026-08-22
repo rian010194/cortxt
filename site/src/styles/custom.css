@@ -1,0 +1,35 @@
+:root {
+  --sl-color-accent-low: #d7f9ec;
+  --sl-color-accent: #087f5b;
+  --sl-color-accent-high: #064936;
+  --sl-color-white: #fffdf7;
+  --sl-color-gray-1: #e8e7e3;
+  --sl-color-gray-2: #b6b5b1;
+  --sl-color-gray-3: #777873;
+  --sl-color-gray-4: #494b49;
+  --sl-color-gray-5: #2d3030;
+  --sl-color-gray-6: #1d2022;
+  --sl-color-black: #121519;
+  --sl-font: 'Inter', 'Avenir Next', system-ui, sans-serif;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #d7f9ec;
+  --sl-color-accent: #087f5b;
+  --sl-color-accent-high: #064936;
+  --sl-color-white: #171a1f;
+  --sl-color-gray-1: #2f3338;
+  --sl-color-gray-2: #4f555a;
+  --sl-color-gray-3: #71777a;
+  --sl-color-gray-4: #b7b9b4;
+  --sl-color-gray-5: #deded8;
+  --sl-color-gray-6: #f0eee7;
+  --sl-color-gray-7: #f8f6ef;
+  --sl-color-black: #fffdf7;
+}
+
+.site-title img { height: 2.3rem; width: auto; }
+.hero { padding-block: clamp(4rem, 9vw, 8rem); }
+.hero h1 { max-width: 15ch; letter-spacing: -0.045em; }
+.hero .tagline { max-width: 58ch; }
+.card { border-radius: 1rem; }
