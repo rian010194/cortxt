@@ -3,12 +3,14 @@
 **Status:** Accepted  \
 **Date:** 2026-08-16  \
 **Deciders:** Rikard (operator)  \
-**Technical Story:** Repo publication (rian010194/cortxt going public); ADR-014/015 name the internal tool/partnership name "Norcom/CSL" as the proof environment for Wedge B. The name is not cleared for public exposure — it may become its own internal/launched tool, not a third-party customer data.
+**Technical Story:** Repo publication (rian010194/cortxt going public); ADR-014/015 use an internal
+proof-environment identifier for Wedge B that was not cleared for public exposure — it may become its own
+internal/launched tool, not a third-party customer name.
 
 ## Context
 
-ADR-014 (F0, line 43) and ADR-015 (F1, lines 20/30/36/37/49) name "Norcom/CSL" as the proof environment
-for the wedge B validation (T3). At repo publication this was flagged: the name is searchable in two approved
+ADR-014 (F0) and ADR-015 (F1) name the proof environment with an internal identifier
+for the wedge B validation (T3). At repo publication this was flagged: the identifier is searchable in two approved
 decision documents as well as in three GitHub issues (#101, #116, #124 — already edited 2026-08-16) and one merged
 PR (#100 — handled separately).
 
@@ -31,7 +33,9 @@ STATUS-AMENDMENT notice (the same pattern as ADR-016/017) pointing here, so that
 old name understands that it should be read as "proof environment B" going forward.
 
 This document, GitHub issues #101/#116/#124 and PR #100 (if the owner decides) are the only places where a
-historical reference to the old name remains in a controlled way; new artifacts use only PE-B.
+historical reference to the former identifier remains in a controlled way; new artifacts use only PE-B.
+(2026-08-22 public-readiness cleanup: the former identifier is removed from ADR-014/015/020/021 and the ADR
+index so that no tracked public surface reproduces it; ADR-020's decision and record rule remain.)
 
 ## Consequences
 

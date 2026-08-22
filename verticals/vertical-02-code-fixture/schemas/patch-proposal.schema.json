@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/rian010194/ai-workspace-control-plane/schemas/patch-proposal.schema.json",
+  "$id": "https://github.com/rian010194/cortxt/schemas/patch-proposal.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Model output for the fix-failing-test workflow: whole-file content, never a unified diff. The platform derives the diff itself. v0.1.0.",
   "version": "0.1.0",

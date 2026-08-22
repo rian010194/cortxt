@@ -6,7 +6,7 @@
 **Technical Story:** CORTXT F0/F1 decision packet, approved 2026-08-13 after independent Codex review (round 2 APPROVED); evidence `.hermes/codex/f0f1-decision-packet-2026-08-13.md` (v0.2, gitignored locally)
 
 > **STATUS-AMENDMENT (2026-08-16, ADR-020):** the proof environment name in Negative consequences below
-> ("Norcom/CSL") should be read as **"proof environment B"** in all new references — terminology redaction
+> should be read as **"proof environment B"** in all new references — terminology redaction
 > ahead of repo publication; the decision below is unchanged and remains Accepted.
 
 ## Context
@@ -44,7 +44,7 @@ The grounds considered:
 
 ### Negative
 - The target architecture remains a proposal until a separate ADR/accepted architecture (see ADR-016); F0 confirms the direction but does not approve the entire platform build.
-- Norcom/CSL is a proof environment, not a proven market; "municipalities as beachhead" remains a hypothesis.
+- The proof environment B is a proof environment, not a proven market; "municipalities as beachhead" remains a hypothesis.
 
 ### Risks
 - That a wedge (coding or compliance) is reduced to a product boundary — countered by non-goal 3.

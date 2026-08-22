@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/rian010194/ai-workspace-control-plane/schemas/eval-fixture.schema.json",
+  "$id": "https://github.com/rian010194/cortxt/schemas/eval-fixture.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Synthetic evaluation fixture with expected outcomes and deterministic assertions. v0.1.0.",
   "version": "0.1.0",
@@ -28,11 +28,11 @@
       ]
     },
     "input": {
-      "$ref": "https://github.com/rian010194/ai-workspace-control-plane/schemas/ai-act-assessment-input.schema.json",
+      "$ref": "https://github.com/rian010194/cortxt/schemas/ai-act-assessment-input.schema.json",
       "description": "Must validate against ai-act-assessment-input.schema.json."
     },
     "expected_output": {
-      "$ref": "https://github.com/rian010194/ai-workspace-control-plane/schemas/ai-act-assessment-output.schema.json",
+      "$ref": "https://github.com/rian010194/cortxt/schemas/ai-act-assessment-output.schema.json",
       "description": "Must validate against ai-act-assessment-output.schema.json."
     },
     "deterministic_assertions": {
