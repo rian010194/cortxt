@@ -20,7 +20,6 @@ agent-platform/runs/
 docs/superpowers/
 docs/assessments/
 docs/runbooks/
-harness/scripts/
 
 # ---- Python ----
 __pycache__/

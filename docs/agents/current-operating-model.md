@@ -84,10 +84,11 @@ Detailed execution requirements live in
 
 ## Known blockers and incomplete links
 
-- The general dispatcher is built but not yet run as the full
-  `workflow:ready` → dispatch → result-envelope loop for a real build issue;
-  the daemon proof-of-life (#180) and CLI-level dispatch are verified, and the
-  complete loop is the next dispatch to exercise.
+- The general dispatcher loop is proven end-to-end for the deterministic
+  CI fixture path (issue #207: claim -> isolated-worktree commit -> result
+  envelope -> workflow:ready -> in-progress -> review, repeatedly green via
+  GitHub Actions); the default unattended dispatch path for real build
+  issues is not yet exercised.
 - External agent runtimes are invoked through adapters, but a fully automated,
   unattended end-to-end dispatch (issue → runtime → review → merge) is not yet
   the default; operator approval remains the final gate.
