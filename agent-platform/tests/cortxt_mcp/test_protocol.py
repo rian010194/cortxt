@@ -91,10 +91,14 @@ def test_accepted_call_is_audited(tmp_path):
     assert audit.session_id is not None
 
 
-def test_locked_call_is_not_audited(tmp_path):
+def test_locked_call_is_now_audited_as_rejected(tmp_path):
+    """ADR-032: a tier-locked rejection used to never reach the ledger at
+    all; it now does, as `status="rejected"`, `mandate_decision="tier_locked"`
+    -- a deliberate, operator-approved behavior change (issue #206 approved
+    scope, decision 3)."""
     audit = AuditLog(tmp_path / "sessions")
     handle_request(
         {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "cortxt_dispatch", "arguments": {}}},
         allow_dispatch=False, allow_credentials=False, audit=audit,
     )
-    assert audit.session_id is None
+    assert audit.session_id is not None

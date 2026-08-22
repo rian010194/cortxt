@@ -17,6 +17,12 @@ from typing import Any
 _SENSITIVE_KEYS = {
     "prompt", "value", "token", "secret", "password", "credential",
     "api_key", "apikey", "authorization",
+    # Defense in depth: protocol.py already pops "mandate"/"mandate_context"
+    # out of `arguments` before it ever reaches audit.record, so these keys
+    # should never actually be present here -- but if a future call site
+    # forgets to pop them, they must never leak the envelope/signature into
+    # the ledger (ADR-032).
+    "mandate", "mandate_context",
 }
 _MAX_STR_LEN = 120
 
@@ -59,7 +65,22 @@ class AuditLog:
     def session_id(self) -> str | None:
         return self._session_id
 
-    def record(self, tool: str, arguments: dict[str, Any] | None, *, status: str = "accepted") -> None:
+    def record(
+        self,
+        tool: str,
+        arguments: dict[str, Any] | None,
+        *,
+        status: str = "accepted",
+        mandate_id: str | None = None,
+        mandate_decision: str | None = None,
+    ) -> None:
+        """Append one `mcp.tool_call` ledger event. `mandate_id` and
+        `mandate_decision` are always written (as `null` when there's no
+        mandate to report -- e.g. a Tier-0 call) rather than omitted, so
+        every event has the same shape (ADR-032 / issue #206 AC 5). Never
+        pass the mandate envelope itself here -- only its `mandate_id` and
+        a short decision string; `summarize_args` also redacts a stray
+        `mandate`/`mandate_context` key as defense in depth."""
         from runtime import session_state as state
 
         if self._session_id is None:
@@ -67,6 +88,13 @@ class AuditLog:
             self._session_id = session["session_id"]
         state.append(
             self._store, self._session_id, self._sequence, "mcp.tool_call",
-            {"tool": tool, "args_summary": summarize_args(arguments), "caller": "mcp", "status": status},
+            {
+                "tool": tool,
+                "args_summary": summarize_args(arguments),
+                "caller": "mcp",
+                "status": status,
+                "mandate_id": mandate_id,
+                "mandate_decision": mandate_decision,
+            },
         )
         self._sequence += 1
