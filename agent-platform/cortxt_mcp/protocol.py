@@ -117,10 +117,22 @@ def handle_request(
                 # cannot pass a budget check, rather than silently
                 # defaulting to 0.0 (which would under-report spend).
                 estimated_cost_usd = float("inf")
+            raw_estimated_runtime = raw_call_context.get("estimated_runtime_seconds")
+            try:
+                estimated_runtime_seconds = (
+                    None if raw_estimated_runtime is None
+                    else float(raw_estimated_runtime)
+                )
+            except (TypeError, ValueError):
+                # Malformed runtime estimate: fail closed to a value that
+                # cannot pass a runtime check, rather than silently
+                # treating the runtime as undeclared.
+                estimated_runtime_seconds = float("inf")
             call_context = mandate_module.CallContext(
                 issue_ref=raw_call_context.get("issue_ref", ""),
                 data_class=raw_call_context.get("data_class", "L0"),
                 estimated_cost_usd=estimated_cost_usd,
+                estimated_runtime_seconds=estimated_runtime_seconds,
                 scope_text=raw_call_context.get("scope_text"),
                 expected_scope_fingerprint=raw_call_context.get("expected_scope_fingerprint"),
             )
