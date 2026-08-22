@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pytest pyyaml jsonschema
+      - run: pip install pytest pyyaml jsonschema cryptography
       - run: pytest agent-platform/ -m "not real_inference and not docker_required"
 
   agent-platform-docker-tests:
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pytest pyyaml jsonschema
+      - run: pip install pytest pyyaml jsonschema cryptography
       - run: docker info
       - run: pytest agent-platform/ -m docker_required -v
 
