@@ -54,9 +54,14 @@ def test_colorize_falls_back_to_a_default_color_for_unknown_status():
 
 
 def test_status_color_map_covers_terminal_and_transient_statuses():
-    # Locks in the palette extracted from prototype/widget-cli-v02's
-    # Campbell (Windows Terminal default theme) mapping: green=done/ok,
-    # red=failed/error, yellow=blocked/warn, cyan=running, grey=stale/idle.
+    # Locks in the shared Cortxt identity and its semantic mapping.
+    assert color.WHITE == color._fg("F4F7FF")
+    assert color.GREY == color._fg("8792A8")
+    assert color.BLUE == color._fg("4D6BFE")
+    assert color.GREEN == color._fg("68D391")
+    assert color.YELLOW == color._fg("F6C85F")
+    assert color.RED == color._fg("FF7A90")
+    assert color.CYAN == color._fg("5ED3F3")
     assert color.STATUS_COLOR["succeeded"] == color.GREEN
     assert color.STATUS_COLOR["failed"] == color.RED
     assert color.STATUS_COLOR["timed_out"] == color.RED

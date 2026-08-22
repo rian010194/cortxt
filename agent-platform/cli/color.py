@@ -1,10 +1,8 @@
 """ANSI color helpers shared by `cortxt status` and `cortxt pipeline`.
 
-Palette extracted from the operator-approved `prototype/widget-cli-v02`
-mockup (`prototype-cli-v02.py`, variant A/B): Windows Terminal's actual
-default "Campbell" color scheme, not an invented palette. That prototype
-was throwaway by design ("capture the winner, then delete this file") --
-this module is the capture.
+Palette from the shared Cortxt identity. The values are selected for readable
+output on dark terminals and mirror the status colors used by the widget and
+web surfaces.
 
 Detection follows the two conventions the task calls out:
 - `NO_COLOR` (https://no-color.org/): presence of the env var (any value,
@@ -30,14 +28,14 @@ def _fg(hexcode: str) -> str:
     return f"\033[38;2;{r};{g};{b}m"
 
 
-# Windows Terminal "Campbell" scheme (the actual default dark theme).
-WHITE = _fg("F2F2F2")
-GREY = _fg("767676")
-BLUE = _fg("3B78FF")
-GREEN = _fg("16C60C")
-YELLOW = _fg("C19C00")
-RED = _fg("C50F1F")
-CYAN = _fg("3A96DD")
+# Shared Cortxt dark-first identity (docs/design/identity.md).
+WHITE = _fg("F4F7FF")
+GREY = _fg("8792A8")
+BLUE = _fg("4D6BFE")
+GREEN = _fg("68D391")
+YELLOW = _fg("F6C85F")
+RED = _fg("FF7A90")
+CYAN = _fg("5ED3F3")
 
 # Terminal-good statuses -> green. Actively bad -> red. In-flight -> cyan.
 # Needs-attention/soft-warning -> yellow. Idle/inert -> grey.
