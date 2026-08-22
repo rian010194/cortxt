@@ -148,20 +148,20 @@ def test_dispatch_logs_a_warning_when_snapshot_write_fails_without_masking_resul
     assert any("snapshot" in record.message.lower() for record in caplog.records)
 
 
-def _context_with_fake_dsh_adapter(profile_log):
-    """A default-shaped EngineContext whose dsh adapter records the profile
-    argument it was invoked with (and the prompt) -- lets main()'s
+def _context_with_fake_free_adapter(profile_log):
+    """A default-shaped EngineContext whose hermes-free adapter records the
+    profile argument it was invoked with (and the prompt) -- lets main()'s
     dispatch path exercise profile inference end-to-end without a real
     SDK/runtime."""
     from runtime.engine_registry import EngineContext
 
-    class _FakeDshAdapter:
+    class _FakeFreeAdapter:
         def invoke(self, profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
             profile_log.append((profile, prompt))
             return {"status": "succeeded", "stdout": "done", "stderr": "", "elapsed_seconds": 1.0}
 
     context = EngineContext()
-    context.register("dsh", _FakeDshAdapter())
+    context.register("hermes-free", _FakeFreeAdapter())
     return context
 
 
@@ -170,15 +170,16 @@ def _patch_default_context(monkeypatch, profile_log):
     # runtime.default_engine_context at call time; patch the source module.
     import runtime.default_engine_context as dec
 
-    monkeypatch.setattr(dec, "build_default_engine_context", lambda: _context_with_fake_dsh_adapter(profile_log))
+    monkeypatch.setattr(dec, "build_default_engine_context", lambda: _context_with_fake_free_adapter(profile_log))
 
 
-def test_dispatch_research_tag_routes_to_dsh_and_passes_researcher_profile(tmp_path, monkeypatch):
+def test_dispatch_research_tag_routes_to_hermes_free_and_passes_researcher_profile(tmp_path, monkeypatch):
     """Tonight's evidence: the `builder` profile is where both Phase 2
     Kanban-dispatch failures (#165, #166) and both admin-surface-CLI
     failures (#174, #175) happened. A research-shaped task must default to
-    `researcher`, not `builder` -- route() now picks dsh for research, and
-    the profile argument is still threaded through to the winning adapter."""
+    `researcher`, not `builder` -- route() now picks hermes-free for
+    research (free < cheap, issue #243), and the profile argument is still
+    threaded through to the winning adapter."""
     profile_log = []
     _patch_default_context(monkeypatch, profile_log)
     store = tmp_path / "sessions"
@@ -199,7 +200,7 @@ def test_dispatch_defaults_to_researcher_even_when_research_is_not_the_matched_t
     "parallel-dispatch" sorts before "research", so --tags
     research,parallel-dispatch would silently fall back to "builder" if the
     profile lookup only checked choice.matched_tag instead of the full
-    supplied tag set. dsh wins the research tie-break here, but the profile
+    supplied tag set. hermes-free wins the research tie here, but the profile
     inference must still see the full supplied tag set."""
     profile_log = []
     _patch_default_context(monkeypatch, profile_log)

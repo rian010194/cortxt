@@ -157,9 +157,9 @@ def test_route_rejects_empty_task_tags():
 # --- default v0.1 registry (ADR-022) ---
 
 
-def test_default_manifests_register_claude_direct_hermes_and_dsh():
+def test_default_manifests_register_claude_direct_hermes_hermes_free_and_dsh():
     ids = {m.engine_id for m in DEFAULT_MANIFESTS}
-    assert ids == {"claude-direct", "hermes", "dsh"}
+    assert ids == {"claude-direct", "hermes", "hermes-free", "dsh"}
 
 
 def test_hermes_default_manifest_notes_cite_tonights_incidents():
@@ -180,14 +180,24 @@ def test_dsh_default_manifest_is_cheap_unverified_and_takes_research():
     assert dsh.checkpoint_required is True
 
 
-def test_route_over_default_manifests_takes_dsh_for_research():
+def test_route_over_default_manifests_takes_hermes_free_for_research():
     choice = route(["research"], DEFAULT_MANIFESTS)
-    assert choice.engine_id == "dsh"
+    assert choice.engine_id == "hermes-free"
+
+
+def test_route_over_default_manifests_takes_hermes_free_for_background_task():
+    choice = route(["background-task"], DEFAULT_MANIFESTS)
+    assert choice.engine_id == "hermes-free"
 
 
 def test_route_over_default_manifests_keeps_hermes_for_parallel_dispatch():
     choice = route(["parallel-dispatch"], DEFAULT_MANIFESTS)
     assert choice.engine_id == "hermes"
+
+
+def test_route_over_default_manifests_keeps_claude_direct_for_general():
+    choice = route(["general"], DEFAULT_MANIFESTS)
+    assert choice.engine_id == "claude-direct"
 
 
 def test_route_over_default_manifests_falls_back_to_claude_direct_for_unknown_shape():
