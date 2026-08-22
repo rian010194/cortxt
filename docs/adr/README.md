@@ -4,7 +4,7 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accepted after issue #247 dogfood evidence, ADR-037 added).
+Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accepted after issue #247 dogfood evidence, ADR-037 added and accepted after issue #252 live proof).
 
 | # | Title | Status | Notes |
 | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accep
 | 034 | MCP run lifecycle tools — mandate-bound create/resume/submit_for_review | **Accepted** (2026-08-22) | Step 2 of the MCP research lifecycle (issue #230): `run_lifecycle.py` service, session_state run store, strict schemas, `-32003` error mapping, idempotent review submission; records the ADR-032 review as a strengthening (PR #231); Proposed until 2026-08-22 |
 | 035 | Embeddings provider for Phase 6 — Voyage via EmbeddingPort | **Accepted** (2026-08-22) | Resolves target-architecture §27 #10: `runtime/embedding_port.py` (on main) is the fail-closed, budget/policy-gated OpenAI-compatible `/embeddings` drop-in for `EmbeddingFn`; Phase 6 live exit arm PASSED against Voyage 2026-08-17 and re-run/PASSED 2026-08-22 as issue #233 AC2 evidence; `hash_embedding` stays the default until a versioned policy swap |
 | 036 | MCP run lifecycle asynchronous create and status polling | **Accepted** | Step 3 of the MCP research lifecycle (issue #245), accepted after real external stdio dogfood evidence with a deterministic engine (issue #247) |
-| 037 | MCP review submission daemon synchronization | **Proposed** | Step 4 consumes durable review submissions and mechanically transitions their issues to `workflow:review` (issue #249) |
+| 037 | MCP review submission daemon synchronization | **Accepted** (2026-08-22) | Step 4 consumes durable review submissions and mechanically transitions their issues to `workflow:review`; accepted after the live transition proof (issues #249 and #252) |
 
 ## Decisions and Authority
 
