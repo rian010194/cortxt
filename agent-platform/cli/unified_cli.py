@@ -661,6 +661,74 @@ def _write_widget_artifact(artifact: dict, output_path: Path) -> None:
             os.unlink(tmp)
 
 
+def _run_widget_load(args: argparse.Namespace) -> ResultEnvelope:
+    """Validate, load, execute, and render a machine-emitted widget spec.
+
+    The LLM-dogfood intake (issue #286): a spec file produced by any emitter
+    (LLM or deterministic fixture) enters through the strict loader, its
+    declared reads execute through the registered adapters, the renderer
+    produces the tree, and the artifact is written for the loopback host.
+    Unsafe/invalid specs fail closed with ContractError before any read.
+    """
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from widget_contract.loader import load_widget_file
+        from widget_contract.renderer import render
+
+        spec = Path(args.spec)
+        widget = load_widget_file(spec)  # strict validation before any I/O
+        data: dict = {}
+        read_states: dict[str, str] = {}
+        repo = getattr(args, "repo", None)
+        for read in widget.reads:
+            if read.source == "github":
+                if read.operation == "issues.all_open.list.v1":
+                    if not repo:
+                        return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                      "message": "--repo is required for github reads"})
+                    from widget_contract.adapters.github_ports import list_all_open_issues
+                    data[read.id] = list_all_open_issues(repo)
+                elif read.operation == "candidates.view.v1":
+                    if not repo:
+                        return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                      "message": "--repo is required for github reads"})
+                    from widget_contract.adapters.github_ports import read_candidates_view
+                    action_descriptors = [{"id": a.id, "operation": a.operation, "port": a.port,
+                                           "effect_class": a.confirm["effect_class"],
+                                           "authorization": dict(a.authorization), "confirm": dict(a.confirm)}
+                                          for a in widget.actions]
+                    data[read.id] = read_candidates_view(repo, actions=action_descriptors)
+                else:
+                    return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                  "message": f"unsupported emitted github read {read.operation}"})
+                read_states[read.id] = "fresh"
+            elif read.source == "store":
+                if read.operation == "sessions.snapshot.v2":
+                    from widget_contract.adapters.store_reads import read_snapshot_v2
+                    snapshot_input = getattr(args, "snapshot_input", None) or (ap_path / "widget" / "snapshot.json")
+                    data[read.id] = read_snapshot_v2(json.loads(Path(snapshot_input).read_text(encoding="utf-8")))
+                else:
+                    return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                  "message": f"unsupported emitted store read {read.operation}"})
+                read_states[read.id] = "fresh"
+            else:
+                return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                              "message": f"unsupported emitted source {read.source}"})
+        tree = render(widget, data, read_states)
+        view = getattr(args, "view", None) or widget.id
+        output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / f"{view}.json")
+        _write_widget_artifact({**tree, "emitted": True, "document_hash": widget.document_hash}, output_path)
+        print(json.dumps(tree["render"], indent=2))
+        return ResultEnvelope(status="succeeded", artifacts=[f"{view}:{output_path}"],
+                              evidence=[{"widget": tree, "document_hash": widget.document_hash}])
+    except Exception as exc:
+        if exc.__class__.__name__ == "ContractError":
+            return ResultEnvelope(status="failed", error={"category": "contract_error", "message": str(exc)})
+        return ResultEnvelope(status="failed", error={"category": "load_error", "message": str(exc)})
+
+
 def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
     """Serve the sessions widget or execute a registered widget action.
 
@@ -748,6 +816,8 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
             return ResultEnvelope(status="succeeded", artifacts=artifacts, evidence=[{"candidates": model}])
         if getattr(args, "widget_command", None) == "action":
             return _run_widget_action(args)
+        if getattr(args, "widget_command", None) == "load":
+            return _run_widget_load(args)
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
@@ -1658,6 +1728,12 @@ def main(argv: list[str] | None = None) -> int:
     widget_action.add_argument("--approval-ref", required=True, help="Operator approval reference")
     widget_action.add_argument("--confirm", action="store_true", help="Confirm the declared effect")
     widget_action.add_argument("--registry", type=Path, help="Dispatcher run registry path (claim-run)")
+    widget_load = widget_sub.add_parser("load", help="Load and render a machine-emitted widget spec (dogfood)")
+    widget_load.add_argument("--spec", required=True, type=Path, help="Widget spec file to load")
+    widget_load.add_argument("--view", help="Artifact view name (default: widget id)")
+    widget_load.add_argument("--repo", help="GitHub owner/repo for github reads")
+    widget_load.add_argument("--snapshot-input", type=Path, help="Snapshot input for store reads")
+    widget_load.add_argument("--snapshot", type=Path, help="Artifact output path")
     widget_parser.set_defaults(func=_run_widget)
 
     # mcp subcommand
