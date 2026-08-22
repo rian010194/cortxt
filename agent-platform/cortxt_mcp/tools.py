@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from . import run_lifecycle
+
 TIER_READ_ONLY = 0
 TIER_DISPATCH = 1
 TIER_CREDENTIALS = 2
@@ -203,19 +205,16 @@ def _tool_cortxt_daemon_status(arguments: dict[str, Any]) -> dict[str, Any]:
     return _run_daemon(args).to_dict()
 
 
-def _tool_cortxt_run_create(arguments: dict[str, Any], *, mandate_binding: dict) -> dict[str, Any]:
-    from .run_tools import create_run
-    return create_run(arguments, mandate_binding)
+def _tool_cortxt_run_create(arguments: dict[str, Any], *, mandate_binding: dict, lifecycle: Any) -> dict[str, Any]:
+    return lifecycle.create_run(arguments, mandate_binding)
 
 
-def _tool_cortxt_run_resume(arguments: dict[str, Any], *, mandate_binding: dict) -> dict[str, Any]:
-    from .run_tools import resume_run
-    return resume_run(arguments, mandate_binding)
+def _tool_cortxt_run_resume(arguments: dict[str, Any], *, mandate_binding: dict, lifecycle: Any) -> dict[str, Any]:
+    return lifecycle.resume_run(arguments, mandate_binding)
 
 
-def _tool_cortxt_run_submit_for_review(arguments: dict[str, Any], *, mandate_binding: dict) -> dict[str, Any]:
-    from .run_tools import submit_for_review
-    return submit_for_review(arguments, mandate_binding)
+def _tool_cortxt_run_submit_for_review(arguments: dict[str, Any], *, mandate_binding: dict, lifecycle: Any) -> dict[str, Any]:
+    return lifecycle.submit_for_review(arguments, mandate_binding)
 
 
 @dataclass(frozen=True)
@@ -225,6 +224,8 @@ class ToolSpec:
     description: str
     handler: Callable[[dict[str, Any]], Any]
     mandate_binding: bool = False
+    input_schema: dict[str, Any] | None = None
+    lifecycle_required: bool = False
 
 
 _SPECS = (
@@ -266,6 +267,8 @@ _SPECS = (
     ),
     ToolSpec(
         "cortxt_dispatch", TIER_DISPATCH,
+        "LEGACY single-call execution path (kept for compatibility during the "
+        "lifecycle transition; new launchers use cortxt_run_create/resume/review). "
         "Route a tagged task to an engine and invoke it (ResultEnvelope).",
         _tool_cortxt_dispatch,
     ),
@@ -279,13 +282,21 @@ _SPECS = (
         "Print the daemon section of the widget snapshot (ResultEnvelope).",
         _tool_cortxt_daemon_status,
     ),
-    ToolSpec("cortxt_run_create", TIER_DISPATCH, "Create a mandate-bound run.",
-             _tool_cortxt_run_create, True),
-    ToolSpec("cortxt_run_resume", TIER_DISPATCH, "Resume a mandate-bound run.",
-             _tool_cortxt_run_resume, True),
+    ToolSpec("cortxt_run_create", TIER_DISPATCH,
+             "Create a durable mandate-bound run and invoke its engine broker "
+             "synchronously (dispatch-contract envelope).",
+             _tool_cortxt_run_create, True,
+             run_lifecycle.CREATE_SCHEMA, True),
+    ToolSpec("cortxt_run_resume", TIER_DISPATCH,
+             "Resume a durable run through its stored engine broker with its "
+             "stored opaque session id (dispatch-contract envelope).",
+             _tool_cortxt_run_resume, True,
+             run_lifecycle.RESUME_SCHEMA, True),
     ToolSpec("cortxt_run_submit_for_review", TIER_DISPATCH,
-             "Submit a terminal run result for independent review.",
-             _tool_cortxt_run_submit_for_review, True),
+             "Submit a terminal run result for independent review (local "
+             "review record; no GitHub transition) (dispatch-contract envelope).",
+             _tool_cortxt_run_submit_for_review, True,
+             run_lifecycle.REVIEW_SCHEMA, True),
 )
 
 TOOL_REGISTRY: dict[str, ToolSpec] = {spec.name: spec for spec in _SPECS}
@@ -317,6 +328,7 @@ def call_tool(
     mandate: dict[str, Any] | None = None,
     mandate_verifier: Any = None,
     call_context: Any = None,
+    lifecycle: Any = None,
 ) -> Any:
     """Invoke one registered tool.
 
@@ -327,6 +339,13 @@ def call_tool(
     public keys -> every envelope, including none at all, is rejected)
     when not supplied -- callers that don't wire mandate verification in
     get "Tier-1+ is unusable" rather than "Tier-1+ is unchecked."
+
+    `lifecycle` is a `run_lifecycle.RunLifecycleService` required by the
+    three run-lifecycle tools (`spec.lifecycle_required`); it is passed
+    through to their handlers so the engine broker, store path, and clock
+    stay injectable (AC11). A call to a lifecycle-required tool without a
+    service is rejected before the handler runs (fail closed), mirroring
+    the unconfigured-mandate-verifier posture.
     """
     if name not in TOOL_REGISTRY:
         raise ToolNotFoundError(name)
@@ -338,7 +357,22 @@ def call_tool(
         from . import mandate as mandate_module
 
         verifier = mandate_verifier if mandate_verifier is not None else mandate_module.MandateVerifier.unconfigured()
-        context = call_context if call_context is not None else mandate_module.CallContext()
+        if spec.lifecycle_required:
+            # Authoritative call context (AC3): derived from validated
+            # arguments and durable state via the lifecycle service --
+            # never from a client-supplied `mandate_context`. Building it
+            # here, inside call_tool and before verification, means every
+            # caller (protocol shim, future SDK/REST facade) inherits the
+            # same strict-schema validation and the same issue/scope
+            # binding, and a missing service fails closed before anything
+            # runs.
+            if lifecycle is None:
+                raise RuntimeError(
+                    f"tool {name!r} requires a lifecycle service (RunLifecycleService) that was not supplied"
+                )
+            context = lifecycle.build_call_context(name, arguments or {})
+        else:
+            context = call_context if call_context is not None else mandate_module.CallContext()
         decision = verifier.verify(mandate, tool=name, tier=spec.tier, call_context=context)
         if not decision.accepted:
             raise MandateRejectedError(name, decision.reason)
@@ -347,5 +381,7 @@ def call_tool(
                 "mandate_id", "granted_by", "issue_ref", "scope_fingerprint",
                 "budget_usd_max", "max_runtime_seconds", "data_class_max"
             )}
+            if spec.lifecycle_required:
+                return spec.handler(arguments or {}, mandate_binding=binding, lifecycle=lifecycle)
             return spec.handler(arguments or {}, mandate_binding=binding)
     return spec.handler(arguments or {})

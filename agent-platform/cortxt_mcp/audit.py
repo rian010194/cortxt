@@ -17,6 +17,12 @@ from typing import Any
 _SENSITIVE_KEYS = {
     "prompt", "value", "token", "secret", "password", "credential",
     "api_key", "apikey", "authorization",
+    # Run-lifecycle content (issue #230 / ADR-034, spec "Audit contract"):
+    # scope/acceptance_criteria/result/artifacts/evidence must never be
+    # copied into the ledger -- only content-free references and short
+    # summaries are allowed in lifecycle responses themselves.
+    "scope", "scope_text", "acceptance_criteria", "result", "artifacts",
+    "evidence",
     # Defense in depth: protocol.py already pops "mandate"/"mandate_context"
     # out of `arguments` before it ever reaches audit.record, so these keys
     # should never actually be present here -- but if a future call site
@@ -73,6 +79,8 @@ class AuditLog:
         status: str = "accepted",
         mandate_id: str | None = None,
         mandate_decision: str | None = None,
+        run_id: str | None = None,
+        issue_ref: str | None = None,
     ) -> None:
         """Append one `mcp.tool_call` ledger event. `mandate_id` and
         `mandate_decision` are always written (as `null` when there's no
@@ -80,7 +88,9 @@ class AuditLog:
         every event has the same shape (ADR-032 / issue #206 AC 5). Never
         pass the mandate envelope itself here -- only its `mandate_id` and
         a short decision string; `summarize_args` also redacts a stray
-        `mandate`/`mandate_context` key as defense in depth."""
+        `mandate`/`mandate_context` key as defense in depth. `run_id` and
+        `issue_ref` are additive correlation fields (issue #230 / ADR-034,
+        operator recommendation Q22)."""
         from runtime import session_state as state
 
         if self._session_id is None:
@@ -95,6 +105,8 @@ class AuditLog:
                 "status": status,
                 "mandate_id": mandate_id,
                 "mandate_decision": mandate_decision,
+                "run_id": run_id,
+                "issue_ref": issue_ref,
             },
         )
         self._sequence += 1

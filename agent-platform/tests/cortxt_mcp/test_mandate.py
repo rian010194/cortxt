@@ -636,7 +636,7 @@ def test_protocol_maps_mandate_rejection_to_distinct_error_code(keypair):
 # --- AC 8: cortxt_mcp server-side source never references the private-key
 #           credential id or the credential broker. ------------------------
 
-_SERVER_SIDE_MODULES = ["tools.py", "protocol.py", "server.py", "audit.py", "nonce_store.py", "__init__.py"]
+_SERVER_SIDE_MODULES = ["tools.py", "protocol.py", "server.py", "audit.py", "nonce_store.py", "run_lifecycle.py", "__init__.py"]
 
 
 def test_ac8_server_side_source_never_references_private_key_credential_id():
