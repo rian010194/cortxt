@@ -1,8 +1,8 @@
 # ADR-035: Embeddings provider for Phase 6 — Voyage via EmbeddingPort (§27 #10)
 
-**Status:** Proposed
+**Status:** Accepted (2026-08-22)
 **Date:** 2026-08-22
-**Deciders:** Rikard Andersson (operator); draft by DSH session (workspace-local, `lab/voyage-embeddings/`)
+**Deciders:** Rikard Andersson (operator); draft by DSH session (workspace-local, `lab/voyage-embeddings/`); accepted 2026-08-22 after the live Voyage arm PASS was re-run and posted as issue #233 evidence
 **Technical Story:** target-architecture.md §27 open decision #10 — "Embeddings
 provider for Phase 6 (§12.2 semantic closeness)... Blocking for Phase 6 start";
 resolves the missing durable record for a provider choice that is already
@@ -120,15 +120,21 @@ a decision record, not a new implementation.
 
 ## Validation
 
-- [ ] ADR index row added and §27 #10 updated/closed in target-architecture.md.
-- [ ] Re-running the locked fixture's live arm with `CORTXT_EMBEDDING_*` set
+- [x] ADR index row added and §27 #10 updated/closed in target-architecture.md
+      (PR #234; AC1 of issue #233).
+- [x] Re-running the locked fixture's live arm with `CORTXT_EMBEDDING_*` set
       reproduces the PASS (voyage scores the semantically-relevant branch
-      above the lure; skipped real arm is NOT a pass).
-- [ ] `EmbeddingPort` drop-in compatibility remains covered by
-      `tests/runtime/test_embedding_port.py` (network-free).
+      above the lure; skipped real arm is NOT a pass) — re-run 2026-08-22
+      against live Voyage, 2x2 evidence posted on issue #233 (AC2): relevant
+      0.5461 > lure 0.5196 (hash baseline mis-ranked lure 0.5166 > relevant
+      0.4976); 1 passed.
+- [x] `EmbeddingPort` drop-in compatibility remains covered by
+      `tests/runtime/test_embedding_port.py` (network-free) — full default
+      suite green (896 passed, 0 failures; PR #238, AC3 of issue #233).
 - [ ] Any production use of real embeddings names `EmbeddingPort` explicitly
       and keeps `hash_embedding` as the default; any change to the decisive
-      composite from the swap bumps `CandidatePathScore.version`.
+      composite from the swap bumps `CandidatePathScore.version` (open until
+      production reasoning consumes real embeddings by default).
 
 ## Open Questions
 

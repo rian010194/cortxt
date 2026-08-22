@@ -4,7 +4,7 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-08-22 (ADR-035 added).
+Updated: 2026-08-22 (ADR-035 added and accepted).
 
 | # | Title | Status | Notes |
 | --- | --- | --- | --- |
@@ -32,7 +32,7 @@ Updated: 2026-08-22 (ADR-035 added).
 | 032 | MCP Tier-1+ tool calls require a signed, nonce-bound mandate envelope, verified before execution | **Accepted** (2026-08-22) | Ed25519 mandate envelope, fail-closed verification inside `call_tool`, durable nonce/budget stores, `max_runtime_seconds` enforced (PR #227); Proposed until 2026-08-22 |
 | 033 | MCP mandate envelopes identify versioned signing keys and support overlap and revocation | **Proposed** | Key rotation follow-up to ADR-032: schema v2 `kid`, overlap rotation bounded by envelope expiry, revocation denylist before signature work; not yet implemented |
 | 034 | MCP run lifecycle tools — mandate-bound create/resume/submit_for_review | **Accepted** (2026-08-22) | Step 2 of the MCP research lifecycle (issue #230): `run_lifecycle.py` service, session_state run store, strict schemas, `-32003` error mapping, idempotent review submission; records the ADR-032 review as a strengthening (PR #231); Proposed until 2026-08-22 |
-| 035 | Embeddings provider for Phase 6 — Voyage via EmbeddingPort | **Proposed** | Resolves target-architecture §27 #10: `runtime/embedding_port.py` (on main) is the fail-closed, budget/policy-gated OpenAI-compatible `/embeddings` drop-in for `EmbeddingFn`; Phase 6 live exit arm PASSED against Voyage 2026-08-17; `hash_embedding` stays the default until a versioned policy swap |
+| 035 | Embeddings provider for Phase 6 — Voyage via EmbeddingPort | **Accepted** (2026-08-22) | Resolves target-architecture §27 #10: `runtime/embedding_port.py` (on main) is the fail-closed, budget/policy-gated OpenAI-compatible `/embeddings` drop-in for `EmbeddingFn`; Phase 6 live exit arm PASSED against Voyage 2026-08-17 and re-run/PASSED 2026-08-22 as issue #233 AC2 evidence; `hash_embedding` stays the default until a versioned policy swap |
 
 ## Decisions and Authority
 
