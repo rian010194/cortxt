@@ -7,7 +7,7 @@ Last updated: 2026-08-21
 Owner: Rikard  
 Review trigger: before implementation scope is approved and whenever a major platform boundary changes
 
-> **Reconciliation notice (2026-08-21).** This document is a long-term target
+> **Reconciliation notice (2026-08-22).** This document is a long-term target
 > and is partially implemented. Read it together with the current state:
 > - `docs/agents/current-operating-model.md` — what is verified today.
 > - Accepted ADRs in `docs/adr/` — the normative record of decisions. Several
@@ -20,8 +20,10 @@ Review trigger: before implementation scope is approved and whenever a major pla
 >   geometric-reasoning decisive metrics (ADR-025), engine adapter registry
 >   (ADR-026) and service-broker `EngineContext` (ADR-027), orchestrator
 >   multi-engine resume (ADR-028), unattended daemon credential isolation
->   (ADR-029), plan-vs-actual divergence tracking (ADR-030), and the
->   Apache-2.0 license (ADR-031).
+>   (ADR-029), plan-vs-actual divergence tracking (ADR-030), the
+>   Apache-2.0 license (ADR-031), MCP Tier-1+ signed mandate envelopes
+>   (ADR-032), MCP mandate key rotation (ADR-033), and MCP run lifecycle
+>   tools (ADR-034).
 > - Where a section here contradicts an Accepted ADR, the ADR is authoritative.
 
 > Cortxt is to evolve from a control plane that primarily orchestrates external
@@ -514,6 +516,12 @@ problem space:
 - number of revisits to the same conclusion family;
 - path diversity;
 - information gain per reasoning step.
+
+The decisive-vs-diagnostic split of these ten metrics is decided in
+ADR-025 (§27 #8): five are decisive (graph distance to goal, evidence
+coverage, contradiction degree, novelty, stability), five are diagnostic
+(semantic closeness, centrality, revisit ratio, path diversity,
+information gain) until a new versioned policy promotes them.
 
 ### 12.3 Attractor detection
 
@@ -1260,9 +1268,14 @@ The following must be decided before the respective implementation:
    policy promotes them. `information_gain` got a real call site
    (`reasoning.geometric.apply_confidence_update`) for the first time.
 9. When self-hosted inference has business value compared with rented capacity.
-10. Embeddings provider for Phase 6 (§12.2 semantic closeness). The
-    InferencePort (§14.1) does not currently normalize embeddings, and no
-    phase delivers it. Blocking for Phase 6 start.
+10. ~~Embeddings provider for Phase 6 (§12.2 semantic closeness).~~
+    Resolved (ADR-035, Proposed): Voyage via `EmbeddingPort`
+    (`agent-platform/runtime/embedding_port.py`, on main since `14c2d56`),
+    a fail-closed, budget- and provider-policy-gated OpenAI-compatible
+    `/embeddings` caller and a drop-in `EmbeddingFn`. The Phase 6 live exit
+    arm passed against Voyage on 2026-08-17 (`3c3d5c5`, Kimi review
+    `ebfe041`); production reasoning keeps `hash_embedding` as the default
+    until a versioned policy swap.
 11. Real-time aggregation of cost/token budget across detached
     process boundaries (§20.3) — v0.1 enforces only via disjoint
     pre-allocation plus post-hoc rollover, not continuous aggregation.
