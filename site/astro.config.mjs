@@ -15,7 +15,10 @@ export default defineConfig({
       sidebar: [
         { label: 'Overview', items: [{ label: 'Documentation', link: '/docs/' }, { label: 'Quick start', link: '/docs/quick-start/' }] },
         { label: 'Architecture', items: [{ autogenerate: { directory: 'architecture' } }] },
-        { label: 'Operating model', items: [{ label: 'Current operating model', link: '/docs/operating-model/' }] },
+        { label: 'Operating model', items: [
+            { label: 'Current operating model', link: '/docs/operating-model/' },
+            { label: 'Verified dispatch path', link: '/docs/verified-dispatch-path/' },
+        ] },
         { label: 'Decisions', items: [{ label: 'Accepted ADRs', link: '/docs/adrs/' }] },
         { label: 'Roadmap', items: [{ label: 'Status and Atlas hook', link: '/docs/roadmap/' }] },
       ],
