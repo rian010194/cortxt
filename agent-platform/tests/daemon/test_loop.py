@@ -63,7 +63,29 @@ def _make_loop(tmp_path: Path, *, list_ready_issues, route=_fake_route,
         route=route,
         git_head=git_head or _make_progressing_git_head(),
         create_worktree=create_worktree or _fake_create_worktree,
+        review_sync=lambda **kwargs: {"synced": [], "skipped": [], "failed": []},
     )
+
+
+def test_review_sync_runs_before_scan_and_counts_are_in_snapshot(tmp_path):
+    order = []
+    loop = _make_loop(tmp_path, list_ready_issues=lambda repo: order.append("scan") or [])
+    loop.review_sync = lambda **kwargs: (order.append("sync") or
+        {"synced": ["review_1"], "skipped": [], "failed": []})
+    loop.run_once()
+    assert order == ["sync", "scan"]
+    doc = json.loads(loop.snapshot_path.read_text(encoding="utf-8"))
+    assert doc["daemon"]["review_sync"] == {"synced": 1, "skipped": 0, "failed": 0}
+
+
+def test_review_sync_failure_does_not_abort_dispatch_scan(tmp_path):
+    scanned = []
+    loop = _make_loop(tmp_path, list_ready_issues=lambda repo: scanned.append(repo) or [])
+    loop.review_sync = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("sync boom"))
+    assert loop.run_once() == []
+    assert scanned == ["owner/repo"]
+    doc = json.loads(loop.snapshot_path.read_text(encoding="utf-8"))
+    assert doc["daemon"]["review_sync"]["failed"] == 1
 
 
 def test_no_ready_issues_returns_empty(tmp_path):

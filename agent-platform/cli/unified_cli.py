@@ -995,6 +995,16 @@ def _run_daemon(args: argparse.Namespace) -> ResultEnvelope:
 
         from daemon.stop_flag import request_stop
 
+        if args.daemon_command == "sync-review":
+            from daemon.review_sync import report_counts, sync_review_submissions
+
+            report = sync_review_submissions(
+                store=Path(args.store) if args.store else ap_path / ".sessions",
+                state_dir=Path(args.state_dir), repo=args.repo,
+            )
+            return ResultEnvelope(status="succeeded",
+                                  evidence=[{"review_sync": report_counts(report)}])
+
         if args.daemon_command == "stop":
             request_stop(Path(args.state_dir))
             return ResultEnvelope(status="succeeded", evidence=[{"stopped": args.state_dir}])
@@ -1342,6 +1352,12 @@ def main(argv: list[str] | None = None) -> int:
     daemon_status = daemon_sub.add_parser("status", help="Print the daemon section of the widget snapshot")
     daemon_status.add_argument("--snapshot", required=True)
     daemon_status.set_defaults(func=_run_daemon)
+
+    daemon_sync_review = daemon_sub.add_parser("sync-review", help="Synchronize submitted reviews once")
+    daemon_sync_review.add_argument("--repo", help="Optional owner/repo filter")
+    daemon_sync_review.add_argument("--store", type=Path, help="Run store (default: agent-platform/.sessions)")
+    daemon_sync_review.add_argument("--state-dir", required=True)
+    daemon_sync_review.set_defaults(func=_run_daemon)
 
     args = parser.parse_args(argv)
 

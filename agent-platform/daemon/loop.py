@@ -59,6 +59,7 @@ from daemon.budget import SessionBudget
 from daemon.stop_flag import is_stop_requested
 from daemon.evidence_gate import GateOutcome, evaluate_gate
 from daemon.github_scanner import list_ready_issues as _default_list_ready_issues
+from daemon.review_sync import sync_review_submissions as _default_review_sync
 from routing.engine_manifest import DEFAULT_MANIFESTS, EngineManifest, route as _default_route
 from routing.hermes_invoker import HermesInvocationError
 from routing.dsh_invoker import DshInvocationError
@@ -124,7 +125,10 @@ class DaemonLoop:
     route: Callable = _default_route
     git_head: Callable[[Path], "str | None"] = _default_git_head
     create_worktree: Callable[[Path, str], Path] = _default_create_worktree
+    review_sync: Callable = _default_review_sync
+    run_store: Path | None = None
     claimed_issue_ids: set[str] = field(default_factory=set, init=False)
+    last_review_sync: dict = field(default_factory=lambda: {"synced": 0, "skipped": 0, "failed": 0}, init=False)
 
     def __post_init__(self) -> None:
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -190,6 +194,7 @@ class DaemonLoop:
             "claimed": sorted(self.claimed_issue_ids),
             "budget_spent_usd": self.budget.spent_usd if self.budget.spent_usd else None,
             "workstreams": daemon_workstreams,
+            "review_sync": self.last_review_sync,
         }
         if last_gate_outcome is not None:
             daemon_status["last_gate_outcome"] = {
@@ -199,7 +204,21 @@ class DaemonLoop:
             daemon_status["last_error"] = last_error
         write_snapshot(None, self.snapshot_path, daemon=daemon_status)
 
+    def run_review_sync(self) -> dict:
+        store = self.run_store or (Path(__file__).resolve().parents[1] / ".sessions")
+        return self.review_sync(store=store, state_dir=self.state_dir)
+
     def run_once(self) -> list[dict]:
+        try:
+            review_report = self.run_review_sync()
+            self.last_review_sync = {
+                key: len(review_report[key]) for key in ("synced", "skipped", "failed")
+            }
+            self._write_status()
+        except Exception as error:
+            self.last_review_sync = {"synced": 0, "skipped": 0, "failed": 1,
+                                     "error": str(error)}
+            self._write_status(last_error=f"review sync failed: {error}")
         issues = self.list_ready_issues(self.repo)
         shapes = _known_task_shapes(self.manifests)
         for issue in issues:
