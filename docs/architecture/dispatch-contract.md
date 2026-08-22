@@ -90,6 +90,34 @@ dispatcher processes remain an open race risk (ADR-018 clarification,
 - Only independent review plus human approval moves it to `Done`.
 - Retry creates a new `run_id`; it never overwrites prior run evidence.
 
+## Delivery execution paths
+
+The `workflow:*` label sequence marks state regardless of how the delivery is
+executed. Three execution paths are sanctioned; every path upholds the label
+invariant below, and `workflow:*` remains the single durable state signal
+(ADR-018). Only the execution mechanism and review gate differ.
+
+1. **Dispatched runtime build** — the canonical path above: dispatcher claim
+   (`ready -> in-progress`), isolated worktree, agent runtime, result
+   envelope, then `review -> done` on independent review plus operator
+   approval.
+2. **Coordinator-direct build** (fast fix) — the coordinator or operator
+   builds directly on a feature branch; the pull request's CI plus the
+   operator merge are the review and approval gate. The issue marks work
+   started (`ready -> in-progress`) and completes at merge (`-> done`).
+3. **Docs/ADR materialization** — no code; feature branch plus pull request
+   plus operator merge. The issue moves to `review -> done` in step with the
+   merge.
+
+**Label invariant (hard rule):** an open issue whose delivery pull request
+merges must never remain at `workflow:inbox`. It moves to `workflow:done` at
+merge time via the state its path prescribes. The Atlas `Work kind` field
+(`delivery` / `fast-fix` / `docs` / `research` / `decision`) records the kind
+for rendering only, never as a second state carrier. The execution map
+(ADR-039) pre-flight is required for parallel dispatched runs; the sequential
+coordinator-direct and docs paths may omit it, but must still record state so
+`cortxt work plan` and the candidates widget observe reality.
+
 ## Runtime adapters
 
 An adapter for `delegate_task`, a direct Hermes profile, or Hermes Kanban is
