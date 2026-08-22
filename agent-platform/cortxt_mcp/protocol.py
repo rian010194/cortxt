@@ -24,6 +24,7 @@ import sys
 from typing import Any, TextIO
 
 from . import mandate as mandate_module
+from . import run_lifecycle
 from . import tools
 from .audit import AuditLog
 
@@ -33,15 +34,17 @@ SERVER_VERSION = "0.1.0"
 
 
 def _tool_schema(spec: tools.ToolSpec) -> dict[str, Any]:
+    # Per-tool strict JSON schemas (AC1): run-lifecycle tools advertise the
+    # schemas they validate against; other tools keep the open
+    # additionalProperties:True shape (their handlers validate their own
+    # required fields, as before).
+    input_schema = spec.input_schema or {
+        "type": "object", "properties": {}, "additionalProperties": True,
+    }
     return {
         "name": spec.name,
         "description": spec.description,
-        # Tool-specific arguments aren't validated by JSON Schema here --
-        # each handler in tools.py validates its own required fields (and
-        # raises ValueError/KeyError, surfaced below as a -32000 error).
-        # A real per-tool schema is a reasonable follow-up, not required
-        # for this first read-only slice.
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": True},
+        "inputSchema": input_schema,
     }
 
 
@@ -52,6 +55,7 @@ def handle_request(
     allow_credentials: bool,
     audit: AuditLog | None = None,
     mandate_verifier: Any = None,
+    lifecycle: Any = None,
 ) -> dict[str, Any] | None:
     """Handle one decoded JSON-RPC 2.0 request or notification.
 
@@ -59,6 +63,12 @@ def handle_request(
     (no `id` on the request -> no reply, per JSON-RPC 2.0) or for a request
     whose `id` is present but the method is itself a notification-shaped
     one (`notifications/initialized`).
+
+    `lifecycle` is the `run_lifecycle.RunLifecycleService` used by the
+    three run-lifecycle tools: it builds the authoritative call context
+    (AC3) and is passed through to `call_tool` for handler injection. When
+    it is None, run-lifecycle tools fail closed (lifecycle_not_configured)
+    rather than running without a service.
     """
     has_id = "id" in request
     request_id = request.get("id")
@@ -110,35 +120,50 @@ def handle_request(
         tier_requires_mandate = spec is not None and spec.tier >= tools.TIER_DISPATCH
 
         try:
-            try:
-                estimated_cost_usd = float(raw_call_context.get("estimated_cost_usd", 0.0) or 0.0)
-            except (TypeError, ValueError):
-                # Malformed cost estimate: fail closed to a value that
-                # cannot pass a budget check, rather than silently
-                # defaulting to 0.0 (which would under-report spend).
-                estimated_cost_usd = float("inf")
-            raw_estimated_runtime = raw_call_context.get("estimated_runtime_seconds")
-            try:
-                estimated_runtime_seconds = (
-                    None if raw_estimated_runtime is None
-                    else float(raw_estimated_runtime)
+            # Authoritative call context (AC3): for the run-lifecycle
+            # tools, `call_tool` derives it from validated arguments and
+            # durable state via the lifecycle service -- never from the
+            # client-supplied `mandate_context` (Q7). For all other tools,
+            # the client `mandate_context` remains the (best-effort) source
+            # exactly as before.
+            if spec is not None and spec.lifecycle_required:
+                if lifecycle is None:
+                    raise run_lifecycle.RunLifecycleError(
+                        "lifecycle_not_configured",
+                        "run lifecycle service is not configured on this server",
+                    )
+                call_context = None  # call_tool builds it authoritatively
+            else:
+                try:
+                    estimated_cost_usd = float(raw_call_context.get("estimated_cost_usd", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    # Malformed cost estimate: fail closed to a value that
+                    # cannot pass a budget check, rather than silently
+                    # defaulting to 0.0 (which would under-report spend).
+                    estimated_cost_usd = float("inf")
+                raw_estimated_runtime = raw_call_context.get("estimated_runtime_seconds")
+                try:
+                    estimated_runtime_seconds = (
+                        None if raw_estimated_runtime is None
+                        else float(raw_estimated_runtime)
+                    )
+                except (TypeError, ValueError):
+                    # Malformed runtime estimate: fail closed to a value that
+                    # cannot pass a runtime check, rather than silently
+                    # treating the runtime as undeclared.
+                    estimated_runtime_seconds = float("inf")
+                call_context = mandate_module.CallContext(
+                    issue_ref=raw_call_context.get("issue_ref", ""),
+                    data_class=raw_call_context.get("data_class", "L0"),
+                    estimated_cost_usd=estimated_cost_usd,
+                    estimated_runtime_seconds=estimated_runtime_seconds,
+                    scope_text=raw_call_context.get("scope_text"),
+                    expected_scope_fingerprint=raw_call_context.get("expected_scope_fingerprint"),
                 )
-            except (TypeError, ValueError):
-                # Malformed runtime estimate: fail closed to a value that
-                # cannot pass a runtime check, rather than silently
-                # treating the runtime as undeclared.
-                estimated_runtime_seconds = float("inf")
-            call_context = mandate_module.CallContext(
-                issue_ref=raw_call_context.get("issue_ref", ""),
-                data_class=raw_call_context.get("data_class", "L0"),
-                estimated_cost_usd=estimated_cost_usd,
-                estimated_runtime_seconds=estimated_runtime_seconds,
-                scope_text=raw_call_context.get("scope_text"),
-                expected_scope_fingerprint=raw_call_context.get("expected_scope_fingerprint"),
-            )
             payload = tools.call_tool(
                 name, arguments, allow_dispatch=allow_dispatch, allow_credentials=allow_credentials,
                 mandate=raw_mandate, mandate_verifier=mandate_verifier, call_context=call_context,
+                lifecycle=lifecycle,
             )
         except tools.ToolNotFoundError:
             return _error(-32601, f"unknown tool: {name}")
@@ -148,6 +173,7 @@ def handle_request(
                     name, arguments, status="rejected",
                     mandate_id=mandate_id if tier_requires_mandate else None,
                     mandate_decision="tier_locked" if tier_requires_mandate else None,
+                    run_id=arguments.get("run_id"), issue_ref=arguments.get("issue_ref"),
                 )
             return _error(-32001, str(error))
         except tools.MandateRejectedError as error:
@@ -155,16 +181,42 @@ def handle_request(
                 audit.record(
                     name, arguments, status="rejected",
                     mandate_id=mandate_id, mandate_decision=f"rejected:{error.reason}",
+                    run_id=arguments.get("run_id"), issue_ref=arguments.get("issue_ref"),
                 )
             return _error(-32002, str(error), data={"reason": error.reason})
+        except run_lifecycle.InvalidArgumentsError as error:
+            # Strict-schema / argument-validation failure (AC10: -32602).
+            if audit is not None:
+                audit.record(
+                    name, arguments, status="rejected",
+                    mandate_id=mandate_id if tier_requires_mandate else None,
+                    mandate_decision="rejected:invalid_arguments"
+                    if tier_requires_mandate else None,
+                    run_id=arguments.get("run_id"), issue_ref=arguments.get("issue_ref"),
+                )
+            return _error(-32602, str(error))
+        except run_lifecycle.RunLifecycleError as error:
+            # Lifecycle/state conflict (AC10: -32003 with a stable code).
+            if audit is not None:
+                audit.record(
+                    name, arguments, status="rejected",
+                    mandate_id=mandate_id if tier_requires_mandate else None,
+                    mandate_decision=f"rejected:lifecycle:{error.code}",
+                    run_id=arguments.get("run_id") or error.run_id,
+                    issue_ref=arguments.get("issue_ref"),
+                )
+            return _error(-32003, str(error), data={"code": error.code})
         except Exception as error:  # tool handlers raise plain exceptions on bad/missing arguments
             return _error(-32000, str(error))
 
         if audit is not None:
+            run_id = payload.get("run_id") if isinstance(payload, dict) else None
             audit.record(
                 name, arguments, status="accepted",
                 mandate_id=mandate_id if tier_requires_mandate else None,
                 mandate_decision="accepted" if tier_requires_mandate else None,
+                run_id=run_id or arguments.get("run_id"),
+                issue_ref=arguments.get("issue_ref"),
             )
 
         return _result({"content": [{"type": "text", "text": json.dumps(payload, default=str)}]})
@@ -178,6 +230,7 @@ def serve_stdio(
     allow_credentials: bool,
     audit: AuditLog,
     mandate_verifier: Any = None,
+    lifecycle: Any = None,
     stdin: TextIO | None = None,
     stdout: TextIO | None = None,
 ) -> None:
@@ -196,7 +249,7 @@ def serve_stdio(
             continue
         response = handle_request(
             request, allow_dispatch=allow_dispatch, allow_credentials=allow_credentials, audit=audit,
-            mandate_verifier=mandate_verifier,
+            mandate_verifier=mandate_verifier, lifecycle=lifecycle,
         )
         if response is not None:
             stdout.write(json.dumps(response) + "\n")

@@ -92,22 +92,27 @@ def serve(
     allow_credentials: bool = False,
     store: Path | None = None,
     mandate_verifier: Any = None,
+    lifecycle: Any = None,
 ) -> None:
     """Entry point for `cortxt mcp serve`. Blocks on stdio until the client
     disconnects (EOF on stdin), same foreground-blocking shape as
     `cortxt widget`.
 
     Tier 0 (read-only) tools are always on. `allow_dispatch` unlocks Tier 1
-    (`cortxt_dispatch`, `cortxt_addons_submit`, `cortxt_daemon_status`) --
-    but per ADR-032, a Tier-1+ call additionally requires a valid signed
-    mandate envelope, verified by `mandate_verifier`. `allow_credentials`
-    unlocks Tier 2 -- scaffolding only today, no credential tools are
-    registered yet. `store` is the session_state ledger used for audit
-    logging (default: `agent-platform/.sessions`, same default every other
+    (`cortxt_dispatch`, `cortxt_addons_submit`, `cortxt_daemon_status`, and
+    the three run-lifecycle tools) -- but per ADR-032, a Tier-1+ call
+    additionally requires a valid signed mandate envelope, verified by
+    `mandate_verifier`. `allow_credentials` unlocks Tier 2 -- scaffolding
+    only today, no credential tools are registered yet. `store` is the
+    session_state ledger used for audit logging and the run-lifecycle
+    store (default: `agent-platform/.sessions`, same default every other
     CLI subcommand uses). `mandate_verifier` defaults to one built from
     environment configuration (`_build_mandate_verifier_from_env`) -- see
     `MANDATE_PUBLIC_KEYS_ENV`/`MANDATE_STATE_DIR_ENV` above; this module
-    never holds or references the mandate-signing private key.
+    never holds or references the mandate-signing private key. `lifecycle`
+    defaults to a `run_lifecycle.RunLifecycleService` over the same store
+    with the default engine context (issue #230 / ADR-034); a caller may
+    inject a fake for tests.
     """
     from .audit import AuditLog
 
@@ -116,6 +121,14 @@ def serve(
     audit = AuditLog(store)
     if mandate_verifier is None:
         mandate_verifier = _build_mandate_verifier_from_env(agent_platform_dir)
+    if lifecycle is None:
+        from .run_lifecycle import RunLifecycleService
+
+        lifecycle = RunLifecycleService.with_defaults()
+        # The default service store is agent-platform/.sessions; align it
+        # with the explicit `store` parameter when one was supplied.
+        if store != agent_platform_dir / ".sessions":
+            lifecycle.store = store
 
     sdk = _try_import_sdk()
     if sdk is not None:
@@ -130,5 +143,5 @@ def serve(
 
     serve_stdio(
         allow_dispatch=allow_dispatch, allow_credentials=allow_credentials, audit=audit,
-        mandate_verifier=mandate_verifier,
+        mandate_verifier=mandate_verifier, lifecycle=lifecycle,
     )
