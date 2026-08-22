@@ -1,0 +1,87 @@
+name: Dispatch AC2 proof
+
+# Manual proof of issue #204 AC 2: a real end-to-end dispatch with a landed
+# commit in an isolated worktree. Runs ONLY on the trusted default branch and
+# ONLY via workflow_dispatch. Mutates a dedicated fixture issue (labels
+# workflow:ready + background-task + ci:dispatch-proof); it is deliberately
+# NOT part of ci.yml (which runs on every push/PR).
+
+permissions:
+  contents: read
+  issues: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      proof_issue_number:
+        description: "Dedicated proof fixture issue number (ci:dispatch-proof)"
+        required: true
+        type: number
+      post_summary_to_issue_204:
+        description: "Post a concise evidence summary to issue #204 (use true for the inaugural accepted proof)"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: dispatch-ac2-proof-${{ inputs.proof_issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.ref == 'refs/heads/main'
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Refuse feature-branch runs
+        if: github.ref != 'refs/heads/main'
+        run: echo "::error::dispatch-proof must run from main (trusted code only)"; exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml jsonschema
+
+      - name: Configure local Git identity (CI-only, local commits only)
+        run: |
+          git config user.name "Cortxt Dispatch Proof"
+          git config user.email "cortxt-dispatch-proof@users.noreply.github.com"
+
+      - name: Run dispatch proof
+        id: proof
+        run: |
+          python scripts/ci_dispatch_proof.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --issue "${{ inputs.proof_issue_number }}" \
+            --checkout "$GITHUB_WORKSPACE" \
+            --temp-root "$RUNNER_TEMP/cortxt-dispatch-proof/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+        env:
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+
+      - name: Upload content-free proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dispatch-proof-evidence
+          path: |
+            ${{ runner.temp }}/cortxt-dispatch-proof/**/*.json
+            ${{ github.workspace }}/.hermes/dispatch/runs/*.log
+          if-no-files-found: ignore
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Dispatch AC2 proof" >> "$GITHUB_STEP_SUMMARY"
+          echo "See the proof issue for the canonical lifecycle evidence." >> "$GITHUB_STEP_SUMMARY"
