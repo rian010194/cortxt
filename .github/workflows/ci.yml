@@ -46,19 +46,27 @@ jobs:
       - run: docker info
       - run: pytest agent-platform/ -m docker_required -v
 
-  web-checks:
+  dco-signoff:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: "26"
-      - run: npm ci
-      - run: npx tsc -b --noEmit
-      - run: npx oxlint
+          fetch-depth: 0
+      - run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          failed=0
+          while IFS= read -r commit; do
+            if ! git show -s --format=%B "${commit}" |
+              git interpret-trailers --parse |
+              grep -iqE '^Signed-off-by:[[:space:]]+.+$'; then
+              echo "::error::Commit ${commit} is missing a Signed-off-by trailer."
+              failed=1
+            fi
+          done < <(git rev-list --reverse "${base}..${head}")
+          exit "${failed}"
 
   adr-doc-currency:
     if: github.event_name == 'pull_request'

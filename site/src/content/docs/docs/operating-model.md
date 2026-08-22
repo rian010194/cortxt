@@ -25,7 +25,7 @@ GitHub Issues are the durable source of truth for scope, evidence, review, and a
 - The `cortxt` CLI is the primary product surface.
 - `cortxt mcp serve` is the external integration surface.
 - Hermes, Pi, Codex, DSH, and other runtimes are replaceable execution resources behind Cortxt-owned adapters.
-- The `web/` directory is a paused legacy prototype, not the product surface.
+- The legacy web prototype was removed from the repository before the first public release (issue #225); the CLI remains the product surface.
 - Only the human operator approves scope, irreversible effects, merge, publication, deploy, and final completion.
 
 ## Verified capabilities

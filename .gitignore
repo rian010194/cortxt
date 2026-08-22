@@ -31,12 +31,6 @@ venv/
 
 # ---- Node / builds ----
 node_modules/
-web/node_modules/
-web/build/
-web/dist/
-web/.next/
-web/out/
-web/public/build/
 agent-platform/state/build/
 *.tsbuildinfo
 

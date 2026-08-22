@@ -6,6 +6,7 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-031 | Amended — contribution policy resolved to DCO (Developer Certificate of Origin) | #228 |
 | 2026-08-22 | ADR-018 | Amended — clarification: exactly-one rule scoped to open work issues with `atlas:map` exemption; workflow label is state not authority (ADR-032 mandate dimension); dispatcher atomicity is single-process with multi-process race open | #223 |
 | 2026-08-22 | ADR-031 | Amended — license-file representation: `LICENSE` is the verbatim Apache-2.0 text; project copyright notice moved to `NOTICE` | #221 |
 | 2026-08-22 | ADR-021 | Amended — proof-environment identifier reference removed from tracked ADR surface (public-readiness; no decision change) | #221 |
