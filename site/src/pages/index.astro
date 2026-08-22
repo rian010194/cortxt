@@ -1,0 +1,45 @@
+---
+import '../styles/landing.css';
+const principles = [
+  ['Mandate first', 'Work runs only inside a verifiable human mandate: explicit scope, limits, and authority before execution.'],
+  ['Provider neutral', 'Models, providers, and agent engines remain replaceable resources behind Cortxt-owned contracts.'],
+  ['Evidence before approval', 'Runs return inspectable evidence and can receive independent review before a human makes the final call.'],
+];
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content="Cortxt is the provider-neutral control plane for long-running AI work under verifiable human mandate." />
+    <title>Cortxt | AI work under human mandate</title>
+  </head>
+  <body>
+    <header class="nav shell">
+      <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
+      <nav aria-label="Primary navigation">
+        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a>
+        <a class="nav-cta" href="https://github.com/rian010194/cortxt">GitHub</a>
+      </nav>
+    </header>
+    <main>
+      <section class="hero shell">
+        <p class="eyebrow">Provider-neutral control plane</p>
+        <h1>Long-running AI work, held to a human mandate.</h1>
+        <p class="lede">Cortxt creates, steers, resumes, and verifies intelligent work while keeping scope, evidence, and approval under human control.</p>
+        <div class="actions"><a class="primary" href="/docs/quick-start/">Start with the CLI</a><a class="secondary" href="/docs/">Explore the docs <span aria-hidden="true">-&gt;</span></a></div>
+        <div class="signal" aria-label="Cortxt execution flow"><span>Human mandate</span><b>-&gt;</b><span>Controlled run</span><b>-&gt;</b><span>Evidence</span><b>-&gt;</b><span>Independent review</span><b>-&gt;</b><span>Human approval</span></div>
+      </section>
+      <section class="principles shell" aria-labelledby="principles-title">
+        <p class="eyebrow">The contract</p><h2 id="principles-title">Control that survives a model change.</h2>
+        <div class="grid">{principles.map(([title, body], index) => <article><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>)}</div>
+      </section>
+      <section class="proof shell">
+        <div><p class="eyebrow">Built for inspectability</p><h2>Your workflow is the product. The runtime is replaceable.</h2></div>
+        <div><p>GitHub Issues hold durable scope and evidence. The Cortxt CLI drives execution. External runtimes sit behind adapters, and every terminal result follows a shared contract.</p><a href="/docs/operating-model/">Read the operating model -&gt;</a></div>
+      </section>
+      <section class="docs-band"><div class="shell"><p class="eyebrow">Go deeper</p><h2>Decisions, contracts, and the path ahead.</h2><div class="links"><a href="/docs/adrs/"><strong>Accepted ADRs</strong><span>Normative architecture decisions -&gt;</span></a><a href="/docs/architecture/"><strong>Architecture</strong><span>Boundaries and execution contracts -&gt;</span></a><a href="/docs/roadmap/"><strong>Roadmap</strong><span>Status now, Atlas hook later -&gt;</span></a></div></div></section>
+    </main>
+    <footer class="shell"><span>Cortxt</span><span>Human mandate. Verifiable work.</span></footer>
+  </body>
+</html>
