@@ -69,6 +69,7 @@ jobs:
             --temp-root "$RUNNER_TEMP/cortxt-dispatch-proof/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
         env:
           GITHUB_SERVER_URL: ${{ github.server_url }}
+          CORTXT_POST_SUMMARY_TO_204: ${{ inputs.post_summary_to_issue_204 }}
 
       - name: Upload content-free proof evidence
         if: always()

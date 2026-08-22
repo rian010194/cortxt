@@ -474,6 +474,28 @@ def run_proof(args: argparse.Namespace) -> dict:
     )
     observe_labels(repo, issue_num, expect=FIXTURE_LABELS, step="after reset")
     evidence["reset"] = {"fixture_back_to_ready": True}
+
+    # 13. Optional: post a concise evidence summary to the originating issue
+    #     #204 for the inaugural/proof-changing runs (per the proof design).
+    #     Controlled by the workflow input post_summary_to_issue_204 -> env.
+    if os.environ.get("CORTXT_POST_SUMMARY_TO_204", "false") == "true":
+        server = os.environ.get("GITHUB_SERVER_URL", "")
+        run_env = os.environ.get("GITHUB_RUN_ID", "local")
+        commit = evidence["commit"]
+        summary = (
+            f"**AC 2 Linux CI proof passed** (run `{run.run_id}`).\n\n"
+            f"- Proof issue: {repo}#{issue_num}\n"
+            f"- Commit landed in isolated worktree: `{commit['head_after'][:12]}` "
+            f"(before `{commit['head_before'][:12]}`)\n"
+            f"- Label sequence observed: `workflow:ready -> workflow:in-progress -> "
+            f"workflow:review` (fixture reset to ready)\n"
+            f"- Independent verification: `commit_landed=true`, exactly one changed path, "
+            f"clean tree, primary checkout unchanged\n"
+            f"- Workflow run: {server}/{repo}/actions/runs/{run_env}"
+        )
+        gh_comment(repo, "204", summary)
+        evidence["posted_to_204"] = True
+
     evidence["label_sequence"] = ["workflow:ready", "workflow:in-progress", "workflow:review", "workflow:ready (reset)"]
     evidence["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     evidence["success"] = True
