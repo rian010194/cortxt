@@ -679,10 +679,11 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
                 output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "candidates.json")
                 output_path = Path(output_path)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
+                artifact = {**tree, "handoffs": model["handoffs"], "repo": repo}
                 descriptor, tmp = tempfile.mkstemp(prefix=".candidates-", suffix=".tmp", dir=output_path.parent)
                 try:
                     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                        json.dump(tree, handle, indent=2)
+                        json.dump(artifact, handle, indent=2)
                         handle.flush()
                         os.fsync(handle.fileno())
                     os.replace(tmp, output_path)
