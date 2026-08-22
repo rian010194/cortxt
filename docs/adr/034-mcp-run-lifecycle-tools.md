@@ -1,6 +1,6 @@
 # ADR-034: MCP run lifecycle tools -- mandate-bound create/resume/submit_for_review
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-22
 **Deciders:** Rikard Andersson (operator), scope approved 2026-08-22 (session); design by the parallel MCP-step-2 session, operator adopted the Q1-Q12 recommendations ("run with the recommendations on Q1-Q12"); remaining open questions Q3/Q4/Q9/Q17-Q20/Q22/Q24 resolved by operator recommendation in issue #230
 **Technical Story:** issue #230; proposal documents `lab/parallel-mcp-step2/step2-scope.md`, `step2-spec.md`, `step2-decisions-q1-12-2026-08-22.md`, `step2-questions.md` (workspace-local, not tracked in this repo)
@@ -189,13 +189,18 @@ cumulative elapsed-time policy across create+resume is deferred (not built).
 
 ## Validation
 
-- [ ] Implementation matches decision -- builder runs the focused
-      run-lifecycle suite plus the full `tests/cortxt_mcp/` suite locally;
-      coordinator independently runs and confirms CI before acceptance.
-- [ ] Tests cover decision boundaries -- registration/schemas, rejection
+- [x] Implementation matches decision -- builder ran the focused
+      run-lifecycle suite (115 passed in `tests/cortxt_mcp/`) and the full
+      `agent-platform` suite (889 passed, 5 skipped) locally; coordinator
+      independently confirmed CI before acceptance (PR #231: all 6 checks
+      green, including agent-platform-tests, agent-platform-docker-tests,
+      dco-signoff, adr-doc-currency).
+- [x] Tests cover decision boundaries -- registration/schemas, rejection
       before handler/adapter, runtime cap, claim conflict, resume
       non-resumable paths, review idempotency replay/conflict, audit
-      decisions, and `-32003`/`-32602` protocol mapping.
+      decisions, and `-32003`/`-32602` protocol mapping (covered by
+      `tests/cortxt_mcp/test_run_lifecycle_tools.py` and confirmed by the
+      coordinator CI run).
 
 ## Open Questions (deferred, not blocking this ADR)
 
@@ -219,3 +224,7 @@ cumulative elapsed-time policy across create+resume is deferred (not built).
 - Trigger: a named consumer needs asynchronous create/polling, a second MCP
   server process against the same state directory, or evidence that the
   lifecycle surface should absorb or replace `cortxt_dispatch`.
+- Accepted 2026-08-22 (PR #231 merged): implementation and tests confirmed
+  by the coordinator CI run; acceptance covers the current
+  single-stdio-process, loopback/stdio deployment (see Open Questions on
+  multi-process state and daemon consumption of review submissions).
