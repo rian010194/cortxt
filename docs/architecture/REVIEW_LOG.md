@@ -6,6 +6,8 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-039 | Added - Execution map concurrency claims and prerequisite ordering (Proposed; issue #251/#265) | TBD |
+| 2026-08-22 | ADR-038 | Added - Declarative widget contract and authorized action ports (Proposed; issue #251/#265) | TBD |
 | 2026-08-22 | ADR-037 | Accepted - live daemon review-sync transitioned a real GitHub fixture issue to workflow:review through the real gh CLI (issue #252); status Proposed -> Accepted | #254 |
 | 2026-08-22 | ADR-037 | Added - MCP review submission daemon synchronization (Proposed; issue #249) | #250 |
 | 2026-08-22 | ADR-036 | Accepted - MCP run lifecycle async create/status approved after end-to-end dogfood proof over real MCP stdio with a deterministic engine (issue #247); status Proposed -> Accepted | #248 |
