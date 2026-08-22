@@ -1,8 +1,10 @@
 # Contributing to Cortxt
 
-Thanks for your interest in Cortxt. This project is built and maintained
-solo, in the open, as a working portfolio. Contributions are welcome when
-they respect the project's operating model.
+Thanks for your interest in Cortxt. This project is currently built and
+maintained solo as a working portfolio. External code and documentation
+contributions are not yet accepted while the contribution policy is being
+finalized. Bug reports and security reports remain welcome through the
+channels below.
 
 ## Before you start
 
@@ -24,14 +26,16 @@ Read the following before proposing a change:
 3. [`docs/architecture/dispatch-contract.md`](docs/architecture/dispatch-contract.md)
 4. [Accepted ADRs](docs/adr/README.md)
 
-## Ways to contribute
+## Feedback during the contribution-policy pause
 
-- **Report a bug or suggest an idea** — open a GitHub issue with a clear
-  title and a structured body.
-- **Improve documentation** — typo fixes, clearer prose, better examples.
-  All repository documentation is written in **English**.
-- **Implement a change** — open a pull request. Keep the scope of each PR
-  small and focused.
+- **Report a non-security bug or suggest an idea** — open a GitHub issue with
+  a clear title and a structured body.
+- **Report a vulnerability** — only through the private process in
+  [`SECURITY.md`](SECURITY.md). Do not open a public issue for it.
+- **Do not open a pull request yet** — the repository will publish a
+  contribution policy (including the DCO/CLA decision) before accepting
+  external code or documentation changes. All repository documentation is
+  written in **English**.
 
 ## Issue and PR conventions
 
@@ -63,5 +67,6 @@ same pull request (the `adr-doc-currency` CI gate enforces this).
 
 ## License
 
-By contributing you agree that your contributions are licensed under the
-[Apache License 2.0](LICENSE).
+Repository use is governed by the [Apache License 2.0](LICENSE). Terms for
+future inbound contributions will be documented after the contribution-policy
+decision.

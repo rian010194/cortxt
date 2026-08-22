@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/rian010194/ai-workspace-control-plane/schemas/vertical-manifest.schema.json",
+  "$id": "https://github.com/rian010194/cortxt/schemas/vertical-manifest.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Vertical package manifest for harness loading. Contract version 0.1.0.",
   "version": "0.1.0",

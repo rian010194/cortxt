@@ -17,8 +17,9 @@ is the starting point for all distribution and for the contribution model.
 ## Decision
 
 **Cortxt is licensed under the Apache License 2.0.** `LICENSE` is replaced with
-the verbatim Apache-2.0 text (copyright: Rikard Andersson). All traces of
-"viewable, not open source" are removed from the repository documentation.
+the verbatim Apache-2.0 text; the project copyright notice is recorded in a
+separate `NOTICE` file. All traces of "viewable, not open source" are removed
+from the repository documentation.
 
 Apache-2.0 was chosen over MIT for its explicit patent grant (§3) and its
 patent-retaliation clause — relevant for a platform with routing and inference
@@ -50,10 +51,13 @@ adopted.
    rejected as incompatible with the product goal.
 
 ## Validation
-- [x] `LICENSE` is the verbatim Apache-2.0 text (with the copyright line).
+- [x] `LICENSE` contains the verbatim Apache-2.0 text; the project copyright
+      notice is recorded in `NOTICE`.
 - [x] No "viewable, not open source" remnants remain in the repository
       documentation.
 - [x] The ADR index (`docs/adr/README.md`) is updated with 031.
+- [x] `NOTICE` records the project copyright (2026-08-22, public-readiness
+      cleanup).
 
 ## Expiry/Review Trigger
 - Review by: 2026-11-21

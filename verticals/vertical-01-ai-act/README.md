@@ -3,13 +3,13 @@
 > **Package:** `vertical-01-ai-act`  
 > **Version:** `0.1.0`  
 > **Contract:** `0.1.0`  
-> **Issue:** [rian010194/ai-workspace-control-plane#9](https://github.com/rian010194/ai-workspace-control-plane/issues/9)
+> **Issue:** [rian010194/cortxt#9](https://github.com/rian010194/cortxt/issues/9)
 
 ---
 
 ## Purpose
 
-This is the first production-intent domain package for the AI Workspace control plane. It declares the workflows, schemas, instructions, templates, and synthetic evaluation fixtures required to assess EU AI Act applicability and obligations for a given system description.
+This is the first production-intent domain package for the Cortxt control plane. It declares the workflows, schemas, instructions, templates, and synthetic evaluation fixtures required to assess EU AI Act applicability and obligations for a given system description.
 
 ## What v0.1 decides
 

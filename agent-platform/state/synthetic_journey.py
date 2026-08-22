@@ -103,7 +103,7 @@ def resume(output_name: str) -> dict[str, Any]:
         "error": None,
         "evidence": [{"kind": "synthetic_fixture", "ref": "fixture://foundation-101/t1"}],
         "finished_at": utc_now(),
-        "issue_id": "rian010194/ai-workspace-control-plane#101",
+        "issue_id": "rian010194/cortxt#101",
         "model": "offline/deterministic-synthetic-adapter",
         "run_id": run_id,
         "runtime": "cortxt-local-state/1",
@@ -139,7 +139,7 @@ def verify(output_name: str) -> dict[str, Any]:
                        "worker_role"}
     if not isinstance(terminal, dict) or set(terminal) != terminal_fields:
         raise JourneyError("terminal result envelope has an invalid schema")
-    if terminal["issue_id"] != "rian010194/ai-workspace-control-plane#101" or terminal["run_id"] != manifest["run_id"]:
+    if terminal["issue_id"] != "rian010194/cortxt#101" or terminal["run_id"] != manifest["run_id"]:
         raise JourneyError("terminal result correlation does not match")
     if terminal["status"] != "succeeded" or terminal["error"] is not None:
         raise JourneyError("terminal result is not a successful completion")

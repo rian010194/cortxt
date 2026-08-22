@@ -17,7 +17,7 @@ This ADR exists solely to carry that review trigger to a formal decision. It doe
 
 **F2 treatment — ADR-015 is reopened only for the product-surface dimension, not for the wedge decision.**
 
-ADR-015's core decision (Wedge B as first wedge, provider-/data-class-driven long-running analysis, Norcom/CSL as proof environment B) remains Accepted and unaffected. ADR-021 reopens only the question ADR-015 left open: may a visual surface (widget UI) and a second product layer (admin surface on top of the CLI) exist, as a complement to ADR-015's "repository-native + CLI (primarily)" decision — not a replacement.
+ADR-015's core decision (Wedge B as first wedge, provider-/data-class-driven long-running analysis, proof environment B) remains Accepted and unaffected. ADR-021 reopens only the question ADR-015 left open: may a visual surface (widget UI) and a second product layer (admin surface on top of the CLI) exist, as a complement to ADR-015's "repository-native + CLI (primarily)" decision — not a replacement.
 
 **The narrow decision is:**
 
