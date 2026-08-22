@@ -200,9 +200,10 @@ def _real_verifier(envelope, public_keys, *, tool="cortxt_run_create"):
             return True
 
     return mandate.MandateVerifier(
-        public_keys=public_keys,
+        public_keys={issuer: {"key-1": value} for issuer, value in public_keys.items()},
         nonce_store=FakeNonceStore(),
         budget_store=FakeBudgetStore(),
+        revocation_store=type("AllowRevocations", (), {"is_revoked": lambda self, *args: False})(),
         clock=_clock,
     )
 
@@ -211,9 +212,12 @@ def _issue(scope_text=SCOPE, *, allowed_tools=None, max_runtime_seconds=3600, **
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     key = Ed25519PrivateKey.generate()
+    public_key_hex = mandate.public_key_hex_from_private_key(key)
     issued = mandate.issue_mandate(
         private_key=key,
         granted_by="operator-demo",
+        kid="key-1",
+        public_keys={"operator-demo": {"key-1": public_key_hex}},
         issue_ref=ISSUE_REF,
         allowed_tools=allowed_tools or ["cortxt_run_create"],
         data_class_max="L2",
@@ -223,7 +227,7 @@ def _issue(scope_text=SCOPE, *, allowed_tools=None, max_runtime_seconds=3600, **
         scope_text=scope_text,
         **overrides,
     )
-    return issued, mandate.public_key_hex_from_private_key(key)
+    return issued, public_key_hex
 
 
 def test_missing_mandate_rejected_before_handler(tmp_path):

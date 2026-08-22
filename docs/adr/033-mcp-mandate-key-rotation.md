@@ -1,9 +1,9 @@
 # ADR-033: MCP mandate envelopes identify versioned signing keys and support overlap and revocation
 
-**Status:** Proposed
+**Status:** Accepted (2026-08-22)
 **Date:** 2026-08-22
-**Deciders:** Rikard Andersson (operator), design approved 2026-08-22 (session); not yet implemented
-**Technical Story:** Follow-up to ADR-032 key-rotation risk and open question; filed as ADR-033 (Proposed) after operator approval of the parallel-session draft (`lab/parallel-key-rotation/`)
+**Deciders:** Rikard Andersson (operator), design approved 2026-08-22 (session); implemented 2026-08-22 (issue #241, PR #242)
+**Technical Story:** Follow-up to ADR-032 key-rotation risk and open question; filed as ADR-033 (Proposed) after operator approval of the parallel-session draft (`lab/parallel-key-rotation/`); accepted after implementation
 
 ## Context
 
@@ -118,21 +118,39 @@ Rotation does not invalidate envelopes already issued under a still-trusted old 
 7. **Query CredentialBroker from the MCP server.** Rejected under ADR-029 and ADR-032: the less-trusted verification side must never gain access to mandate signing private keys.
 8. **Use an online key-management or authorization service immediately.** Deferred: it can provide signed, centrally refreshed key and revocation state, but adds network availability, authentication, and operational dependencies beyond the current single-host stdio deployment.
 
+## Implementation notes (operator decisions, 2026-08-22, issue #241)
+
+1. **Schema v1: clean cutover.** v1 envelopes are not supported after the
+   coordinated switch; there is no legacy key per `granted_by` and no
+   v1-compatibility window. A v1 envelope fails as `unknown_schema_version`.
+2. **Operational values: config with safe defaults.** `max_envelope_ttl`
+   24 h, clock-skew margin 5 min, revocation refresh interval 10 s,
+   last-known-good freshness 60 s — env-configurable, these defaults.
+3. **Revocation state: operator-managed local JSON file** in the mandate
+   state dir (`revocations.json`, shape
+   `{"generation": 1, "revocations": [{"granted_by", "kid", "revoked_at"}]}`),
+   refreshable snapshot, fail-closed, monotonic generation.
+
 ## Validation
 
-- [ ] **AC10 - Key identity is signed and deterministic.** A v2 envelope issued with `(granted_by, kid)` verifies only against that exact nested keyring entry. Tampering with `kid`, an unknown `kid`, an empty `kid`, or a duplicate tuple with different public bytes fails closed with the specified reason and does not try another key.
-- [ ] **AC11 - Planned overlap preserves unexpired envelopes.** With old and new keys registered, fake-clock tests show an old-key envelope and a new-key envelope both verify before their respective `expires_at`; after the old envelope expires, it is rejected even while the old public key remains loaded.
-- [ ] **AC12 - Issuance switches without verifier ambiguity.** Fake issuer metadata selects the new `kid`; every new envelope names it, a retired key cannot be selected, and a private/public mismatch is rejected before an envelope is returned.
-- [ ] **AC13 - TTL bounds retirement.** With an injected fake clock, issuance accepts `expires_at` at the configured maximum plus allowed skew and rejects a later value. Retirement calculation retains the old public key through the last possible valid envelope and permits removal only after the bound.
-- [ ] **AC14 - Revocation beats expiry.** A valid, unexpired envelope is accepted before its tuple is revoked and rejected as `key_revoked` after an atomic fake-store update. The rejected call does not invoke the handler, consume the nonce, or debit the budget.
-- [ ] **AC15 - Revocation refresh survives process behavior.** Fake clock and fake revocation snapshots cover refresh interval, last-known-good freshness, malformed/unreadable update, generation rollback, and stale-source fail-closed behavior. A real temporary-file test covers atomic replacement without server restart.
-- [ ] **AC16 - Rotation does not weaken existing checks.** Existing AC1-AC9 and adversarial tests remain green for supported schemas; signature, nonce replay, expiry, tool, data class, budget, issue reference, scope fingerprint, ledger, and Tier-0 behavior are unchanged.
-- [ ] **AC17 - Configuration fails closed.** Invalid nested JSON, non-string key material, invalid Ed25519 bytes, duplicate logical tuples, and a missing initial revocation snapshot produce an unconfigured verifier or explicit rejection, never partial acceptance.
-- [ ] **AC18 - Credential isolation survives multi-key storage.** Fake CredentialBroker tests show separate tuple-specific credentials, operator-confirmed stores, exact-key loads, collision-safe identifiers, and explicit purpose. The standing source test proves server-side files contain neither private-key credential ids nor broker/issuer imports.
-- [ ] **AC19 - Schema transition is explicit.** If v1 compatibility is approved, tests prove v1 uses only its configured legacy key and cannot select among v2 keys; issuance no longer emits v1. If compatibility is not approved, v1 fails as unknown schema after the coordinated cutover.
-- [ ] **AC20 - Audit identifies rotation decisions.** Accepted and rejected Tier-1 ledger rows include `granted_by` and `kid` or an equivalent non-secret key reference, and revoked attempts record `rejected:key_revoked` without logging key material.
-- [ ] Implementation matches this decision and is reviewed against ADR-029 and ADR-032 trust boundaries.
-- [ ] Tests use injected fake clocks and fake key, revocation, nonce, budget, and broker stores; file-backed behavior is covered separately with temporary directories.
+- [x] **AC10 - Key identity is signed and deterministic.** A v2 envelope issued with `(granted_by, kid)` verifies only against that exact nested keyring entry. Tampering with `kid`, an unknown `kid`, an empty `kid`, or a duplicate tuple with different public bytes fails closed with the specified reason and does not try another key.
+- [x] **AC11 - Planned overlap preserves unexpired envelopes.** With old and new keys registered, fake-clock tests show an old-key envelope and a new-key envelope both verify before their respective `expires_at`; after the old envelope expires, it is rejected even while the old public key remains loaded.
+- [x] **AC12 - Issuance switches without verifier ambiguity.** Fake issuer metadata selects the new `kid`; every new envelope names it, a retired key cannot be selected, and a private/public mismatch is rejected before an envelope is returned.
+- [x] **AC13 - TTL bounds retirement.** With an injected fake clock, issuance accepts `expires_at` at the configured maximum plus allowed skew and rejects a later value. Retirement calculation retains the old public key through the last possible valid envelope and permits removal only after the bound.
+- [x] **AC14 - Revocation beats expiry.** A valid, unexpired envelope is accepted before its tuple is revoked and rejected as `key_revoked` after an atomic fake-store update. The rejected call does not invoke the handler, consume the nonce, or debit the budget.
+- [x] **AC15 - Revocation refresh survives process behavior.** Fake clock and fake revocation snapshots cover refresh interval, last-known-good freshness, malformed/unreadable update, generation rollback, and stale-source fail-closed behavior. A real temporary-file test covers atomic replacement without server restart.
+- [x] **AC16 - Rotation does not weaken existing checks.** Existing AC1-AC9 and adversarial tests remain green for supported schemas; signature, nonce replay, expiry, tool, data class, budget, issue reference, scope fingerprint, ledger, and Tier-0 behavior are unchanged.
+- [x] **AC17 - Configuration fails closed.** Invalid nested JSON, non-string key material, invalid Ed25519 bytes, duplicate logical tuples, and a missing initial revocation snapshot produce an unconfigured verifier or explicit rejection, never partial acceptance.
+- [x] **AC18 - Credential isolation survives multi-key storage.** Fake CredentialBroker tests show separate tuple-specific credentials, operator-confirmed stores, exact-key loads, collision-safe identifiers, and explicit purpose. The standing source test proves server-side files contain neither private-key credential ids nor broker/issuer imports.
+- [x] **AC19 - Schema transition is explicit.** Per operator decision: clean cutover — v1 fails as unknown schema after the coordinated switch; no legacy key, no compatibility window.
+- [x] **AC20 - Audit identifies rotation decisions.** Accepted and rejected Tier-1 ledger rows include `granted_by` and `kid` or an equivalent non-secret key reference, and revoked attempts record `rejected:key_revoked` without logging key material.
+- [x] Implementation matches this decision and is reviewed against ADR-029 and ADR-032 trust boundaries.
+- [x] Tests use injected fake clocks and fake key, revocation, nonce, budget, and broker stores; file-backed behavior is covered separately with temporary directories.
+
+Implementation evidence (issue #241): focused MCP suite 133 passed; full
+default suite 879 passed, 4 skipped, 20 deselected; `git diff --check`
+clean. ADR-032 AC8 standing test expanded: server-side modules contain no
+versioned signing credential id construction and no broker/issuer imports.
 
 ## Open Questions
 

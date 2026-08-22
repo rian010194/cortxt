@@ -116,6 +116,8 @@ def handle_request(
         if not isinstance(raw_call_context, dict):
             raw_call_context = {}
         mandate_id = raw_mandate.get("mandate_id") if isinstance(raw_mandate, dict) else None
+        granted_by = raw_mandate.get("granted_by") if isinstance(raw_mandate, dict) else None
+        kid = raw_mandate.get("kid") if isinstance(raw_mandate, dict) else None
         spec = tools.TOOL_REGISTRY.get(name)
         tier_requires_mandate = spec is not None and spec.tier >= tools.TIER_DISPATCH
 
@@ -173,6 +175,8 @@ def handle_request(
                     name, arguments, status="rejected",
                     mandate_id=mandate_id if tier_requires_mandate else None,
                     mandate_decision="tier_locked" if tier_requires_mandate else None,
+                    granted_by=granted_by if tier_requires_mandate else None,
+                    kid=kid if tier_requires_mandate else None,
                     run_id=arguments.get("run_id"), issue_ref=arguments.get("issue_ref"),
                 )
             return _error(-32001, str(error))
@@ -181,6 +185,7 @@ def handle_request(
                 audit.record(
                     name, arguments, status="rejected",
                     mandate_id=mandate_id, mandate_decision=f"rejected:{error.reason}",
+                    granted_by=granted_by, kid=kid,
                     run_id=arguments.get("run_id"), issue_ref=arguments.get("issue_ref"),
                 )
             return _error(-32002, str(error), data={"reason": error.reason})
@@ -192,6 +197,8 @@ def handle_request(
                     mandate_id=mandate_id if tier_requires_mandate else None,
                     mandate_decision="rejected:invalid_arguments"
                     if tier_requires_mandate else None,
+                    granted_by=granted_by if tier_requires_mandate else None,
+                    kid=kid if tier_requires_mandate else None,
                     run_id=arguments.get("run_id"), issue_ref=arguments.get("issue_ref"),
                 )
             return _error(-32602, str(error))
@@ -202,6 +209,8 @@ def handle_request(
                     name, arguments, status="rejected",
                     mandate_id=mandate_id if tier_requires_mandate else None,
                     mandate_decision=f"rejected:lifecycle:{error.code}",
+                    granted_by=granted_by if tier_requires_mandate else None,
+                    kid=kid if tier_requires_mandate else None,
                     run_id=arguments.get("run_id") or error.run_id,
                     issue_ref=arguments.get("issue_ref"),
                 )
@@ -215,6 +224,8 @@ def handle_request(
                 name, arguments, status="accepted",
                 mandate_id=mandate_id if tier_requires_mandate else None,
                 mandate_decision="accepted" if tier_requires_mandate else None,
+                granted_by=granted_by if tier_requires_mandate else None,
+                kid=kid if tier_requires_mandate else None,
                 run_id=run_id or arguments.get("run_id"),
                 issue_ref=arguments.get("issue_ref"),
             )

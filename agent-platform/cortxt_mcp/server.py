@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # implementation choice): an explicit env var, mirroring how
 # `--allow-dispatch`/`--allow-credentials` are already explicit startup
 # flags. Never a private key -- Ed25519 public keys are not secret by
-# construction. Value is a JSON object: {"granted_by-id": "hex-pubkey"}.
+# construction. Value is nested: {"granted_by-id": {"kid": "hex-pubkey"}}.
 MANDATE_PUBLIC_KEYS_ENV = "CORTXT_MCP_MANDATE_PUBLIC_KEYS"
 # Directory for the durable nonce-replay and cumulative-budget stores
 # (ADR-032 / nonce_store.py). Defaults alongside the session_state store.
@@ -32,24 +32,53 @@ def _build_mandate_verifier_from_env(agent_platform_dir: Path) -> Any:
     only -- this module never imports `security.credential_broker` or
     references the mandate-signing private-key credential id (AC 8): it
     only ever handles the public key, which is not secret."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
     from .mandate import MandateVerifier
     from .nonce_store import BudgetStore, NonceStore
+    from .revocation_store import KeyRevocationStore
+
+    class _DuplicateKey(ValueError):
+        pass
+
+    def _object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise _DuplicateKey(key)
+            result[key] = value
+        return result
 
     raw_keys = os.environ.get(MANDATE_PUBLIC_KEYS_ENV, "")
-    public_keys: dict[str, str] = {}
+    public_keys: dict[str, dict[str, str]] = {}
     if raw_keys:
         try:
-            parsed = json.loads(raw_keys)
-            if isinstance(parsed, dict):
-                public_keys = {str(k): str(v) for k, v in parsed.items()}
-        except json.JSONDecodeError:
-            logger.warning("%s is not valid JSON; no mandate public keys loaded", MANDATE_PUBLIC_KEYS_ENV)
+            parsed = json.loads(raw_keys, object_pairs_hook=_object)
+            if not isinstance(parsed, dict) or not parsed:
+                raise ValueError("keyring must be a non-empty object")
+            for granted_by, keys in parsed.items():
+                if not isinstance(granted_by, str) or not granted_by or not isinstance(keys, dict) or not keys:
+                    raise ValueError("invalid issuer keyring")
+                public_keys[granted_by] = {}
+                for kid, material in keys.items():
+                    if not isinstance(kid, str) or not kid or not isinstance(material, str):
+                        raise ValueError("invalid key entry")
+                    Ed25519PublicKey.from_public_bytes(bytes.fromhex(material))
+                    public_keys[granted_by][kid] = material
+        except Exception as error:
+            logger.warning("%s is invalid; mandate verification is unconfigured: %s",
+                           MANDATE_PUBLIC_KEYS_ENV, error)
+            return MandateVerifier.unconfigured()
 
     state_dir = Path(os.environ.get(MANDATE_STATE_DIR_ENV, str(agent_platform_dir / ".mandate")))
+    revocation_store = KeyRevocationStore(state_dir / "revocations.json")
+    if not public_keys or not revocation_store.configured:
+        return MandateVerifier.unconfigured()
     return MandateVerifier(
         public_keys=public_keys,
         nonce_store=NonceStore(state_dir / "used_nonces.json"),
         budget_store=BudgetStore(state_dir / "budget_spent.json"),
+        revocation_store=revocation_store,
     )
 
 

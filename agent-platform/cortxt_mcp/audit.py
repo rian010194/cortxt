@@ -79,6 +79,8 @@ class AuditLog:
         status: str = "accepted",
         mandate_id: str | None = None,
         mandate_decision: str | None = None,
+        granted_by: str | None = None,
+        kid: str | None = None,
         run_id: str | None = None,
         issue_ref: str | None = None,
     ) -> None:
@@ -105,6 +107,8 @@ class AuditLog:
                 "status": status,
                 "mandate_id": mandate_id,
                 "mandate_decision": mandate_decision,
+                "granted_by": granted_by,
+                "kid": kid,
                 "run_id": run_id,
                 "issue_ref": issue_ref,
             },
