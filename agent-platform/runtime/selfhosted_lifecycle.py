@@ -3,6 +3,12 @@
 Task 4: ``should_stop_for_idle`` -- the decision logic as a pure function (no I/O).
 Task 5: ``_VastAiControlAdapter`` (Vast.ai REST boundary) + ``ensure_running()``
 wrapper that makes a cold start transparent to the caller.
+
+Live arm (read-only: status and liveness, never start/stop): set
+``CORTXT_SELFHOSTED_API_KEY`` and ``CORTXT_SELFHOSTED_INSTANCE_ID`` (and
+optionally ``CORTXT_SELFHOSTED_BASE_URL``), then run ``pytest -m
+real_inference agent-platform/tests/runtime/test_selfhosted_live.py``. The key
+and instance id remain environment-only.
 """
 from __future__ import annotations
 
