@@ -1263,6 +1263,180 @@ def _run_mcp(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
+class _InspectNonceStore:
+    """In-memory nonce store for `cortxt mandate inspect`: accepts every
+    nonce exactly once within one process, never touches the durable
+    nonce store, so inspection is read-only and deterministic."""
+
+    def __init__(self) -> None:
+        self._seen: set[str] = set()
+
+    def check_and_consume(self, nonce: str) -> bool:
+        if nonce in self._seen:
+            return False
+        self._seen.add(nonce)
+        return True
+
+
+class _InspectBudgetStore:
+    """In-memory budget store for `cortxt mandate inspect`: accepts every
+    debit within the envelope's own cap, never touches the durable budget
+    store."""
+
+    def record_and_check(self, mandate_id: str | None, cost: float, cap: float) -> bool:
+        return bool(cap >= 0 and cost <= cap)
+
+
+class _InspectRevocationStore:
+    """Permissive revocation store for `cortxt mandate inspect`: never
+    revokes (a read-only inspection must not be affected by durable
+    revocation state)."""
+
+    def is_revoked(self, granted_by: str, kid: str, at) -> bool:  # noqa: ARG002
+        return False
+
+
+def _run_mandate(args: argparse.Namespace) -> ResultEnvelope:
+    """`cortxt mandate` -- operator-side issuance and inspection of
+    ADR-032 mandate envelopes.
+
+    `issue` builds and signs one v1 envelope via
+    `cortxt_mcp.mandate.issue_mandate`, persisting the signing private key
+    in the credential broker (ADR-029) on first use (`--confirm`); the
+    private key is never printed -- the envelope JSON and the public key
+    hex (for `CORTXT_MCP_MANDATE_PUBLIC_KEYS`) are the output.
+
+    `inspect` validates an envelope's schema and signature against a
+    supplied public key, plus its internal consistency (issue_ref, data
+    class, scope fingerprint, expiry) -- deterministic, read-only, with no
+    durable nonce/budget/revocation state touched.
+    """
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from cortxt_mcp.mandate import (
+            CallContext,
+            MandateVerifier,
+            issue_mandate,
+            load_signing_key_from_broker,
+            public_key_hex_from_private_key,
+            store_signing_key_in_broker,
+        )
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from security.credential_broker import CredentialBroker, CredentialNotFoundError
+
+        if args.mandate_command == "issue":
+            store_dir = getattr(args, "store_dir", None) or (ap_path / ".credentials")
+            broker = CredentialBroker.with_dpapi(store_dir)
+            allowed_tools = [t.strip() for t in args.allowed_tools.split(",") if t.strip()]
+            if not allowed_tools:
+                return ResultEnvelope(status="failed", error={
+                    "category": "invalid_args",
+                    "message": "allowed_tools must be a non-empty comma-separated list"})
+            if args.budget_usd_max <= 0:
+                return ResultEnvelope(status="failed", error={
+                    "category": "invalid_args", "message": "budget_usd_max must be positive"})
+            if args.max_runtime_seconds <= 0:
+                return ResultEnvelope(status="failed", error={
+                    "category": "invalid_args", "message": "max_runtime_seconds must be positive"})
+
+            # Load the existing signing key for (granted_by, kid) if one was
+            # persisted before (idempotent re-issue); otherwise generate a
+            # fresh keypair. Persisting a *new* key requires --confirm (the
+            # broker's operator-confirmed write gate, ADR-029).
+            try:
+                private_key = load_signing_key_from_broker(
+                    granted_by=args.granted_by, kid=args.kid, broker=broker,
+                    purpose="issue_mandate",
+                )
+                key_persisted = True
+            except CredentialNotFoundError:
+                if not args.confirm:
+                    return ResultEnvelope(status="failed", error={
+                        "category": "not_confirmed",
+                        "message": "no signing key exists for this granted_by/kid; "
+                                   "pass --confirm to generate and persist a fresh keypair"})
+                private_key = Ed25519PrivateKey.generate()
+                pem = private_key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.PKCS8,
+                    encryption_algorithm=serialization.NoEncryption(),
+                )
+                store_signing_key_in_broker(pem, granted_by=args.granted_by, kid=args.kid, broker=broker)
+                key_persisted = True
+
+            public_key_hex = public_key_hex_from_private_key(private_key)
+            issued = issue_mandate(
+                granted_by=args.granted_by,
+                kid=args.kid,
+                public_keys={args.granted_by: {args.kid: public_key_hex}},
+                issue_ref=args.issue_ref,
+                allowed_tools=allowed_tools,
+                data_class_max=args.data_class_max,
+                budget_usd_max=args.budget_usd_max,
+                max_runtime_seconds=args.max_runtime_seconds,
+                expires_at=args.expires_at,
+                scope_text=args.scope_text,
+                private_key=private_key,
+                max_envelope_ttl_seconds=args.max_envelope_ttl_seconds,
+            )
+            envelope = issued.envelope
+            print(json.dumps(envelope, indent=2, sort_keys=True))
+            return ResultEnvelope(
+                status="succeeded",
+                artifacts=[f"mandate:{envelope['mandate_id']}"],
+                evidence=[{
+                    "granted_by": args.granted_by, "kid": args.kid,
+                    "public_key_hex": public_key_hex,
+                    "mandate_id": envelope["mandate_id"],
+                    "key_persisted": key_persisted,
+                }],
+            )
+
+        if args.mandate_command == "inspect":
+            envelope = json.loads(args.envelope.read_text(encoding="utf-8"))
+            if not isinstance(envelope, dict):
+                return ResultEnvelope(status="failed", error={
+                    "category": "invalid_args", "message": "envelope must be a JSON object"})
+            granted_by = envelope.get("granted_by")
+            kid = envelope.get("kid")
+            if not isinstance(granted_by, str) or not isinstance(kid, str):
+                return ResultEnvelope(status="failed", error={
+                    "category": "invalid_args", "message": "envelope missing granted_by/kid"})
+            tool = envelope.get("allowed_tools", [])[0] if envelope.get("allowed_tools") else None
+            verifier = MandateVerifier(
+                public_keys={granted_by: {kid: args.public_key}},
+                nonce_store=_InspectNonceStore(),
+                budget_store=_InspectBudgetStore(),
+                revocation_store=_InspectRevocationStore(),
+            )
+            decision = verifier.verify(
+                envelope,
+                tool=tool or "inspect",
+                tier=1,
+                call_context=CallContext(
+                    issue_ref=envelope.get("issue_ref", ""),
+                    data_class=envelope.get("data_class_max", "L0"),
+                    expected_scope_fingerprint=envelope.get("scope_fingerprint"),
+                ),
+            )
+            verdict = {
+                "accepted": decision.accepted,
+                "reason": decision.reason,
+                "mandate_id": decision.mandate_id,
+                "tool": tool,
+            }
+            print(json.dumps(verdict, indent=2, sort_keys=True))
+            return ResultEnvelope(status="succeeded", evidence=[{"verdict": verdict}])
+
+        return ResultEnvelope(status="failed", error={
+            "category": "invalid_args", "message": f"unknown mandate_command: {args.mandate_command}"})
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
 def _run_work(args: argparse.Namespace) -> ResultEnvelope:
     """Create, inspect, resume, or submit contract-backed worker runs."""
     try:
@@ -1502,6 +1676,31 @@ def main(argv: list[str] | None = None) -> int:
         "--store", type=Path, help="Session store path for audit logging (default: agent-platform/.sessions)",
     )
     mcp_serve_parser.set_defaults(func=_run_mcp)
+
+    # mandate subcommand (ADR-032 operator issuance + inspection)
+    mandate_parser = sub.add_parser(
+        "mandate", help="Issue and inspect signed, nonce-bound mandate envelopes (ADR-032)"
+    )
+    mandate_sub = mandate_parser.add_subparsers(dest="mandate_command", required=True)
+    mandate_issue = mandate_sub.add_parser("issue", help="Build and sign one mandate envelope (operator-side)")
+    mandate_issue.add_argument("--granted-by", required=True, help="Human approver identity")
+    mandate_issue.add_argument("--kid", required=True, help="Key id under granted_by")
+    mandate_issue.add_argument("--issue-ref", required=True, help="Durable scope reference, e.g. owner/repo#123")
+    mandate_issue.add_argument("--allowed-tools", required=True, help="Comma-separated allowed MCP tools")
+    mandate_issue.add_argument("--data-class-max", default="L0", help="Max data class per ADR-016 (default L0)")
+    mandate_issue.add_argument("--budget-usd-max", type=float, required=True, help="Budget ceiling in USD")
+    mandate_issue.add_argument("--max-runtime-seconds", type=int, required=True, help="Hard runtime bound")
+    mandate_issue.add_argument("--expires-at", required=True, help="ISO-8601 UTC expiry, e.g. 2026-08-23T12:00:00Z")
+    mandate_issue.add_argument("--scope-text", required=True, help="Approved scope text (fingerprinted into the envelope)")
+    mandate_issue.add_argument("--max-envelope-ttl-seconds", type=float, default=None,
+                               help="Maximum envelope TTL in seconds (default: env CORTXT_MCP_MANDATE_MAX_TTL_SECONDS or 86400)")
+    mandate_issue.add_argument("--store-dir", type=Path, help="Credential store dir (default: agent-platform/.credentials)")
+    mandate_issue.add_argument("--confirm", action="store_true", help="Persist a fresh signing keypair in the credential broker")
+    mandate_issue.set_defaults(func=_run_mandate)
+    mandate_inspect = mandate_sub.add_parser("inspect", help="Validate an envelope's schema and signature (read-only)")
+    mandate_inspect.add_argument("--envelope", type=Path, required=True, help="Path to the envelope JSON file")
+    mandate_inspect.add_argument("--public-key", required=True, help="Hex-encoded Ed25519 public key to verify against")
+    mandate_inspect.set_defaults(func=_run_mandate)
 
     # dispatch subcommand
     dispatch_parser = sub.add_parser("dispatch", help="Route a tagged task to an engine and invoke it (Orchestrator Dispatch v0.1)")
