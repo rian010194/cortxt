@@ -53,3 +53,25 @@ Two candidates were identified:
 ## Expiry/Review Trigger
 - Review by: 2026-11-14
 - Trigger: a concurrent-claim race is observed in practice, or a need for a visual Kanban surface becomes acute enough to justify adding Hermes Kanban as a mirror (never as the primary source).
+
+## Clarification (2026-08-22, independent review)
+
+Confirmed Accepted with the following clarifying qualifications. They correct
+the security and concurrency boundaries without changing the selected carrier
+or the state mapping.
+
+- **Scope of the exactly-one rule.** Exactly one `workflow:*` label is
+  required for each **open work issue**. Issues labeled `atlas:map` are
+  derived planning-map records and are exempt (`scripts/atlas_sync.py`
+  already excludes them); they intentionally carry no `workflow:*` label.
+- **State, not authority.** A workflow label represents lifecycle state only
+  and does not grant execution authority. Mutating operations must also
+  satisfy the applicable mandate and approval controls, including ADR-032 for
+  MCP Tier-1+ calls (Proposed at the time of this amendment; a separate
+  authorization dimension, not a replacement for workflow state).
+- **Atomicity is single-process.** The dispatcher (`scripts/dispatcher.py`)
+  prevents duplicate claims within one process and provides leased,
+  recoverable terminal GitHub synchronization, but GitHub label/comment
+  updates are not a distributed transaction. Concurrent dispatcher processes
+  remain an open race risk until a cross-process conditional-claim mechanism
+  is implemented and tested.
