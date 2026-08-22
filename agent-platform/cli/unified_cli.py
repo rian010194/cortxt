@@ -1073,6 +1073,13 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
         scripts = _get_agent_platform_path().parent / "scripts"
         if str(scripts) not in sys.path:
             sys.path.insert(0, str(scripts))
+        if args.work_command == "plan":
+            from execution_map import plan_from_json
+            source = json.loads(args.input.read_text(encoding="utf-8"))
+            projection = plan_from_json(source)
+            print(json.dumps(projection, indent=2, sort_keys=True))
+            return ResultEnvelope(status="succeeded", evidence=[{"execution_map": projection}])
+
         from work_launcher import default_launcher, parse_scope_file
 
         registry = args.registry or (_get_agent_platform_path() / ".dispatch" / "runs.json")
@@ -1128,6 +1135,10 @@ def main(argv: list[str] | None = None) -> int:
     work_list = work_sub.add_parser("list", help="List active runs")
     work_list.add_argument("--registry", type=Path)
     work_list.set_defaults(func=_run_work)
+    work_plan = work_sub.add_parser("plan", help="Render a read-only execution map projection")
+    work_plan.add_argument("--input", type=Path, required=True,
+                           help="Content-free JSON issue/claim snapshot")
+    work_plan.set_defaults(func=_run_work)
     work_resume = work_sub.add_parser("resume", help="Claim a ready issue as a fresh run")
     work_resume.add_argument("issue_id")
     work_resume.add_argument("--prompt", required=True)
