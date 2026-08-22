@@ -43,6 +43,7 @@ import hashlib
 import json
 import re
 import time
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -183,10 +184,21 @@ REVIEW_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+STATUS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "run_id": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z_[0-9a-f]{8}$"},
+        "issue_ref": {"type": "string"},
+    },
+    "required": ["run_id"],
+    "additionalProperties": False,
+}
+
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "cortxt_run_create": CREATE_SCHEMA,
     "cortxt_run_resume": RESUME_SCHEMA,
     "cortxt_run_submit_for_review": REVIEW_SCHEMA,
+    "cortxt_run_status": STATUS_SCHEMA,
 }
 
 RUN_TOOLS = frozenset(TOOL_SCHEMAS)
@@ -385,7 +397,7 @@ def _scan_sessions(store: Path) -> list[dict]:
 
 def _run_events(doc: dict) -> list[dict]:
     return [event["payload"] for event in doc["events"]
-            if event["event_type"] in {"run.created", "run.engine_turn", "run.review_submitted"}]
+            if event["event_type"] in {"run.created", "run.running", "run.engine_turn", "run.review_submitted"}]
 
 
 def _find_run(store: Path, run_id: str) -> tuple[str, dict] | None:
@@ -420,6 +432,8 @@ def _last_run_status(doc: dict) -> str:
             return "review_submitted"
         if event["event_type"] == "run.engine_turn":
             return event["payload"].get("status", "failed")
+        if event["event_type"] == "run.running":
+            return "running"
     return "created"
 
 
@@ -465,6 +479,17 @@ class RunLifecycleService:
     engine_context: Any
     store: Path
     clock: Callable[[], datetime] = field(default=_default_clock)
+    worker_start: Callable[[Callable[[], None]], Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.worker_start is None:
+            self.worker_start = self._start_daemon_worker
+
+    @staticmethod
+    def _start_daemon_worker(turn: Callable[[], None]) -> threading.Thread:
+        worker = threading.Thread(target=turn, name="cortxt-run-worker", daemon=True)
+        worker.start()
+        return worker
 
     @classmethod
     def with_defaults(cls) -> "RunLifecycleService":
@@ -516,6 +541,11 @@ class RunLifecycleService:
                 estimated_runtime_seconds=float(arguments.get("max_runtime_seconds", 1)),
                 expected_scope_fingerprint=run["scope_fingerprint"],
             )
+        if tool == "cortxt_run_status":
+            _validate_run_id(arguments["run_id"])
+            if "issue_ref" in arguments:
+                _validate_issue_ref(arguments["issue_ref"])
+            return CallContext(issue_ref=arguments.get("issue_ref", ""))
         raise InvalidArgumentsError(f"unknown lifecycle tool {tool!r}")
 
     def _resolve_for_context(self, run_id: str) -> dict[str, Any]:
@@ -535,11 +565,7 @@ class RunLifecycleService:
     # --- Tool operations ---------------------------------------------------
 
     def create_run(self, arguments: Mapping[str, Any], binding: Mapping[str, Any]) -> dict[str, Any]:
-        """AC5: create exactly one durable run identity outside the model,
-        record issue/scope/limits/selected engine and the returned opaque
-        `session_id`, and return a dispatch-contract envelope with the new
-        `run_id`. Synchronous for v1 (Q3 recommendation): the engine broker
-        is invoked and its terminal result returned."""
+        """Create durable identity/state, launch the worker, and return running."""
         validate_schema("cortxt_run_create", arguments)
         _validate_issue_ref(arguments["issue_ref"])
         _check_binding(binding, issue_ref=arguments["issue_ref"],
@@ -590,36 +616,57 @@ class RunLifecycleService:
         )
         session_id = session["session_id"]
         state.append(self.store, session_id, 0, "run.created", run_created)
+        state.append(self.store, session_id, 1, "run.running", {"run_id": run_id, "started_at": started_at})
 
-        try:
-            result = broker.invoke(
-                arguments["profile"], arguments["prompt"],
-                timeout_seconds=int(arguments["max_runtime_seconds"]),
-                model=arguments.get("model"), provider=arguments.get("provider"),
-                cwd=Path(arguments["worktree"]) if arguments.get("worktree") else None,
-                session_id=None,
-            )
-        except Exception as error:
-            self._append_engine_turn(
-                session_id, run_created, run_id, {},
-                error={"category": CODE_ADAPTER_FAILED, "message": str(error)})
-            raise RunLifecycleError(
-                CODE_ADAPTER_FAILED, f"engine adapter failed: {error}", run_id=run_id) from error
+        worker_arguments = dict(arguments)
+        def turn() -> None:
+            try:
+                result = broker.invoke(
+                    worker_arguments["profile"], worker_arguments["prompt"],
+                    timeout_seconds=int(worker_arguments["max_runtime_seconds"]),
+                    model=worker_arguments.get("model"), provider=worker_arguments.get("provider"),
+                    cwd=Path(worker_arguments["worktree"]) if worker_arguments.get("worktree") else None,
+                    session_id=None,
+                )
+                if not isinstance(result, dict):
+                    raise TypeError("adapter returned a non-dict result")
+                self._append_engine_turn(session_id, run_created, run_id, result)
+            except Exception as error:
+                self._append_engine_turn(session_id, run_created, run_id, {},
+                                         error={"category": CODE_ADAPTER_FAILED, "message": str(error)})
 
-        if not isinstance(result, dict):
-            self._append_engine_turn(
-                session_id, run_created, run_id, {},
-                error={"category": CODE_ADAPTER_FAILED, "message": "adapter returned a non-dict result"})
-            raise RunLifecycleError(
-                CODE_ADAPTER_FAILED, "engine adapter returned a non-dict result", run_id=run_id)
+        self.worker_start(turn)
+        return self._envelope(issue_ref=issue_ref, run_id=run_id, session_id=None,
+                              engine_id=engine_id, profile=arguments["profile"],
+                              worker_role=arguments["worker_role"], started_at=started_at,
+                              result={"status": "running"}, model=arguments.get("model"),
+                              provider=arguments.get("provider"), finished_at=None)
 
-        self._append_engine_turn(session_id, run_created, run_id, result)
-        return self._envelope(
-            issue_ref=issue_ref, run_id=run_id, session_id=result.get("session_id"),
-            engine_id=engine_id, profile=arguments["profile"],
-            worker_role=arguments["worker_role"], started_at=started_at,
-            result=result, model=arguments.get("model"), provider=arguments.get("provider"),
-        )
+    def status_of(self, run_id: str, issue_ref: str | None = None) -> dict[str, Any]:
+        _validate_run_id(run_id)
+        if issue_ref is not None:
+            _validate_issue_ref(issue_ref)
+        found = _find_run(self.store, run_id)
+        if found is None:
+            raise RunLifecycleError(CODE_RUN_NOT_FOUND, f"run {run_id} was not found", run_id=run_id)
+        _session_id, doc = found
+        identity = _run_identity(doc)
+        if issue_ref is not None and identity["issue_ref"] != issue_ref:
+            raise RunLifecycleError(CODE_ISSUE_REF_MISMATCH,
+                                    f"run {run_id} belongs to issue {identity['issue_ref']}, not {issue_ref}",
+                                    run_id=run_id)
+        running = next((e["payload"] for e in reversed(doc["events"])
+                        if e["event_type"] == "run.running"), {})
+        turn = _last_engine_turn(doc)
+        result = turn or {"status": identity["status"]}
+        return self._envelope(issue_ref=identity["issue_ref"], run_id=run_id,
+                              session_id=(turn or {}).get("session_id"),
+                              engine_id=identity["engine_id"], profile=identity["profile"],
+                              worker_role=identity["worker_role"],
+                              started_at=running.get("started_at"), result=result,
+                              model=(turn or {}).get("model"), provider=(turn or {}).get("provider"),
+                              finished_at=None if identity["status"] in {"created", "running"}
+                              else (turn or {}).get("finished_at"))
 
     def resume_run(self, arguments: Mapping[str, Any], binding: Mapping[str, Any]) -> dict[str, Any]:
         """AC6: load the named `run_id`, reject an unknown or non-resumable
@@ -645,7 +692,7 @@ class RunLifecycleService:
                 run_id=run_id)
 
         status = identity["status"]
-        if status in TERMINAL_STATUSES and status not in RESUMABLE_LAST_STATUSES:
+        if status == "running" or (status in TERMINAL_STATUSES and status not in RESUMABLE_LAST_STATUSES):
             raise RunLifecycleError(
                 CODE_RUN_NOT_RESUMABLE,
                 f"run {run_id} is {status} and cannot be resumed", run_id=run_id)
@@ -791,16 +838,18 @@ class RunLifecycleService:
             "cost_status": result.get("cost_status", "unknown"),
             "artifacts": _safe_artifacts(result.get("artifacts")),
             "evidence": result.get("evidence") if isinstance(result.get("evidence"), list) else [],
-            "error": error or result.get("error") if isinstance(result.get("error"), dict) else None,
+            "error": error or (result.get("error") if isinstance(result.get("error"), dict) else None),
+            "finished_at": self.clock().isoformat(),
         }
         doc = state.load(self.store, session_id)
         state.append(self.store, session_id, len(doc["events"]) - 1, "run.engine_turn", turn)
 
     def _envelope(self, *, issue_ref: str, run_id: str, session_id: Any,
-                  engine_id: str, profile: str, worker_role: str, started_at: str,
-                  result: Mapping[str, Any], model: str | None, provider: str | None) -> dict[str, Any]:
+                  engine_id: str, profile: str, worker_role: str, started_at: str | None,
+                  result: Mapping[str, Any], model: str | None, provider: str | None,
+                  finished_at: str | None = "auto") -> dict[str, Any]:
         status = result.get("status")
-        if not isinstance(status, str) or status not in TERMINAL_STATUSES:
+        if not isinstance(status, str) or status not in TERMINAL_STATUSES | {"created", "running"}:
             status = "failed"
         return {
             "issue_id": issue_ref,
@@ -809,7 +858,7 @@ class RunLifecycleService:
             "runtime": f"{engine_id}/v0.1",
             "worker_role": profile or worker_role,
             "started_at": started_at,
-            "finished_at": self.clock().isoformat(),
+            "finished_at": self.clock().isoformat() if finished_at == "auto" else finished_at,
             "model": result.get("model") or model,
             "usage": result.get("usage") if isinstance(result.get("usage"), dict) else {},
             "cost": _safe_cost(result.get("cost")),
