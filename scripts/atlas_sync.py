@@ -730,6 +730,7 @@ class GhRunner:
             ["gh", *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=GH_CLI_TIMEOUT_SECONDS,
             input=input_text,
         )
