@@ -4,7 +4,7 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accepted after issue #247 dogfood evidence, ADR-037 added and accepted after issue #252 live proof).
+Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accepted after issue #247 dogfood evidence, ADR-037 added and accepted after issue #252 live proof, ADR-038/039 added as Proposed from the widget-platform design).
 
 | # | Title | Status | Notes |
 | --- | --- | --- | --- |
@@ -35,6 +35,8 @@ Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accep
 | 035 | Embeddings provider for Phase 6 — Voyage via EmbeddingPort | **Accepted** (2026-08-22) | Resolves target-architecture §27 #10: `runtime/embedding_port.py` (on main) is the fail-closed, budget/policy-gated OpenAI-compatible `/embeddings` drop-in for `EmbeddingFn`; Phase 6 live exit arm PASSED against Voyage 2026-08-17 and re-run/PASSED 2026-08-22 as issue #233 AC2 evidence; `hash_embedding` stays the default until a versioned policy swap |
 | 036 | MCP run lifecycle asynchronous create and status polling | **Accepted** | Step 3 of the MCP research lifecycle (issue #245), accepted after real external stdio dogfood evidence with a deterministic engine (issue #247) |
 | 037 | MCP review submission daemon synchronization | **Accepted** (2026-08-22) | Step 4 consumes durable review submissions and mechanically transitions their issues to `workflow:review`; accepted after the live transition proof (issues #249 and #252) |
+| 038 | Declarative widget contract and authorized action ports | **Proposed** | Widget = named allow-listed reads -> typed data -> platform-owned render primitive tree -> named action requests through `cli`/`mcp`/`github-transition` ports; strict versioned validation, explicit capabilities, typed composition with no widening, action-time authorization (ADR-032 for Tier-1+ MCP, operator gate for irreversible effects); no widget code/raw commands/arbitrary access/self-approval (issue #251/#265) |
+| 039 | Execution map concurrency claims and prerequisite ordering | **Proposed** | Deterministic prerequisite waves + fail-closed pre-flight claims over issue/run/branch/worktree/label/session/engine-session/writer-domain resources; conditional all-or-nothing acquisition, leases with reconciliation, immutable attempt history, fresh blocker checks; disjoint-resource parallelism, driver/observer separation, receipt is a gate not authority; current JSON/process-local guards insufficient for parallel writers — durable store is an explicit operator decision (issue #251/#265) |
 
 ## Decisions and Authority
 
