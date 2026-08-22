@@ -5,24 +5,42 @@ widget:
   title: Candidates
 data:
   reads:
-    - id: issues
+    - id: candidates
       source: github
-      operation: issues.all_open.list.v1
+      operation: candidates.view.v1
       input:
         repo: owner/repo
       select: []
       refresh:
         mode: manual
-      output_type: issues.all-open.list.v1
+      output_type: candidates.view.v1
       on_error: stale
 render:
-  primitive: table
-  props:
-    columns: [number, title, workflow, area, milestone, open_blocker_count]
-  bindings:
-    rows:
-      read: issues
-      pointer: /issues
-      type: core.array.v1
+  primitive: stack
+  props: {label: Candidates}
+  children:
+    - primitive: key-value
+      bindings: {value: {read: candidates, pointer: /source, type: core.object.v1}}
+    - primitive: metric
+      props: {label: Total}
+      bindings: {value: {read: candidates, pointer: /total, type: core.number.v1}}
+    - primitive: table
+      props: {label: frontier, columns: [number, title, workflow, area, milestone, open_blocker_count]}
+      bindings: {rows: {read: candidates, pointer: /groups/0/rows, type: core.array.v1}}
+    - primitive: table
+      props: {label: in_progress, columns: [number, title, workflow, area, milestone, open_blocker_count]}
+      bindings: {rows: {read: candidates, pointer: /groups/1/rows, type: core.array.v1}}
+    - primitive: table
+      props: {label: blocked, columns: [number, title, workflow, area, milestone, open_blocker_count]}
+      bindings: {rows: {read: candidates, pointer: /groups/2/rows, type: core.array.v1}}
+    - primitive: table
+      props: {label: other, columns: [number, title, workflow, area, milestone, open_blocker_count]}
+      bindings: {rows: {read: candidates, pointer: /groups/3/rows, type: core.array.v1}}
+    - primitive: table
+      props: {label: violations, columns: [number, title, workflow, area, milestone, open_blocker_count]}
+      bindings: {rows: {read: candidates, pointer: /groups/4/rows, type: core.array.v1}}
+    - primitive: table
+      props: {label: atlas_maps, columns: [number, title, workflow, area, milestone, open_blocker_count]}
+      bindings: {rows: {read: candidates, pointer: /groups/5/rows, type: core.array.v1}}
 actions: []
 capabilities: [read:issues]

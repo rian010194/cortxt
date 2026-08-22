@@ -7,11 +7,14 @@ import pytest
 
 from widget_contract.adapters.github_ports import (
     FIELDS, MAX_ISSUES, BlockerLookupError, GitHubExitError, GitHubJSONError,
-    GitHubTimeoutError, GitHubTruncationError, LastGoodIssues,
+    GitHubTimeoutError, GitHubTruncationError, LastGoodCandidates, LastGoodIssues,
     list_all_open_issues, resolve_blocker_status,
 )
 from widget_contract.candidates import build_candidates_view, render_candidates_tree
 from widget_contract.loader import load_widget_file
+from widget_contract.registry import READ_OPERATIONS, TYPES
+from widget_contract.renderer import render
+from widget_contract.validation import ValidationError, validate
 
 
 def completed(stdout="[]", returncode=0, stderr=""):
@@ -63,6 +66,17 @@ def test_blocker_lookup_failure_is_typed_and_last_good_remains_visible_with_age(
     stale = cache.read("o/r", run_subprocess=lambda *a, **k: completed(returncode=1, stderr="offline"))
     assert stale["status"] == "stale" and stale["complete"] is False
     assert stale["age_seconds"] == 12 and stale["error"]["kind"] == "nonzero_exit"
+
+
+def test_candidates_adapter_uses_injected_runner_and_last_good_staleness():
+    times = iter([100, 109])
+    cache = LastGoodCandidates(clock=lambda: next(times))
+    fresh = cache.read("o/r", run_subprocess=lambda *a, **k: completed())
+    assert fresh["source"] == {"complete": True, "status": "fresh", "age_seconds": 0, "error": None}
+    stale = cache.read("o/r", run_subprocess=lambda *a, **k: completed(returncode=1, stderr="offline"))
+    assert stale["source"]["status"] == "stale"
+    assert stale["source"]["age_seconds"] == 9
+    assert stale["source"]["error"]["kind"] == "nonzero_exit"
 
 
 def test_frontier_exact_rules_and_closed_or_done_blockers_do_not_block():
@@ -133,6 +147,47 @@ def test_spec_loads_and_handoffs_are_disabled_without_callbacks():
     assert widget.id == "candidates" and widget.actions == ()
     model = build_candidates_view([])
     assert all(x == {**x, "enabled": False} and "callback" not in x for x in model["handoffs"])
+
+
+def test_candidates_type_and_read_are_registered_and_strict():
+    model = build_candidates_view([issue(1)])
+    validate(model, TYPES["candidates.view.v1"].schema)
+    operation = READ_OPERATIONS["candidates.view.v1"]
+    assert (operation.source, operation.output_type, operation.capability) == (
+        "github", "candidates.view.v1", "read:issues")
+    malformed = {**model, "total": "one"}
+    with pytest.raises(ValidationError, match="expected integer"):
+        validate(malformed, TYPES["candidates.view.v1"].schema)
+
+
+@pytest.mark.parametrize(("status", "expected"), [("fresh", "ready"), ("stale", "stale"), ("error", "error")])
+def test_contract_renderer_frontier_first_and_source_states(status, expected):
+    from pathlib import Path
+    widget = load_widget_file(Path(__file__).parents[2] / "widget_contract" / "specs" / "candidates-0.1.yaml")
+    error = {"kind": "offline", "message": "unavailable"} if status != "fresh" else None
+    model = build_candidates_view([issue(1)], complete=status == "fresh", status=status, error=error)
+    tree = render(widget, {"candidates": model}, {"candidates": status})
+    assert tree["render"]["children"][0]["props"]["value"] == model["source"]
+    tables = [node for node in tree["render"]["children"] if node["primitive"] == "table"]
+    assert tables[0]["props"]["label"] == "frontier"
+    assert tables[0]["props"]["rows"][0]["number"] == 1
+    assert tables[0]["state"] == expected
+
+
+def test_cli_visual_path_atomically_writes_contract_artifact(monkeypatch, capsys, tmp_path):
+    from argparse import Namespace
+    from cli.unified_cli import _run_widget
+    from widget_contract.adapters import github_ports
+    monkeypatch.setattr(github_ports, "list_all_open_issues", lambda repo: {
+        "schema_version": 1, "complete": True, "issues": [issue(1)]})
+    monkeypatch.setattr(github_ports, "resolve_blocker_status", lambda repo, number: pytest.fail("unexpected lookup"))
+    target = tmp_path / "candidates.json"
+    result = _run_widget(Namespace(widget_command=None, view="candidates", repo="o/r", snapshot=target))
+    capsys.readouterr()
+    artifact = json.loads(target.read_text(encoding="utf-8"))
+    assert result.status == "succeeded"
+    assert artifact["widget"] == {"id": "candidates", "version": "0.1"}
+    assert artifact["render"]["primitive"] == "stack"
 
 
 def test_cli_json_and_visual_paths_use_the_same_model(monkeypatch, capsys):

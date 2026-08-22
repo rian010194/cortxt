@@ -20,7 +20,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -656,17 +658,33 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
             ap_path = _get_agent_platform_path()
             if str(ap_path) not in sys.path:
                 sys.path.insert(0, str(ap_path))
-            from widget_contract.adapters.github_ports import list_all_open_issues, resolve_blocker_status
-            from widget_contract.candidates import build_candidates_view, dependency_targets, render_candidates_tree
+            from widget_contract.adapters.github_ports import read_candidates_view
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
             repo = getattr(args, "repo", None)
             if not repo:
                 return ResultEnvelope(status="failed", error={"category": "input_error", "message": "--repo is required for candidates"})
-            raw = list_all_open_issues(repo)
-            blocker_statuses = {number: resolve_blocker_status(repo, number)
-                                for number in dependency_targets(raw["issues"])}
-            model = build_candidates_view(raw["issues"], complete=raw["complete"], blocker_statuses=blocker_statuses)
+            model = read_candidates_view(repo)
             if getattr(args, "widget_command", None) is None:
-                print(json.dumps(render_candidates_tree(model), indent=2))
+                widget = load_widget_file(ap_path / "widget_contract" / "specs" / "candidates-0.1.yaml")
+                source_status = model["source"]["status"]
+                tree = render(widget, {"candidates": model}, {"candidates": source_status})
+                output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "candidates.json")
+                output_path = Path(output_path)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                descriptor, tmp = tempfile.mkstemp(prefix=".candidates-", suffix=".tmp", dir=output_path.parent)
+                try:
+                    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                        json.dump(tree, handle, indent=2)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    os.replace(tmp, output_path)
+                finally:
+                    if os.path.exists(tmp):
+                        os.unlink(tmp)
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"]["children"]
+                                                               if node["primitive"] == "table"]}
+                print(json.dumps(stdout_tree, indent=2))
             elif args.format == "json":
                 print(json.dumps(model, indent=2))
             else:
@@ -676,7 +694,8 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
                         area = f" | {row['area']}" if row["area"] else ""
                         milestone = f" | {row['milestone']}" if row["milestone"] else ""
                         print(f"  #{row['number']} {row['title']} | {row['workflow']}{area}{milestone} | blockers:{row['open_blocker_count']}")
-            return ResultEnvelope(status="succeeded", evidence=[{"candidates": model}])
+            artifacts = [f"candidates:{output_path}"] if getattr(args, "widget_command", None) is None else []
+            return ResultEnvelope(status="succeeded", artifacts=artifacts, evidence=[{"candidates": model}])
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
@@ -1301,6 +1320,7 @@ def main(argv: list[str] | None = None) -> int:
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
     widget_parser.add_argument("--view", choices=["candidates"], help="Render a named read-only widget view")
     widget_parser.add_argument("--repo", help="GitHub owner/repo for a named view")
+    widget_parser.add_argument("--snapshot", type=Path, help="Candidates render output path")
     widget_sub = widget_parser.add_subparsers(dest="widget_command")
     widget_candidates = widget_sub.add_parser("candidates", help="List the canonical actionable frontier and all open issues")
     widget_candidates.add_argument("--repo", required=True, help="GitHub owner/repo")

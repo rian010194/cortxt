@@ -7,6 +7,7 @@ from typing import Any, Callable, Mapping
 
 from ..registry import TYPES
 from ..validation import validate
+from ..candidates import build_candidates_view, dependency_targets
 
 
 def issue_ready_list(call: Callable[[Mapping[str, Any]], Any], request: Mapping[str, Any]) -> dict[str, Any]:
@@ -95,3 +96,32 @@ class LastGoodIssues:
             return {**self.value, "complete": False, "status": "stale",
                     "age_seconds": max(0, int(self.clock() - self.saved_at)),
                     "error": {"kind": exc.kind, "message": str(exc)}}
+
+
+class LastGoodCandidates:
+    """Build the normalized candidates model with explicit last-good state."""
+    def __init__(self, clock: Callable[[], float] = time.time):
+        self.issues = LastGoodIssues(clock=clock)
+
+    def read(self, repo: str, *, run_subprocess: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
+        raw = (self.issues.read(repo) if run_subprocess is subprocess.run
+               else self.issues.read(repo, run_subprocess=run_subprocess))
+        blockers: dict[int, dict[str, Any]] = {}
+        try:
+            for number in dependency_targets(raw["issues"]):
+                blockers[number] = (resolve_blocker_status(repo, number) if run_subprocess is subprocess.run
+                                    else resolve_blocker_status(repo, number, run_subprocess=run_subprocess))
+        except GitHubReadError as exc:
+            raw = {**raw, "complete": False, "status": "stale",
+                   "error": {"kind": exc.kind, "message": str(exc)}}
+        model = build_candidates_view(raw["issues"], complete=raw["complete"], status=raw["status"],
+                                      age_seconds=raw["age_seconds"], error=raw["error"],
+                                      blocker_statuses=blockers)
+        validate(model, TYPES["candidates.view.v1"].schema)
+        return model
+
+
+def read_candidates_view(repo: str, *, run_subprocess: Callable[..., Any] = subprocess.run,
+                         cache: LastGoodCandidates | None = None) -> dict[str, Any]:
+    """Execute the registered candidates read without any GitHub mutation."""
+    return (cache or LastGoodCandidates()).read(repo, run_subprocess=run_subprocess)

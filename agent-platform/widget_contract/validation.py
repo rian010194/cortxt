@@ -18,7 +18,8 @@ def validate(value: Any, schema: Mapping[str, Any], path: str = "$") -> None:
         "boolean": lambda v: isinstance(v, bool),
         "null": lambda v: v is None,
     }
-    if expected and (expected not in matches or not matches[expected](value)):
+    expected_types = expected if isinstance(expected, list) else [expected]
+    if expected and not any(item in matches and matches[item](value) for item in expected_types):
         raise ValidationError(f"{path}: expected {expected}")
     if "const" in schema and value != schema["const"]:
         raise ValidationError(f"{path}: expected {schema['const']!r}")
