@@ -42,6 +42,18 @@ class ToolTierLockedError(PermissionError):
         )
 
 
+class MandateRejectedError(PermissionError):
+    """Raised for a `tools/call` naming a TIER_DISPATCH+ tool whose
+    mandate envelope (or lack of one) failed verification. Distinct from
+    `ToolTierLockedError` so the two failure modes are distinguishable in
+    logs and in `protocol.py`'s error mapping (ADR-032)."""
+
+    def __init__(self, tool: str, reason: str) -> None:
+        self.tool = tool
+        self.reason = reason
+        super().__init__(f"mandate rejected for tool {tool!r}: {reason}")
+
+
 def _ns(**kwargs: Any) -> argparse.Namespace:
     return argparse.Namespace(**kwargs)
 
@@ -279,11 +291,32 @@ def call_tool(
     *,
     allow_dispatch: bool,
     allow_credentials: bool,
+    mandate: dict[str, Any] | None = None,
+    mandate_verifier: Any = None,
+    call_context: Any = None,
 ) -> Any:
+    """Invoke one registered tool.
+
+    `mandate`/`mandate_verifier`/`call_context` are only consulted for
+    tools at TIER_DISPATCH or above (ADR-032); Tier-0 tools ignore all
+    three and run exactly as before. `mandate_verifier` defaults to a
+    fail-closed `mandate.MandateVerifier.unconfigured()` (no registered
+    public keys -> every envelope, including none at all, is rejected)
+    when not supplied -- callers that don't wire mandate verification in
+    get "Tier-1+ is unusable" rather than "Tier-1+ is unchecked."
+    """
     if name not in TOOL_REGISTRY:
         raise ToolNotFoundError(name)
     spec = TOOL_REGISTRY[name]
     tiers = unlocked_tiers(allow_dispatch=allow_dispatch, allow_credentials=allow_credentials)
     if spec.tier not in tiers:
         raise ToolTierLockedError(name, spec.tier)
+    if spec.tier >= TIER_DISPATCH:
+        from . import mandate as mandate_module
+
+        verifier = mandate_verifier if mandate_verifier is not None else mandate_module.MandateVerifier.unconfigured()
+        context = call_context if call_context is not None else mandate_module.CallContext()
+        decision = verifier.verify(mandate, tool=name, tier=spec.tier, call_context=context)
+        if not decision.accepted:
+            raise MandateRejectedError(name, decision.reason)
     return spec.handler(arguments or {})
