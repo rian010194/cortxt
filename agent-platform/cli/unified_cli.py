@@ -645,18 +645,71 @@ def _run_pipeline(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
+def _write_widget_artifact(artifact: dict, output_path: Path) -> None:
+    """Atomically write a widget render artifact (tmp file + os.replace)."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, tmp = tempfile.mkstemp(prefix=".widget-", suffix=".tmp", dir=output_path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(artifact, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, output_path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
 def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
     """Serve the sessions widget or execute a registered widget action.
 
     `cortxt widget` without a subcommand serves the sessions widget
     (loopback-only static server, widget/serve.py) and blocks until
     interrupted. `--view candidates` renders the candidates view through the
-    widget-contract renderer. `cortxt widget action <id>` dispatches a
-    registered authorized action through ActionExecutor with the operator
-    gate.
+    widget-contract renderer. `--view session-pulse` renders the
+    orchestrator/session snapshot through the contract. `cortxt widget action
+    <id>` dispatches a registered authorized action through ActionExecutor
+    with the operator gate.
     """
     try:
-        candidate_mode = getattr(args, "widget_command", None) == "candidates" or getattr(args, "view", None) == "candidates"
+        view = getattr(args, "view", None)
+        if view == "session-pulse":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_snapshot_v2
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "session-pulse-0.1.yaml")
+            snapshot_path = getattr(args, "snapshot_input", None) or (ap_path / "widget" / "snapshot.json")
+            try:
+                snapshot = json.loads(Path(snapshot_path).read_text(encoding="utf-8"))
+                projection = read_snapshot_v2(snapshot)
+                source_status = "fresh"
+                error = None
+            except (OSError, ValueError) as exc:
+                projection = {}
+                source_status = "error"
+                error = {"kind": "snapshot_read", "message": str(exc)}
+            if error is None:
+                tree = render(widget, {"snapshot": projection}, {"snapshot": source_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {"contract_version": widget.contract_version,
+                        "widget": {"id": widget.id, "version": widget.version},
+                        "render": render_primitive("error-state",
+                                                   {"message": f"Snapshot read failed: {error['message']}"},
+                                                   [], "error")}
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "session-pulse.json")
+            artifact = {**tree, "repo": None, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                           if node["primitive"] == "table"]}
+            print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"session-pulse:{output_path}"],
+                                  evidence=[{"session_pulse": tree}])
+        candidate_mode = getattr(args, "widget_command", None) == "candidates" or view == "candidates"
         if candidate_mode:
             ap_path = _get_agent_platform_path()
             if str(ap_path) not in sys.path:
@@ -677,19 +730,8 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
                 source_status = model["source"]["status"]
                 tree = render(widget, {"candidates": model}, {"candidates": source_status})
                 output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "candidates.json")
-                output_path = Path(output_path)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
                 artifact = {**tree, "handoffs": model["handoffs"], "repo": repo}
-                descriptor, tmp = tempfile.mkstemp(prefix=".candidates-", suffix=".tmp", dir=output_path.parent)
-                try:
-                    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                        json.dump(artifact, handle, indent=2)
-                        handle.flush()
-                        os.fsync(handle.fileno())
-                    os.replace(tmp, output_path)
-                finally:
-                    if os.path.exists(tmp):
-                        os.unlink(tmp)
+                _write_widget_artifact(artifact, output_path)
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"]["children"]
                                                                if node["primitive"] == "table"]}
                 print(json.dumps(stdout_tree, indent=2))
@@ -1427,9 +1469,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
-    widget_parser.add_argument("--view", choices=["candidates"], help="Render a named read-only widget view")
+    widget_parser.add_argument("--view", choices=["candidates", "session-pulse"], help="Render a named read-only widget view")
     widget_parser.add_argument("--repo", help="GitHub owner/repo for a named view")
-    widget_parser.add_argument("--snapshot", type=Path, help="Candidates render output path")
+    widget_parser.add_argument("--snapshot", type=Path, help="Widget render output path")
+    widget_parser.add_argument("--snapshot-input", type=Path, help="Snapshot input path for the session-pulse view")
     widget_sub = widget_parser.add_subparsers(dest="widget_command")
     widget_candidates = widget_sub.add_parser("candidates", help="List the canonical actionable frontier and all open issues")
     widget_candidates.add_argument("--repo", required=True, help="GitHub owner/repo")
