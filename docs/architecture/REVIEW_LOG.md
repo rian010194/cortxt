@@ -6,6 +6,7 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-034 | Accepted — run lifecycle tools approved after implementation + CI confirmation (PR #231); status Proposed → Accepted | #231 |
 | 2026-08-22 | ADR-034 | Added — MCP run lifecycle tools (Proposed); records the ADR-032 Expiry/Review-Trigger review as a strengthening (issue #230) | #231 |
 | 2026-08-22 | ADR-031 | Amended — contribution policy resolved to DCO (Developer Certificate of Origin) | #228 |
 | 2026-08-22 | ADR-032 | Accepted — mandate envelope approved after enforcement of `max_runtime_seconds` as a v1 bound (PR #227); status Proposed → Accepted | #227 |

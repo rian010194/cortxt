@@ -31,7 +31,7 @@ Updated: 2026-08-22 (ADR-034 added).
 | 031 | Open-source license — Apache-2.0 | **Accepted** | `LICENSE` → verbatim Apache-2.0 (copyright Rikard Andersson); replaces "viewable, not open source"; basis for product packaging/contributions |
 | 032 | MCP Tier-1+ tool calls require a signed, nonce-bound mandate envelope, verified before execution | **Accepted** (2026-08-22) | Ed25519 mandate envelope, fail-closed verification inside `call_tool`, durable nonce/budget stores, `max_runtime_seconds` enforced (PR #227); Proposed until 2026-08-22 |
 | 033 | MCP mandate envelopes identify versioned signing keys and support overlap and revocation | **Proposed** | Key rotation follow-up to ADR-032: schema v2 `kid`, overlap rotation bounded by envelope expiry, revocation denylist before signature work; not yet implemented |
-| 034 | MCP run lifecycle tools — mandate-bound create/resume/submit_for_review | **Proposed** | Step 2 of the MCP research lifecycle (issue #230): `run_lifecycle.py` service, session_state run store, strict schemas, `-32003` error mapping, idempotent review submission; records the ADR-032 review as a strengthening |
+| 034 | MCP run lifecycle tools — mandate-bound create/resume/submit_for_review | **Accepted** (2026-08-22) | Step 2 of the MCP research lifecycle (issue #230): `run_lifecycle.py` service, session_state run store, strict schemas, `-32003` error mapping, idempotent review submission; records the ADR-032 review as a strengthening (PR #231); Proposed until 2026-08-22 |
 
 ## Decisions and Authority
 
