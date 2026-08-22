@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 from adapters.inference.budget_gate import BudgetExhausted, BudgetGate
-from runtime.embedding_port import EmbeddingError, EmbeddingPort
+from runtime.embedding_port import EmbeddingError, EmbeddingPort, configured_embedder
 
 
 def _gate(tmp_path, max_calls):
@@ -178,3 +178,68 @@ def test_embedding_port_is_drop_in_compatible_with_geometric_embedder_surface(tm
     space = ProblemSpace()
     closeness = GraphMetrics.semantic_closeness(space, "a", "b", embedder=port)
     assert closeness == pytest.approx(0.0)  # orthogonal vectors -> cosine 0
+
+
+# -- configured_embedder: config-gated EmbeddingFn selection (ADR-035) ------- #
+
+
+def _sentinel_embedder(text):
+    return [0.0]
+
+
+def _voyage_evidence():
+    return {"approved": True, "provider_id": "voyage"}
+
+
+def test_configured_embedder_returns_default_when_unconfigured(tmp_path, monkeypatch):
+    monkeypatch.delenv("CORTXT_EMBEDDING_URL", raising=False)
+    monkeypatch.delenv("CORTXT_EMBEDDING_API_KEY", raising=False)
+    monkeypatch.delenv("CORTXT_EMBEDDING_MODEL", raising=False)
+    result = configured_embedder(
+        _gate(tmp_path, max_calls=5), _voyage_evidence(), default_embedder=_sentinel_embedder
+    )
+    assert result is _sentinel_embedder
+
+
+def test_configured_embedder_returns_default_on_partial_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORTXT_EMBEDDING_URL", "https://api.voyageai.com/v1")
+    monkeypatch.delenv("CORTXT_EMBEDDING_API_KEY", raising=False)
+    monkeypatch.setenv("CORTXT_EMBEDDING_MODEL", "voyage-4-lite")
+    result = configured_embedder(
+        _gate(tmp_path, max_calls=5), _voyage_evidence(), default_embedder=_sentinel_embedder
+    )
+    assert result is _sentinel_embedder  # half-configured env never silently goes live
+
+
+def test_configured_embedder_default_embedder_is_hash_embedding(tmp_path, monkeypatch):
+    monkeypatch.delenv("CORTXT_EMBEDDING_URL", raising=False)
+    monkeypatch.delenv("CORTXT_EMBEDDING_API_KEY", raising=False)
+    monkeypatch.delenv("CORTXT_EMBEDDING_MODEL", raising=False)
+    from reasoning.geometric.embeddings import hash_embedding
+
+    result = configured_embedder(_gate(tmp_path, max_calls=5), _voyage_evidence())
+    assert result is hash_embedding  # production default unchanged
+
+
+def test_configured_embedder_builds_port_when_fully_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORTXT_EMBEDDING_URL", "https://api.voyageai.com/v1")
+    monkeypatch.setenv("CORTXT_EMBEDDING_API_KEY", "test-key")
+    monkeypatch.setenv("CORTXT_EMBEDDING_MODEL", "voyage-4-lite")
+    monkeypatch.setenv("CORTXT_EMBEDDING_DIM", "1024")
+    gate = _gate(tmp_path, max_calls=5)
+    port = configured_embedder(gate, _voyage_evidence(), data_class="L0")
+    assert isinstance(port, EmbeddingPort)
+    assert port._model == "voyage-4-lite"
+    assert port._expected_dim == 1024
+    assert port._base_url_env == "CORTXT_EMBEDDING_URL"
+    assert port._api_key_env == "CORTXT_EMBEDDING_API_KEY"
+
+
+def test_configured_embedder_ignores_unparsable_dim(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORTXT_EMBEDDING_URL", "https://api.voyageai.com/v1")
+    monkeypatch.setenv("CORTXT_EMBEDDING_API_KEY", "test-key")
+    monkeypatch.setenv("CORTXT_EMBEDDING_MODEL", "voyage-4-lite")
+    monkeypatch.setenv("CORTXT_EMBEDDING_DIM", "not-a-number")
+    port = configured_embedder(_gate(tmp_path, max_calls=5), _voyage_evidence())
+    assert isinstance(port, EmbeddingPort)
+    assert port._expected_dim is None

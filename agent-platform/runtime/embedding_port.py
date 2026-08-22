@@ -213,3 +213,56 @@ class EmbeddingPort:
                 f"backend returned dim={len(embedding)}, expected {self._expected_dim}"
             )
         return [float(x) for x in embedding]
+
+
+def configured_embedder(
+    budget_gate,
+    provider_evidence: dict,
+    *,
+    data_class: str = "L0",
+    base_url_env: str = "CORTXT_EMBEDDING_URL",
+    api_key_env: str = "CORTXT_EMBEDDING_API_KEY",
+    model_env: str = "CORTXT_EMBEDDING_MODEL",
+    expected_dim_env: str = "CORTXT_EMBEDDING_DIM",
+    per_attempt_timeout_ms: int = 30000,
+    max_attempts_total: int = 1,
+    default_embedder=None,
+):
+    """Config-gated EmbeddingFn selection (ADR-035).
+
+    Returns an ``EmbeddingPort`` when the embedding backend is fully configured
+    (all of ``model_env``/``base_url_env``/``api_key_env`` set in the
+    environment), else ``default_embedder`` — the deterministic
+    ``hash_embedding`` stub unless overridden. Unset or partially-set
+    configuration behaves exactly as today: deterministic, 0 model calls.
+    Partial configuration is deliberately treated as "not configured" rather
+    than an error, so a half-configured environment can never silently switch
+    production scoring to a live provider.
+    """
+    if default_embedder is None:
+        from reasoning.geometric.embeddings import hash_embedding
+
+        default_embedder = hash_embedding
+    model = os.environ.get(model_env)
+    base_url = os.environ.get(base_url_env)
+    api_key = os.environ.get(api_key_env)
+    if not (model and base_url and api_key):
+        return default_embedder
+    expected_dim = None
+    raw_dim = os.environ.get(expected_dim_env)
+    if raw_dim:
+        try:
+            expected_dim = int(raw_dim)
+        except ValueError:
+            expected_dim = None
+    return EmbeddingPort(
+        model=model,
+        budget_gate=budget_gate,
+        provider_evidence=provider_evidence,
+        data_class=data_class,
+        base_url_env=base_url_env,
+        api_key_env=api_key_env,
+        per_attempt_timeout_ms=per_attempt_timeout_ms,
+        max_attempts_total=max_attempts_total,
+        expected_dim=expected_dim,
+    )
