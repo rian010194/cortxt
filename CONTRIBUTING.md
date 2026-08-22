@@ -2,9 +2,8 @@
 
 Thanks for your interest in Cortxt. This project is currently built and
 maintained solo as a working portfolio. External code and documentation
-contributions are not yet accepted while the contribution policy is being
-finalized. Bug reports and security reports remain welcome through the
-channels below.
+contributions are accepted under the Developer Certificate of Origin (DCO).
+Bug reports and security reports remain welcome through the channels below.
 
 ## Before you start
 
@@ -26,16 +25,17 @@ Read the following before proposing a change:
 3. [`docs/architecture/dispatch-contract.md`](docs/architecture/dispatch-contract.md)
 4. [Accepted ADRs](docs/adr/README.md)
 
-## Feedback during the contribution-policy pause
+## Feedback and contributions
 
 - **Report a non-security bug or suggest an idea** — open a GitHub issue with
   a clear title and a structured body.
 - **Report a vulnerability** — only through the private process in
   [`SECURITY.md`](SECURITY.md). Do not open a public issue for it.
-- **Do not open a pull request yet** — the repository will publish a
-  contribution policy (including the DCO/CLA decision) before accepting
-  external code or documentation changes. All repository documentation is
-  written in **English**.
+- **Open a pull request with DCO sign-off** — every contribution commit must
+  carry a `Signed-off-by: Name <email@example.com>` trailer. By adding this
+  trailer, you certify that the contribution complies with the
+  [Developer Certificate of Origin](https://developercertificate.org/).
+  All repository documentation is written in **English**.
 
 ## Issue and PR conventions
 
@@ -68,5 +68,5 @@ same pull request (the `adr-doc-currency` CI gate enforces this).
 ## License
 
 Repository use is governed by the [Apache License 2.0](LICENSE). Terms for
-future inbound contributions will be documented after the contribution-policy
-decision.
+inbound contributions are governed by the
+[Developer Certificate of Origin](https://developercertificate.org/).

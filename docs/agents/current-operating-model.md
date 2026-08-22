@@ -39,10 +39,10 @@ for the external integration surface per ADR-024).
 
 The product surface is **CLI-primary** (ADR-015, as confirmed by the operator
 decision in issue #186). The `cortxt` CLI is the source of truth for
-interacting with the platform. The `web/` directory is a **paused legacy
-prototype** — it is not the product surface. A thin `cortxt widget` mirrors
-CLI state (ADR-021). The external integration surface is an **MCP server**
-(`cortxt mcp serve`) per ADR-024.
+interacting with the platform. The legacy web prototype was removed from the
+repository before the first public release (issue #225); it is not the product
+surface. A thin `cortxt widget` mirrors CLI state (ADR-021). The external
+integration surface is an **MCP server** (`cortxt mcp serve`) per ADR-024.
 
 ## Component responsibilities today
 
@@ -91,8 +91,8 @@ Detailed execution requirements live in
 - External agent runtimes are invoked through adapters, but a fully automated,
   unattended end-to-end dispatch (issue → runtime → review → merge) is not yet
   the default; operator approval remains the final gate.
-- `web/` is a paused legacy prototype; it is kept for reference only and must
-  not be presented as the product surface.
+- The legacy web prototype was removed from the repository before the first
+  public release (issue #225); the CLI remains the product surface.
 
 ## Selection rules
 
@@ -116,8 +116,8 @@ Do not:
 
 - treat Hermes, Pi, Codex, Buzz, or any external runtime as the product — they
   are replaceable resources behind Cortxt-owned ports (ADR-014/016);
-- treat `web/` as a product surface — it is paused legacy (ADR-015/021,
-  issue #186);
+- treat the removed legacy web prototype as a product surface — the CLI is
+  primary (ADR-015/021, issues #186 and #225);
 - invent a second backlog or independent Kanban outside GitHub;
 - describe a successful smoke test as a finished production workflow;
 - add a new `buzz-run` or similar entry point before checking whether it

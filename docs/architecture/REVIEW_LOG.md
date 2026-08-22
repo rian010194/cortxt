@@ -6,6 +6,7 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-031 | Amended — contribution policy resolved to DCO (Developer Certificate of Origin) | #228 |
 | 2026-08-22 | ADR-031 | Amended — license-file representation: `LICENSE` is the verbatim Apache-2.0 text; project copyright notice moved to `NOTICE` | #221 |
 | 2026-08-22 | ADR-021 | Amended — proof-environment identifier reference removed from tracked ADR surface (public-readiness; no decision change) | #221 |
 | 2026-08-22 | ADR-020 | Amended — decision text updated: former proof-environment identifier removed from the tracked ADR surface (public-readiness cleanup) | #221 |

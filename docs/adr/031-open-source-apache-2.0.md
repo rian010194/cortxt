@@ -34,12 +34,12 @@ adopted.
 - A standard license with broad ecosystem support.
 
 ### Negative
-- Copyright is held by one person; future contributions require a clear
-  DCO/CLA policy (not decided here).
+- Copyright is held by one person; each contribution commit must carry a
+  Developer Certificate of Origin (DCO) sign-off trailer.
 
 ### Risks
-- The contribution model (DCO/CLA) is still unspecified — followed up
-  separately before external contributions are accepted at any larger scale.
+- Missing or invalid DCO sign-off trailers can delay contribution review;
+  contributors must correct the affected commits before merge.
 
 ## Alternatives Considered
 1. **MIT** — simplest, but no explicit patent grant; rejected in favor of
@@ -58,8 +58,11 @@ adopted.
 - [x] The ADR index (`docs/adr/README.md`) is updated with 031.
 - [x] `NOTICE` records the project copyright (2026-08-22, public-readiness
       cleanup).
+- [x] The contribution policy is resolved to the Developer Certificate of
+      Origin (DCO), with a `Signed-off-by:` trailer required on every
+      contribution commit (2026-08-22 amendment, issue #225).
 
 ## Expiry/Review Trigger
 - Review by: 2026-11-21
-- Trigger: a contribution/CLA policy is introduced, or a distribution
+- Trigger: the DCO contribution policy proves insufficient, or a distribution
   (packaging) decision requires revisiting the license form.
