@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cortxt:widget-composition:0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "composition", "widgets", "layout", "connections", "capabilities"],
+  "properties": {
+    "contract_version": {"const": "0.1"},
+    "composition": {"type": "object", "additionalProperties": false, "required": ["id", "version"], "properties": {"id": {"type": "string"}, "version": {"type": "string"}}},
+    "widgets": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["namespace", "widget_id", "version", "inputs", "outputs"], "properties": {"namespace": {"type": "string"}, "widget_id": {"type": "string"}, "version": {"type": "string"}, "inputs": {"type": "object"}, "outputs": {"type": "object"}, "data_class": {"enum": ["public-metadata", "operational"]}}}},
+    "layout": {"type": "object"},
+    "connections": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["from", "output", "to", "input", "type"], "properties": {"from": {"type": "string"}, "output": {"type": "string"}, "to": {"type": "string"}, "input": {"type": "string"}, "type": {"type": "string"}}}},
+    "capabilities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  }
+}

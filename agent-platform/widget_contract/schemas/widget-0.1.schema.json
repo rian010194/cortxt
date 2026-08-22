@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cortxt:widget-contract:0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "widget", "data", "render", "actions", "capabilities"],
+  "properties": {
+    "contract_version": {"const": "0.1"},
+    "widget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "title"],
+      "properties": {"id": {"type": "string"}, "version": {"type": "string"}, "title": {"type": "string"}}
+    },
+    "data": {
+      "type": "object", "additionalProperties": false, "required": ["reads"],
+      "properties": {
+        "reads": {"type": "array", "items": {"$ref": "#/$defs/read"}},
+        "transforms": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "render": {"$ref": "#/$defs/render"},
+    "actions": {"type": "array", "items": {"$ref": "#/$defs/action"}},
+    "capabilities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  },
+  "$defs": {
+    "read": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "source", "operation", "input", "select", "refresh", "output_type", "on_error"],
+      "properties": {
+        "id": {"type": "string"}, "source": {"enum": ["store", "cli", "github"]}, "operation": {"type": "string"},
+        "input": {"type": "object"}, "select": {"type": "array", "items": {"type": "string"}},
+        "refresh": {"type": "object", "additionalProperties": false, "required": ["mode"], "properties": {"mode": {"enum": ["manual", "on_load", "poll"]}, "interval_seconds": {"type": "integer", "minimum": 5}}},
+        "output_type": {"type": "string"}, "on_error": {"enum": ["empty", "stale", "error"]}
+      }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false, "required": ["read", "pointer", "type"],
+      "properties": {"read": {"type": "string"}, "pointer": {"type": "string"}, "type": {"type": "string"}}
+    },
+    "render": {
+      "type": "object", "additionalProperties": false, "required": ["primitive"],
+      "properties": {"primitive": {"type": "string"}, "props": {"type": "object"}, "bindings": {"type": "object", "additionalProperties": {"$ref": "#/$defs/binding"}}, "children": {"type": "array", "items": {"$ref": "#/$defs/render"}}, "when": {"$ref": "#/$defs/binding"}}
+    },
+    "action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "port", "operation", "input", "authorization", "confirm", "result_type"],
+      "properties": {"id": {"type": "string"}, "port": {"enum": ["cli", "mcp", "github-transition"]}, "operation": {"type": "string"}, "input": {"type": "object"}, "authorization": {"type": "object"}, "confirm": {"type": "object"}, "result_type": {"type": "string"}, "idempotency_key": {"type": "string"}}
+    }
+  }
+}
