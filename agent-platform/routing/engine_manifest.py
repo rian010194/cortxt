@@ -89,6 +89,15 @@ DEFAULT_MANIFESTS: tuple[EngineManifest, ...] = (
         "verified for specification-heavy build tasks. Reassess (see ADR-022 §Expiry).",
     ),
     EngineManifest(
+        engine_id="hermes-free",
+        task_shapes=("research", "background-task"),
+        cost_class="free",
+        reliability_class="unverified",
+        notes="Free-tier route via Hermes CLI overrides (CORTXT_FREE_MODEL / CORTXT_FREE_PROVIDER); "
+        "quota/availability varies by provider. Selected for research/background-task over dsh/hermes "
+        "(free < cheap). Reassess once a live free-tier run has verified quality.",
+    ),
+    EngineManifest(
         engine_id="dsh",
         task_shapes=("research", "background-task"),
         cost_class="cheap",

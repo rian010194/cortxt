@@ -64,18 +64,21 @@ def test_hermes_routed_task_invokes_the_registered_adapter(tmp_path):
     assert result.evidence[0]["hermes_result"]["status"] == "succeeded"
 
 
-def test_dsh_routed_task_invokes_the_registered_adapter(tmp_path):
-    # DSH-integration experiment: research now routes to dsh over hermes.
-    adapter = _FakeDshAdapter({"status": "succeeded", "stdout": "done"})
+def test_hermes_free_routed_task_invokes_the_registered_adapter(tmp_path):
+    # research/background-task now route to hermes-free (free < cheap,
+    # deliberate operator decision 2026-08-22, issue #243); hermes keeps
+    # parallel-dispatch. parallel-dispatch has no _HERMES_PROFILE_BY_TAG
+    # entry, so the profile default is "builder" for hermes.
+    adapter = _FakeHermesAdapter({"status": "succeeded", "profile": "builder"})
     context = EngineContext()
-    context.register("dsh", adapter)
+    context.register("hermes-free", adapter)
 
     args = _make_args(tmp_path, tags="research")
     result = _run_dispatch(args, engine_context=context)
 
     assert result.status == "succeeded"
     assert adapter.calls == [("researcher", "do the thing", 60, None, None)]
-    assert result.evidence[0]["engine"] == "dsh"
+    assert result.evidence[0]["engine"] == "hermes-free"
     assert result.evidence[0]["hermes_result"]["status"] == "succeeded"
 
 

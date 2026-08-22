@@ -9,12 +9,14 @@ from runtime.adapters.claude_adapter import ClaudeAdapter
 from runtime.adapters.codex_adapter import CodexAdapter
 from runtime.adapters.dsh_adapter import DshAdapter
 from runtime.adapters.hermes_adapter import HermesAdapter
+from runtime.adapters.hermes_free_adapter import HermesFreeAdapter
 from runtime.engine_registry import EngineContext
 
 
 def build_default_engine_context() -> EngineContext:
     context = EngineContext()
     context.register("hermes", HermesAdapter())
+    context.register("hermes-free", HermesFreeAdapter())
     context.register("codex", CodexAdapter())
     context.register("claude", ClaudeAdapter())
     context.register("dsh", DshAdapter())
