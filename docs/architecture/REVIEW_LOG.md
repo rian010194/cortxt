@@ -6,6 +6,7 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-22 | ADR-036 | Accepted - MCP run lifecycle async create/status approved after end-to-end dogfood proof over real MCP stdio with a deterministic engine (issue #247); status Proposed -> Accepted | #247 |
 | 2026-08-22 | ADR-036 | Added — MCP asynchronous run creation and Tier-0 status polling (Proposed; issue #245) | TBD |
 | 2026-08-22 | ADR-033 | Accepted — MCP mandate key rotation (versioned signing keys, overlap, revocation) approved after implementation + focused/full suite green (issue #241); status Proposed → Accepted | #242 |
 | 2026-08-22 | ADR-033 | Added — MCP mandate key rotation (Proposed); follow-up to ADR-032 key-rotation risk; not yet implemented | #229 |

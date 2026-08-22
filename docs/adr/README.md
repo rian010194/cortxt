@@ -4,7 +4,7 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 added).
+Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accepted after issue #247 dogfood evidence).
 
 | # | Title | Status | Notes |
 | --- | --- | --- | --- |
@@ -33,7 +33,7 @@ Updated: 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 added
 | 033 | MCP mandate envelopes identify versioned signing keys and support overlap and revocation | **Accepted** (2026-08-22) | Key rotation follow-up to ADR-032: schema v2 `kid`, overlap rotation bounded by envelope expiry, revocation denylist before signature work; implemented (issue #241, PR #242) |
 | 034 | MCP run lifecycle tools — mandate-bound create/resume/submit_for_review | **Accepted** (2026-08-22) | Step 2 of the MCP research lifecycle (issue #230): `run_lifecycle.py` service, session_state run store, strict schemas, `-32003` error mapping, idempotent review submission; records the ADR-032 review as a strengthening (PR #231); Proposed until 2026-08-22 |
 | 035 | Embeddings provider for Phase 6 — Voyage via EmbeddingPort | **Accepted** (2026-08-22) | Resolves target-architecture §27 #10: `runtime/embedding_port.py` (on main) is the fail-closed, budget/policy-gated OpenAI-compatible `/embeddings` drop-in for `EmbeddingFn`; Phase 6 live exit arm PASSED against Voyage 2026-08-17 and re-run/PASSED 2026-08-22 as issue #233 AC2 evidence; `hash_embedding` stays the default until a versioned policy swap |
-| 036 | MCP run lifecycle asynchronous create and status polling | **Proposed** | Step 3 of the MCP research lifecycle (issue #245): async create, Tier-0 status polling, and in-process daemon worker |
+| 036 | MCP run lifecycle asynchronous create and status polling | **Accepted** | Step 3 of the MCP research lifecycle (issue #245), accepted after real external stdio dogfood evidence with a deterministic engine (issue #247) |
 
 ## Decisions and Authority
 
