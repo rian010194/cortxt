@@ -20,7 +20,10 @@ export default defineConfig({
             { label: 'Verified dispatch path', link: '/docs/verified-dispatch-path/' },
         ] },
         { label: 'Decisions', items: [{ label: 'Accepted ADRs', link: '/docs/adrs/' }] },
-        { label: 'Roadmap', items: [{ label: 'Status and Atlas hook', link: '/docs/roadmap/' }] },
+        { label: 'Roadmap', items: [
+            { label: 'Visual Atlas', link: '/atlas/' },
+            { label: 'Status and Atlas hook', link: '/docs/roadmap/' },
+        ] },
       ],
     }),
   ],
