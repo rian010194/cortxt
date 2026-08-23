@@ -863,47 +863,36 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
-        from widget import serve as widget_serve
-
-        widget_serve.main()
+        if getattr(args, "enable_actions", False):
+            # ADR-038 host boundary: the operator-gated mutation endpoint lives in
+            # action_host.py, not the read-only serve.py surface.
+            from widget import action_host
+            action_host.main()
+        else:
+            from widget import serve as widget_serve
+            widget_serve.main()
         return ResultEnvelope(status="succeeded", artifacts=["widget:stopped"])
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
 
 def _gh_issue_workflow_labels(issue_id: str) -> list[str]:
-    """Read an issue's workflow labels via gh (injectable for tests)."""
-    import subprocess
-    repo, number = issue_id.rsplit("#", 1)
-    proc = subprocess.run(["gh", "issue", "view", number, "-R", repo, "--json", "labels"],
-                          capture_output=True, text=True, timeout=20)
-    if proc.returncode:
-        raise RuntimeError(proc.stderr.strip())
-    return [x.get("name", "") for x in json.loads(proc.stdout).get("labels", [])]
+    """Read an issue's workflow labels via gh (shared default, injectable for tests)."""
+    from widget_contract.adapters.github_ports import gh_issue_workflow_labels
+    return gh_issue_workflow_labels(issue_id)
 
 
 def _gh_inbox_to_ready(issue_id: str) -> dict:
-    """Perform exactly the inbox -> ready label swap via gh (injectable for tests)."""
-    import subprocess
-    repo, number = issue_id.rsplit("#", 1)
-    proc = subprocess.run(["gh", "issue", "edit", number, "-R", repo,
-                           "--remove-label", "workflow:inbox", "--add-label", "workflow:ready"],
-                          capture_output=True, text=True, timeout=20)
-    if proc.returncode:
-        raise RuntimeError(proc.stderr.strip())
-    return {"issue_id": issue_id, "status": "ok"}
+    """Perform exactly the inbox -> ready label swap via gh (shared default, injectable for tests)."""
+    from widget_contract.adapters.github_ports import gh_inbox_to_ready
+    return gh_inbox_to_ready(issue_id)
 
 
 def _claim_run_resume(issue_id: str, *, registry: Path) -> dict:
-    """Resume a ready issue through the execution-map-gated launcher (injectable for tests)."""
-    scripts = _get_agent_platform_path().parent / "scripts"
-    if str(scripts) not in sys.path:
-        sys.path.insert(0, str(scripts))
-    from work_launcher import default_launcher
-    launcher = default_launcher(registry)
-    return launcher.resume(issue_id, runtime="hermes-coordinator", worker_role="builder",
-                           workflow="work-launcher/v1", max_runtime_seconds=3600,
-                           prompt=f"Execute the approved dispatch request for {issue_id} per the issue body.")
+    """Resume a ready issue through the execution-map-gated launcher (shared default, injectable for tests)."""
+    from widget_contract.adapters.cli_ports import gh_claim_run_resume
+    return gh_claim_run_resume(issue_id, registry=registry,
+                               scripts_dir=_get_agent_platform_path().parent / "scripts")
 
 
 def _run_widget_action(args: argparse.Namespace) -> ResultEnvelope:
@@ -919,11 +908,11 @@ def _run_widget_action(args: argparse.Namespace) -> ResultEnvelope:
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
-        from widget_contract.action_executor import ActionContext, ActionExecutor, AuthorizationDenied
-        from widget_contract.adapters.cli_ports import ClaimRunDenied, claim_run_via_launcher
-        from widget_contract.adapters.github_ports import TransitionDenied, mark_ready_transition
+        from widget_contract.action_executor import AuthorizationDenied
+        from widget_contract.action_ports import build_action, build_executor
+        from widget_contract.adapters.cli_ports import ClaimRunDenied
+        from widget_contract.adapters.github_ports import TransitionDenied
         from widget_contract.loader import load_widget_file
-        from widget_contract.models import Action
 
         widget = load_widget_file(ap_path / "widget_contract" / "specs" / "candidates-0.1.yaml")
         declared = next((a for a in widget.actions if a.id == args.action_id), None)
@@ -931,31 +920,12 @@ def _run_widget_action(args: argparse.Namespace) -> ResultEnvelope:
             return ResultEnvelope(status="failed", error={"category": "input_error",
                                                           "message": f"unknown action {args.action_id}"})
         issue_id = f"{args.repo}#{args.issue}"
-        action = Action(declared.id, declared.port, declared.operation, {"issue_id": issue_id},
-                        {"mode": declared.authorization["mode"], "reference": args.approval_ref},
-                        declared.confirm, declared.result_type, declared.idempotency_key)
-
-        def _authorize(a: Action, context: ActionContext) -> bool:
-            return (context.authorization_reference == a.authorization.get("reference")
-                    and a.operation in context.approved_operations
-                    and (not a.confirm.get("required") or args.confirm))
-
-        def _mark_ready(operation: str, request: dict) -> dict:
-            def reader(issue_id: str) -> dict:
-                return {"issue_id": issue_id, "labels": [{"name": x} for x in _gh_issue_workflow_labels(issue_id)]}
-
-            def transition(operation: str, request: dict) -> dict:
-                return _gh_inbox_to_ready(request["issue_id"])
-
-            return mark_ready_transition(operation, request, issue_reader=reader, transition=transition)
-
-        def _claim_run(operation: str, request: dict) -> dict:
-            registry = args.registry or (ap_path / ".dispatch" / "runs.json")
-            return claim_run_via_launcher(operation, request,
-                                          resume=lambda issue_id: _claim_run_resume(issue_id, registry=registry))
-
-        executor = ActionExecutor({"github-transition": _mark_ready, "cli": _claim_run}, _authorize)
-        context = ActionContext(args.approval_ref, frozenset({declared.operation}))
+        registry = getattr(args, "registry", None) or (ap_path / ".dispatch" / "runs.json")
+        action = build_action(widget, args.action_id, issue_id, args.approval_ref, args.confirm)
+        executor, context = build_executor(
+            widget, action_id=args.action_id, approval_ref=args.approval_ref, confirm=args.confirm,
+            labels_reader=_gh_issue_workflow_labels, transition_writer=_gh_inbox_to_ready,
+            resume=lambda issue_id: _claim_run_resume(issue_id, registry=registry))
         result = executor.execute(action, context)
         print(json.dumps(result, indent=2))
         return ResultEnvelope(status="succeeded", issue_id=issue_id, evidence=[{"action": result}])
@@ -1760,6 +1730,8 @@ def main(argv: list[str] | None = None) -> int:
     widget_parser.add_argument("--snapshot", type=Path, help="Widget render output path")
     widget_parser.add_argument("--snapshot-input", type=Path, help="Snapshot input path for the session-pulse view")
     widget_parser.add_argument("--plan-input", type=Path, help="Execution-map plan input JSON for the execution-map view")
+    widget_parser.add_argument("--enable-actions", action="store_true",
+                               help="Mount the operator-gated mutation endpoint (POST /api/action) on the loopback host (ADR-038 host boundary); default remains read-only")
     widget_sub = widget_parser.add_subparsers(dest="widget_command")
     widget_candidates = widget_sub.add_parser("candidates", help="List the canonical actionable frontier and all open issues")
     widget_candidates.add_argument("--repo", required=True, help="GitHub owner/repo")
