@@ -68,6 +68,91 @@ WEBHOOKS_STATUS_SCHEMA = {"type": "object", "additionalProperties": False, "requ
 PAGES_DEPLOYMENT_ROW_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["id", "environment", "created_on", "stage"], "properties": {"id": {"type": "string"}, "environment": {"type": "string"}, "created_on": {"type": "string"}, "stage": {"type": "string"}}}
 PAGES_LATEST_DEPLOYMENT_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["id", "environment", "created_on", "stage", "status"], "properties": {"id": {"type": "string"}, "environment": {"type": "string"}, "created_on": {"type": "string"}, "stage": {"type": "string"}, "status": {"type": "string"}}}
 PAGES_DEPLOYS_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "project", "account", "latest", "deployments"], "properties": {"schema_version": {"const": 1}, "project": {"type": "string"}, "account": {"type": "string"}, "latest": PAGES_LATEST_DEPLOYMENT_SCHEMA, "deployments": {"type": "array", "items": PAGES_DEPLOYMENT_ROW_SCHEMA}}}
+VISUAL_TOKENS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["colors", "typography", "spacing", "radius", "density"],
+    "properties": {
+        "schema_version": {"type": "integer"},
+        "colors": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "background", "surface", "layer", "hover", "stroke", "strong",
+                "text", "muted", "dim", "accent", "blue", "ok", "warn", "bad",
+            ],
+            "properties": {
+                "background": {"type": "string"},
+                "surface": {"type": "string"},
+                "layer": {"type": "string"},
+                "hover": {"type": "string"},
+                "stroke": {"type": "string"},
+                "strong": {"type": "string"},
+                "text": {"type": "string"},
+                "muted": {"type": "string"},
+                "dim": {"type": "string"},
+                "accent": {"type": "string"},
+                "blue": {"type": "string"},
+                "ok": {"type": "string"},
+                "warn": {"type": "string"},
+                "bad": {"type": "string"},
+            },
+        },
+        "typography": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "sans", "mono", "size_base", "size_small", "size_heading",
+                "weight_normal", "weight_bold",
+            ],
+            "properties": {
+                "sans": {"type": "array", "items": {"type": "string"}},
+                "mono": {"type": "array", "items": {"type": "string"}},
+                "size_base": {"type": ["string", "number"]},
+                "size_small": {"type": ["string", "number"]},
+                "size_heading": {"type": ["string", "number"]},
+                "weight_normal": {"type": ["string", "number"]},
+                "weight_bold": {"type": ["string", "number"]},
+            },
+        },
+        "spacing": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "unit", "gap_small", "gap_medium", "gap_large",
+                "padding_small", "padding_medium",
+            ],
+            "properties": {
+                "unit": {"type": ["string", "number"]},
+                "gap_small": {"type": ["string", "number"]},
+                "gap_medium": {"type": ["string", "number"]},
+                "gap_large": {"type": ["string", "number"]},
+                "padding_small": {"type": ["string", "number"]},
+                "padding_medium": {"type": ["string", "number"]},
+            },
+        },
+        "radius": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["small", "medium", "large"],
+            "properties": {
+                "small": {"type": ["string", "number"]},
+                "medium": {"type": ["string", "number"]},
+                "large": {"type": ["string", "number"]},
+            },
+        },
+        "density": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["row_height", "card_max_height", "grid_min_card_width"],
+            "properties": {
+                "row_height": {"type": ["string", "number"]},
+                "card_max_height": {"type": ["string", "number"]},
+                "grid_min_card_width": {"type": ["string", "number"]},
+            },
+        },
+    },
+}
 
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
@@ -79,6 +164,7 @@ TYPES = {
     "docker.status.v1": TypeEntry(DOCKER_STATUS_SCHEMA, "operational"),
     "webhooks.status.v1": TypeEntry(WEBHOOKS_STATUS_SCHEMA, "public-metadata"),
     "pages.deploys.v1": TypeEntry(PAGES_DEPLOYS_SCHEMA, "operational"),
+    "visual-tokens.v1": TypeEntry(VISUAL_TOKENS_SCHEMA, "public-metadata"),
     "issue.workflow.v1": TypeEntry({"type": "object"}, "public-metadata"),
     "core.string.v1": TypeEntry({"type": "string"}, "public-metadata"),
     "core.number.v1": TypeEntry({"type": "number"}, "public-metadata"),

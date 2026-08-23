@@ -63,10 +63,14 @@ button,select{font:inherit}
 <div class="tabs" id="tabs"></div>
 <div class="content" id="content"></div>
 </div>
+<script src="maker.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 function empty(root,message){root.replaceChildren();const n=document.createElement("div");n.className="empty";n.textContent=message;root.append(n)}
 function emptyLine(message){const n=document.createElement("div");n.className="empty";n.textContent=message;return n}
+const DEFAULT_FALLBACK_TOKENS={colors:{background:"#080b14",surface:"#101522",layer:"#ffffff0d",hover:"#ffffff15",stroke:"#29324a",strong:"#3a4562",text:"#f4f7ff",muted:"#aab3c5",dim:"#8792a8",accent:"#4d6bfe",blue:"#3151d8",ok:"#68d391",warn:"#f6c85f",bad:"#ff7a90"},typography:{sans:["Inter","Segoe UI Variable","Segoe UI","sans-serif"],mono:["Cascadia Code","Cascadia Mono","Consolas","monospace"],size_base:"12px",size_small:"10px",size_heading:"14px",weight_normal:400,weight_bold:600},spacing:{unit:"4px",gap_small:"4px",gap_medium:"8px",gap_large:"16px",padding_small:"6px",padding_medium:"12px"},radius:{small:"4px",medium:"6px",large:"12px"},density:{row_height:"28px",card_max_height:"520px",grid_min_card_width:"280px"}};
+function applyTokens(tokens){if(window.WidgetMaker&&WidgetMaker.applyTokens){WidgetMaker.applyTokens(tokens);return}const el=document.documentElement;if(!el||!tokens)return;const c=tokens.colors||{};Object.entries(c).forEach(([k,v])=>{el.style.setProperty("--token-"+k,v);el.style.setProperty("--"+k,v)});if(tokens.typography?.sans)el.style.setProperty("--sans",Array.isArray(tokens.typography.sans)?tokens.typography.sans.join(", "):String(tokens.typography.sans));if(tokens.typography?.mono)el.style.setProperty("--mono",Array.isArray(tokens.typography.mono)?tokens.typography.mono.join(", "):String(tokens.typography.mono))}
+async function loadTokens(){try{const r=await fetch("tokens.json",{cache:"no-store"});if(!r.ok)throw Error(r.status);const t=await r.json();applyTokens(t)}catch(e){applyTokens(window.WidgetMaker?.defaultTokens?WidgetMaker.defaultTokens():DEFAULT_FALLBACK_TOKENS)}}
 const POLL_BASE_MS=3000,POLL_MAX_BACKOFF_MS=30000,POLL_CAP_MS=60000,pollState=new Map();
 function nextInterval(failures,base=POLL_BASE_MS,maxBackoff=POLL_MAX_BACKOFF_MS,cap=POLL_CAP_MS){if(failures<=0)return Math.min(base,cap);const b=base*Math.pow(2,Math.min(failures,30));return Math.min(b,maxBackoff,cap)}
 let actionHost={enabled:false,token:null,actions:[]},actionState=new Map();
@@ -85,6 +89,6 @@ function buildShell(){const tabs=$("tabs"),content=$("content");tabs.replaceChil
 function selectTab(i){document.querySelectorAll(".tabs button").forEach((b,j)=>b.classList.toggle("active",j===i));manifest.forEach((w,j)=>{const sec=$("widget-"+w.id);if(sec)sec.classList.toggle("hidden",j!==i)})}
 async function loadManifest(){try{const r=await fetch("widgets.json",{cache:"no-store"});if(!r.ok)throw Error(r.status);const m=await r.json();manifest=(m.widgets||[]).filter(w=>w.id&&w.artifact);if(!manifest.length)throw Error("empty manifest");buildShell();pollAll(true)}catch(e){empty($("content"),"No widgets manifest. Run `cortxt widget` to serve widgets (widgets.json).")}}
 function pollAll(force=false){const now=Date.now();manifest.forEach(w=>{const s=pollState.get(w.id);if(force||!s||now>=s.nextPoll)renderWidget(w)})}
-probeActions();loadManifest();
+probeActions();loadTokens();loadManifest();
 setInterval(()=>{probeActions();if(manifest.length)pollAll()},1000);
 </script></body></html>
