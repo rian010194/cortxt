@@ -709,6 +709,14 @@ def _run_widget_load(args: argparse.Namespace) -> ResultEnvelope:
                     from widget_contract.adapters.store_reads import read_snapshot_v2
                     snapshot_input = getattr(args, "snapshot_input", None) or (ap_path / "widget" / "snapshot.json")
                     data[read.id] = read_snapshot_v2(json.loads(Path(snapshot_input).read_text(encoding="utf-8")))
+                elif read.operation == "docker.status.v1":
+                    from widget_contract.adapters.store_reads import read_docker_status_v1
+                    docker_input = getattr(args, "docker_input", None)
+                    if docker_input and Path(docker_input).is_file():
+                        data[read.id] = read_docker_status_v1(json.loads(Path(docker_input).read_text(encoding="utf-8")))
+                    else:
+                        reader = getattr(args, "docker_reader", None) or _default_docker_reader
+                        data[read.id] = read_docker_status_v1(reader())
                 else:
                     return ResultEnvelope(status="failed", error={"category": "input_error",
                                                                   "message": f"unsupported emitted store read {read.operation}"})
@@ -841,6 +849,15 @@ def _run_widget_compose(args: argparse.Namespace) -> ResultEnvelope:
                             sys.path.insert(0, str(scripts))
                         from execution_map import plan_from_json
                         child_data[read.id] = read_execution_map_v1(plan_from_json, store)
+                    elif read.operation == "docker.status.v1":
+                        from widget_contract.adapters.store_reads import read_docker_status_v1
+                        docker_input = getattr(args, "docker_input", None)
+                        if docker_input and Path(docker_input).is_file():
+                            raw_data = json.loads(Path(docker_input).read_text(encoding="utf-8"))
+                            child_data[read.id] = read_docker_status_v1(raw_data)
+                        else:
+                            reader = getattr(args, "docker_reader", None) or _default_docker_reader
+                            child_data[read.id] = read_docker_status_v1(reader())
                     else:
                         return ResultEnvelope(status="failed", error={"category": "input_error",
                                                                       "message": f"unsupported emitted store read {read.operation}"})
@@ -884,16 +901,173 @@ def _run_widget_compose(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "load_error", "message": str(exc)})
 
 
-def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
+def _default_docker_reader() -> dict[str, Any]:
+    """Capture local Docker state into a safe content-free projection dictionary."""
+    import shutil
+    import subprocess
+    try:
+        from subprocess_windows import no_window_kwargs
+        extra_kwargs = no_window_kwargs()
+    except ImportError:
+        extra_kwargs = {}
+
+    docker_bin = shutil.which("docker")
+    if not docker_bin:
+        raise OSError("docker executable not found in PATH")
+
+    try:
+        info_proc = subprocess.run(
+            [docker_bin, "info", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            **extra_kwargs,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OSError("docker info timed out") from exc
+
+    if info_proc.returncode != 0:
+        error_msg = info_proc.stderr.strip() or f"docker info exited with code {info_proc.returncode}"
+        raise OSError(f"docker info failed: {error_msg}")
+
+    engine_info: dict[str, Any] = {}
+    try:
+        raw_info = json.loads(info_proc.stdout)
+        if isinstance(raw_info, dict):
+            engine_info = {
+                "server_version": str(raw_info.get("ServerVersion", "unknown")),
+                "os": str(raw_info.get("OperatingSystem", raw_info.get("OSType", "unknown"))),
+                "architecture": str(raw_info.get("Architecture", "unknown")),
+                "status": "running",
+            }
+    except Exception:
+        engine_info = {"status": "running"}
+
+    try:
+        ps_proc = subprocess.run(
+            [docker_bin, "ps", "-a", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            **extra_kwargs,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OSError("docker ps timed out") from exc
+
+    if ps_proc.returncode != 0:
+        error_msg = ps_proc.stderr.strip() or f"docker ps exited with code {ps_proc.returncode}"
+        raise OSError(f"docker ps failed: {error_msg}")
+
+    containers: list[dict[str, str]] = []
+    running_count = 0
+    stdout_ps = ps_proc.stdout.strip()
+    if stdout_ps:
+        lines: list[Any] = []
+        if stdout_ps.startswith("["):
+            try:
+                parsed = json.loads(stdout_ps)
+                if isinstance(parsed, list):
+                    lines = parsed
+            except Exception:
+                pass
+        if not lines:
+            for line in stdout_ps.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    lines.append(json.loads(line))
+                except Exception:
+                    continue
+
+        for item in lines:
+            if not isinstance(item, dict):
+                continue
+            c_id = str(item.get("ID") or item.get("Id") or item.get("ContainerID") or "")
+            c_name = str(item.get("Names") or item.get("Name") or "")
+            if c_name.startswith("/"):
+                c_name = c_name[1:]
+            c_image = str(item.get("Image") or "")
+            c_status = str(item.get("Status") or item.get("State") or "")
+            state_str = str(item.get("State") or "").lower()
+            if state_str == "running" or c_status.lower().startswith("up"):
+                running_count += 1
+            containers.append({
+                "id": c_id,
+                "name": c_name,
+                "image": c_image,
+                "status": c_status,
+            })
+
+    try:
+        img_proc = subprocess.run(
+            [docker_bin, "images", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            **extra_kwargs,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OSError("docker images timed out") from exc
+
+    images: list[str] = []
+    if img_proc.returncode == 0 and img_proc.stdout.strip():
+        stdout_img = img_proc.stdout.strip()
+        img_lines: list[Any] = []
+        if stdout_img.startswith("["):
+            try:
+                parsed = json.loads(stdout_img)
+                if isinstance(parsed, list):
+                    img_lines = parsed
+            except Exception:
+                pass
+        if not img_lines:
+            for line in stdout_img.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    img_lines.append(json.loads(line))
+                except Exception:
+                    continue
+
+        for item in img_lines:
+            if not isinstance(item, dict):
+                continue
+            repo = item.get("Repository")
+            tag = item.get("Tag")
+            img_id = item.get("ID") or item.get("Id") or ""
+            if repo and repo != "<none>" and tag and tag != "<none>":
+                images.append(f"{repo}:{tag}")
+            elif repo and repo != "<none>":
+                images.append(str(repo))
+            elif img_id:
+                images.append(str(img_id))
+
+    return {
+        "schema_version": 1,
+        "engine": engine_info,
+        "containers": containers,
+        "images": images,
+        "total_containers": len(containers),
+        "running_containers": running_count,
+    }
+
+
+def _run_widget(args: argparse.Namespace, docker_reader: Any = None) -> ResultEnvelope:
     """Serve the sessions widget or execute a registered widget action.
 
     `cortxt widget` without a subcommand serves the sessions widget
     (loopback-only static server, widget/serve.py) and blocks until
     interrupted. `--view candidates` renders the candidates view through the
     widget-contract renderer. `--view session-pulse` renders the
-    orchestrator/session snapshot through the contract. `cortxt widget action
-    <id>` dispatches a registered authorized action through ActionExecutor
-    with the operator gate.
+    orchestrator/session snapshot through the contract. `--view execution-map`
+    renders the execution-map plan. `--view docker-status` renders local
+    docker status. `cortxt widget action <id>` dispatches a registered
+    authorized action through ActionExecutor with the operator gate.
     """
     try:
         view = getattr(args, "view", None)
@@ -974,6 +1148,41 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
             print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"execution-map:{output_path}"],
                                   evidence=[{"execution_map": tree}])
+        if view == "docker-status":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_docker_status_v1
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "docker-status-0.1.yaml")
+            reader = docker_reader or getattr(args, "docker_reader", None) or _default_docker_reader
+            try:
+                raw_data = reader()
+                projection = read_docker_status_v1(raw_data)
+                source_status = "fresh"
+                error = None
+            except (OSError, ValueError, Exception) as exc:
+                projection = {}
+                source_status = "error"
+                error = {"kind": "docker_read", "message": str(exc)}
+            if error is None:
+                tree = render(widget, {"docker": projection}, {"docker": source_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {"contract_version": widget.contract_version,
+                        "widget": {"id": widget.id, "version": widget.version},
+                        "render": render_primitive("error-state",
+                                                   {"message": f"Docker read failed: {error['message']}"},
+                                                   [], "error")}
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "docker-status.json")
+            artifact = {**tree, "repo": None, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                           if node["primitive"] in ("table", "list", "key-value", "metric")]}
+            print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"docker-status:{output_path}"],
+                                  evidence=[{"docker_status": tree}])
         candidate_mode = getattr(args, "widget_command", None) == "candidates" or view == "candidates"
         if candidate_mode:
             ap_path = _get_agent_platform_path()
@@ -1882,7 +2091,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
-    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map"], help="Render a named read-only widget view")
+    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map", "docker-status"], help="Render a named read-only widget view")
     widget_parser.add_argument("--repo", help="GitHub owner/repo for a named view")
     widget_parser.add_argument("--snapshot", type=Path, help="Widget render output path")
     widget_parser.add_argument("--snapshot-input", type=Path, help="Snapshot input path for the session-pulse view")
