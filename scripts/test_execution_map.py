@@ -80,7 +80,9 @@ def test_graph_and_plan():
           "workflow_label_cardinality", "self_edge"}.issubset({x.code for x in all_drift.drift}))
 
 
-def test_collision_and_preflight(root):
+def test_collision_and_preflight(root=None):
+    if root is None:
+        root = Path(tempfile.mkdtemp(prefix="execution-map-test-"))
     keys = em.collision_keys(issue_id="Owner/Repo#2", run_id="run-1", worktree=root / "x" / ".." / "wt",
                              workflow_label="workflow:ready", store_session_id="same",
                              engine_session_id="same")
@@ -104,7 +106,9 @@ def test_collision_and_preflight(root):
     store.close()
 
 
-def test_store_and_receipt(root):
+def test_store_and_receipt(root=None):
+    if root is None:
+        root = Path(tempfile.mkdtemp(prefix="execution-map-test-"))
     path = root / "claims.db"
     first, second = em.SqliteClaimStore(path), em.SqliteClaimStore(path)
     barrier = threading.Barrier(2); outcomes = []
@@ -190,7 +194,9 @@ def test_projection():
           ("role", "issues", "waves", "claims", "collision_codes")) and projection["issues"][1]["blockers"])
 
 
-def test_cli(root):
+def test_cli(root=None):
+    if root is None:
+        root = Path(tempfile.mkdtemp(prefix="execution-map-test-"))
     source = root / "plan.json"
     source.write_text(json.dumps({"issues": [issue(1)], "role": "observer"}), encoding="utf-8")
     cli = Path(__file__).resolve().parents[1] / "agent-platform" / "cli" / "unified_cli.py"
