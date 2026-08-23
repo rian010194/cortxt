@@ -31,11 +31,11 @@ render:
       bindings:
         rows: {read: plan, pointer: /claims, type: core.array.v1}
     - primitive: list
-      props: {empty: No waves}
+      props: {label: Waves, empty: No waves}
       bindings:
         items: {read: plan, pointer: /waves, type: core.array.v1}
     - primitive: list
-      props: {empty: No collisions}
+      props: {label: Collision codes, empty: No collisions}
       bindings:
         items: {read: plan, pointer: /collision_codes, type: core.array.v1}
 actions: []
