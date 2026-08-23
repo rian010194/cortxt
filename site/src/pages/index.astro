@@ -4,6 +4,7 @@ const principles = [
   ['Mandate first', 'Work runs only inside explicit scope, limits, and authority.'],
   ['Provider neutral', 'Models and agent engines remain replaceable behind Cortxt-owned contracts.'],
   ['Evidence before approval', 'Every run returns inspectable evidence before a human makes the final call.'],
+  ['Your stack, rendered', 'The operator view is generated from the workflow, never imposed on it.'],
 ];
 ---
 <!doctype html>
@@ -27,30 +28,30 @@ const principles = [
         <div class="hero-copy">
           <p class="eyebrow"><i></i> Provider-neutral control plane</p>
           <h1>AI work,<br />under control.</h1>
-          <p class="lede">Create, steer, resume, and verify long-running work from the CLI. Scope and approval stay with the operator.</p>
+          <p class="lede">Create, steer, resume, and verify long-running work from the CLI &mdash; and render the CLI and widget views that match each project's actual stack, not a dashboard you're handed. Scope and approval stay with the operator.</p>
           <div class="actions"><a class="primary" href="/docs/quick-start/">Start with the CLI</a><a class="secondary" href="/docs/">Read the docs <span aria-hidden="true">-&gt;</span></a></div>
-          <div class="command"><span>$</span> cortxt pipeline run issue-217 <b>--watch</b></div>
+          <div class="command"><span>$</span> cortxt widget load --spec compliance.yaml</div>
         </div>
         <div class="desktop" aria-label="Cortxt CLI, widget, and MCP working together">
           <div class="desktop-grid"></div>
           <section class="terminal mock-window">
-            <div class="chrome"><span class="lights"><i></i><i></i><i></i></span><b>cortxt / issue-217</b></div>
-            <div class="terminal-body"><p><span>$</span> cortxt status</p><p class="dim">WORKSTREAM&nbsp;&nbsp;&nbsp;STATE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RUNTIME</p><p><b>identity-217</b>&nbsp; <em>running</em>&nbsp;&nbsp;&nbsp;codex</p><p class="dim">3 lanes / 2 complete / 1 active</p><p><span>$</span> <i class="cursor"></i></p></div>
+            <div class="chrome"><span class="lights"><i></i><i></i><i></i></span><b>cortxt / compliance</b></div>
+            <div class="terminal-body"><p><span>$</span> cortxt status</p><p class="dim">WORKFLOW&nbsp;&nbsp;&nbsp;STATE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RUNTIME</p><p><b>compliance</b>&nbsp; <em>running</em>&nbsp;&nbsp;&nbsp;codex</p><p class="dim">3 lanes / 2 complete / 1 active</p><p><span>$</span> <i class="cursor"></i></p></div>
           </section>
           <section class="widget mock-window">
             <div class="chrome"><span class="app-icon">C</span><b>Cortxt</b><span class="window-actions">- &nbsp; square &nbsp; x</span></div>
-            <div class="mock-tabs"><b>Pipeline</b><span>Log</span><span>Fleet</span></div>
-            <div class="widget-body"><div class="widget-head"><small>ISSUE-217 / IDENTITY</small><mark>running</mark></div>
+            <div class="mock-tabs"><b>compliance</b><span>fixture</span><span>pipeline</span></div>
+            <div class="widget-body"><div class="widget-head"><small>WORKFLOW / GENERATED FROM SPEC</small><mark>running</mark></div>
               <div class="axis"><span></span><span>start</span><span>50%</span><span>now</span></div>
-              <div class="lane"><label>research</label><i><b style="width:82%"></b></i></div>
-              <div class="lane"><label>implement</label><i><b style="width:63%"></b></i></div>
-              <div class="lane"><label>verify</label><i><b class="active" style="width:36%"></b></i></div>
+              <div class="lane"><label>gap</label><i><b style="width:88%"></b></i></div>
+              <div class="lane"><label>statute</label><i><b style="width:61%"></b></i></div>
+              <div class="lane"><label>audit</label><i><b class="active" style="width:34%"></b></i></div>
               <div class="chips"><span>cost <b>$0.84</b></span><span>time <b>12m</b></span><span>tok <b>28k</b></span></div>
             </div>
           </section>
           <section class="mcp mock-window">
             <div class="mcp-title"><span>MCP</span><b>Evidence surface</b><i>connected</i></div>
-            <div class="mcp-row"><span class="check">+</span><p><b>Scope verified</b><small>GitHub issue #217</small></p></div>
+            <div class="mcp-row"><span class="check">+</span><p><b>Scope verified</b><small>compliance workflow</small></p></div>
             <div class="mcp-row"><span class="check">+</span><p><b>Contracts unchanged</b><small>dispatch / snapshot</small></p></div>
             <div class="mcp-row pending"><span>...</span><p><b>Review pending</b><small>operator approval</small></p></div>
           </section>
