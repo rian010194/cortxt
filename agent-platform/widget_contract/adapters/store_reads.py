@@ -110,3 +110,106 @@ def read_docker_status_v1(projection_or_store: Any) -> dict[str, Any]:
         raise ReadAdapterError(str(exc)) from exc
     return result
 
+
+def redact_hook(hook: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a safe projection of a GitHub hook row without secrets or extra config."""
+    if not isinstance(hook, Mapping):
+        raise ReadAdapterError("hook row must be an object")
+    url = ""
+    if "config" in hook and isinstance(hook["config"], Mapping):
+        url = str(hook["config"].get("url") or "")
+    if not url and "url" in hook:
+        url = str(hook["url"] or "")
+    events = hook.get("events", [])
+    if not isinstance(events, list):
+        raise ReadAdapterError("hook events must be a list")
+    raw_id = hook.get("id")
+    if not isinstance(raw_id, int) or isinstance(raw_id, bool):
+        raise ReadAdapterError("hook id must be an integer")
+    raw_active = hook.get("active")
+    if not isinstance(raw_active, bool):
+        raise ReadAdapterError("hook active must be a boolean")
+    return {
+        "id": raw_id,
+        "url": url,
+        "events": [str(e) for e in events],
+        "active": raw_active,
+    }
+
+
+def read_webhooks_status_v1(store: Mapping[str, Any]) -> dict[str, Any]:
+    """Produce the safe content-free webhooks status projection and validate it."""
+    if not isinstance(store, Mapping):
+        raise ReadAdapterError("webhooks store must be an object")
+    hooks_raw = store.get("hooks")
+    if not isinstance(hooks_raw, list):
+        raise ReadAdapterError("webhooks store must contain a hooks array")
+    safe_hooks = [redact_hook(h) for h in hooks_raw]
+    repo = store.get("repo", "")
+    if not isinstance(repo, str):
+        raise ReadAdapterError("webhooks store repo must be a string")
+    total = store.get("total", len(safe_hooks))
+    if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+        raise ReadAdapterError("webhooks store total must be a non-negative integer")
+    active = store.get("active", sum(1 for h in safe_hooks if h.get("active")))
+    if not isinstance(active, int) or isinstance(active, bool) or active < 0:
+        raise ReadAdapterError("webhooks store active must be a non-negative integer")
+    result = {
+        "schema_version": 1,
+        "repo": repo,
+        "total": total,
+        "active": active,
+        "hooks": safe_hooks,
+    }
+    try:
+        validate(result, TYPES["webhooks.status.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_pages_deploys_v1(store: Mapping[str, Any]) -> dict[str, Any]:
+    """Produce the safe content-free pages deploys projection and validate it."""
+    if not isinstance(store, Mapping):
+        raise ReadAdapterError("pages deploys store must be an object")
+    project = store.get("project", "")
+    if not isinstance(project, str):
+        raise ReadAdapterError("pages deploys project must be a string")
+    account = store.get("account", "")
+    if not isinstance(account, str):
+        raise ReadAdapterError("pages deploys account must be a string")
+    latest_raw = store.get("latest")
+    if not isinstance(latest_raw, Mapping):
+        raise ReadAdapterError("pages deploys store must contain a latest object")
+    latest = {
+        "id": str(latest_raw.get("id", "")),
+        "environment": str(latest_raw.get("environment", "")),
+        "created_on": str(latest_raw.get("created_on", "")),
+        "stage": str(latest_raw.get("stage", "")),
+        "status": str(latest_raw.get("status", "")),
+    }
+    deployments_raw = store.get("deployments")
+    if not isinstance(deployments_raw, list):
+        raise ReadAdapterError("pages deploys store must contain a deployments array")
+    safe_deployments = []
+    for dep in deployments_raw:
+        if not isinstance(dep, Mapping):
+            raise ReadAdapterError("deployment row must be an object")
+        safe_deployments.append({
+            "id": str(dep.get("id", "")),
+            "environment": str(dep.get("environment", "")),
+            "created_on": str(dep.get("created_on", "")),
+            "stage": str(dep.get("stage", "")),
+        })
+    result = {
+        "schema_version": 1,
+        "project": project,
+        "account": account,
+        "latest": latest,
+        "deployments": safe_deployments,
+    }
+    try:
+        validate(result, TYPES["pages.deploys.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
