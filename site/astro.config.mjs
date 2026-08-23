@@ -1,10 +1,12 @@
 import { defineConfig } from 'astro/config';
+import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
   site: 'https://cortxt.io',
   output: 'static',
   integrations: [
+    react(),
     starlight({
       title: 'Cortxt',
       description: 'Provider-neutral control for long-running AI work under human mandate.',

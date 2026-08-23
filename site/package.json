@@ -9,8 +9,13 @@
     "preview": "astro preview"
   },
   "dependencies": {
+    "@astrojs/react": "^6.0.4",
     "@astrojs/starlight": "0.41.7",
+    "@dagrejs/dagre": "^3.1.1",
+    "@xyflow/react": "^12.11.3",
     "astro": "7.2.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "sharp": "0.35.3"
   }
 }
