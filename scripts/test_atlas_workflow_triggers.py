@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Offline checks for the event-triggered Atlas sync workflow (#311, C.2).
+"""Offline checks for the event-triggered Atlas sync workflow (#311 C.2, #329).
 
 Run: python scripts/test_atlas_workflow_triggers.py
 Prints ok/FAIL lines and exits non-zero on any failure.
 
-Covers: the atlas-sync workflow declares the issue/issue_comment event
-triggers in addition to the daily schedule and manual dispatch, the
-anti-loop actor guard, and the preserved concurrency group.
+Covers: the atlas-sync workflow declares the issue/issue_comment/pull_request event
+triggers in addition to the daily schedule and manual dispatch, the merged-only
+guard on pull_request events, the anti-loop actor guard covering bot identities,
+and the preserved concurrency group.
 """
 from __future__ import annotations
 
@@ -49,6 +50,11 @@ def main() -> int:
           set(issues.get("types", [])) == expected_types)
     check("issue_comment trigger declared",
           isinstance(triggers.get("issue_comment"), dict))
+    pull_request = triggers.get("pull_request", {})
+    check("pull_request trigger declared",
+          isinstance(pull_request, dict) and "types" in pull_request)
+    check("pull_request trigger covers closed event",
+          "closed" in pull_request.get("types", []))
 
     concurrency = doc.get("concurrency", {})
     check("concurrency group preserved",
@@ -58,11 +64,15 @@ def main() -> int:
 
     jobs = doc.get("jobs", {})
     sync = jobs.get("sync", {})
-    if_cond = sync.get("if", "")
-    check("anti-loop actor guard on the sync job",
-          "cortxt-atlas[bot]" in str(if_cond))
+    if_cond = str(sync.get("if", ""))
+    check("anti-loop actor guard covers cortxt-atlas[bot]",
+          "cortxt-atlas[bot]" in if_cond)
+    check("anti-loop actor guard covers github-actions[bot]",
+          "github-actions[bot]" in if_cond)
     check("guard only applies to event triggers",
-          "github.event_name" in str(if_cond))
+          "github.event_name" in if_cond)
+    check("merged-only guard for pull_request events",
+          "github.event.pull_request.merged" in if_cond)
 
     check("run step still emits site and graph",
           "--emit-site" in text and "--emit-graph" in text)
