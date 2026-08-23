@@ -105,7 +105,7 @@ for name, binding_type in (("text", "core.string.v1"), ("heading", "core.string.
 PRIMITIVES.update({
     "empty-state": PrimitiveEntry(frozenset({"message"}), {}, "empty", "error"),
     "error-state": PrimitiveEntry(frozenset({"message"}), {}, "empty", "error"),
-    "list": PrimitiveEntry(frozenset({"items", "empty", "error"}), {"items": "core.array.v1"}, "empty", "error"),
+    "list": PrimitiveEntry(frozenset({"items", "label", "empty", "error"}), {"items": "core.array.v1"}, "empty", "error"),
     "table": PrimitiveEntry(frozenset({"rows", "columns", "label", "empty", "error"}), {"rows": "core.array.v1"}, "empty", "error"),
     "key-value": PrimitiveEntry(frozenset({"value", "empty", "error"}), {"value": "core.object.v1"}, "empty", "error"),
     "button": PrimitiveEntry(frozenset({"label", "action"}), {}, "denied", "error", True),
