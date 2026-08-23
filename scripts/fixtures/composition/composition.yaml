@@ -1,0 +1,24 @@
+contract_version: "0.1"
+composition:
+  id: pulse-dashboard
+  version: "0.1"
+widgets:
+  - namespace: pulse_metric
+    widget_id: pulse-child
+    version: "0.1"
+    inputs: {}
+    outputs: {}
+  - namespace: pulse_table
+    widget_id: pulse-table
+    version: "0.1"
+    inputs: {}
+    outputs: {}
+layout:
+  primitive: stack
+  children:
+    - primitive: panel
+      widget: pulse_metric
+    - primitive: panel
+      widget: pulse_table
+connections: []
+capabilities: [read:sessions]

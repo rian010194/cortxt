@@ -27,6 +27,13 @@
       "spec": null,
       "artifact": "loaded.json",
       "hint": "cortxt widget load --spec <file> --view loaded"
+    },
+    {
+      "id": "composed",
+      "title": "Composed",
+      "spec": null,
+      "artifact": "composed.json",
+      "hint": "cortxt widget compose --spec <file> --widgets-dir <dir>"
     }
   ]
 }

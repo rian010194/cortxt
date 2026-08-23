@@ -1,4 +1,5 @@
 import copy
+from pathlib import Path
 
 import pytest
 
@@ -72,3 +73,65 @@ def test_composition_enforces_data_class_limit(widget_spec):
     spec["connections"] = [{"from": "source", "output": "status", "to": "target", "input": "status", "type": "action.status.v1"}]
     with pytest.raises(ContractError, match="data class"):
         load_composition(spec, widgets)
+
+
+def test_cli_widget_compose_succeeds_and_writes_composed_artifact(tmp_path):
+    import json
+    from argparse import Namespace
+    from cli.unified_cli import _run_widget_compose
+
+    fixtures_dir = Path(__file__).resolve().parents[3] / "scripts" / "fixtures" / "composition"
+    spec_file = fixtures_dir / "composition.yaml"
+    target = tmp_path / "composed.json"
+    snapshot_input = Path(__file__).resolve().parents[2] / "widget" / "snapshot.json"
+
+    res = _run_widget_compose(Namespace(
+        widget_command="compose",
+        spec=spec_file,
+        widgets_dir=fixtures_dir,
+        snapshot=target,
+        repo=None,
+        snapshot_input=snapshot_input,
+        plan_input=None,
+    ))
+    assert res.status == "succeeded"
+    assert target.is_file()
+    doc = json.loads(target.read_text(encoding="utf-8"))
+    assert doc["composed"] is True
+    assert doc["widget"] == {"id": "pulse-dashboard", "version": "0.1"}
+    assert doc["render"]["primitive"] == "stack"
+    assert len(doc["render"]["children"]) == 2
+
+
+def test_cli_widget_compose_fails_closed_without_writing_artifact(tmp_path):
+    from argparse import Namespace
+    from cli.unified_cli import _run_widget_compose
+
+    fixtures_dir = Path(__file__).resolve().parents[3] / "scripts" / "fixtures" / "composition"
+    bad_spec = tmp_path / "bad.yaml"
+    bad_spec.write_text("contract_version: 0.1\nwidgets: [unclosed", encoding="utf-8")
+    target = tmp_path / "composed.json"
+
+    res = _run_widget_compose(Namespace(
+        widget_command="compose",
+        spec=bad_spec,
+        widgets_dir=fixtures_dir,
+        snapshot=target,
+        repo=None,
+        snapshot_input=None,
+        plan_input=None,
+    ))
+    assert res.status == "failed"
+    assert res.error["category"] == "contract_error"
+    assert not target.exists()
+
+
+def test_widget_has_composed_view_and_no_mutation_route():
+    import json
+    widget_dir = Path(__file__).resolve().parents[2] / "widget"
+    html = (widget_dir / "index.html").read_text(encoding="utf-8")
+    manifest = json.loads((widget_dir / "widgets.json").read_text(encoding="utf-8"))
+    assert any(w["id"] == "composed" and w["artifact"] == "composed.json" for w in manifest["widgets"])
+    assert "renderComposed" in html
+    assert "do_POST" not in (widget_dir / "serve.py").read_text(encoding="utf-8")
+

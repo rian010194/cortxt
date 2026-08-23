@@ -729,6 +729,161 @@ def _run_widget_load(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "load_error", "message": str(exc)})
 
 
+def _run_widget_compose(args: argparse.Namespace) -> ResultEnvelope:
+    """Validate, load, execute, and compose multiple widget specs into a dashboard.
+
+    Dashboard composition path (issue #327): loads referenced child widgets
+    from --widgets-dir (<widget_id>-<version>.yaml), validates the composition
+    via load_composition (exact versions, closed schema, acyclic typed
+    connections, exact capability match, layout primitives), executes declared
+    reads (github, store), renders child trees, merges them under the
+    composition layout primitive, and writes the composed artifact atomically.
+    Fails closed with stable error categories before any artifact is written.
+    """
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from widget_contract.loader import ContractError, _parse, load_composition, load_widget_file
+        from widget_contract.renderer import render
+
+        spec_path = Path(args.spec)
+        if not spec_path.is_file():
+            return ResultEnvelope(status="failed", error={"category": "load_error",
+                                                          "message": f"composition spec not found: {spec_path}"})
+        raw_doc = _parse(spec_path.read_bytes())
+        if not isinstance(raw_doc, dict) or "widgets" not in raw_doc or not isinstance(raw_doc["widgets"], list):
+            load_composition(raw_doc, {})
+            return ResultEnvelope(status="failed", error={"category": "contract_error", "message": "invalid composition document"})
+
+        widgets_dir = Path(args.widgets_dir)
+        widgets_map: dict[tuple[str, str], Any] = {}
+        cleaned_widgets = []
+        for ref in raw_doc.get("widgets", []):
+            if not isinstance(ref, dict):
+                cleaned_widgets.append(ref)
+                continue
+            widget_id = ref.get("widget_id")
+            version = ref.get("version")
+            explicit_path = ref.get("path")
+            candidate = None
+            if explicit_path and (widgets_dir / explicit_path).is_file():
+                candidate = widgets_dir / explicit_path
+            elif widget_id and version:
+                for name in (f"{widget_id}-{version}.yaml", f"{widget_id}-{version}.yml", f"{widget_id}.yaml", f"{widget_id}.yml"):
+                    p = widgets_dir / name
+                    if p.is_file():
+                        candidate = p
+                        break
+            if candidate is not None:
+                try:
+                    w = load_widget_file(candidate)
+                    widgets_map[(w.id, w.version)] = w
+                except ContractError:
+                    raise
+                except Exception as exc:
+                    return ResultEnvelope(status="failed", error={"category": "load_error",
+                                                                  "message": f"failed to load widget {candidate}: {exc}"})
+            ref_copy = dict(ref)
+            ref_copy.pop("path", None)
+            cleaned_widgets.append(ref_copy)
+
+        cleaned_doc = dict(raw_doc)
+        cleaned_doc["widgets"] = cleaned_widgets
+        composition = load_composition(cleaned_doc, widgets_map)
+
+        repo = getattr(args, "repo", None)
+        rendered_by_ns: dict[str, dict] = {}
+        for ref in composition.widgets:
+            ns = ref["namespace"]
+            widget = widgets_map[(ref["widget_id"], ref["version"])]
+            child_data: dict[str, Any] = {}
+            child_read_states: dict[str, str] = {}
+            for read in widget.reads:
+                if read.source == "github":
+                    if read.operation == "issues.all_open.list.v1":
+                        if not repo:
+                            return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                          "message": "--repo is required for github reads"})
+                        from widget_contract.adapters.github_ports import list_all_open_issues
+                        child_data[read.id] = list_all_open_issues(repo)
+                    elif read.operation == "candidates.view.v1":
+                        if not repo:
+                            return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                          "message": "--repo is required for github reads"})
+                        from widget_contract.adapters.github_ports import read_candidates_view
+                        action_descriptors = [{"id": a.id, "operation": a.operation, "port": a.port,
+                                               "effect_class": a.confirm["effect_class"],
+                                               "authorization": dict(a.authorization), "confirm": dict(a.confirm)}
+                                              for a in widget.actions]
+                        child_data[read.id] = read_candidates_view(repo, actions=action_descriptors)
+                    else:
+                        return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                      "message": f"unsupported emitted github read {read.operation}"})
+                    child_read_states[read.id] = "fresh"
+                elif read.source == "store":
+                    if read.operation == "sessions.snapshot.v2":
+                        from widget_contract.adapters.store_reads import read_snapshot_v2
+                        snapshot_input = getattr(args, "snapshot_input", None) or (ap_path / "widget" / "snapshot.json")
+                        if not Path(snapshot_input).is_file():
+                            return ResultEnvelope(status="failed", error={"category": "load_error",
+                                                                          "message": f"snapshot input not found: {snapshot_input}"})
+                        child_data[read.id] = read_snapshot_v2(json.loads(Path(snapshot_input).read_text(encoding="utf-8")))
+                    elif read.operation == "execution-map.plan.v1":
+                        plan_input = getattr(args, "plan_input", None)
+                        if not plan_input or not Path(plan_input).is_file():
+                            return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                          "message": "--plan-input is required for execution-map"})
+                        from widget_contract.adapters.store_reads import read_execution_map_v1
+                        store = json.loads(Path(plan_input).read_text(encoding="utf-8"))
+                        scripts = ap_path.parent / "scripts"
+                        if str(scripts) not in sys.path:
+                            sys.path.insert(0, str(scripts))
+                        from execution_map import plan_from_json
+                        child_data[read.id] = read_execution_map_v1(plan_from_json, store)
+                    else:
+                        return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                      "message": f"unsupported emitted store read {read.operation}"})
+                    child_read_states[read.id] = "fresh"
+                else:
+                    return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                                  "message": f"unsupported emitted source {read.source}"})
+            rendered_by_ns[ns] = render(widget, child_data, child_read_states)
+
+        def _expand_layout(node: dict) -> dict:
+            if "widget" in node:
+                return rendered_by_ns[node["widget"]]["render"]
+            return {
+                "primitive": node["primitive"],
+                "props": node.get("props", {}),
+                "children": [_expand_layout(c) for c in node.get("children", [])],
+                "state": "ready",
+            }
+
+        layout_tree = _expand_layout(composition.layout)
+        output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "composed.json")
+        composed_artifact = {
+            "contract_version": composition.contract_version,
+            "widget": {
+                "id": composition.id,
+                "version": composition.version,
+            },
+            "composed": True,
+            "render": layout_tree,
+        }
+        _write_widget_artifact(composed_artifact, output_path)
+        print(json.dumps(layout_tree, indent=2))
+        return ResultEnvelope(
+            status="succeeded",
+            artifacts=[f"{composition.id}:{output_path}"],
+            evidence=[{"composition": composed_artifact}],
+        )
+    except Exception as exc:
+        if exc.__class__.__name__ == "ContractError":
+            return ResultEnvelope(status="failed", error={"category": "contract_error", "message": str(exc)})
+        return ResultEnvelope(status="failed", error={"category": "load_error", "message": str(exc)})
+
+
 def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
     """Serve the sessions widget or execute a registered widget action.
 
@@ -860,6 +1015,8 @@ def _run_widget(args: argparse.Namespace) -> ResultEnvelope:
             return _run_widget_action(args)
         if getattr(args, "widget_command", None) == "load":
             return _run_widget_load(args)
+        if getattr(args, "widget_command", None) == "compose":
+            return _run_widget_compose(args)
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
@@ -1749,6 +1906,15 @@ def main(argv: list[str] | None = None) -> int:
     widget_load.add_argument("--repo", help="GitHub owner/repo for github reads")
     widget_load.add_argument("--snapshot-input", type=Path, help="Snapshot input for store reads")
     widget_load.add_argument("--snapshot", type=Path, help="Artifact output path")
+    widget_compose = widget_sub.add_parser("compose", help="Compose and render multiple widgets into a dashboard")
+    widget_compose.add_argument("--spec", required=True, type=Path, help="Composition spec file to load (YAML/JSON)")
+    widget_compose.add_argument("--widgets-dir", required=True, type=Path,
+                                help="Directory containing child widget specs (<widget_id>-<version>.yaml)")
+    widget_compose.add_argument("--snapshot", type=Path,
+                                help="Composed artifact output path (default: agent-platform/widget/composed.json)")
+    widget_compose.add_argument("--repo", help="GitHub owner/repo for github reads in child widgets")
+    widget_compose.add_argument("--snapshot-input", type=Path, help="Snapshot input for store reads")
+    widget_compose.add_argument("--plan-input", type=Path, help="Plan input for execution-map store reads")
     widget_parser.set_defaults(func=_run_widget)
 
     # mcp subcommand
