@@ -40,7 +40,9 @@ header.header { height: 4.5rem; border-bottom: 1px solid #29324a; background: #0
 .sidebar-pane { border-inline-end-color: #29324a; background: #0b0f19cc; }
 .right-sidebar { border-inline-start-color: #29324a; }
 .sidebar-content a { border-radius: .375rem; }
-.sidebar-content a[aria-current='page'] { background: #4d6bfe1f; }
+.sidebar-content a[aria-current='page'] { background: linear-gradient(90deg, #4d6bfe3d, #4d6bfe1a); color: var(--sl-color-white); font-weight: 600; border: 1px solid #4d6bfe66; }
+.sidebar-content a[aria-current='page'] .group-label, .sidebar-content a[aria-current='page'] span { color: var(--sl-color-white); }
+.sidebar-content a:hover { background: #4d6bfe22; }
 .pagination-links a, .card, pre { border-color: #29324a; border-radius: .625rem; background: #101522cc; }
 :not(pre)>code { border: 1px solid #29324a; border-radius: .3rem; background: #171d2e; color: #b9c4ff; }
 h1,h2,h3 { letter-spacing: -.035em; }

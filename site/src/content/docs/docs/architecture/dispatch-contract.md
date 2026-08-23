@@ -30,9 +30,15 @@ A terminal result reports:
 
 ## State transitions
 
-```text
-Ready -> In progress -> Review -> Done
-                    \-> Blocked
+```mermaid
+stateDiagram-v2
+    [*] --> Ready
+    Ready --> InProgress: claim (run_id issued)
+    InProgress --> Review: result envelope submitted
+    InProgress --> Blocked: failure / limit
+    Review --> Done: independent review + operator approval
+    Blocked --> Ready: retry (new run_id)
+    Done --> [*]
 ```
 
 Only independent review plus human approval moves work to Done. A retry receives a new `run_id` and never overwrites earlier evidence.

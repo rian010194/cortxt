@@ -57,6 +57,16 @@ rewrite accepted decisions. When you change an Accepted ADR, add a row to
 [`docs/architecture/REVIEW_LOG.md`](docs/architecture/REVIEW_LOG.md) in the
 same pull request (the `adr-doc-currency` CI gate enforces this).
 
+## Docs site currency
+
+The docs site (`site/`) publishes derived pages that must mirror repository
+authority. `site/src/content/docs/docs/adrs.md` is generated from `docs/adr/`
+by `scripts/docs_currency.py` — do not hand-edit its generated block. When
+you add or change an ADR, run `python scripts/docs_currency.py --write` from
+the repository root and commit the regenerated page. The `docs-site-currency`
+CI gate runs `python scripts/docs_currency.py --check` on every pull request
+and fails if a derived page has drifted.
+
 ## Review process
 
 - A maintainer (currently the solo operator) reviews pull requests.

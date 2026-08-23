@@ -15,6 +15,7 @@
 archive/
 *.trace
 agent-platform/runs/
+.tmp/
 
 # ---- Internal working documents (archived locally, not published) ----
 docs/superpowers/

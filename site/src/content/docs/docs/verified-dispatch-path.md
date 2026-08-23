@@ -14,16 +14,17 @@ dispatcher.
 
 ## The loop
 
-```text
-workflow:ready issue (#207 fixture)
-  -> dispatcher claim()           (run_id generated outside the model)
-  -> workflow:ready -> workflow:in-progress
-  -> isolated linked worktree created from HEAD
-  -> deterministic worker: one marker file, one local commit
-  -> independent git verification (never worker self-report)
-  -> dispatcher complete() -> result envelope posted to the issue
-  -> workflow:in-progress -> workflow:review
-  -> fixture reset to workflow:ready (harness cleanup, never approval)
+```mermaid
+flowchart TD
+    A["workflow:ready issue<br/>(#207 fixture)"] --> B["dispatcher claim()<br/>run_id generated outside the model"]
+    B --> C["workflow:ready -> workflow:in-progress"]
+    C --> D["isolated linked worktree<br/>created from HEAD"]
+    D --> E["deterministic worker:<br/>one marker file, one local commit"]
+    E --> F["independent git verification<br/>never worker self-report"]
+    F --> G["dispatcher complete()<br/>result envelope posted to the issue"]
+    G --> H["workflow:in-progress -> workflow:review"]
+    H --> I["fixture reset to workflow:ready<br/>harness cleanup, never approval"]
+    I --> A
 ```
 
 ## Public evidence

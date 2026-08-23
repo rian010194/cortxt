@@ -7,10 +7,10 @@ The harness determines how approved work runs safely and how evidence is capture
 
 ## Dependency direction
 
-```text
-Control plane -> Runtime harness -> Vertical package
-                         |
-                         -> Evaluation evidence -> Control plane
+```mermaid
+flowchart LR
+    CP[Control plane] --> RH[Runtime harness] --> VP[Vertical package]
+    RH --> EV[Evaluation evidence] --> CP
 ```
 
 The runtime owns sandbox policy, writable scope, provider routing supplied by policy, limits, cancellation, temporary credentials, artifact capture, cleanup, and run-state reporting.

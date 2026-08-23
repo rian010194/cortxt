@@ -7,15 +7,16 @@ This page summarizes the active operational baseline reconciled on 2026-08-21. [
 
 ## Verified path today
 
-```text
-Operator (human mandate)
-  -> GitHub Issue (durable scope and evidence)
-  -> workflow:* Issue label
-  -> Cortxt dispatcher and CLI
-     -> replaceable external runtimes behind Cortxt adapters
-  -> GitHub evidence or pull request
-  -> independent review when required
-  -> operator approval
+```mermaid
+flowchart LR
+    Op[Operator<br/>human mandate] --> GI[GitHub Issue<br/>durable scope + evidence]
+    GI --> L[workflow:* label]
+    L --> D[Cortxt dispatcher + CLI]
+    D --> RT[Replaceable external runtimes<br/>behind Cortxt adapters]
+    RT --> EV[GitHub evidence or PR]
+    EV --> REV{Independent review<br/>when required}
+    REV -->|approved| APP[Operator approval]
+    REV -->|blocked| GI
 ```
 
 GitHub Issues are the durable source of truth for scope, evidence, review, and approval. Issue labels carry workflow state. Runtime task lists are execution ledgers, not independent backlogs.

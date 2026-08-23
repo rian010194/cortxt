@@ -1,11 +1,17 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
+import mermaid from 'astro-mermaid';
 
 export default defineConfig({
   site: 'https://cortxt.io',
   output: 'static',
   integrations: [
+    mermaid({
+      theme: 'dark',
+      autoTheme: true,
+      enableLog: false,
+    }),
     react(),
     starlight({
       title: 'Cortxt',
@@ -16,7 +22,7 @@ export default defineConfig({
       customCss: ['./src/styles/custom.css'],
       sidebar: [
         { label: 'Overview', items: [{ label: 'Documentation', link: '/docs/' }, { label: 'Quick start', link: '/docs/quick-start/' }] },
-        { label: 'Architecture', items: [{ autogenerate: { directory: 'architecture' } }] },
+        { label: 'Architecture', items: [{ autogenerate: { directory: 'docs/architecture' } }] },
         { label: 'Operating model', items: [
             { label: 'Current operating model', link: '/docs/operating-model/' },
             { label: 'Verified dispatch path', link: '/docs/verified-dispatch-path/' },
