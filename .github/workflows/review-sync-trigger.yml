@@ -1,0 +1,71 @@
+name: Review sync trigger
+
+# Runs the daemon review-sync pass when a review submission arrives
+# (issue #312, C.3), instead of only the polling loop. The pass reads the
+# same durable MCP session store and marker state the daemon loop uses
+# (agent-platform/daemon/review_sync.py), so a triggered run and a polling
+# run cannot double-apply: the marker file dedupes (already_synced).
+#
+# The session store is machine-local in normal operation, so this
+# workflow is the trigger surface: on a self-hosted runner (or a CI
+# fixture checkout with the store mounted), it runs the real pass. On a
+# default GitHub-hosted runner with an empty store it is a no-op by
+# construction (no submissions to sync) - safe, never destructive.
+#
+# Anti-loop: the pass itself writes the workflow:review label (as
+# github-actions[bot] when run here), and the atlas bot writes map
+# comments/labels. The job-level guard skips those actors so the
+# workflow's own label edit and the atlas bot's writes do not re-trigger
+# it. Any residual self-retrigger is bounded: the marker dedupe makes the
+# second run a no-op.
+
+on:
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [labeled, unlabeled]
+
+permissions:
+  contents: read
+  issues: write # the review-sync pass swaps workflow labels to workflow:review
+
+concurrency:
+  group: review-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-review:
+    runs-on: ubuntu-latest
+    # Anti-loop guard: the review-sync pass and the atlas bot are the only
+    # actors that legitimately edit workflow labels/comments; their writes
+    # must not re-trigger this workflow. Human label edits and PR reviews
+    # run normally.
+    if: ${{ github.actor != 'github-actions[bot]' && github.actor != 'cortxt-atlas[bot]' }}
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      # Where to find the durable MCP session store and the sync marker
+      # state. Overridable via repo/org variables; defaults match the
+      # daemon loop's own defaults (agent-platform/.sessions).
+      REVIEW_SYNC_STORE: ${{ vars.REVIEW_SYNC_STORE || 'agent-platform/.sessions' }}
+      REVIEW_SYNC_STATE_DIR: ${{ vars.REVIEW_SYNC_STATE_DIR || 'agent-platform/.daemon-state' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml jsonschema cryptography
+
+      - name: Run one review-sync pass
+        run: |
+          python -m cli.unified_cli daemon sync-review \
+            --repo "$GITHUB_REPOSITORY" \
+            --store "$REVIEW_SYNC_STORE" \
+            --state-dir "$REVIEW_SYNC_STATE_DIR"
