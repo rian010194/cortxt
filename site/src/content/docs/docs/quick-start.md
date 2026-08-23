@@ -27,7 +27,7 @@ cortxt mcp serve
 The server uses standard input/output transport and exposes the read-only MCP tool slice by default. An MCP client starts this command as its server process.
 
 :::caution[Mandate required for mutations]
-Per ADR-032, every Tier-1 or higher MCP tool call requires a signed, nonce-bound mandate envelope that is verified before execution. ADR-032 is **Proposed**; this page does not present it as an Accepted decision. Keep mutation tiers locked unless your environment is configured to issue and verify these envelopes.
+Per ADR-032, every Tier-1 or higher MCP tool call requires a signed, nonce-bound mandate envelope that is verified before execution. Keep mutation tiers locked unless your environment is configured to issue and verify these envelopes.
 :::
 
 The mandate carries scoped authority such as the issue reference, allowed tools, data-class ceiling, budget, runtime limit, expiry, and scope fingerprint. Private signing keys stay on the operator side; the server receives public keys only.
@@ -36,4 +36,4 @@ The mandate carries scoped authority such as the issue reference, allowed tools,
 
 - Read the [current operating model](/docs/operating-model/) before choosing an execution path.
 - Review the [dispatch contract](/docs/architecture/dispatch-contract/) for required identity, lifecycle, and result evidence.
-- See [ADR-032 in the repository](https://github.com/rian010194/cortxt/blob/main/docs/adr/032-mcp-mandate-envelope.md) for the proposal and its current status.
+- See [ADR-032 in the repository](https://github.com/rian010194/cortxt/blob/main/docs/adr/032-mcp-mandate-envelope.md) for the mandate-envelope decision and its acceptance record.

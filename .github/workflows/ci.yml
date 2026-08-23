@@ -107,6 +107,21 @@ jobs:
           echo "::error::Accepted ADR(s) changed without updating docs/architecture/REVIEW_LOG.md: ${adrs_oneline} -- per AGENTS.md section \"Documentation currency\", an Accepted ADR must add a row to docs/architecture/REVIEW_LOG.md (append-only register) in the same PR."
           exit 1
 
+  docs-site-currency:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests for docs-currency
+        run: python scripts/test_docs_currency.py
+      - name: Verify derived site pages match repository authority
+        run: |
+          set -euo pipefail
+          python scripts/docs_currency.py --check
+
   label-invariant:
     runs-on: ubuntu-latest
     permissions:

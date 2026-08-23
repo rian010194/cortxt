@@ -12,18 +12,54 @@ npm run build
 
 The static output is written to `site/dist/`.
 
-## Vercel deployment
+## Diagrams
 
-Use one Vercel project for both the landing page and docs:
+[Mermaid](https://mermaid.js.org/) diagrams render client-side. Write a
+` ```mermaid ` fenced block in any docs page and it becomes an interactive
+diagram (`site/astro.config.mjs` wires up `astro-mermaid`). The rendering is
+theme-aware: it follows the Starlight `data-theme` attribute, so diagrams
+match dark or light mode automatically.
 
-1. Import `rian010194/cortxt` using direct Git integration and set the project root directory to `site`.
-2. Keep the framework preset as Astro, build command as `npm run build`, and output directory as `dist` (also declared in `vercel.json`).
-3. Enable production builds on pushes to `main` and keep Vercel's per-pull-request preview deployments enabled.
-4. Add `cortxt.io` and `docs.cortxt.io` as custom domains on this same project. Domain import works with any registrar.
-5. The operator completes the DNS records shown by Vercel and verifies both domains after propagation.
+## Docs currency (keep the docs from drifting)
 
-The host-aware redirect in `vercel.json` sends the root of `docs.cortxt.io` to
-the `/docs/` Starlight entry point while `cortxt.io` keeps the landing page at
-its root.
+Some published pages are *derived* from repository authority and must not be
+hand-edited:
 
-Vercel's direct Git integration is the deploy path. GitHub Actions CI may verify the build, but it does not deploy this site.
+- `src/content/docs/docs/adrs.md` — the Accepted-only ADR index, generated
+  from `docs/adr/` by `scripts/docs_currency.py`.
+
+The repository root owns the regeneration script and the CI gate:
+
+```bash
+# From the repository root:
+python scripts/docs_currency.py --check   # fail if any derived page drifted
+python scripts/docs_currency.py --write   # regenerate derived pages in place
+python scripts/test_docs_currency.py      # unit tests
+```
+
+CI runs `--check` on every pull request (`docs-site-currency` job): a PR that
+changes an Accepted ADR without regenerating the site page fails the gate, so
+docs can never silently drift behind the repository authority.
+
+## Deployment
+
+Deployment is handled by Cloudflare Pages from the `main` branch with the
+project root set to `site` (build command `npm run build`, output `dist`).
+`cortxt.io` serves the landing page; `docs.cortxt.io` serves the Starlight
+docs, with the docs root redirected to `/docs/` by host-level routing
+configured on the Pages project. GitHub Actions CI verifies the build but
+does not deploy. See
+[`docs/cf-pages-webhook.md`](../docs/cf-pages-webhook.md) for the
+auto-deploy webhook runbook.
+
+## Known toolchain note (Windows local builds)
+
+As of Astro 7.2.4 / Vite 8, `astro build` can fail during config loading on
+Windows with `require is not defined` coming from `source-map-js`
+(`node_modules/source-map-js/lib/source-map-generator.js`). The root cause is
+an upstream Vite module-runner CJS/ESM interop issue triggered by Starlight
+shipping raw `.ts` entry points: Node 26 refuses to type-strip `node_modules`,
+Astro falls back to the Vite module runner, and the runner inlines the CJS
+`source-map-js` deep import as ESM. Linux CI is unaffected and builds cleanly;
+Windows users can work around it with a Node version that loads the config
+natively or by awaiting the upstream Vite fix.
