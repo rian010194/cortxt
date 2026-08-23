@@ -21,7 +21,7 @@ py-modules = ["cortxt_entrypoint"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["reasoning*", "portability*", "runtime*", "routing*", "security*", "cli*", "widget*", "learning*", "supervisor*", "context_store*", "harness*", "daemon*", "cortxt_mcp*"]
+include = ["reasoning*", "portability*", "runtime*", "routing*", "security*", "cli*", "widget*", "learning*", "supervisor*", "context_store*", "harness*", "daemon*", "cortxt_mcp*", "events*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
