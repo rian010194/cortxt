@@ -333,6 +333,7 @@ def run_all_checks():
     # ---------------------------------------------------------------------------
     print("== site page emission (issue #285) ==")
     import tempfile
+    import json as _json
     from pathlib import Path as _Path
 
     gh_site = FakeGh([
@@ -390,6 +391,68 @@ def run_all_checks():
             check("emit rejects a page containing known-bad markers", False)
         except ValueError:
             check("emit rejects a page containing known-bad markers", True)
+
+    # -----------------------------------------------------------------------
+    print("== visual graph emission (issue #300) ==")
+
+    gh_graph = FakeGh([
+        map_issue(214, "Global"),
+        map_issue(215, "MCP lifecycle and dispatch stack", milestone="Open-source product packaging"),
+        work_issue(1, "Wire dispatch loop", state="open", labels=["workflow:ready"],
+                   milestone="Open-source product packaging"),
+        work_issue(2, "Done work", state="closed", labels=["workflow:done"],
+                   milestone="Open-source product packaging"),
+        work_issue(3, "Blocked issue", state="open", labels=["workflow:blocked"], milestone="M2",
+                   body="Blocked by: #1"),
+        work_issue(4, "Child of blocked", state="open", labels=["workflow:in-progress"],
+                   milestone="Open-source product packaging", body="Part of: #3"),
+    ])
+    graph_issues = {i["number"]: a.issue_from_dict(i) for i in gh_graph.issues}
+    graph_nodes, graph_drift = a.build_graph(graph_issues, REPO_ID)
+
+    graph_doc = _json.loads(a.render_site_graph(graph_issues, graph_nodes, graph_drift,
+                                                REPO_ID, "2026-01-01T00:00:00Z"))
+    check("graph doc has schema_version", graph_doc.get("schema_version") == 1)
+    check("graph doc has repo + sync_time", graph_doc["repo"] == REPO_ID and "2026-01-01" in graph_doc["sync_time"])
+    check("graph nodes carry number/title/state", all(k in graph_doc["nodes"][0] for k in ("number", "title", "state")))
+    check("graph node workflow style mapped", {n["number"]: n["workflow"] for n in graph_doc["nodes"]} ==
+          {1: "ready", 2: "done", 3: "blocked", 4: "in-progress"})
+    check("graph node frontier flag true for ready issue", next(n["frontier"] for n in graph_doc["nodes"] if n["number"] == 1) is True)
+    check("graph node in_progress flag true for in-progress issue", next(n["in_progress"] for n in graph_doc["nodes"] if n["number"] == 4) is True)
+    check("graph node milestone + area populated", next(n for n in graph_doc["nodes"] if n["number"] == 1)["milestone"] == "Open-source product packaging")
+    check("graph node area derived from milestone", next(n for n in graph_doc["nodes"] if n["number"] == 1)["area"] == "MCP lifecycle and dispatch stack")
+    check("graph edges include blocked_by", {"from": 1, "to": 3, "kind": "blocked_by"} in graph_doc["edges"])
+    check("graph edges include part_of", {"from": 3, "to": 4, "kind": "part_of"} in graph_doc["edges"])
+    check("graph lists milestones", "Open-source product packaging" in graph_doc["milestones"])
+    check("graph reports frontier count", graph_doc["frontier_count"] == 1)
+
+    with tempfile.TemporaryDirectory() as td:
+        out = _Path(td)
+        p1, w1 = a.emit_site_graph(out_dir=out, issues=graph_issues, nodes=graph_nodes,
+                                   global_drift=graph_drift, self_repo=REPO_ID,
+                                   sync_time_iso="2026-01-01T00:00:00Z")
+        check("emit graph writes on first run", w1 is True)
+        check("emit graph writes to reserved path", p1.as_posix().endswith(a.SITE_GRAPH_PATH))
+        p2, w2 = a.emit_site_graph(out_dir=out, issues=graph_issues, nodes=graph_nodes,
+                                   global_drift=graph_drift, self_repo=REPO_ID,
+                                   sync_time_iso="2026-01-01T00:00:00Z")
+        check("emit graph idempotent at same timestamp", w2 is False)
+        p3, w3 = a.emit_site_graph(out_dir=out, issues=graph_issues, nodes=graph_nodes,
+                                   global_drift=graph_drift, self_repo=REPO_ID,
+                                   sync_time_iso="2026-01-02T00:00:00Z")
+        check("emit graph refreshes when timestamp advances", w3 is True)
+        written = _json.loads((out / a.SITE_GRAPH_PATH).read_text(encoding="utf-8"))
+        check("emitted graph JSON round-trips", written["frontier_count"] == 1)
+
+        # Safe-content scan: a leak in an issue title must never reach the graph.
+        try:
+            a.emit_site_graph(out_dir=out, issues=leak_issues, nodes=leak_nodes,
+                              global_drift=leak_drift, self_repo=REPO_ID,
+                              sync_time_iso="2026-01-01T00:00:00Z")
+            check("emit graph rejects a leak in an issue title", False)
+        except ValueError:
+            check("emit graph rejects a leak in an issue title", True)
+
 
 def test_all_checks_pass():
     """Pytest entry point: run the same checks as the standalone script."""

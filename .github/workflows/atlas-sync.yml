@@ -1,12 +1,13 @@
 name: Atlas sync
 
 # Regenerates the auto-generated sections of every atlas:map issue (#210),
-# and publishes the derived Atlas status page to the docs site (#285).
-# Coordinator-owned sections (Destination, Decisions so far, Open questions)
-# are never touched by this workflow -- see docs/agents/atlas.md.
+# and publishes the derived Atlas status page + visual graph to the docs
+# site (#285, #300). Coordinator-owned sections (Destination, Decisions so
+# far, Open questions) are never touched by this workflow -- see
+# docs/agents/atlas.md.
 
 permissions:
-  contents: write # needed to commit the generated site page (issue #285)
+  contents: write # needed to commit the generated site page/graph (#285, #300)
   issues: write
 
 on:
@@ -39,11 +40,12 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml
 
-      - name: Run Atlas sync (maps + site page emit)
+      - name: Run Atlas sync (maps + site page emit + visual graph emit)
         id: sync
         run: |
           python scripts/atlas_sync.py --repo "$GITHUB_REPOSITORY" \
-            --emit-site "$GITHUB_WORKSPACE"
+            --emit-site "$GITHUB_WORKSPACE" \
+            --emit-graph "$GITHUB_WORKSPACE"
         continue-on-error: true
 
       - name: Report failure without discarding last-good map content
@@ -52,19 +54,19 @@ jobs:
           echo "::error::Atlas sync failed -- last-good map content is preserved (no write happened for the failing map(s)). See the job log above for details."
           exit 1
 
-      - name: Commit generated site page (only when changed)
+      - name: Commit generated site page + graph (only when changed)
         if: steps.sync.outcome == 'success'
         run: |
           set -euo pipefail
           git config user.name "cortxt-atlas[bot]"
           git config user.email "cortxt-atlas[bot]@users.noreply.github.com"
-          if git diff --quiet -- site/src/content/docs/docs/atlas-status.md; then
-            echo "Atlas site page unchanged; nothing to commit."
+          if git diff --quiet -- site/src/content/docs/docs/atlas-status.md site/public/atlas/graph.json; then
+            echo "Atlas site page and graph unchanged; nothing to commit."
           else
-            git add site/src/content/docs/docs/atlas-status.md
-            git commit -s -m "docs(atlas): publish derived Atlas status page (issue #285)"
+            git add site/src/content/docs/docs/atlas-status.md site/public/atlas/graph.json
+            git commit -s -m "docs(atlas): publish derived Atlas status page and visual graph (issues #285, #300)"
             git push origin HEAD:main
-            echo "Atlas site page committed and pushed."
+            echo "Atlas site page and graph committed and pushed."
           fi
 
       - name: Job summary

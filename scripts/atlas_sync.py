@@ -726,6 +726,124 @@ def emit_site_page(*, out_dir: Path, issues: dict, nodes: dict, global_drift: li
 
 
 # ---------------------------------------------------------------------------
+# Visual graph emission (issue #300): render the roadmap graph as a
+# content-free JSON document the docs-site visual page fetches. Reuses the
+# same build_graph / compute_frontier data pipeline as the map bodies and
+# the text site page; deliberately contains NO issue bodies, comments, drift
+# prose, secrets, or reasoning -- only identifiers, states, and relations.
+# ---------------------------------------------------------------------------
+
+SITE_GRAPH_PATH = "site/public/atlas/graph.json"
+
+# Stable color keys for the visual page. Map workflow labels to a palette
+# so the page can render consistently without hardcoding business rules in
+# client JS (the JSON carries the label; the page maps it to a color).
+WORKFLOW_STYLE = {
+    "workflow:inbox": "inbox",
+    "workflow:ready": "ready",
+    "workflow:in-progress": "in-progress",
+    "workflow:review": "review",
+    "workflow:blocked": "blocked",
+    "workflow:done": "done",
+    "": "none",
+}
+
+
+def _node_area(milestone_of: dict, area_map_issues: list, number: int) -> str:
+    """Assign a work issue to the roadmap area whose milestone it belongs
+    to (the same area/milestone link the maps use). Unmatched issues fall
+    back to 'Other'."""
+    ms = milestone_of.get(number)
+    if not ms:
+        return "Other"
+    for m in area_map_issues:
+        if parse_milestone_field(m.body) == ms:
+            return parse_area(m.body) or "Other"
+    return "Other"
+
+
+def render_site_graph(all_issues: dict, nodes: dict, global_drift: list, self_repo: str,
+                      sync_time_iso: str) -> str:
+    """Render the Atlas roadmap graph as a compact, content-free JSON string.
+
+    Node fields: number, title, state, workflow (style key), milestone, area,
+    work_kind, frontier, in_progress, closed. Edge fields: from (the issue
+    that depends on / is contained by), to, kind ('blocked_by' | 'part_of').
+    Milestones and drift count are top-level. Titles are the only free-text;
+    the safe-content scan is applied before writing so a leak in a title can
+    never reach the committed file.
+    """
+    work_issues = {n: i for n, i in all_issues.items() if not i.is_map}
+    map_issues = [i for i in all_issues.values() if i.is_map]
+    milestone_of = {n: i.milestone for n, i in work_issues.items()}
+
+    frontier, in_progress = compute_frontier(work_issues.keys(), all_issues, nodes)
+    frontier_ids = {i.number for i in frontier}
+    in_progress_ids = {i.number for i in in_progress}
+
+    nodes_out = []
+    for num in sorted(work_issues):
+        issue = work_issues[num]
+        node = nodes.get(num)
+        wf = issue.workflow_labels
+        wf_key = wf[0] if len(wf) == 1 else ""
+        nodes_out.append({
+            "number": num,
+            "title": issue.title,
+            "state": issue.state,
+            "workflow": WORKFLOW_STYLE.get(wf_key, "none"),
+            "milestone": milestone_of.get(num),
+            "area": _node_area(milestone_of, map_issues, num),
+            "work_kind": parse_work_kind(issue.body),
+            "frontier": num in frontier_ids,
+            "in_progress": num in in_progress_ids,
+        })
+
+    edges_out = []
+    for num, node in nodes.items():
+        if node is None:
+            continue
+        for b in sorted(node.blocked_by):
+            edges_out.append({"from": b, "to": num, "kind": "blocked_by"})
+        if node.parent is not None:
+            edges_out.append({"from": node.parent, "to": num, "kind": "part_of"})
+
+    milestones = sorted({i.milestone for i in work_issues.values() if i.milestone})
+
+    doc = {
+        "schema_version": 1,
+        "repo": self_repo,
+        "sync_time": sync_time_iso,
+        "nodes": nodes_out,
+        "edges": edges_out,
+        "milestones": milestones,
+        "drift_count": len(global_drift),
+        "frontier_count": len(frontier),
+    }
+    return json.dumps(doc, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+
+
+def emit_site_graph(*, out_dir: Path, issues: dict, nodes: dict, global_drift: list,
+                    self_repo: str, sync_time_iso: str) -> tuple[Path, bool]:
+    """Render the graph JSON and write it only when the content changed
+    (same idempotence discipline as emit_site_page). Safe-content scan is
+    applied before writing: a leak in an issue title must never reach the
+    committed file."""
+    graph = render_site_graph(issues, nodes, global_drift, self_repo, sync_time_iso)
+    bad = scan_unsafe(graph)
+    if bad:
+        raise ValueError(f"unsafe content markers detected in site graph: {bad}")
+
+    path = out_dir / SITE_GRAPH_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = path.read_text(encoding="utf-8") if path.exists() else None
+    if existing == graph:
+        return path, False
+    path.write_text(graph, encoding="utf-8")
+    return path, True
+
+
+# ---------------------------------------------------------------------------
 # Body diffing / marker replacement
 # ---------------------------------------------------------------------------
 
@@ -905,6 +1023,11 @@ def main(argv=None) -> int:
              "e.g. '.' or the workflow checkout); writes the page at "
              "site/src/content/docs/docs/atlas-status.md only when its content changed",
     )
+    parser.add_argument(
+        "--emit-graph", metavar="DIR", type=Path, default=None,
+        help="Also render the visual Atlas graph JSON into DIR (the repo checkout root); "
+             "writes site/public/atlas/graph.json only when its content changed (issue #300)",
+    )
     args = parser.parse_args(argv)
 
     gh = GhRunner()
@@ -927,6 +1050,17 @@ def main(argv=None) -> int:
             sync_time_iso=sync_time_iso,
         )
         print(f"site page: {'written' if wrote else 'unchanged'} -> {path}")
+
+    if args.emit_graph is not None:
+        raw = gh.list_issues(args.repo)
+        issues = {i.number: i for i in (issue_from_dict(d) for d in raw)}
+        nodes, global_drift = build_graph(issues, args.repo)
+        path, wrote = emit_site_graph(
+            out_dir=args.emit_graph, issues=issues, nodes=nodes,
+            global_drift=global_drift, self_repo=args.repo,
+            sync_time_iso=sync_time_iso,
+        )
+        print(f"site graph: {'written' if wrote else 'unchanged'} -> {path}")
     return 0
 
 
