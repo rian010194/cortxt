@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T18:35:05Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T18:38:51Z`.
 
 ### Roadmap areas
 
@@ -15,7 +15,6 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 ### Actionable frontier
 
 - CI fixture: real dispatch commit proof (#207)
-- Build: ADR-040 label-invariant enforcement (CI check + launcher guard) (#325)
 - Build: widget host bounded polling and result-size defaults (#326)
 - Build: dashboard composition path (cortxt widget compose) (#327)
 - Build: generic event surface v1 (envelope, HMAC, idempotency, validation) (#328)
@@ -104,6 +103,7 @@ Claimed work in progress (workflow:in-progress):
 - Build: C.2 - event-triggered Atlas sync (issue/label events, anti-loop guard) (#311): contract fit = MISSING; repository fit = MISSING
 - Build: C.3 - review-sync trigger (run the daemon review-sync pass on review events) (#312): contract fit = MISSING; repository fit = MISSING
 - Build: C.4 - generic webhook/event surface design (inbound HMAC/replay/retries, outbound transitions) (#313): contract fit = MISSING; repository fit = MISSING
+- Build: ADR-040 label-invariant enforcement (CI check + launcher guard) (#325): contract fit = MISSING; repository fit = MISSING
 - Build: PR-merge status refresh trigger for Atlas sync (#329): contract fit = MISSING; repository fit = MISSING
 - Build: label→dispatch design + read-only notice scaffold (operator gate preserved) (#330): contract fit = MISSING; repository fit = MISSING
 
@@ -113,4 +113,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-23T18:35:05Z
+2026-08-23T18:38:51Z
