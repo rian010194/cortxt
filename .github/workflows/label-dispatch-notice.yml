@@ -1,0 +1,58 @@
+name: Label dispatch notice
+
+# Non-mutating notice scaffold for the label to dispatch path (issue #330).
+# When an issue is labeled workflow:ready, posts at most one content-free notice
+# explaining that operator approval and execution-map pre-flight are required
+# before dispatch. Performs no mutation beyond the one notice comment.
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: label-dispatch-notice
+  cancel-in-progress: false
+
+jobs:
+  notice:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.label.name == 'workflow:ready' && github.actor != 'github-actions[bot]' && github.actor != 'cortxt-atlas[bot]' }}
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check existing comments and post dispatch notice
+        run: |
+          set -euo pipefail
+          ISSUE_NUM="${{ github.event.issue.number }}"
+          REPO="${{ github.repository }}"
+          MARKER="<!-- cortxt-dispatch-notice -->"
+
+          echo "Checking existing comments on ${REPO}#${ISSUE_NUM} for notice marker..."
+          COMMENTS=$(gh api "repos/${REPO}/issues/${ISSUE_NUM}/comments" --jq '.[].body' || true)
+
+          if echo "${COMMENTS}" | grep -Fq "${MARKER}"; then
+            echo "Dispatch notice already present on issue #${ISSUE_NUM}; skipping."
+            exit 0
+          fi
+
+          echo "Posting dispatch notice on issue #${ISSUE_NUM}..."
+          BODY="$(printf '%s\n' \
+            '<!-- cortxt-dispatch-notice -->' \
+            '### Dispatch Notice' \
+            '' \
+            'This issue has received the `workflow:ready` label.' \
+            '' \
+            '- **Gate status**: Ready for execution-map pre-flight validation (`ADR-039`).' \
+            '- **Operator requirement**: Operator approval remains mandatory before dispatch. Automated systems will not auto-claim or auto-run this issue.' \
+            '- **Next steps**:' \
+            '  - Run `cortxt work plan` to inspect the execution map, prerequisite order, and concurrency claims.' \
+            '  - After operator approval, run `cortxt work resume` to claim and launch work with a verified map receipt.')"
+
+          gh api -X POST "repos/${REPO}/issues/${ISSUE_NUM}/comments" -f body="${BODY}"
+          echo "Dispatch notice posted successfully."
