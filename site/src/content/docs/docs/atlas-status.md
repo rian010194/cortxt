@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T07:01:10Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T18:21:37Z`.
 
 ### Roadmap areas
 
@@ -31,7 +31,7 @@ Claimed work in progress (workflow:in-progress):
 
 ### Discipline violations (one workflow:* label required)
 
-(none)
+- #316 Build: Atlas v2 — interactive React Flow graph view with live-work default, filters, and search: labels=[]
 
 ### Review evidence
 
@@ -87,6 +87,19 @@ Claimed work in progress (workflow:in-progress):
 - Build: LLM-generated widget dogfood — emitted spec loads, renders, serves (prompt yourself tools) (#286): contract fit = MISSING; repository fit = MISSING
 - Docs: publish verified dispatch path page (golden path evidence, issue #207) (#289): contract fit = MISSING; repository fit = MISSING
 - Build: execution-map view as a contract widget — render work plan (waves/drift/claims) through the contract (#291): contract fit = MISSING; repository fit = MISSING
+- Build: widget browser mutation ports behind a reviewed loopback host boundary (ADR-038) (#293): contract fit = MISSING; repository fit = MISSING
+- Model-backed live build proof: make scripts check-tests pytest-runnable (golden path next step) (#297): contract fit = MISSING; repository fit = MISSING
+- Build: wire ADR-039 inventory cross-checks into the default launcher + live multi-process parallel-dispatch proof (#299): contract fit = MISSING; repository fit = MISSING
+- Build: visual Atlas view — interactive graph of issues, blockers, and frontier on the docs site (#300): contract fit = MISSING; repository fit = MISSING
+- Build: modular widget host — generic manifest-driven shell + remove legacy tabs (foundation) (#303): contract fit = MISSING; repository fit = MISSING
+- Build: Map as standalone modular widget - read-only observer of the execution-map gate (#306): contract fit = MISSING; repository fit = MISSING
+- Build: Candidates as standalone modular widget with operator-gated action forms (#307): contract fit = MISSING; repository fit = MISSING
+- Build: Pulse as standalone modular widget - session snapshot observer (#308): contract fit = MISSING; repository fit = MISSING
+- Build: Rename "Open in CLI" to "Copy command" and show the command visibly (#309): contract fit = MISSING; repository fit = MISSING
+- Build: C.1 - Cloudflare Pages auto-deploy webhook registration script + runbook (#310): contract fit = MISSING; repository fit = MISSING
+- Build: C.2 - event-triggered Atlas sync (issue/label events, anti-loop guard) (#311): contract fit = MISSING; repository fit = MISSING
+- Build: C.3 - review-sync trigger (run the daemon review-sync pass on review events) (#312): contract fit = MISSING; repository fit = MISSING
+- Build: C.4 - generic webhook/event surface design (inbound HMAC/replay/retries, outbound transitions) (#313): contract fit = MISSING; repository fit = MISSING
 
 ### Relationship drift
 
@@ -94,4 +107,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-23T07:01:10Z
+2026-08-23T18:21:37Z
