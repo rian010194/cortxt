@@ -661,15 +661,80 @@ def _write_widget_artifact(artifact: dict, output_path: Path) -> None:
             os.unlink(tmp)
 
 
+def _run_widget_export(args: argparse.Namespace) -> ResultEnvelope:
+    """Bundle and export a widget as a self-contained package (.cw / JSON)."""
+    try:
+        ap_path = _get_agent_platform_path()
+        if str(ap_path) not in sys.path:
+            sys.path.insert(0, str(ap_path))
+        from widget_contract.package import PackageError, export_package
+
+        pkg = export_package(
+            args.widget_id,
+            out_path=args.out,
+            tokens_path=getattr(args, "tokens", None),
+            ap_path=ap_path,
+        )
+        manifest_meta = pkg.get("manifest", {})
+        print(json.dumps(manifest_meta, indent=2))
+        return ResultEnvelope(
+            status="succeeded",
+            artifacts=[f"package:{args.out}"],
+            evidence=[{"widget_id": args.widget_id, "out": str(args.out), "manifest": manifest_meta}],
+        )
+    except Exception as exc:
+        if exc.__class__.__name__ == "PackageError":
+            return ResultEnvelope(status="failed", error={"category": "package_export", "message": str(exc)})
+        if exc.__class__.__name__ == "ContractError":
+            return ResultEnvelope(status="failed", error={"category": "contract_error", "message": str(exc)})
+        return ResultEnvelope(status="failed", error={"category": "unexpected_error", "message": str(exc)})
+
+
 def _run_widget_load(args: argparse.Namespace) -> ResultEnvelope:
-    """Validate, load, execute, and render a machine-emitted widget spec.
+    """Validate, load, execute, and render a machine-emitted widget spec or install a package.
 
     The LLM-dogfood intake (issue #286): a spec file produced by any emitter
     (LLM or deterministic fixture) enters through the strict loader, its
     declared reads execute through the registered adapters, the renderer
     produces the tree, and the artifact is written for the loopback host.
     Unsafe/invalid specs fail closed with ContractError before any read.
+
+    Package installation (issue #346): --package <file.cw> installs a self-contained
+    widget package into the widget directory and registers it in widgets.json.
     """
+    if getattr(args, "package", None):
+        try:
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.package import PackageError, load_package
+
+            installed = load_package(
+                args.package,
+                target_dir=getattr(args, "dir", None),
+                ap_path=ap_path,
+            )
+            artifacts = [f"spec:{installed['spec_path']}", f"manifest:{installed['manifest_path']}"]
+            if installed.get("artifact_path"):
+                artifacts.append(f"artifact:{installed['artifact_path']}")
+            print(json.dumps(installed, indent=2))
+            return ResultEnvelope(
+                status="succeeded",
+                artifacts=artifacts,
+                evidence=[installed],
+            )
+        except Exception as exc:
+            if exc.__class__.__name__ == "PackageError":
+                return ResultEnvelope(status="failed", error={"category": "package_load", "message": str(exc)})
+            if exc.__class__.__name__ == "ContractError":
+                return ResultEnvelope(status="failed", error={"category": "contract_error", "message": str(exc)})
+            return ResultEnvelope(status="failed", error={"category": "unexpected_error", "message": str(exc)})
+
+    if not getattr(args, "spec", None):
+        return ResultEnvelope(
+            status="failed",
+            error={"category": "input_error", "message": "Either --package or --spec is required"},
+        )
     try:
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
@@ -1470,6 +1535,8 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             return ResultEnvelope(status="succeeded", artifacts=artifacts, evidence=[{"candidates": model}])
         if getattr(args, "widget_command", None) == "action":
             return _run_widget_action(args)
+        if getattr(args, "widget_command", None) == "export":
+            return _run_widget_export(args)
         if getattr(args, "widget_command", None) == "load":
             return _run_widget_load(args)
         if getattr(args, "widget_command", None) == "compose":
@@ -2450,8 +2517,14 @@ def main(argv: list[str] | None = None) -> int:
     widget_action.add_argument("--approval-ref", required=True, help="Operator approval reference")
     widget_action.add_argument("--confirm", action="store_true", help="Confirm the declared effect")
     widget_action.add_argument("--registry", type=Path, help="Dispatcher run registry path (claim-run)")
-    widget_load = widget_sub.add_parser("load", help="Load and render a machine-emitted widget spec (dogfood)")
-    widget_load.add_argument("--spec", required=True, type=Path, help="Widget spec file to load")
+    widget_export = widget_sub.add_parser("export", help="Export a widget as a self-contained package (.cw)")
+    widget_export.add_argument("widget_id", help="Widget ID to export (e.g. candidates, pulse, map, docker, webhooks)")
+    widget_export.add_argument("--out", required=True, type=Path, help="Output package path (.cw or .json)")
+    widget_export.add_argument("--tokens", type=Path, help="Optional tokens JSON path (default: agent-platform/widget/tokens.json)")
+    widget_load = widget_sub.add_parser("load", help="Load and render a machine-emitted widget spec (dogfood) or install a package")
+    widget_load.add_argument("--spec", type=Path, help="Widget spec file to load")
+    widget_load.add_argument("--package", type=Path, help="Widget package (.cw) file to load and install")
+    widget_load.add_argument("--dir", type=Path, help="Target widget directory for installation (default: agent-platform/widget)")
     widget_load.add_argument("--view", help="Artifact view name (default: widget id)")
     widget_load.add_argument("--repo", help="GitHub owner/repo for github reads")
     widget_load.add_argument("--snapshot-input", type=Path, help="Snapshot input for store reads")

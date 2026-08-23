@@ -356,6 +356,7 @@
     <button class="tab-btn active" id="btn-gallery" onclick="switchMode('gallery')">Gallery View</button>
     <button class="tab-btn" id="btn-studio" onclick="switchMode('studio')">Maker Studio &amp; Spec Editor</button>
     <button class="tab-btn" id="btn-tokens" onclick="switchMode('tokens')">Tokens Editor</button>
+    <button class="tab-btn" id="btn-import" onclick="switchMode('import')">Import Widget</button>
   </nav>
 
   <!-- Section 1: Gallery View -->
@@ -383,7 +384,10 @@
               <option value="custom">Blank Spec</option>
             </select>
           </div>
-          <button class="candidate-copy" onclick="reRenderStudio()">Re-render</button>
+          <div style="display:flex;gap:6px;">
+            <button class="candidate-copy" onclick="exportStudioWidget(this)">Export package</button>
+            <button class="candidate-copy" onclick="reRenderStudio()">Re-render</button>
+          </div>
         </div>
         <div class="editor-body">
           <span class="eyebrow">Widget Spec (YAML)</span>
@@ -449,6 +453,48 @@
         </div>
         <div class="editor-body" id="tokens-preview-pane" style="background:#090c1580;overflow:auto;">
           <!-- Injected by renderTokensPreview() -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Import Widget -->
+  <section class="view-section hidden" id="section-import">
+    <div class="card" style="max-width: 960px; margin: 0 auto; width: 100%;">
+      <div class="card-header">
+        <div class="card-title-group">
+          <span class="card-title">Import Widget Package</span>
+          <span class="card-meta">Self-contained .cw / JSON widget package</span>
+        </div>
+        <span class="badge" id="import-badge">idle</span>
+      </div>
+      <div class="card-body" style="flex-direction: column; gap: 14px; padding: 16px;">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <label class="candidate-copy" style="cursor: pointer; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;">
+            Choose .cw file
+            <input type="file" id="import-file-input" accept=".cw,.json" style="display: none;" onchange="handleImportFile(event)">
+          </label>
+          <span class="eyebrow" style="margin: 0;">or paste package JSON below</span>
+        </div>
+        <textarea class="code-input" id="import-textarea" placeholder="Paste .cw package JSON content here..." style="min-height: 140px;" oninput="handleImportTextChange()"></textarea>
+        <div style="display: flex; gap: 8px;">
+          <button class="candidate-copy" id="import-validate-btn" onclick="validateAndPreviewImport()">Validate &amp; Preview</button>
+          <button class="candidate-copy" onclick="clearImport()">Clear</button>
+        </div>
+        <div id="import-error-line" class="error-banner hidden"></div>
+        <div id="import-preview-container" class="hidden" style="display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--stroke); padding-top: 14px;">
+          <div class="pane-title">
+            <span>Live Preview</span>
+            <span class="card-meta" id="import-meta-info"></span>
+          </div>
+          <div class="pane pane-render" id="import-render-pane" style="min-height: 120px;"></div>
+          <div class="pane-title" style="margin-top: 8px;">
+            <span>Install Command</span>
+            <button class="candidate-copy" id="import-copy-cmd-btn" onclick="copyImportCommand()">Copy command</button>
+          </div>
+          <div class="cli-cmd-box">
+            <div class="cli-cmd" id="import-cli-cmd">cortxt widget load --package widget.cw</div>
+          </div>
         </div>
       </div>
     </div>
@@ -893,14 +939,17 @@ render:
       const isGallery = mode === "gallery";
       const isStudio = mode === "studio";
       const isTokens = mode === "tokens";
+      const isImport = mode === "import";
 
       document.getElementById("btn-gallery").classList.toggle("active", isGallery);
       document.getElementById("btn-studio").classList.toggle("active", isStudio);
       document.getElementById("btn-tokens").classList.toggle("active", isTokens);
+      document.getElementById("btn-import").classList.toggle("active", isImport);
 
       document.getElementById("section-gallery").classList.toggle("hidden", !isGallery);
       document.getElementById("section-studio").classList.toggle("hidden", !isStudio);
       document.getElementById("section-tokens").classList.toggle("hidden", !isTokens);
+      document.getElementById("section-import").classList.toggle("hidden", !isImport);
     }
 
     async function initTokens() {
@@ -1170,7 +1219,17 @@ render:
         copyCmdBtn.className = "candidate-copy";
         copyCmdBtn.textContent = "Copy command";
         copyCmdBtn.onclick = () => copyText(w.hint || "", copyCmdBtn);
-        cmdTitle.append(copyCmdBtn);
+
+        const exportBtn = document.createElement("button");
+        exportBtn.className = "candidate-copy";
+        exportBtn.textContent = "Export package";
+        exportBtn.onclick = () => exportWidgetPackage(w, exportBtn);
+
+        const btnGroup = document.createElement("div");
+        btnGroup.style.display = "flex";
+        btnGroup.style.gap = "6px";
+        btnGroup.append(copyCmdBtn, exportBtn);
+        cmdTitle.append(btnGroup);
 
         const cmdBox = document.createElement("div");
         cmdBox.className = "cli-cmd-box";
@@ -1306,6 +1365,318 @@ render:
         renderPane.innerHTML = `<div class="pulse-status error">Spec render failed: ${escapeHtml(err.message)}</div>`;
         jsonText.textContent = "{}";
       }
+    }
+
+    const SECRET_PATTERNS = [
+      /sk-[a-zA-Z0-9_-]{10,}/,
+      /cfat_[a-zA-Z0-9_-]{10,}/,
+      /ghp_[a-zA-Z0-9_-]{10,}/,
+      /github_pat_[a-zA-Z0-9_-]{10,}/,
+      /-----BEGIN\s+[A-Z\s]+KEY-----/
+    ];
+
+    function containsSecretsClient(val) {
+      if (!val) return false;
+      const str = typeof val === "string" ? val : JSON.stringify(val);
+      for (const pat of SECRET_PATTERNS) {
+        if (pat.test(str)) return true;
+      }
+      return false;
+    }
+
+    async function getRendererSource() {
+      try {
+        const resp = await fetch("maker.js");
+        if (resp.ok) return await resp.text();
+      } catch (e) {}
+      return "// Cortxt Widget Maker renderer";
+    }
+
+    async function exportWidgetPackage(w, btn) {
+      const originalText = btn ? btn.textContent : "";
+      if (btn) btn.textContent = "Exporting...";
+      try {
+        let specText = "";
+        if (w.spec) {
+          try {
+            const resp = await fetch(w.spec);
+            if (resp.ok) specText = await resp.text();
+          } catch (e) {}
+        }
+        if (!specText && PRESETS[w.id]) {
+          specText = PRESETS[w.id].spec;
+        }
+        if (!specText) {
+          alert("Could not load spec for " + w.id);
+          return;
+        }
+
+        let artifactObj = null;
+        if (w.artifact) {
+          try {
+            const resp = await fetch(w.artifact);
+            if (resp.ok) artifactObj = await resp.json();
+          } catch (e) {}
+        }
+        if (!artifactObj && PRESETS[w.id]) {
+          const p = PRESETS[w.id];
+          const parsed = WidgetMaker.parseYamlSubset(p.spec);
+          if (parsed.ok) artifactObj = WidgetMaker.renderSpec(parsed.data, p.data);
+        }
+
+        const rendererSrc = await getRendererSource();
+        const tokensObj = currentTokens || WidgetMaker.defaultTokens();
+
+        const pkg = {
+          package_format: "1",
+          manifest: {
+            package_format_version: "1",
+            widget_id: w.id,
+            widget_version: "0.1",
+            title: w.title || w.id,
+            exported_at: new Date().toISOString(),
+            tokens_version: "visual-tokens.v1"
+          },
+          widget: specText,
+          tokens: tokensObj,
+          renderer: rendererSrc
+        };
+        if (artifactObj) {
+          pkg.fixture = artifactObj;
+        }
+
+        if (containsSecretsClient(pkg)) {
+          alert("Export aborted: secret-shaped pattern detected in widget content.");
+          return;
+        }
+
+        const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = (w.id || "widget") + ".cw";
+        document.body.append(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } finally {
+        if (btn) btn.textContent = originalText;
+      }
+    }
+
+    async function exportStudioWidget(btn) {
+      const specText = document.getElementById("studio-spec").value;
+      const dataText = document.getElementById("studio-data").value;
+      const parsedYaml = WidgetMaker.parseYamlSubset(specText);
+      if (!parsedYaml.ok) {
+        alert("Cannot export: Spec YAML is invalid.");
+        return;
+      }
+      let fixtureData = {};
+      try {
+        if (dataText.trim()) fixtureData = JSON.parse(dataText);
+      } catch (e) {
+        alert("Cannot export: Fixture JSON is invalid.");
+        return;
+      }
+
+      const widgetId = (parsedYaml.data && parsedYaml.data.widget && parsedYaml.data.widget.id) || "custom";
+      const widgetVersion = (parsedYaml.data && parsedYaml.data.widget && parsedYaml.data.widget.version) || "0.1";
+      const widgetTitle = (parsedYaml.data && parsedYaml.data.widget && parsedYaml.data.widget.title) || "Custom Widget";
+      const renderedArtifact = WidgetMaker.renderSpec(parsedYaml.data, fixtureData);
+      const rendererSrc = await getRendererSource();
+      const tokensObj = currentTokens || WidgetMaker.defaultTokens();
+
+      const pkg = {
+        package_format: "1",
+        manifest: {
+          package_format_version: "1",
+          widget_id: widgetId,
+          widget_version: widgetVersion,
+          title: widgetTitle,
+          exported_at: new Date().toISOString(),
+          tokens_version: "visual-tokens.v1"
+        },
+        widget: specText,
+        tokens: tokensObj,
+        renderer: rendererSrc,
+        fixture: renderedArtifact
+      };
+
+      if (containsSecretsClient(pkg)) {
+        alert("Export aborted: secret-shaped pattern detected.");
+        return;
+      }
+
+      const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = widgetId + ".cw";
+      document.body.append(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    let lastImportFileName = "widget.cw";
+    function handleImportFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      lastImportFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        document.getElementById("import-textarea").value = text;
+        validateAndPreviewImport();
+      };
+      reader.readAsText(file);
+    }
+
+    function handleImportTextChange() {
+      const errLine = document.getElementById("import-error-line");
+      if (errLine) {
+        errLine.classList.add("hidden");
+        errLine.textContent = "";
+      }
+    }
+
+    function clearImport() {
+      document.getElementById("import-textarea").value = "";
+      document.getElementById("import-file-input").value = "";
+      const errLine = document.getElementById("import-error-line");
+      errLine.classList.add("hidden");
+      errLine.textContent = "";
+      const preview = document.getElementById("import-preview-container");
+      preview.classList.add("hidden");
+      const badge = document.getElementById("import-badge");
+      badge.className = "badge";
+      badge.textContent = "idle";
+    }
+
+    function validateAndPreviewImport() {
+      const text = document.getElementById("import-textarea").value.trim();
+      const errLine = document.getElementById("import-error-line");
+      const preview = document.getElementById("import-preview-container");
+      const renderPane = document.getElementById("import-render-pane");
+      const metaInfo = document.getElementById("import-meta-info");
+      const cliCmd = document.getElementById("import-cli-cmd");
+      const badge = document.getElementById("import-badge");
+
+      errLine.classList.add("hidden");
+      errLine.textContent = "";
+      preview.classList.add("hidden");
+      renderPane.replaceChildren();
+
+      if (!text) {
+        errLine.textContent = "Please paste a package JSON or upload a .cw file.";
+        errLine.classList.remove("hidden");
+        badge.className = "badge err";
+        badge.textContent = "empty";
+        return;
+      }
+
+      let pkg = null;
+      try {
+        pkg = JSON.parse(text);
+      } catch (e) {
+        errLine.textContent = "Malformed JSON: " + e.message;
+        errLine.classList.remove("hidden");
+        badge.className = "badge err";
+        badge.textContent = "invalid json";
+        return;
+      }
+
+      if (typeof pkg !== "object" || pkg === null || Array.isArray(pkg)) {
+        errLine.textContent = "Package must be a JSON object.";
+        errLine.classList.remove("hidden");
+        badge.className = "badge err";
+        badge.textContent = "invalid";
+        return;
+      }
+
+      const fmt = pkg.package_format || (pkg.manifest && pkg.manifest.package_format_version);
+      if (fmt !== "1") {
+        errLine.textContent = "Unsupported package format version: '" + fmt + "' (expected '1').";
+        errLine.classList.remove("hidden");
+        badge.className = "badge err";
+        badge.textContent = "unsupported format";
+        return;
+      }
+
+      if (!pkg.widget || typeof pkg.widget !== "string") {
+        errLine.textContent = "Missing required 'widget' spec string.";
+        errLine.classList.remove("hidden");
+        badge.className = "badge err";
+        badge.textContent = "missing spec";
+        return;
+      }
+
+      if (!pkg.tokens || typeof pkg.tokens !== "object") {
+        errLine.textContent = "Missing required 'tokens' object.";
+        errLine.classList.remove("hidden");
+        badge.className = "badge err";
+        badge.textContent = "missing tokens";
+        return;
+      }
+
+      if (!pkg.renderer || typeof pkg.renderer !== "string") {
+        errLine.textContent = "Missing required 'renderer' string.";
+        errLine.classList.remove("hidden");
+        badge.className = "badge err";
+        badge.textContent = "missing renderer";
+        return;
+      }
+
+      if (containsSecretsClient(pkg)) {
+        errLine.textContent = "Package rejected: secret-shaped content detected.";
+        errLine.classList.remove("hidden");
+        badge.className = "badge err";
+        badge.textContent = "secrets detected";
+        return;
+      }
+
+      // Parse YAML spec
+      const parsed = WidgetMaker.parseYamlSubset(pkg.widget);
+      if (!parsed.ok) {
+        errLine.textContent = "Invalid widget contract YAML: " + parsed.error;
+        errLine.classList.remove("hidden");
+        badge.className = "badge err";
+        badge.textContent = "spec error";
+        return;
+      }
+
+      const widgetId = (parsed.data && parsed.data.widget && parsed.data.widget.id) || (pkg.manifest && pkg.manifest.widget_id) || "widget";
+      const widgetVersion = (parsed.data && parsed.data.widget && parsed.data.widget.version) || (pkg.manifest && pkg.manifest.widget_version) || "0.1";
+      const widgetTitle = (parsed.data && parsed.data.widget && parsed.data.widget.title) || (pkg.manifest && pkg.manifest.title) || widgetId;
+
+      // Apply package tokens preview
+      WidgetMaker.applyTokens(pkg.tokens);
+
+      // Render fixture or spec
+      let renderTree = null;
+      if (pkg.fixture) {
+        renderTree = pkg.fixture.render || pkg.fixture;
+      } else {
+        const rendered = WidgetMaker.renderSpec(parsed.data, {});
+        renderTree = rendered.render;
+      }
+
+      WidgetMaker.renderNodeToDom(renderTree, renderPane);
+
+      const expAt = pkg.manifest && pkg.manifest.exported_at ? " &bull; exported: " + escapeHtml(pkg.manifest.exported_at) : "";
+      metaInfo.innerHTML = `id: <strong>${escapeHtml(widgetId)}</strong> &bull; version: ${escapeHtml(widgetVersion)} &bull; title: ${escapeHtml(widgetTitle)}${expAt}`;
+      cliCmd.textContent = `cortxt widget load --package ${lastImportFileName}`;
+
+      preview.classList.remove("hidden");
+      badge.className = "badge ok";
+      badge.textContent = "valid package";
+    }
+
+    function copyImportCommand() {
+      const btn = document.getElementById("import-copy-cmd-btn");
+      const cmd = document.getElementById("import-cli-cmd").textContent;
+      copyText(cmd, btn);
     }
 
     // Initialize
