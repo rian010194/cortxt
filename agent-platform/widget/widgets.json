@@ -29,6 +29,13 @@
       "hint": "cortxt widget --view docker-status"
     },
     {
+      "id": "webhooks",
+      "title": "Webhooks",
+      "spec": "widget_contract/specs/webhooks-0.1.yaml",
+      "artifact": "webhooks.json",
+      "hint": "cortxt widget --view webhooks --repo OWNER/REPO"
+    },
+    {
       "id": "loaded",
       "title": "Loaded",
       "spec": null,

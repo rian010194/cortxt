@@ -717,6 +717,14 @@ def _run_widget_load(args: argparse.Namespace) -> ResultEnvelope:
                     else:
                         reader = getattr(args, "docker_reader", None) or _default_docker_reader
                         data[read.id] = read_docker_status_v1(reader())
+                elif read.operation == "webhooks.status.v1":
+                    from widget_contract.adapters.store_reads import read_webhooks_status_v1
+                    webhooks_input = getattr(args, "webhooks_input", None) or (ap_path / "widget" / "webhooks.json")
+                    data[read.id] = read_webhooks_status_v1(json.loads(Path(webhooks_input).read_text(encoding="utf-8")))
+                elif read.operation == "pages.deploys.v1":
+                    from widget_contract.adapters.store_reads import read_pages_deploys_v1
+                    pages_input = getattr(args, "pages_input", None) or (ap_path / "widget" / "pages-deploys.json")
+                    data[read.id] = read_pages_deploys_v1(json.loads(Path(pages_input).read_text(encoding="utf-8")))
                 else:
                     return ResultEnvelope(status="failed", error={"category": "input_error",
                                                                   "message": f"unsupported emitted store read {read.operation}"})
@@ -858,6 +866,22 @@ def _run_widget_compose(args: argparse.Namespace) -> ResultEnvelope:
                         else:
                             reader = getattr(args, "docker_reader", None) or _default_docker_reader
                             child_data[read.id] = read_docker_status_v1(reader())
+                    elif read.operation == "webhooks.status.v1":
+                        from widget_contract.adapters.store_reads import read_webhooks_status_v1
+                        webhooks_input = getattr(args, "webhooks_input", None) or (ap_path / "widget" / "webhooks.json")
+                        if Path(webhooks_input).is_file():
+                            child_data[read.id] = read_webhooks_status_v1(json.loads(Path(webhooks_input).read_text(encoding="utf-8")))
+                        else:
+                            child_data[read.id] = {"schema_version": 1, "repo": "", "total": 0, "active": 0, "hooks": []}
+                    elif read.operation == "pages.deploys.v1":
+                        from widget_contract.adapters.store_reads import read_pages_deploys_v1
+                        pages_input = getattr(args, "pages_input", None) or (ap_path / "widget" / "pages-deploys.json")
+                        if Path(pages_input).is_file():
+                            child_data[read.id] = read_pages_deploys_v1(json.loads(Path(pages_input).read_text(encoding="utf-8")))
+                        else:
+                            child_data[read.id] = {"schema_version": 1, "project": "cortxt", "account": "c7c04f119f81234dc3d851bf6ff2adfe",
+                                                   "latest": {"id": "none", "environment": "none", "created_on": "none", "stage": "none", "status": "none"},
+                                                   "deployments": []}
                     else:
                         return ResultEnvelope(status="failed", error={"category": "input_error",
                                                                       "message": f"unsupported emitted store read {read.operation}"})
@@ -1183,6 +1207,112 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None) -> ResultEn
             print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"docker-status:{output_path}"],
                                   evidence=[{"docker_status": tree}])
+        if view == "webhooks":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_pages_deploys_v1, read_webhooks_status_v1, redact_hook
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            repo = getattr(args, "repo", None)
+            if not repo:
+                return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                              "message": "--repo is required for webhooks"})
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "webhooks-0.1.yaml")
+            try:
+                hooks_raw = _gh_webhooks_reader(repo)
+                safe_hooks = [redact_hook(h) for h in hooks_raw]
+                webhooks_proj = read_webhooks_status_v1({
+                    "schema_version": 1,
+                    "repo": repo,
+                    "total": len(safe_hooks),
+                    "active": sum(1 for h in safe_hooks if h.get("active")),
+                    "hooks": safe_hooks,
+                })
+                source_status = "fresh"
+                error = None
+            except Exception as exc:
+                webhooks_proj = None
+                source_status = "error"
+                import re
+                sanitized_msg = re.sub(r"(?:cfat|ghp|github_pat)_[a-zA-Z0-9_.-]+", "[REDACTED]", str(exc))
+                error = {"kind": "webhooks_read", "message": sanitized_msg}
+
+            try:
+                pages_raw = _pages_deploys_reader()
+                pages_proj = read_pages_deploys_v1(pages_raw)
+                pages_status = "fresh"
+            except Exception:
+                pages_proj = {
+                    "schema_version": 1,
+                    "project": "cortxt",
+                    "account": "c7c04f119f81234dc3d851bf6ff2adfe",
+                    "latest": {"id": "none", "environment": "none", "created_on": "none", "stage": "none", "status": "none"},
+                    "deployments": [],
+                }
+                pages_status = "stale"
+
+            if error is None:
+                tree = render(widget, {"webhooks": webhooks_proj, "pages": pages_proj},
+                              {"webhooks": source_status, "pages": pages_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {
+                    "contract_version": widget.contract_version,
+                    "widget": {"id": widget.id, "version": widget.version},
+                    "render": render_primitive("error-state",
+                                               {"message": f"Webhooks read failed: {error['message']}"},
+                                               [], "error"),
+                }
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "webhooks.json")
+            artifact = {**tree, "repo": repo, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                           if node["primitive"] in ("table", "metric", "key-value")]}
+            print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"webhooks:{output_path}"],
+                                  evidence=[{"webhooks": tree}])
+        if view == "pages-deploys":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_pages_deploys_v1
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "webhooks-0.1.yaml")
+            try:
+                pages_raw = _pages_deploys_reader()
+                pages_proj = read_pages_deploys_v1(pages_raw)
+                pages_status = "fresh"
+                error = None
+            except Exception as exc:
+                pages_proj = None
+                pages_status = "error"
+                import re
+                sanitized_msg = re.sub(r"(?:cfat|ghp|github_pat)_[a-zA-Z0-9_.-]+", "[REDACTED]", str(exc))
+                error = {"kind": "pages_read", "message": sanitized_msg}
+
+            if error is None:
+                webhooks_empty = {"schema_version": 1, "repo": "", "total": 0, "active": 0, "hooks": []}
+                tree = render(widget, {"webhooks": webhooks_empty, "pages": pages_proj},
+                              {"webhooks": "stale", "pages": pages_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {
+                    "contract_version": widget.contract_version,
+                    "widget": {"id": widget.id, "version": widget.version},
+                    "render": render_primitive("error-state",
+                                               {"message": f"Pages read failed: {error['message']}"},
+                                               [], "error"),
+                }
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "pages-deploys.json")
+            artifact = {**tree, "repo": None, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                           if node["primitive"] in ("table", "key-value")]}
+            print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"pages-deploys:{output_path}"],
+                                  evidence=[{"pages_deploys": tree}])
         candidate_mode = getattr(args, "widget_command", None) == "candidates" or view == "candidates"
         if candidate_mode:
             ap_path = _get_agent_platform_path()
@@ -1259,6 +1389,95 @@ def _claim_run_resume(issue_id: str, *, registry: Path) -> dict:
     from widget_contract.adapters.cli_ports import gh_claim_run_resume
     return gh_claim_run_resume(issue_id, registry=registry,
                                scripts_dir=_get_agent_platform_path().parent / "scripts")
+
+
+def _gh_webhooks_reader(repo: str) -> list[dict]:
+    """Read repo webhooks via gh api (shared default, injectable for tests)."""
+    import subprocess
+    cmd = ["gh", "api", f"repos/{repo}/hooks", "--paginate"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    if proc.returncode != 0:
+        raise RuntimeError(f"gh api repos/{repo}/hooks failed: {proc.stderr.strip()}")
+    data = json.loads(proc.stdout)
+    if not isinstance(data, list):
+        raise ValueError("expected list of hooks from gh api")
+    return data
+
+
+def _pages_deploys_reader(account: str = "c7c04f119f81234dc3d851bf6ff2adfe",
+                          project: str = "cortxt") -> dict:
+    """Read Cloudflare Pages deployment state (shared default, injectable for tests)."""
+    import os
+    import subprocess
+    import urllib.error
+    import urllib.request
+
+    store_dir = os.path.expandvars(r"%USERPROFILE%\.cortxt\credentials")
+    proc = subprocess.run(
+        ["cortxt", "credentials", "inject", "--id", "cloudflare",
+         "--store-dir", store_dir, "--runtime", "coordinator", "--purpose", "widget-pages-status"],
+        capture_output=True, text=True, timeout=60,
+    )
+    token = next((line.strip() for line in (proc.stdout or "").splitlines()
+                  if line.startswith("cfat_")), "")
+    if not token:
+        raise RuntimeError("Cloudflare credential unavailable (no cfat_ token)")
+
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}/deployments"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Cloudflare API HTTP {exc.code}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Cloudflare request failed: {exc}") from exc
+
+    if not body.get("success"):
+        errors = body.get("errors") or [{}]
+        err_msg = errors[0].get("message", "Cloudflare API returned success=false")
+        raise RuntimeError(f"Cloudflare API error: {err_msg}")
+
+    raw_deployments = body.get("result") or []
+    safe_deployments = []
+    for dep in raw_deployments:
+        if isinstance(dep, dict):
+            stage = ""
+            if "latest_stage" in dep and isinstance(dep["latest_stage"], dict):
+                stage = dep["latest_stage"].get("name") or dep["latest_stage"].get("status") or ""
+            if not stage:
+                stage = str(dep.get("stage") or "deploy")
+            safe_deployments.append({
+                "id": str(dep.get("id") or ""),
+                "environment": str(dep.get("environment") or ""),
+                "created_on": str(dep.get("created_on") or ""),
+                "stage": stage,
+            })
+
+    latest_obj = {"id": "none", "environment": "none", "created_on": "none", "stage": "none", "status": "none"}
+    if safe_deployments:
+        first_raw = raw_deployments[0] if isinstance(raw_deployments[0], dict) else {}
+        first_stage = safe_deployments[0]["stage"]
+        first_status = ""
+        if "latest_stage" in first_raw and isinstance(first_raw["latest_stage"], dict):
+            first_status = first_raw["latest_stage"].get("status") or ""
+        if not first_status:
+            first_status = str(first_raw.get("status") or "success")
+        latest_obj = {
+            "id": safe_deployments[0]["id"],
+            "environment": safe_deployments[0]["environment"],
+            "created_on": safe_deployments[0]["created_on"],
+            "stage": first_stage,
+            "status": first_status,
+        }
+
+    return {
+        "schema_version": 1,
+        "project": project,
+        "account": account,
+        "latest": latest_obj,
+        "deployments": safe_deployments,
+    }
 
 
 def _run_widget_action(args: argparse.Namespace) -> ResultEnvelope:
@@ -2091,7 +2310,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
-    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map", "docker-status"], help="Render a named read-only widget view")
+    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map", "docker-status", "webhooks", "pages-deploys"], help="Render a named read-only widget view")
     widget_parser.add_argument("--repo", help="GitHub owner/repo for a named view")
     widget_parser.add_argument("--snapshot", type=Path, help="Widget render output path")
     widget_parser.add_argument("--snapshot-input", type=Path, help="Snapshot input path for the session-pulse view")
