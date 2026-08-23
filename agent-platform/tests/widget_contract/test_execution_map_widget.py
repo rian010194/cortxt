@@ -138,9 +138,10 @@ def test_cli_execution_map_writes_artifact_and_error_state(monkeypatch, capsys, 
 
 
 def test_widget_has_map_view_without_post():
-    html = (Path(__file__).resolve().parents[2] / "widget" / "index.html").read_text(encoding="utf-8")
-    assert "map-tab" in html
-    assert "renderMap" in html
-    assert "pollMap" in html
-    assert "execution-map.json" in html
+    widget_dir = Path(__file__).resolve().parents[2] / "widget"
+    html = (widget_dir / "index.html").read_text(encoding="utf-8")
+    manifest = json.loads((widget_dir / "widgets.json").read_text(encoding="utf-8"))
+    assert any(w["id"] == "map" and w["artifact"] == "execution-map.json" for w in manifest["widgets"])
+    assert "renderGenericNode" in html
+    assert "loadManifest" in html
     assert "do_POST" not in html
