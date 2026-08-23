@@ -57,7 +57,7 @@ def main() -> int:
     check("no dispatch-authority grant claimed",
           "never grants dispatch authority" in text or "never claims" in text.lower())
 
-    diacritics = re.findall(r"[åäöÅÄÖ]", text)
+    diacritics = re.findall(r"[\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6]", text)
     check("zero a/o/u-with-diacritics", not diacritics)
     for marker in ("-----BEGIN", "sk-", "cfat_", "prompt:"):
         check(f"no secret/prompt marker {marker!r}", marker not in text)
