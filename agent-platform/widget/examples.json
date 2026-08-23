@@ -15,7 +15,7 @@
       "title": "Session Agents",
       "description": "Live agent workstreams, execution state swimlanes, and active subagent telemetry.",
       "cli_command": "cortxt widget --view session-agents",
-      "tui_text": "=== Session Agents ===\n\nActive agents: 3\n\nWorkstreams | builder \u25cf  atlas-sync \u25cb  eval-gate \u25cf\n\n[Agent sessions]\n  workstream_id   runtime  status   updated_at          \n  --------------  -------  -------  --------------------\n  ws-builder-348  hermes   running  2026-08-23T19:00:00Z\n  ws-atlas-sync   codex    idle     2026-08-23T18:55:00Z\n  ws-eval-gate    dsh      running  2026-08-23T19:02:00Z",
+      "tui_text": "=== Session Agents ===\n\n## Session Agents\n\nLive Multi-Agent Workspace\n\nHermes  \u25cf Load context  \u25cb Execute session plan  \u25cb Verification\nPi  \u25cf Inspect AST  \u25cb Analyze codebase invariants\nCodex  \u25cb Contract validation",
       "artifact": "fixtures/session-agents.json",
       "tokens": "tokens.json",
       "live": true

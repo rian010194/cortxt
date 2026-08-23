@@ -88,7 +88,7 @@ def main() -> int:
     check("candidates tui_text contains Candidates heading and frontier group",
           "=== Candidates ===" in tui_by_id.get("candidates", "") and "[frontier]" in tui_by_id.get("candidates", ""))
     check("session-agents tui_text contains swimlane markers and agent sessions",
-          "Workstreams |" in tui_by_id.get("session-agents", "") and "[Agent sessions]" in tui_by_id.get("session-agents", ""))
+          "Hermes" in tui_by_id.get("session-agents", "") and "●" in tui_by_id.get("session-agents", ""))
     check("usage-cost tui_text contains tokens by runtime and sparkline/series",
           "Tokens by runtime" in tui_by_id.get("usage-cost", "") and "Usage over time" in tui_by_id.get("usage-cost", ""))
     check("pulse tui_text contains Session Pulse heading and workstreams",

@@ -238,8 +238,22 @@ def _render_node(node: Mapping[str, Any], colors: Mapping[str, str], depth: int 
         return lines
 
     if primitive == "swimlane":
+        rows = props.get("rows", [])
         items = props.get("items", [])
         label = props.get("label", "")
+        if rows:
+            # Multi-lane rendering: one line per lane with its items.
+            for row in rows:
+                lane_label = row.get("label") or row.get("name") or row.get("id") or "Lane"
+                lane_items = row.get("items") or row.get("tasks") or []
+                lane_line = lane_label
+                for it in lane_items:
+                    t = it.get("title") or it.get("name") or it.get("id") or "task"
+                    state = str(it.get("state") or it.get("status") or "").lower()
+                    mark = "●" if state in ("running", "active") else "○"
+                    lane_line += f"  {mark} {t}"
+                lines.append(_c("strong", f"{lane_line}", colors))
+            return lines
         lines.append(render_swimlane_text(items, label=label, colors=colors))
         return lines
 

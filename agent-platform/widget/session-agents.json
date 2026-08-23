@@ -37,22 +37,22 @@
           "rows": [
             {
               "id": "agent-hermes",
-              "name": "Hermes",
+              "label": "Hermes",
               "runtime": "hermes",
               "status": "running",
-              "current_task": "Execute session plan",
-              "tasks": [
+              "current_task": "Load context",
+              "items": [
                 {
                   "id": "t1",
                   "title": "Load context",
-                  "state": "done",
-                  "progress": 100
+                  "state": "running",
+                  "progress": 30
                 },
                 {
                   "id": "t2",
                   "title": "Execute session plan",
-                  "state": "running",
-                  "progress": 65
+                  "state": "queued",
+                  "progress": 0
                 },
                 {
                   "id": "t3",
@@ -64,37 +64,37 @@
             },
             {
               "id": "agent-pi",
-              "name": "Pi",
+              "label": "Pi",
               "runtime": "pi",
               "status": "running",
-              "current_task": "Analyze codebase invariants",
-              "tasks": [
+              "current_task": "Inspect AST",
+              "items": [
                 {
                   "id": "t4",
                   "title": "Inspect AST",
-                  "state": "done",
-                  "progress": 100
+                  "state": "running",
+                  "progress": 20
                 },
                 {
                   "id": "t5",
                   "title": "Analyze codebase invariants",
-                  "state": "running",
-                  "progress": 40
+                  "state": "queued",
+                  "progress": 0
                 }
               ]
             },
             {
               "id": "agent-codex",
-              "name": "Codex",
+              "label": "Codex",
               "runtime": "codex",
-              "status": "done",
+              "status": "queued",
               "current_task": null,
-              "tasks": [
+              "items": [
                 {
                   "id": "t6",
                   "title": "Contract validation",
-                  "state": "done",
-                  "progress": 100
+                  "state": "queued",
+                  "progress": 0
                 }
               ]
             }

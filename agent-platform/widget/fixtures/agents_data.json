@@ -9,9 +9,24 @@
         "status": "running",
         "current_task": "Load context",
         "tasks": [
-          {"id": "t1", "title": "Load context", "state": "running", "progress": 30},
-          {"id": "t2", "title": "Execute session plan", "state": "queued", "progress": 0},
-          {"id": "t3", "title": "Verification", "state": "queued", "progress": 0}
+          {
+            "id": "t1",
+            "title": "Load context",
+            "state": "running",
+            "progress": 30
+          },
+          {
+            "id": "t2",
+            "title": "Execute session plan",
+            "state": "queued",
+            "progress": 0
+          },
+          {
+            "id": "t3",
+            "title": "Verification",
+            "state": "queued",
+            "progress": 0
+          }
         ]
       },
       {
@@ -21,8 +36,18 @@
         "status": "running",
         "current_task": "Inspect AST",
         "tasks": [
-          {"id": "t4", "title": "Inspect AST", "state": "running", "progress": 20},
-          {"id": "t5", "title": "Analyze codebase invariants", "state": "queued", "progress": 0}
+          {
+            "id": "t4",
+            "title": "Inspect AST",
+            "state": "running",
+            "progress": 20
+          },
+          {
+            "id": "t5",
+            "title": "Analyze codebase invariants",
+            "state": "queued",
+            "progress": 0
+          }
         ]
       },
       {
@@ -32,7 +57,12 @@
         "status": "queued",
         "current_task": null,
         "tasks": [
-          {"id": "t6", "title": "Contract validation", "state": "queued", "progress": 0}
+          {
+            "id": "t6",
+            "title": "Contract validation",
+            "state": "queued",
+            "progress": 0
+          }
         ]
       }
     ]
@@ -48,9 +78,24 @@
           "status": "running",
           "current_task": "Load context",
           "tasks": [
-            {"id": "t1", "title": "Load context", "state": "running", "progress": 30},
-            {"id": "t2", "title": "Execute session plan", "state": "queued", "progress": 0},
-            {"id": "t3", "title": "Verification", "state": "queued", "progress": 0}
+            {
+              "id": "t1",
+              "title": "Load context",
+              "state": "running",
+              "progress": 30
+            },
+            {
+              "id": "t2",
+              "title": "Execute session plan",
+              "state": "queued",
+              "progress": 0
+            },
+            {
+              "id": "t3",
+              "title": "Verification",
+              "state": "queued",
+              "progress": 0
+            }
           ]
         },
         {
@@ -60,8 +105,18 @@
           "status": "running",
           "current_task": "Inspect AST",
           "tasks": [
-            {"id": "t4", "title": "Inspect AST", "state": "running", "progress": 20},
-            {"id": "t5", "title": "Analyze codebase invariants", "state": "queued", "progress": 0}
+            {
+              "id": "t4",
+              "title": "Inspect AST",
+              "state": "running",
+              "progress": 20
+            },
+            {
+              "id": "t5",
+              "title": "Analyze codebase invariants",
+              "state": "queued",
+              "progress": 0
+            }
           ]
         },
         {
@@ -71,7 +126,12 @@
           "status": "queued",
           "current_task": null,
           "tasks": [
-            {"id": "t6", "title": "Contract validation", "state": "queued", "progress": 0}
+            {
+              "id": "t6",
+              "title": "Contract validation",
+              "state": "queued",
+              "progress": 0
+            }
           ]
         }
       ]
@@ -86,9 +146,24 @@
           "status": "running",
           "current_task": "Execute session plan",
           "tasks": [
-            {"id": "t1", "title": "Load context", "state": "done", "progress": 100},
-            {"id": "t2", "title": "Execute session plan", "state": "running", "progress": 65},
-            {"id": "t3", "title": "Verification", "state": "queued", "progress": 0}
+            {
+              "id": "t1",
+              "title": "Load context",
+              "state": "done",
+              "progress": 100
+            },
+            {
+              "id": "t2",
+              "title": "Execute session plan",
+              "state": "running",
+              "progress": 65
+            },
+            {
+              "id": "t3",
+              "title": "Verification",
+              "state": "queued",
+              "progress": 0
+            }
           ]
         },
         {
@@ -98,8 +173,18 @@
           "status": "running",
           "current_task": "Analyze codebase invariants",
           "tasks": [
-            {"id": "t4", "title": "Inspect AST", "state": "done", "progress": 100},
-            {"id": "t5", "title": "Analyze codebase invariants", "state": "running", "progress": 60}
+            {
+              "id": "t4",
+              "title": "Inspect AST",
+              "state": "done",
+              "progress": 100
+            },
+            {
+              "id": "t5",
+              "title": "Analyze codebase invariants",
+              "state": "running",
+              "progress": 60
+            }
           ]
         },
         {
@@ -109,7 +194,12 @@
           "status": "running",
           "current_task": "Contract validation",
           "tasks": [
-            {"id": "t6", "title": "Contract validation", "state": "running", "progress": 45}
+            {
+              "id": "t6",
+              "title": "Contract validation",
+              "state": "running",
+              "progress": 45
+            }
           ]
         }
       ]
@@ -124,9 +214,24 @@
           "status": "running",
           "current_task": "Verification",
           "tasks": [
-            {"id": "t1", "title": "Load context", "state": "done", "progress": 100},
-            {"id": "t2", "title": "Execute session plan", "state": "done", "progress": 100},
-            {"id": "t3", "title": "Verification", "state": "running", "progress": 90}
+            {
+              "id": "t1",
+              "title": "Load context",
+              "state": "done",
+              "progress": 100
+            },
+            {
+              "id": "t2",
+              "title": "Execute session plan",
+              "state": "done",
+              "progress": 100
+            },
+            {
+              "id": "t3",
+              "title": "Verification",
+              "state": "running",
+              "progress": 90
+            }
           ]
         },
         {
@@ -136,8 +241,18 @@
           "status": "done",
           "current_task": null,
           "tasks": [
-            {"id": "t4", "title": "Inspect AST", "state": "done", "progress": 100},
-            {"id": "t5", "title": "Analyze codebase invariants", "state": "done", "progress": 100}
+            {
+              "id": "t4",
+              "title": "Inspect AST",
+              "state": "done",
+              "progress": 100
+            },
+            {
+              "id": "t5",
+              "title": "Analyze codebase invariants",
+              "state": "done",
+              "progress": 100
+            }
           ]
         },
         {
@@ -147,8 +262,99 @@
           "status": "done",
           "current_task": null,
           "tasks": [
-            {"id": "t6", "title": "Contract validation", "state": "done", "progress": 100}
+            {
+              "id": "t6",
+              "title": "Contract validation",
+              "state": "done",
+              "progress": 100
+            }
           ]
+        }
+      ]
+    }
+  ],
+  "states": [
+    {
+      "step": 1,
+      "timestamp": "2026-08-23T18:00:00Z",
+      "active_count": 2,
+      "agents": [
+        {
+          "id": "agent-hermes",
+          "name": "Hermes",
+          "status": "running",
+          "active": true,
+          "progress": 30
+        },
+        {
+          "id": "agent-pi",
+          "name": "Pi",
+          "status": "running",
+          "active": true,
+          "progress": 20
+        },
+        {
+          "id": "agent-codex",
+          "name": "Codex",
+          "status": "queued",
+          "active": false,
+          "progress": 0
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "timestamp": "2026-08-23T19:00:00Z",
+      "active_count": 3,
+      "agents": [
+        {
+          "id": "agent-hermes",
+          "name": "Hermes",
+          "status": "running",
+          "active": true,
+          "progress": 100
+        },
+        {
+          "id": "agent-pi",
+          "name": "Pi",
+          "status": "running",
+          "active": true,
+          "progress": 100
+        },
+        {
+          "id": "agent-codex",
+          "name": "Codex",
+          "status": "running",
+          "active": true,
+          "progress": 45
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "timestamp": "2026-08-23T20:00:00Z",
+      "active_count": 1,
+      "agents": [
+        {
+          "id": "agent-hermes",
+          "name": "Hermes",
+          "status": "running",
+          "active": true,
+          "progress": 100
+        },
+        {
+          "id": "agent-pi",
+          "name": "Pi",
+          "status": "done",
+          "active": false,
+          "progress": 100
+        },
+        {
+          "id": "agent-codex",
+          "name": "Codex",
+          "status": "done",
+          "active": false,
+          "progress": 100
         }
       ]
     }
