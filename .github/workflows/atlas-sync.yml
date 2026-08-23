@@ -14,6 +14,14 @@ on:
   workflow_dispatch: {}
   schedule:
     - cron: "17 6 * * *" # daily, off the hour to avoid GitHub Actions load spikes
+  # Event-triggered refresh (issue #311, C.2): refresh the maps + site page +
+  # graph when issues or their labels change, instead of only the daily
+  # schedule. The actor guard below prevents the atlas bot's own comments and
+  # label writes from re-triggering the workflow (anti-loop).
+  issues:
+    types: [opened, edited, labeled, unlabeled, closed, reopened, transferred]
+  issue_comment:
+    types: [created, edited]
 
 concurrency:
   group: atlas-sync
@@ -23,6 +31,10 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Anti-loop: the atlas bot's own sync comments/label writes must not
+    # re-trigger an event run; the daily schedule and manual dispatch are
+    # unaffected (they run without this filter).
+    if: ${{ github.event_name != 'issues' && github.event_name != 'issue_comment' || github.actor != 'cortxt-atlas[bot]' }}
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
