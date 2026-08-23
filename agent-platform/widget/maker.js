@@ -117,7 +117,6 @@
           if (c === quote && text[i - 1] !== "\\") quote = null;
         } else if (c === '"' || c === "'") {
           quote = c;
-          current += c;
         } else if (c === "[" || c === "{") {
           depth++;
           current += c;

@@ -132,6 +132,62 @@
 
     .hidden { display: none !important; }
 
+    /* Horizontal Examples Band */
+    .examples-band {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .examples-band-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 4px;
+    }
+    .examples-scroll {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      padding-bottom: 8px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .example-chip {
+      flex: 0 0 240px;
+      min-width: 240px;
+      scroll-snap-align: start;
+      border: 1px solid var(--atlas-border);
+      border-radius: 8px;
+      background: var(--atlas-panel);
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: all .15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .example-chip:hover {
+      border-color: var(--atlas-accent-2);
+      background: var(--atlas-panel-2);
+      transform: translateY(-2px);
+    }
+    .example-chip-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .example-chip-hint {
+      font: 9.5px var(--mono);
+      color: var(--ok);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     /* Gallery Grid */
     .gallery-grid {
       display: grid;
@@ -403,9 +459,20 @@
     </div>
 
     <!-- Gallery View -->
-    <section id="view-gallery" class="gallery-grid">
-      <!-- Injected by JS -->
-    </section>
+    <div id="view-gallery" class="view-gallery-wrap">
+      <div class="examples-band" id="examples-band" aria-label="Widget examples horizontal row">
+        <div class="examples-band-header">
+          <span class="eyebrow">Widget Examples Band &bull; Horizontal Scroll</span>
+          <span class="card-meta" style="font-size:0.75rem;color:var(--dim);">Scroll or click to inspect</span>
+        </div>
+        <div class="examples-scroll" id="examples-scroll">
+          <!-- Injected by JS -->
+        </div>
+      </div>
+      <section class="gallery-grid" id="gallery-grid">
+        <!-- Injected by JS -->
+      </section>
+    </div>
 
     <!-- Studio View -->
     <section id="view-studio" class="studio-grid hidden">
@@ -897,13 +964,43 @@ render:
       }
     }
 
+    function renderExamplesBand(protos) {
+      const scroll = document.getElementById("examples-scroll");
+      if (!scroll) return;
+      scroll.replaceChildren();
+
+      for (const proto of protos) {
+        const chip = document.createElement("div");
+        chip.className = "example-chip";
+        const isLive = ["session-agents", "usage", "pulse"].includes(proto.id);
+        chip.innerHTML = `
+          <div class="example-chip-title">
+            <span>${escapeHtml(proto.title)}</span>
+            <span class="badge ${isLive ? "ok pulse-dot" : "off"}">${isLive ? "live" : "ready"}</span>
+          </div>
+          <div class="example-chip-hint">${escapeHtml(proto.hint || "")}</div>
+        `;
+        chip.onclick = function () {
+          const targetCard = document.getElementById("card-" + proto.id);
+          if (targetCard) {
+            targetCard.scrollIntoView({ behavior: "smooth", block: "center" });
+            targetCard.style.outline = "2px solid var(--atlas-accent-2)";
+            setTimeout(() => { targetCard.style.outline = "none"; }, 1500);
+          }
+        };
+        scroll.append(chip);
+      }
+    }
+
     function initGallery() {
-      const grid = document.getElementById("view-gallery");
+      renderExamplesBand(PROTOTYPES);
+      const grid = document.getElementById("gallery-grid") || document.getElementById("view-gallery");
       grid.replaceChildren();
 
       for (const proto of PROTOTYPES) {
         const card = document.createElement("div");
         card.className = "widget-card";
+        card.id = "card-" + proto.id;
 
         const head = document.createElement("div");
         head.className = "card-head";
