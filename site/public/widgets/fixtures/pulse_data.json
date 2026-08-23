@@ -1,0 +1,42 @@
+{
+  "snapshot": {
+    "schema_version": 2,
+    "generated_at": "2026-08-23T18:00:00Z",
+    "orchestrator": {
+      "status": "idle",
+      "active_agent_sessions": 2,
+      "abandoned_agent_sessions": 0,
+      "blocked_agent_sessions": 0,
+      "failed_agent_sessions": 0,
+      "attention_items": 0,
+      "message": "2 active runs"
+    },
+    "workstreams": [
+      {
+        "workstream_id": "ws-builder-339",
+        "status": "running",
+        "updated_at": "2026-08-23T19:00:00Z"
+      },
+      {
+        "workstream_id": "ws-atlas-sync",
+        "status": "idle",
+        "updated_at": "2026-08-23T18:55:00Z"
+      }
+    ],
+    "sessions": [],
+    "activity": [
+      {
+        "timestamp": "2026-08-23T19:00:00Z",
+        "event_type": "turn_completed",
+        "workstream_id": "ws-builder-339",
+        "actor": "builder"
+      },
+      {
+        "timestamp": "2026-08-23T18:55:00Z",
+        "event_type": "graph_updated",
+        "workstream_id": "ws-atlas-sync",
+        "actor": "atlas"
+      }
+    ]
+  }
+}

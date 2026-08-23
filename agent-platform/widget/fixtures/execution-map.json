@@ -1,0 +1,108 @@
+{
+  "contract_version": "0.1",
+  "widget": {
+    "id": "execution-map",
+    "version": "0.1"
+  },
+  "render": {
+    "primitive": "stack",
+    "state": "ready",
+    "props": {
+      "label": "Execution Map"
+    },
+    "children": [
+      {
+        "primitive": "text",
+        "state": "ready",
+        "props": {
+          "label": "Role",
+          "value": "builder"
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "label": "Issues",
+          "columns": [
+            "id",
+            "wave",
+            "blockers",
+            "drift_codes",
+            "launchable"
+          ],
+          "rows": [
+            {
+              "id": "339",
+              "wave": 1,
+              "blockers": [],
+              "drift_codes": [],
+              "launchable": true
+            },
+            {
+              "id": "342",
+              "wave": 2,
+              "blockers": [
+                "339"
+              ],
+              "drift_codes": [],
+              "launchable": false
+            }
+          ]
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "label": "Claims",
+          "columns": [
+            "claim_id",
+            "issue_id",
+            "run_id",
+            "state",
+            "lease_expires_at",
+            "driver_id"
+          ],
+          "rows": [
+            {
+              "claim_id": "claim-339",
+              "issue_id": "339",
+              "run_id": "run-001",
+              "state": "active",
+              "lease_expires_at": 1787500000,
+              "driver_id": "builder-1"
+            }
+          ]
+        }
+      },
+      {
+        "primitive": "list",
+        "state": "ready",
+        "props": {
+          "label": "Waves",
+          "empty": "No waves",
+          "items": [
+            [
+              "339"
+            ],
+            [
+              "342"
+            ]
+          ]
+        }
+      },
+      {
+        "primitive": "list",
+        "state": "ready",
+        "props": {
+          "label": "Collision codes",
+          "empty": "No collisions",
+          "items": []
+        }
+      }
+    ]
+  },
+  "repo": null,
+  "error": null
+}

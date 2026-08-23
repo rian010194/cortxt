@@ -1,0 +1,193 @@
+{
+  "contract_version": "0.1",
+  "widget": {
+    "id": "candidates",
+    "version": "0.1"
+  },
+  "render": {
+    "primitive": "stack",
+    "state": "ready",
+    "props": {
+      "label": "Candidates"
+    },
+    "children": [
+      {
+        "primitive": "key-value",
+        "state": "ready",
+        "props": {
+          "value": {
+            "complete": true,
+            "status": "fresh",
+            "age_seconds": 0,
+            "error": null
+          }
+        }
+      },
+      {
+        "primitive": "metric",
+        "state": "ready",
+        "props": {
+          "label": "Total",
+          "value": 2
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "columns": [
+            "number",
+            "title",
+            "workflow",
+            "area",
+            "milestone",
+            "open_blocker_count"
+          ],
+          "label": "frontier",
+          "rows": [
+            {
+              "number": 1,
+              "title": "Issue 1",
+              "workflow": "workflow:ready",
+              "area": null,
+              "milestone": "M1",
+              "url": "https://example.invalid/issues/1",
+              "open_blocker_count": 0,
+              "dependencies": [],
+              "violations": []
+            }
+          ]
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "columns": [
+            "number",
+            "title",
+            "workflow",
+            "area",
+            "milestone",
+            "open_blocker_count"
+          ],
+          "label": "in_progress",
+          "rows": []
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "columns": [
+            "number",
+            "title",
+            "workflow",
+            "area",
+            "milestone",
+            "open_blocker_count"
+          ],
+          "label": "blocked",
+          "rows": []
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "columns": [
+            "number",
+            "title",
+            "workflow",
+            "area",
+            "milestone",
+            "open_blocker_count"
+          ],
+          "label": "other",
+          "rows": [
+            {
+              "number": 2,
+              "title": "Issue 2",
+              "workflow": "workflow:inbox",
+              "area": null,
+              "milestone": null,
+              "url": "https://example.invalid/issues/2",
+              "open_blocker_count": 0,
+              "dependencies": [],
+              "violations": []
+            }
+          ]
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "columns": [
+            "number",
+            "title",
+            "workflow",
+            "area",
+            "milestone",
+            "open_blocker_count"
+          ],
+          "label": "violations",
+          "rows": []
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "columns": [
+            "number",
+            "title",
+            "workflow",
+            "area",
+            "milestone",
+            "open_blocker_count"
+          ],
+          "label": "atlas_maps",
+          "rows": []
+        }
+      }
+    ]
+  },
+  "handoffs": [
+    {
+      "id": "mark-ready",
+      "operation": "workflow.mark-ready.v1",
+      "enabled": true,
+      "port": "github-transition",
+      "effect_class": "workflow-transition",
+      "authorization": {
+        "mode": "operator",
+        "reference": "operator-approval"
+      },
+      "confirm": {
+        "summary": "Move the issue from workflow:inbox to workflow:ready",
+        "effect_class": "workflow-transition",
+        "required": true
+      },
+      "reason": "Operator-authorized action: approval reference + confirm required"
+    },
+    {
+      "id": "claim-run",
+      "operation": "workflow.claim-run.v1",
+      "enabled": true,
+      "port": "cli",
+      "effect_class": "run-dispatch",
+      "authorization": {
+        "mode": "operator",
+        "reference": "operator-approval"
+      },
+      "confirm": {
+        "summary": "Claim and run the issue through the execution map",
+        "effect_class": "run-dispatch",
+        "required": true
+      },
+      "reason": "Operator-authorized action: approval reference + confirm required"
+    }
+  ],
+  "repo": "o/r"
+}

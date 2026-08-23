@@ -1,0 +1,53 @@
+{
+  "webhooks": {
+    "schema_version": 1,
+    "repo": "rian010194/cortxt",
+    "total": 2,
+    "active": 2,
+    "hooks": [
+      {
+        "id": 101,
+        "url": "https://api.cloudflare.com/pages/deploy-hook/demo",
+        "events": [
+          "push",
+          "pull_request"
+        ],
+        "active": true
+      },
+      {
+        "id": 102,
+        "url": "https://notify.example.org/events",
+        "events": [
+          "issues"
+        ],
+        "active": true
+      }
+    ]
+  },
+  "pages": {
+    "schema_version": 1,
+    "project": "cortxt",
+    "account": "c7c04f119f81234dc3d851bf6ff2adfe",
+    "latest": {
+      "id": "dep-789",
+      "environment": "production",
+      "created_on": "2026-08-23T18:30:00Z",
+      "stage": "deploy",
+      "status": "success"
+    },
+    "deployments": [
+      {
+        "id": "dep-789",
+        "environment": "production",
+        "created_on": "2026-08-23T18:30:00Z",
+        "stage": "deploy"
+      },
+      {
+        "id": "dep-788",
+        "environment": "preview",
+        "created_on": "2026-08-23T17:45:00Z",
+        "stage": "deploy"
+      }
+    ]
+  }
+}

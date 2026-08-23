@@ -1,0 +1,23 @@
+{
+  "compliance": {
+    "score": 98,
+    "status": "Passed",
+    "controls": [
+      {
+        "control_id": "AC-1",
+        "status": "passed",
+        "category": "access_control"
+      },
+      {
+        "control_id": "AU-2",
+        "status": "passed",
+        "category": "audit_trail"
+      },
+      {
+        "control_id": "SC-7",
+        "status": "passed",
+        "category": "boundary_protection"
+      }
+    ]
+  }
+}

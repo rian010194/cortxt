@@ -1,0 +1,38 @@
+{
+  "docker": {
+    "schema_version": 1,
+    "engine": {
+      "server_version": "27.1.1",
+      "os": "linux",
+      "architecture": "x86_64",
+      "status": "running"
+    },
+    "containers": [
+      {
+        "id": "c1a2b3c4d5e6",
+        "name": "cortxt-redis",
+        "image": "redis:7-alpine",
+        "status": "Up 2 hours"
+      },
+      {
+        "id": "f7e8d9c0b1a2",
+        "name": "cortxt-postgres",
+        "image": "postgres:16-alpine",
+        "status": "Up 2 hours"
+      },
+      {
+        "id": "334455667788",
+        "name": "cortxt-worker-old",
+        "image": "cortxt/worker:v1",
+        "status": "Exited (0) 5 hours ago"
+      }
+    ],
+    "images": [
+      "redis:7-alpine",
+      "postgres:16-alpine",
+      "cortxt/worker:v1"
+    ],
+    "total_containers": 3,
+    "running_containers": 2
+  }
+}

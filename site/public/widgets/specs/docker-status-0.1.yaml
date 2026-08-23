@@ -1,0 +1,41 @@
+contract_version: "0.1"
+widget:
+  id: docker-status
+  version: "0.1"
+  title: Docker Status
+data:
+  reads:
+    - id: docker
+      source: store
+      operation: docker.status.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: docker.status.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Docker Status}
+  children:
+    - primitive: key-value
+      bindings:
+        value: {read: docker, pointer: /engine, type: core.object.v1}
+    - primitive: metric
+      props: {label: Running}
+      bindings:
+        value: {read: docker, pointer: /running_containers, type: core.number.v1}
+    - primitive: metric
+      props: {label: Total}
+      bindings:
+        value: {read: docker, pointer: /total_containers, type: core.number.v1}
+    - primitive: table
+      props: {label: Containers, columns: [id, name, image, status]}
+      bindings:
+        rows: {read: docker, pointer: /containers, type: core.array.v1}
+    - primitive: list
+      props: {label: Images, empty: No images}
+      bindings:
+        items: {read: docker, pointer: /images, type: core.array.v1}
+actions: []
+capabilities: [read:docker]

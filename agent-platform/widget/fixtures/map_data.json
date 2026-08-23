@@ -1,0 +1,42 @@
+{
+  "plan": {
+    "role": "builder",
+    "issues": [
+      {
+        "id": "339",
+        "wave": 1,
+        "blockers": [],
+        "drift_codes": [],
+        "launchable": true
+      },
+      {
+        "id": "342",
+        "wave": 2,
+        "blockers": [
+          "339"
+        ],
+        "drift_codes": [],
+        "launchable": false
+      }
+    ],
+    "claims": [
+      {
+        "claim_id": "claim-339",
+        "issue_id": "339",
+        "run_id": "run-001",
+        "state": "active",
+        "lease_expires_at": 1787500000,
+        "driver_id": "builder-1"
+      }
+    ],
+    "waves": [
+      [
+        "339"
+      ],
+      [
+        "342"
+      ]
+    ],
+    "collision_codes": []
+  }
+}

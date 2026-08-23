@@ -1,0 +1,971 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cortxt Widget Maker</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --layer: #ffffff0d;
+      --hover: #ffffff15;
+      --stroke: #29324a;
+      --strong: #3a4562;
+      --text: #f4f7ff;
+      --muted: #aab3c5;
+      --dim: #8792a8;
+      --accent: #4d6bfe;
+      --blue: #3151d8;
+      --ok: #68d391;
+      --warn: #f6c85f;
+      --bad: #ff7a90;
+      --sans: Inter, "Segoe UI Variable", "Segoe UI", sans-serif;
+      --mono: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: radial-gradient(circle at 24% 12%, #202b50 0, #0d1220 40%, #080b14 75%);
+      font-family: var(--sans);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      gap: 16px;
+    }
+    button, select, textarea, input { font: inherit; }
+    header.maker-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border: 1px solid var(--strong);
+      border-radius: 10px;
+      background: #101522d9;
+      backdrop-filter: blur(20px);
+    }
+    .identity { display: flex; align-items: center; gap: 10px; }
+    .icon {
+      width: 22px; height: 22px; border-radius: 5px;
+      display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--accent), var(--blue));
+      color: #06263b; font-size: 12px; font-weight: 700;
+    }
+    .appname { font-size: 14px; font-weight: 600; color: var(--text); }
+    .subtitle { font-size: 11px; color: var(--dim); margin-left: 6px; }
+    .nav-links { display: flex; gap: 10px; align-items: center; }
+    .nav-btn {
+      color: var(--muted); text-decoration: none; font-size: 12px;
+      padding: 5px 10px; border-radius: 6px; border: 1px solid var(--stroke);
+      background: var(--layer); transition: all .15s ease;
+    }
+    .nav-btn:hover { background: var(--hover); color: var(--text); }
+    .nav-btn.primary { color: var(--accent); border-color: var(--accent); }
+
+    .main-nav {
+      display: flex; gap: 8px; border-bottom: 1px solid var(--stroke);
+      padding-bottom: 8px; margin-top: 4px;
+    }
+    .tab-btn {
+      padding: 6px 14px; border: 1px solid var(--stroke); border-radius: 6px;
+      background: var(--layer); color: var(--muted); font-size: 12px;
+      cursor: pointer; transition: all .15s ease;
+    }
+    .tab-btn.active { background: #4d6bfe22; border-color: var(--accent); color: var(--text); font-weight: 600; }
+
+    .view-section { display: flex; flex-direction: column; gap: 16px; }
+    .hidden { display: none !important; }
+
+    /* Gallery Cards */
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(580px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      border: 1px solid var(--strong);
+      border-radius: 12px;
+      background: #101522d9;
+      backdrop-filter: blur(20px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 12px 32px #0008;
+    }
+    .card-header {
+      padding: 10px 14px;
+      background: #ffffff05;
+      border-bottom: 1px solid var(--stroke);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-title-group { display: flex; flex-direction: column; gap: 2px; }
+    .card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .card-meta { font-size: 10px; color: var(--dim); font-family: var(--mono); }
+    .card-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 280px;
+    }
+    .pane {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: auto;
+    }
+    .pane-render {
+      border-right: 1px solid var(--stroke);
+      background: #090c1580;
+    }
+    .pane-cli {
+      background: #06080e;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .pane-title {
+      font-size: 10px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--dim);
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .cli-cmd-box {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #0d1220;
+      border: 1px solid var(--stroke);
+      border-radius: 5px;
+      padding: 5px 8px;
+    }
+    .cli-cmd {
+      font: 10px var(--mono);
+      color: var(--ok);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cli-json {
+      font: 9.5px/1.4 var(--mono);
+      color: var(--muted);
+      background: #090d18;
+      border: 1px solid var(--stroke);
+      border-radius: 5px;
+      padding: 8px;
+      flex: 1;
+      overflow: auto;
+      white-space: pre;
+      max-height: 320px;
+    }
+
+    /* Common widget primitives classes */
+    .eyebrow { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
+      background: #4d6bfe22; color: var(--accent); flex: none;
+    }
+    .badge:before { content: "●"; }
+    .badge.ok { background: #68d39120; color: var(--ok); }
+    .badge.err { background: #ff7a9020; color: var(--bad); }
+    .badge.off { background: #ffffff12; color: var(--dim); }
+    .empty {
+      padding: 14px; text-align: center; color: var(--dim);
+      font-size: 11px; border: 1px dashed var(--stroke); border-radius: 6px;
+    }
+    .pulse-status {
+      padding: 6px 8px; border: 1px solid var(--stroke);
+      border-radius: 6px; color: var(--muted); font-size: 10.5px;
+    }
+    .pulse-status.error { color: var(--bad); background: #ff7a9010; }
+    .candidate-group { margin: 4px 0; }
+    .candidate-group h3 {
+      margin: 0 0 4px; font-size: 9.5px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .candidate-table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
+    .candidate-table th, .candidate-table td {
+      padding: 4px 5px; border-bottom: 1px solid var(--stroke);
+      text-align: left; vertical-align: top;
+    }
+    .candidate-table th { color: var(--dim); font-weight: 500; }
+    .candidate-copy {
+      border: 1px solid var(--strong); border-radius: 4px; background: var(--layer);
+      color: var(--accent); font-size: 9.5px; padding: 2px 6px; cursor: pointer;
+    }
+    .candidate-copy:hover { background: var(--hover); }
+    .candidate-copy.copied { color: var(--ok); }
+    .pulse-stat {
+      padding: 6px 8px; border: 1px solid var(--stroke);
+      border-radius: 6px; background: var(--layer);
+    }
+    .pulse-stat b { display: block; font: 600 13px var(--mono); color: var(--text); }
+    .pulse-stat span { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
+    .widget-stack { display: flex; flex-direction: column; gap: 6px; }
+    .widget-row { display: flex; flex-direction: row; gap: 6px; align-items: stretch; }
+    .widget-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
+    .widget-panel { border: 1px solid var(--stroke); border-radius: 6px; padding: 8px; background: var(--layer); display: flex; flex-direction: column; gap: 6px; }
+    .widget-divider { border: 0; border-top: 1px solid var(--stroke); margin: 4px 0; }
+    .widget-spacer { height: 8px; }
+    .widget-list-items { padding-left: 16px; font-size: 10px; color: var(--muted); }
+    .widget-list-items li { margin-bottom: 2px; }
+
+    /* Maker Studio Layout */
+    .studio-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      min-height: calc(100vh - 160px);
+    }
+    .editor-pane {
+      border: 1px solid var(--strong);
+      border-radius: 12px;
+      background: #101522d9;
+      backdrop-filter: blur(20px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .editor-toolbar {
+      padding: 8px 12px;
+      background: #ffffff05;
+      border-bottom: 1px solid var(--stroke);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .editor-select {
+      background: #0d1220;
+      color: var(--text);
+      border: 1px solid var(--stroke);
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-size: 11px;
+    }
+    .editor-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      gap: 10px;
+      background: #070a12;
+    }
+    .code-input {
+      width: 100%;
+      flex: 1;
+      min-height: 240px;
+      background: #090d18;
+      border: 1px solid var(--stroke);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.45;
+      padding: 10px;
+      resize: vertical;
+      tab-size: 2;
+    }
+    .code-input:focus { outline: 1px solid var(--accent); }
+    .error-banner {
+      padding: 8px 12px;
+      background: #ff7a9020;
+      border: 1px solid var(--bad);
+      border-radius: 6px;
+      color: var(--bad);
+      font-size: 11px;
+      font-family: var(--mono);
+      word-break: break-word;
+    }
+    .status-ok {
+      padding: 4px 8px;
+      background: #68d39115;
+      border: 1px solid var(--ok);
+      border-radius: 5px;
+      color: var(--ok);
+      font-size: 10px;
+      font-family: var(--mono);
+    }
+  </style>
+</head>
+<body>
+
+  <header class="maker-header">
+    <div class="identity">
+      <div class="icon">C</div>
+      <div>
+        <span class="appname">Cortxt Widget Maker</span>
+        <span class="subtitle">Gallery, Side-by-Side CLI &amp; Spec Studio</span>
+      </div>
+    </div>
+    <div class="nav-links">
+      <a href="index.html" class="nav-btn">&larr; Host View</a>
+      <a href="/widgets/" class="nav-btn primary" target="_blank" rel="noopener">Public Docs &rarr;</a>
+    </div>
+  </header>
+
+  <nav class="main-nav">
+    <button class="tab-btn active" id="btn-gallery" onclick="switchMode('gallery')">Gallery View</button>
+    <button class="tab-btn" id="btn-studio" onclick="switchMode('studio')">Maker Studio &amp; Spec Editor</button>
+  </nav>
+
+  <!-- Section 1: Gallery View -->
+  <section class="view-section" id="section-gallery">
+    <div class="gallery-grid" id="gallery-grid">
+      <!-- Injected by renderGallery() -->
+    </div>
+  </section>
+
+  <!-- Section 2: Maker Studio -->
+  <section class="view-section hidden" id="section-studio">
+    <div class="studio-container">
+      <div class="editor-pane">
+        <div class="editor-toolbar">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="eyebrow">Spec Template</span>
+            <select class="editor-select" id="preset-select" onchange="loadPreset(this.value)">
+              <option value="candidates">Candidates (GitHub)</option>
+              <option value="pulse">Session Pulse (Store)</option>
+              <option value="map">Execution Map (Plan)</option>
+              <option value="docker">Docker Status</option>
+              <option value="webhooks">Webhooks / Cloudflare</option>
+              <option value="compliance">Compliance Audit (Custom)</option>
+              <option value="custom">Blank Spec</option>
+            </select>
+          </div>
+          <button class="candidate-copy" onclick="reRenderStudio()">Re-render</button>
+        </div>
+        <div class="editor-body">
+          <span class="eyebrow">Widget Spec (YAML)</span>
+          <textarea class="code-input" id="studio-spec" spellcheck="false" oninput="handleStudioInput()"></textarea>
+          <span class="eyebrow" style="margin-top:4px;">Fixture Data (JSON)</span>
+          <textarea class="code-input" id="studio-data" spellcheck="false" style="min-height:120px;" oninput="handleStudioInput()"></textarea>
+        </div>
+      </div>
+
+      <div class="editor-pane">
+        <div class="editor-toolbar">
+          <span class="eyebrow">Live Visual Render &amp; CLI Counterpart</span>
+          <div id="studio-status" class="status-ok">Valid</div>
+        </div>
+        <div class="card-body" style="flex:1;">
+          <div class="pane pane-render" id="studio-render-pane">
+            <!-- Render tree DOM injected here -->
+          </div>
+          <div class="pane pane-cli">
+            <div class="pane-title">
+              <span>CLI Counterpart</span>
+              <button class="candidate-copy" id="studio-copy-cmd" onclick="copyText(studioCliCmd, this)">Copy command</button>
+            </div>
+            <div class="cli-cmd-box">
+              <div class="cli-cmd" id="studio-cmd-text">cortxt widget load --spec custom.yaml --view loaded</div>
+            </div>
+            <div class="pane-title" style="margin-top:4px;">
+              <span>CLI Render JSON</span>
+              <button class="candidate-copy" onclick="copyText(document.getElementById('studio-json-text').textContent, this)">Copy JSON</button>
+            </div>
+            <pre class="cli-json" id="studio-json-text">{}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="maker.js"></script>
+  <script>
+    const PRESETS = {
+      candidates: {
+        spec: `contract_version: "0.1"
+widget:
+  id: candidates
+  version: "0.1"
+  title: Candidates
+data:
+  reads:
+    - id: candidates
+      source: github
+      operation: candidates.view.v1
+      input:
+        repo: owner/repo
+      select: []
+      refresh:
+        mode: manual
+      output_type: candidates.view.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Candidates}
+  children:
+    - primitive: key-value
+      bindings: {value: {read: candidates, pointer: /source, type: core.object.v1}}
+    - primitive: metric
+      props: {label: Total}
+      bindings: {value: {read: candidates, pointer: /total, type: core.number.v1}}
+    - primitive: table
+      props: {label: frontier, columns: [number, title, workflow, area, milestone, open_blocker_count]}
+      bindings: {rows: {read: candidates, pointer: /groups/0/rows, type: core.array.v1}}
+    - primitive: table
+      props: {label: other, columns: [number, title, workflow, area, milestone, open_blocker_count]}
+      bindings: {rows: {read: candidates, pointer: /groups/3/rows, type: core.array.v1}}
+actions: []
+capabilities: [read:issues]`,
+        data: {
+          candidates: {
+            schema_version: 1,
+            source: { complete: true, status: "fresh", age_seconds: 0, error: null },
+            total: 2,
+            groups: [
+              { id: "frontier", count: 1, rows: [{ number: 1, title: "Issue 1", workflow: "workflow:ready", area: null, milestone: "M1", open_blocker_count: 0 }] },
+              { id: "in_progress", count: 0, rows: [] },
+              { id: "blocked", count: 0, rows: [] },
+              { id: "other", count: 1, rows: [{ number: 2, title: "Issue 2", workflow: "workflow:inbox", area: null, milestone: null, open_blocker_count: 0 }] }
+            ]
+          }
+        },
+        hint: "cortxt widget --view candidates --repo OWNER/REPO"
+      },
+      pulse: {
+        spec: `contract_version: "0.1"
+widget:
+  id: session-pulse
+  version: "0.1"
+  title: Session Pulse
+data:
+  reads:
+    - id: snapshot
+      source: store
+      operation: sessions.snapshot.v2
+      input: {}
+      select: []
+      refresh:
+        mode: poll
+        interval_seconds: 5
+      output_type: sessions.snapshot.v2
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Session Pulse}
+  children:
+    - primitive: key-value
+      bindings:
+        value: {read: snapshot, pointer: /orchestrator, type: core.object.v1}
+    - primitive: metric
+      props: {label: Active sessions}
+      bindings:
+        value: {read: snapshot, pointer: /orchestrator/active_agent_sessions, type: core.number.v1}
+    - primitive: table
+      props: {label: Workstreams, columns: [workstream_id, status, updated_at]}
+      bindings:
+        rows: {read: snapshot, pointer: /workstreams, type: core.array.v1}
+    - primitive: table
+      props: {label: Activity, columns: [timestamp, event_type, workstream_id, actor]}
+      bindings:
+        rows: {read: snapshot, pointer: /activity, type: core.array.v1}
+actions: []
+capabilities: [read:sessions]`,
+        data: {
+          snapshot: {
+            schema_version: 2,
+            generated_at: "2026-08-23T18:00:00Z",
+            orchestrator: { status: "idle", active_agent_sessions: 2, message: "2 active runs" },
+            workstreams: [
+              { workstream_id: "ws-builder-339", status: "running", updated_at: "2026-08-23T19:00:00Z" },
+              { workstream_id: "ws-atlas-sync", status: "idle", updated_at: "2026-08-23T18:55:00Z" }
+            ],
+            activity: [
+              { timestamp: "2026-08-23T19:00:00Z", event_type: "turn_completed", workstream_id: "ws-builder-339", actor: "builder" }
+            ]
+          }
+        },
+        hint: "cortxt widget --view session-pulse"
+      },
+      map: {
+        spec: `contract_version: "0.1"
+widget:
+  id: execution-map
+  version: "0.1"
+  title: Execution Map
+data:
+  reads:
+    - id: plan
+      source: store
+      operation: execution-map.plan.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: execution-map.plan.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Execution Map}
+  children:
+    - primitive: text
+      props: {label: Role}
+      bindings:
+        value: {read: plan, pointer: /role, type: core.string.v1}
+    - primitive: table
+      props: {label: Issues, columns: [id, wave, blockers, drift_codes, launchable]}
+      bindings:
+        rows: {read: plan, pointer: /issues, type: core.array.v1}
+    - primitive: table
+      props: {label: Claims, columns: [claim_id, issue_id, run_id, state, driver_id]}
+      bindings:
+        rows: {read: plan, pointer: /claims, type: core.array.v1}
+    - primitive: list
+      props: {label: Waves, empty: No waves}
+      bindings:
+        items: {read: plan, pointer: /waves, type: core.array.v1}
+actions: []
+capabilities: [read:execution-map]`,
+        data: {
+          plan: {
+            role: "builder",
+            issues: [
+              { id: "339", wave: 1, blockers: [], drift_codes: [], launchable: true },
+              { id: "342", wave: 2, blockers: ["339"], drift_codes: [], launchable: false }
+            ],
+            claims: [
+              { claim_id: "claim-339", issue_id: "339", run_id: "run-001", state: "active", driver_id: "builder-1" }
+            ],
+            waves: [["339"], ["342"]],
+            collision_codes: []
+          }
+        },
+        hint: "cortxt widget --view execution-map --plan-input <file>"
+      },
+      docker: {
+        spec: `contract_version: "0.1"
+widget:
+  id: docker-status
+  version: "0.1"
+  title: Docker Status
+data:
+  reads:
+    - id: docker
+      source: store
+      operation: docker.status.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: docker.status.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Docker Status}
+  children:
+    - primitive: key-value
+      bindings:
+        value: {read: docker, pointer: /engine, type: core.object.v1}
+    - primitive: metric
+      props: {label: Running}
+      bindings:
+        value: {read: docker, pointer: /running_containers, type: core.number.v1}
+    - primitive: metric
+      props: {label: Total}
+      bindings:
+        value: {read: docker, pointer: /total_containers, type: core.number.v1}
+    - primitive: table
+      props: {label: Containers, columns: [id, name, image, status]}
+      bindings:
+        rows: {read: docker, pointer: /containers, type: core.array.v1}
+    - primitive: list
+      props: {label: Images, empty: No images}
+      bindings:
+        items: {read: docker, pointer: /images, type: core.array.v1}
+actions: []
+capabilities: [read:docker]`,
+        data: {
+          docker: {
+            schema_version: 1,
+            engine: { server_version: "27.1.1", os: "linux", architecture: "x86_64", status: "running" },
+            containers: [
+              { id: "c1a2b3c4d5e6", name: "cortxt-redis", image: "redis:7-alpine", status: "Up 2 hours" },
+              { id: "f7e8d9c0b1a2", name: "cortxt-postgres", image: "postgres:16-alpine", status: "Up 2 hours" }
+            ],
+            images: ["redis:7-alpine", "postgres:16-alpine", "cortxt/worker:v1"],
+            total_containers: 3,
+            running_containers: 2
+          }
+        },
+        hint: "cortxt widget --view docker-status"
+      },
+      webhooks: {
+        spec: `contract_version: "0.1"
+widget:
+  id: webhooks
+  version: "0.1"
+  title: Webhooks
+data:
+  reads:
+    - id: webhooks
+      source: store
+      operation: webhooks.status.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: webhooks.status.v1
+      on_error: stale
+    - id: pages
+      source: store
+      operation: pages.deploys.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: pages.deploys.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Webhooks}
+  children:
+    - primitive: metric
+      props: {label: Active webhooks}
+      bindings:
+        value: {read: webhooks, pointer: /active, type: core.number.v1}
+    - primitive: table
+      props: {label: Hooks, columns: [id, url, events, active]}
+      bindings:
+        rows: {read: webhooks, pointer: /hooks, type: core.array.v1}
+    - primitive: key-value
+      bindings:
+        value: {read: pages, pointer: /latest, type: core.object.v1}
+    - primitive: table
+      props: {label: Deployments, columns: [id, environment, created_on, stage]}
+      bindings:
+        rows: {read: pages, pointer: /deployments, type: core.array.v1}
+actions: []
+capabilities: [read:webhooks, read:pages]`,
+        data: {
+          webhooks: {
+            schema_version: 1,
+            repo: "rian010194/cortxt",
+            total: 2,
+            active: 2,
+            hooks: [
+              { id: 101, url: "https://api.cloudflare.com/pages/deploy-hook/demo", events: ["push", "pull_request"], active: true },
+              { id: 102, url: "https://notify.example.org/events", events: ["issues"], active: true }
+            ]
+          },
+          pages: {
+            schema_version: 1,
+            project: "cortxt",
+            account: "c7c04f119f81234dc3d851bf6ff2adfe",
+            latest: { id: "dep-789", environment: "production", created_on: "2026-08-23T18:30:00Z", stage: "deploy", status: "success" },
+            deployments: [
+              { id: "dep-789", environment: "production", created_on: "2026-08-23T18:30:00Z", stage: "deploy" },
+              { id: "dep-788", environment: "preview", created_on: "2026-08-23T17:45:00Z", stage: "deploy" }
+            ]
+          }
+        },
+        hint: "cortxt widget --view webhooks"
+      },
+      compliance: {
+        spec: `contract_version: "0.1"
+widget:
+  id: compliance-audit
+  version: "0.1"
+  title: Compliance Audit
+data:
+  reads:
+    - id: compliance
+      source: store
+      operation: compliance.report.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: core.object.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Compliance Audit}
+  children:
+    - primitive: metric
+      props: {label: Score}
+      bindings:
+        value: {read: compliance, pointer: /score, type: core.number.v1}
+    - primitive: badge
+      bindings:
+        value: {read: compliance, pointer: /status, type: core.string.v1}
+    - primitive: table
+      props: {label: Controls, columns: [control_id, status, category]}
+      bindings:
+        rows: {read: compliance, pointer: /controls, type: core.array.v1}
+actions: []
+capabilities: []`,
+        data: {
+          compliance: {
+            score: 98,
+            status: "Passed",
+            controls: [
+              { control_id: "AC-1", status: "passed", category: "access_control" },
+              { control_id: "AU-2", status: "passed", category: "audit_trail" },
+              { control_id: "SC-7", status: "passed", category: "boundary_protection" }
+            ]
+          }
+        },
+        hint: "cortxt widget load --spec compliance.yaml --view loaded"
+      },
+      custom: {
+        spec: `contract_version: "0.1"
+widget:
+  id: custom-widget
+  version: "0.1"
+  title: Custom Widget
+render:
+  primitive: stack
+  children:
+    - primitive: heading
+      props: {value: "Hello Cortxt"}
+    - primitive: metric
+      props: {label: "Counter", value: 42}`,
+        data: {},
+        hint: "cortxt widget load --spec custom.yaml --view loaded"
+      }
+    };
+
+    let studioCliCmd = "cortxt widget load --spec custom.yaml --view loaded";
+
+    function switchMode(mode) {
+      const isGallery = mode === "gallery";
+      document.getElementById("btn-gallery").classList.toggle("active", isGallery);
+      document.getElementById("btn-studio").classList.toggle("active", !isGallery);
+      document.getElementById("section-gallery").classList.toggle("hidden", !isGallery);
+      document.getElementById("section-studio").classList.toggle("hidden", isGallery);
+    }
+
+    function copyText(text, btn) {
+      const done = () => {
+        const orig = btn.textContent;
+        btn.textContent = "Copied!";
+        btn.classList.add("copied");
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(done);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.append(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        ta.remove();
+        done();
+      }
+    }
+
+    async function loadManifestAndRender() {
+      const grid = document.getElementById("gallery-grid");
+      grid.replaceChildren();
+
+      let manifestList = [];
+      try {
+        const resp = await fetch("widgets.json", { cache: "no-store" });
+        if (resp.ok) {
+          const json = await resp.json();
+          manifestList = json.widgets || [];
+        }
+      } catch (e) {}
+
+      if (!manifestList.length) {
+        // Fallback default manifest
+        manifestList = [
+          { id: "candidates", title: "Candidates", spec: "widget_contract/specs/candidates-0.1.yaml", artifact: "candidates.json", hint: "cortxt widget --view candidates --repo OWNER/REPO" },
+          { id: "pulse", title: "Pulse", spec: "widget_contract/specs/session-pulse-0.1.yaml", artifact: "session-pulse.json", hint: "cortxt widget --view session-pulse" },
+          { id: "map", title: "Map", spec: "widget_contract/specs/execution-map-0.1.yaml", artifact: "execution-map.json", hint: "cortxt widget --view execution-map --plan-input <file>" },
+          { id: "docker", title: "Docker", spec: "widget_contract/specs/docker-status-0.1.yaml", artifact: "docker-status.json", hint: "cortxt widget --view docker-status" },
+          { id: "webhooks", title: "Webhooks", spec: "widget_contract/specs/webhooks-0.1.yaml", artifact: "webhooks.json", hint: "cortxt widget --view webhooks" },
+          { id: "loaded", title: "Loaded", spec: null, artifact: "loaded.json", hint: "cortxt widget load --spec <file> --view loaded" },
+          { id: "composed", title: "Composed", spec: null, artifact: "composed.json", hint: "cortxt widget compose --spec <file> --widgets-dir <dir>" }
+        ];
+      }
+
+      for (const w of manifestList) {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.id = "card-" + w.id;
+
+        const header = document.createElement("div");
+        header.className = "card-header";
+        header.innerHTML = `
+          <div class="card-title-group">
+            <span class="card-title">${escapeHtml(w.title || w.id)}</span>
+            <span class="card-meta">id: ${escapeHtml(w.id)} &bull; ${w.spec ? escapeHtml(w.spec) : "dynamic spec"} &bull; artifact: ${escapeHtml(w.artifact)}</span>
+          </div>
+          <span class="badge ok" id="badge-${w.id}">ready</span>
+        `;
+        card.append(header);
+
+        const body = document.createElement("div");
+        body.className = "card-body";
+
+        const renderPane = document.createElement("div");
+        renderPane.className = "pane pane-render";
+        renderPane.id = "render-pane-" + w.id;
+
+        const cliPane = document.createElement("div");
+        cliPane.className = "pane pane-cli";
+
+        const cmdTitle = document.createElement("div");
+        cmdTitle.className = "pane-title";
+        cmdTitle.innerHTML = `<span>CLI Command</span>`;
+        const copyCmdBtn = document.createElement("button");
+        copyCmdBtn.className = "candidate-copy";
+        copyCmdBtn.textContent = "Copy command";
+        copyCmdBtn.onclick = () => copyText(w.hint || "", copyCmdBtn);
+        cmdTitle.append(copyCmdBtn);
+
+        const cmdBox = document.createElement("div");
+        cmdBox.className = "cli-cmd-box";
+        cmdBox.innerHTML = `<div class="cli-cmd">${escapeHtml(w.hint || "")}</div>`;
+
+        const jsonTitle = document.createElement("div");
+        jsonTitle.className = "pane-title";
+        jsonTitle.style.marginTop = "4px";
+        jsonTitle.innerHTML = `<span>CLI Output JSON</span>`;
+        const copyJsonBtn = document.createElement("button");
+        copyJsonBtn.className = "candidate-copy";
+        copyJsonBtn.textContent = "Copy JSON";
+
+        const jsonPre = document.createElement("pre");
+        jsonPre.className = "cli-json";
+        jsonPre.id = "cli-json-" + w.id;
+        jsonPre.textContent = "Loading...";
+
+        copyJsonBtn.onclick = () => copyText(jsonPre.textContent, copyJsonBtn);
+        jsonTitle.append(copyJsonBtn);
+
+        cliPane.append(cmdTitle, cmdBox, jsonTitle, jsonPre);
+        body.append(renderPane, cliPane);
+        card.append(body);
+        grid.append(card);
+
+        // Load artifact or fallback to preset
+        loadWidgetArtifact(w, renderPane, jsonPre, document.getElementById("badge-" + w.id));
+      }
+    }
+
+    async function loadWidgetArtifact(w, renderPane, jsonPre, badge) {
+      let artifact = null;
+      try {
+        const resp = await fetch(w.artifact, { cache: "no-store" });
+        if (resp.ok) {
+          artifact = await resp.json();
+        }
+      } catch (e) {}
+
+      if (!artifact && PRESETS[w.id]) {
+        // Fallback: render preset client-side
+        const p = PRESETS[w.id];
+        const parsed = WidgetMaker.parseYamlSubset(p.spec);
+        if (parsed.ok) {
+          artifact = WidgetMaker.renderSpec(parsed.data, p.data);
+        }
+      }
+
+      renderPane.replaceChildren();
+      if (artifact) {
+        const renderTree = artifact.render || artifact;
+        WidgetMaker.renderNodeToDom(renderTree, renderPane);
+        jsonPre.textContent = WidgetMaker.formatCliOutput(artifact);
+        if (badge) {
+          const state = renderTree.state || "ok";
+          badge.className = "badge " + (state === "error" ? "err" : "ok");
+          badge.textContent = state;
+        }
+      } else {
+        renderPane.innerHTML = `<div class="empty">No artifact. Run <code>${escapeHtml(w.hint || "")}</code> to build.</div>`;
+        jsonPre.textContent = "{}";
+        if (badge) {
+          badge.className = "badge off";
+          badge.textContent = "offline";
+        }
+      }
+    }
+
+    function escapeHtml(str) {
+      return (str || "").toString()
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function loadPreset(key) {
+      const p = PRESETS[key] || PRESETS.custom;
+      document.getElementById("studio-spec").value = p.spec;
+      document.getElementById("studio-data").value = JSON.stringify(p.data || {}, null, 2);
+      studioCliCmd = p.hint || `cortxt widget load --spec ${key}.yaml --view loaded`;
+      document.getElementById("studio-cmd-text").textContent = studioCliCmd;
+      reRenderStudio();
+    }
+
+    let studioDebounce = null;
+    function handleStudioInput() {
+      clearTimeout(studioDebounce);
+      studioDebounce = setTimeout(reRenderStudio, 150);
+    }
+
+    function reRenderStudio() {
+      const specText = document.getElementById("studio-spec").value;
+      const dataText = document.getElementById("studio-data").value;
+      const renderPane = document.getElementById("studio-render-pane");
+      const statusNode = document.getElementById("studio-status");
+      const jsonText = document.getElementById("studio-json-text");
+
+      renderPane.replaceChildren();
+
+      // 1. Parse YAML Spec
+      const parsedYaml = WidgetMaker.parseYamlSubset(specText);
+      if (!parsedYaml.ok) {
+        statusNode.className = "error-banner";
+        statusNode.textContent = "YAML Error: " + parsedYaml.error;
+        renderPane.innerHTML = `<div class="pulse-status error">Failed to parse YAML spec: ${escapeHtml(parsedYaml.error)}</div>`;
+        jsonText.textContent = "{}";
+        return;
+      }
+
+      // 2. Parse JSON Fixture Data
+      let fixtureData = {};
+      if (dataText.trim()) {
+        try {
+          fixtureData = JSON.parse(dataText);
+        } catch (err) {
+          statusNode.className = "error-banner";
+          statusNode.textContent = "JSON Data Error: " + err.message;
+          renderPane.innerHTML = `<div class="pulse-status error">Malformed JSON fixture data: ${escapeHtml(err.message)}</div>`;
+          jsonText.textContent = "{}";
+          return;
+        }
+      }
+
+      // 3. Render Spec
+      try {
+        const renderedArtifact = WidgetMaker.renderSpec(parsedYaml.data, fixtureData);
+        statusNode.className = "status-ok";
+        statusNode.textContent = "Valid";
+        WidgetMaker.renderNodeToDom(renderedArtifact.render, renderPane);
+        jsonText.textContent = WidgetMaker.formatCliOutput(renderedArtifact);
+      } catch (err) {
+        statusNode.className = "error-banner";
+        statusNode.textContent = "Render Error: " + err.message;
+        renderPane.innerHTML = `<div class="pulse-status error">Spec render failed: ${escapeHtml(err.message)}</div>`;
+        jsonText.textContent = "{}";
+      }
+    }
+
+    // Initialize
+    loadManifestAndRender();
+    loadPreset("candidates");
+  </script>
+</body>
+</html>
