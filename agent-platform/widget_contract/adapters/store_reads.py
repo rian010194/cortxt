@@ -213,3 +213,114 @@ def read_pages_deploys_v1(store: Mapping[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         raise ReadAdapterError(str(exc)) from exc
     return result
+
+
+def read_usage_cost_v1(projection_or_store: Any) -> dict[str, Any]:
+    """Produce the safe content-free usage and cost projection and validate it."""
+    if callable(projection_or_store):
+        raw = projection_or_store()
+    elif isinstance(projection_or_store, Mapping):
+        raw = projection_or_store
+    else:
+        raise ReadAdapterError("usage-cost store must be an object or callable")
+
+    if not isinstance(raw, Mapping):
+        raise ReadAdapterError("usage-cost raw data must be an object")
+
+    period = str(raw.get("period", "current"))
+    runtimes_raw = raw.get("runtimes")
+    if not isinstance(runtimes_raw, list):
+        raise ReadAdapterError("usage-cost store must contain a runtimes array")
+
+    safe_runtimes = []
+    allowed_runtime_keys = ("id", "name", "tokens_in", "tokens_out", "cost_usd", "model", "tokens")
+    for r in runtimes_raw:
+        if not isinstance(r, Mapping):
+            raise ReadAdapterError("runtime row must be an object")
+        for req in ("id", "name", "tokens_in", "tokens_out", "cost_usd", "model"):
+            if req not in r:
+                raise ReadAdapterError(f"runtime row missing required field: {req}")
+        t_in = r["tokens_in"]
+        t_out = r["tokens_out"]
+        cost = r["cost_usd"]
+        if not isinstance(t_in, int) or isinstance(t_in, bool) or t_in < 0:
+            raise ReadAdapterError("runtime tokens_in must be a non-negative integer")
+        if not isinstance(t_out, int) or isinstance(t_out, bool) or t_out < 0:
+            raise ReadAdapterError("runtime tokens_out must be a non-negative integer")
+        if not isinstance(cost, (int, float)) or isinstance(cost, bool) or cost < 0:
+            raise ReadAdapterError("runtime cost_usd must be a non-negative number")
+        total_tok = r.get("tokens", t_in + t_out)
+        if not isinstance(total_tok, int) or isinstance(total_tok, bool) or total_tok < 0:
+            raise ReadAdapterError("runtime tokens must be a non-negative integer")
+        row = {
+            "id": str(r["id"]),
+            "name": str(r["name"]),
+            "tokens_in": t_in,
+            "tokens_out": t_out,
+            "cost_usd": float(cost),
+            "model": str(r["model"]),
+            "tokens": total_tok,
+        }
+        safe_runtimes.append(row)
+
+    history_raw = raw.get("history")
+    if not isinstance(history_raw, list):
+        raise ReadAdapterError("usage-cost store must contain a history array")
+
+    safe_history = []
+    for h in history_raw:
+        if not isinstance(h, Mapping):
+            raise ReadAdapterError("history point must be an object")
+        for req in ("at", "tokens", "cost_usd"):
+            if req not in h:
+                raise ReadAdapterError(f"history point missing required field: {req}")
+        h_tok = h["tokens"]
+        h_cost = h["cost_usd"]
+        if not isinstance(h_tok, int) or isinstance(h_tok, bool) or h_tok < 0:
+            raise ReadAdapterError("history tokens must be a non-negative integer")
+        if not isinstance(h_cost, (int, float)) or isinstance(h_cost, bool) or h_cost < 0:
+            raise ReadAdapterError("history cost_usd must be a non-negative number")
+        safe_history.append({
+            "at": str(h["at"]),
+            "tokens": h_tok,
+            "cost_usd": float(h_cost),
+        })
+
+    raw_total_tokens = raw.get("total_tokens")
+    if raw_total_tokens is not None:
+        if not isinstance(raw_total_tokens, int) or isinstance(raw_total_tokens, bool) or raw_total_tokens < 0:
+            raise ReadAdapterError("total_tokens must be a non-negative integer")
+        total_tokens = raw_total_tokens
+    else:
+        total_tokens = sum(r["tokens"] for r in safe_runtimes)
+
+    raw_total_cost = raw.get("total_cost_usd")
+    if raw_total_cost is not None:
+        if not isinstance(raw_total_cost, (int, float)) or isinstance(raw_total_cost, bool) or raw_total_cost < 0:
+            raise ReadAdapterError("total_cost_usd must be a non-negative number")
+        total_cost_usd = float(raw_total_cost)
+    else:
+        total_cost_usd = sum(r["cost_usd"] for r in safe_runtimes)
+
+    result = {
+        "schema_version": 1,
+        "period": period,
+        "total_cost_usd": total_cost_usd,
+        "total_tokens": total_tokens,
+        "runtimes": safe_runtimes,
+        "history": safe_history,
+        "runtime_tokens": [r["tokens"] for r in safe_runtimes],
+        "runtime_names": [r["name"] for r in safe_runtimes],
+        "model_costs": [r["cost_usd"] for r in safe_runtimes],
+        "model_names": [r["model"] for r in safe_runtimes],
+        "history_tokens": [h["tokens"] for h in safe_history],
+        "history_points": [h["at"] for h in safe_history],
+        "history_costs": [h["cost_usd"] for h in safe_history],
+    }
+
+    try:
+        validate(result, TYPES["usage-cost.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+

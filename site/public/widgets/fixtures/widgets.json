@@ -36,6 +36,13 @@
       "hint": "cortxt widget --view webhooks"
     },
     {
+      "id": "usage",
+      "title": "Usage & Cost",
+      "spec": "widget_contract/specs/usage-cost-0.1.yaml",
+      "artifact": "usage-cost.json",
+      "hint": "cortxt widget --view usage-cost"
+    },
+    {
       "id": "loaded",
       "title": "Loaded",
       "spec": null,

@@ -1,0 +1,42 @@
+contract_version: "0.1"
+widget:
+  id: usage-cost
+  version: "0.1"
+  title: Usage & Cost
+data:
+  reads:
+    - id: usage
+      source: store
+      operation: usage-cost.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: usage-cost.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Usage & Cost}
+  children:
+    - primitive: metric
+      props: {label: Total cost}
+      bindings:
+        value: {read: usage, pointer: /total_cost_usd, type: core.number.v1}
+    - primitive: metric
+      props: {label: Total tokens}
+      bindings:
+        value: {read: usage, pointer: /total_tokens, type: core.number.v1}
+    - primitive: bar
+      props: {label: Tokens by runtime, categories: [Hermes, Codex, Claude, DSH]}
+      bindings:
+        values: {read: usage, pointer: /runtime_tokens, type: core.array.v1}
+    - primitive: bar
+      props: {label: Cost by model, categories: [hermes-3-70b, gpt-4o, claude-3-7-sonnet, deepseek-v3]}
+      bindings:
+        values: {read: usage, pointer: /model_costs, type: core.array.v1}
+    - primitive: line
+      props: {label: Usage over time, points: ["10:00", "10:15", "10:30", "10:45", "11:00"]}
+      bindings:
+        series: {read: usage, pointer: /history_tokens, type: core.array.v1}
+actions: []
+capabilities: [read:usage-cost]

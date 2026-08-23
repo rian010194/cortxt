@@ -268,6 +268,17 @@
     .widget-divider { border: 0; border-top: 1px solid var(--atlas-border); margin: 4px 0; }
     .widget-spacer { height: 8px; }
     .widget-list-items { padding-left: 16px; font-size: 0.75rem; color: var(--muted); }
+    .chart-bars-container { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+    .chart-bar-row { display: flex; align-items: center; gap: 8px; font-size: 10px; }
+    .chart-bar-label { width: 90px; flex: none; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chart-bar-track { flex: 1; height: 8px; background: var(--layer); border: 1px solid var(--stroke); border-radius: 4px; overflow: hidden; position: relative; }
+    .chart-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s ease; }
+    .chart-bar-value { width: 60px; flex: none; text-align: right; font-family: var(--mono); color: var(--text); font-size: 9.5px; }
+    .chart-line-svg { width: 100%; height: 70px; overflow: visible; }
+    .chart-line-points-row { display: flex; justify-content: space-between; font-size: 9px; color: var(--dim); margin-top: 2px; }
+    @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: .6; transform: scale(1.1); } 100% { opacity: 1; transform: scale(1); } }
+    .pulse-dot { animation: pulse 1.5s ease-in-out infinite; transform-origin: center; }
+    .chart-latest { animation: pulse 1.5s ease-in-out infinite; }
 
     /* Studio */
     .studio-grid {

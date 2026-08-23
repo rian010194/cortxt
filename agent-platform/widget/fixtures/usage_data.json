@@ -1,0 +1,114 @@
+{
+  "states": [
+    {
+      "step": 1,
+      "timestamp": "2026-08-23T10:00:00Z",
+      "usage": {
+        "schema_version": 1,
+        "period": "2026-08-23",
+        "total_cost_usd": 0.12,
+        "total_tokens": 8200,
+        "runtimes": [
+          {"id": "hermes", "name": "Hermes", "tokens_in": 3000, "tokens_out": 1200, "cost_usd": 0.04, "model": "hermes-3-70b", "tokens": 4200},
+          {"id": "codex", "name": "Codex", "tokens_in": 1800, "tokens_out": 800, "cost_usd": 0.05, "model": "gpt-4o", "tokens": 2600},
+          {"id": "claude", "name": "Claude", "tokens_in": 600, "tokens_out": 400, "cost_usd": 0.02, "model": "claude-3-7-sonnet", "tokens": 1000},
+          {"id": "dsh", "name": "DSH", "tokens_in": 300, "tokens_out": 100, "cost_usd": 0.01, "model": "deepseek-v3", "tokens": 400}
+        ],
+        "history": [
+          {"at": "10:00", "tokens": 8200, "cost_usd": 0.12}
+        ],
+        "runtime_tokens": [4200, 2600, 1000, 400],
+        "runtime_names": ["Hermes", "Codex", "Claude", "DSH"],
+        "model_costs": [0.04, 0.05, 0.02, 0.01],
+        "model_names": ["hermes-3-70b", "gpt-4o", "claude-3-7-sonnet", "deepseek-v3"],
+        "history_tokens": [8200],
+        "history_points": ["10:00"],
+        "history_costs": [0.12]
+      }
+    },
+    {
+      "step": 2,
+      "timestamp": "2026-08-23T10:30:00Z",
+      "usage": {
+        "schema_version": 1,
+        "period": "2026-08-23",
+        "total_cost_usd": 0.28,
+        "total_tokens": 16400,
+        "runtimes": [
+          {"id": "hermes", "name": "Hermes", "tokens_in": 5800, "tokens_out": 2600, "cost_usd": 0.08, "model": "hermes-3-70b", "tokens": 8400},
+          {"id": "codex", "name": "Codex", "tokens_in": 3600, "tokens_out": 1600, "cost_usd": 0.10, "model": "gpt-4o", "tokens": 5200},
+          {"id": "claude", "name": "Claude", "tokens_in": 1200, "tokens_out": 800, "cost_usd": 0.06, "model": "claude-3-7-sonnet", "tokens": 2000},
+          {"id": "dsh", "name": "DSH", "tokens_in": 600, "tokens_out": 200, "cost_usd": 0.04, "model": "deepseek-v3", "tokens": 800}
+        ],
+        "history": [
+          {"at": "10:00", "tokens": 8200, "cost_usd": 0.12},
+          {"at": "10:15", "tokens": 12300, "cost_usd": 0.20},
+          {"at": "10:30", "tokens": 16400, "cost_usd": 0.28}
+        ],
+        "runtime_tokens": [8400, 5200, 2000, 800],
+        "runtime_names": ["Hermes", "Codex", "Claude", "DSH"],
+        "model_costs": [0.08, 0.10, 0.06, 0.04],
+        "model_names": ["hermes-3-70b", "gpt-4o", "claude-3-7-sonnet", "deepseek-v3"],
+        "history_tokens": [8200, 12300, 16400],
+        "history_points": ["10:00", "10:15", "10:30"],
+        "history_costs": [0.12, 0.20, 0.28]
+      }
+    },
+    {
+      "step": 3,
+      "timestamp": "2026-08-23T11:00:00Z",
+      "usage": {
+        "schema_version": 1,
+        "period": "2026-08-23",
+        "total_cost_usd": 0.42,
+        "total_tokens": 24800,
+        "runtimes": [
+          {"id": "hermes", "name": "Hermes", "tokens_in": 8000, "tokens_out": 4000, "cost_usd": 0.12, "model": "hermes-3-70b", "tokens": 12000},
+          {"id": "codex", "name": "Codex", "tokens_in": 6000, "tokens_out": 2500, "cost_usd": 0.15, "model": "gpt-4o", "tokens": 8500},
+          {"id": "claude", "name": "Claude", "tokens_in": 2000, "tokens_out": 1200, "cost_usd": 0.10, "model": "claude-3-7-sonnet", "tokens": 3200},
+          {"id": "dsh", "name": "DSH", "tokens_in": 800, "tokens_out": 300, "cost_usd": 0.05, "model": "deepseek-v3", "tokens": 1100}
+        ],
+        "history": [
+          {"at": "10:00", "tokens": 3000, "cost_usd": 0.05},
+          {"at": "10:15", "tokens": 7500, "cost_usd": 0.12},
+          {"at": "10:30", "tokens": 14000, "cost_usd": 0.22},
+          {"at": "10:45", "tokens": 19500, "cost_usd": 0.31},
+          {"at": "11:00", "tokens": 24800, "cost_usd": 0.42}
+        ],
+        "runtime_tokens": [12000, 8500, 3200, 1100],
+        "runtime_names": ["Hermes", "Codex", "Claude", "DSH"],
+        "model_costs": [0.12, 0.15, 0.10, 0.05],
+        "model_names": ["hermes-3-70b", "gpt-4o", "claude-3-7-sonnet", "deepseek-v3"],
+        "history_tokens": [3000, 7500, 14000, 19500, 24800],
+        "history_points": ["10:00", "10:15", "10:30", "10:45", "11:00"],
+        "history_costs": [0.05, 0.12, 0.22, 0.31, 0.42]
+      }
+    }
+  ],
+  "usage": {
+    "schema_version": 1,
+    "period": "2026-08-23",
+    "total_cost_usd": 0.42,
+    "total_tokens": 24800,
+    "runtimes": [
+      {"id": "hermes", "name": "Hermes", "tokens_in": 8000, "tokens_out": 4000, "cost_usd": 0.12, "model": "hermes-3-70b", "tokens": 12000},
+      {"id": "codex", "name": "Codex", "tokens_in": 6000, "tokens_out": 2500, "cost_usd": 0.15, "model": "gpt-4o", "tokens": 8500},
+      {"id": "claude", "name": "Claude", "tokens_in": 2000, "tokens_out": 1200, "cost_usd": 0.10, "model": "claude-3-7-sonnet", "tokens": 3200},
+      {"id": "dsh", "name": "DSH", "tokens_in": 800, "tokens_out": 300, "cost_usd": 0.05, "model": "deepseek-v3", "tokens": 1100}
+    ],
+    "history": [
+      {"at": "10:00", "tokens": 3000, "cost_usd": 0.05},
+      {"at": "10:15", "tokens": 7500, "cost_usd": 0.12},
+      {"at": "10:30", "tokens": 14000, "cost_usd": 0.22},
+      {"at": "10:45", "tokens": 19500, "cost_usd": 0.31},
+      {"at": "11:00", "tokens": 24800, "cost_usd": 0.42}
+    ],
+    "runtime_tokens": [12000, 8500, 3200, 1100],
+    "runtime_names": ["Hermes", "Codex", "Claude", "DSH"],
+    "model_costs": [0.12, 0.15, 0.10, 0.05],
+    "model_names": ["hermes-3-70b", "gpt-4o", "claude-3-7-sonnet", "deepseek-v3"],
+    "history_tokens": [3000, 7500, 14000, 19500, 24800],
+    "history_points": ["10:00", "10:15", "10:30", "10:45", "11:00"],
+    "history_costs": [0.05, 0.12, 0.22, 0.31, 0.42]
+  }
+}
