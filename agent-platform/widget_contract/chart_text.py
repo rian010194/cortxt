@@ -126,3 +126,102 @@ def render_line_text(node: Any) -> str:
     lines.append(f"Series: {' -> '.join(val_strs)}")
 
     return "\n".join(lines)
+
+
+SPARK_CHARS = (" ", "▂", "▃", "▄", "▅", "▆", "▇", "█")
+
+
+def render_bar_gauge(
+    label: str,
+    value: float | int,
+    max_value: float | int = 100,
+    width: int = 10,
+    colors: Mapping[str, str] | None = None,
+) -> str:
+    """Render a horizontal bar gauge.
+
+    Example:
+        CPU         |####------| 42
+
+    Parameters:
+        label: Bar label.
+        value: Numerical value.
+        max_value: Maximum scale value (defaults to 100).
+        width: Character width of the inner bar (defaults to 10).
+        colors: Optional mapping of color names to ANSI escape codes.
+
+    Returns:
+        Formatted bar gauge string.
+    """
+    col_map = colors or {}
+    accent = col_map.get("accent", "")
+    dim = col_map.get("dim", "")
+    reset = col_map.get("reset", "")
+
+    if max_value > 0:
+        ratio = min(1.0, max(0.0, float(value) / float(max_value)))
+    else:
+        ratio = 0.0
+
+    filled_count = int(round(ratio * width))
+    empty_count = max(0, width - filled_count)
+
+    filled_bar = "#" * filled_count
+    if accent and filled_bar:
+        filled_bar = f"{accent}{filled_bar}{reset}"
+
+    empty_bar = "-" * empty_count
+    if dim and empty_bar:
+        empty_bar = f"{dim}{empty_bar}{reset}"
+
+    bar_str = f"|{filled_bar}{empty_bar}|"
+    if label:
+        return f"{label.ljust(10)}  {bar_str} {value}"
+    return f"{bar_str} {value}"
+
+
+def render_line_spark(
+    points: Sequence[float | int],
+    label: str = "",
+    width: int = 20,
+    colors: Mapping[str, str] | None = None,
+) -> str:
+    """Render a sparkline from numerical points.
+
+    Parameters:
+        points: Sequence of numerical values.
+        label: Optional prefix label.
+        width: Maximum number of points to sample/render.
+        colors: Optional mapping of color names to ANSI escape codes.
+
+    Returns:
+        Formatted sparkline string.
+    """
+    col_map = colors or {}
+    accent = col_map.get("accent", "")
+    reset = col_map.get("reset", "")
+
+    if not points:
+        empty_str = "(no points)"
+        return f"{label}: {empty_str}" if label else empty_str
+
+    sampled = list(points[-width:]) if len(points) > width else list(points)
+    min_val = min(sampled)
+    max_val = max(sampled)
+    val_range = max_val - min_val
+
+    chars: list[str] = []
+    for p in sampled:
+        if val_range == 0:
+            idx = 0
+        else:
+            idx = min(len(SPARK_CHARS) - 1, int((p - min_val) / val_range * (len(SPARK_CHARS) - 1)))
+        chars.append(SPARK_CHARS[idx])
+
+    spark_str = "".join(chars)
+    if accent:
+        spark_str = f"{accent}{spark_str}{reset}"
+
+    if label:
+        return f"{label}: {spark_str}"
+    return spark_str

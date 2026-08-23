@@ -1152,6 +1152,8 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
     through ActionExecutor with the operator gate.
     """
     try:
+        is_tui = getattr(args, "tui", False) or getattr(args, "format", None) == "tui"
+        force_ansi = True if getattr(args, "tui", False) else (None if getattr(args, "format", None) == "tui" else False)
         view = getattr(args, "view", None)
         if view == "session-pulse":
             ap_path = _get_agent_platform_path()
@@ -1183,9 +1185,13 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "session-pulse.json")
             artifact = {**tree, "repo": None, "error": error}
             _write_widget_artifact(artifact, output_path)
-            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
-                                                           if node["primitive"] == "table"]}
-            print(json.dumps(stdout_tree, indent=2))
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] == "table"]}
+                print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"session-pulse:{output_path}"],
                                   evidence=[{"session_pulse": tree}])
         if view == "execution-map":
@@ -1225,9 +1231,13 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "execution-map.json")
             artifact = {**tree, "repo": None, "error": error}
             _write_widget_artifact(artifact, output_path)
-            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
-                                                           if node["primitive"] in ("table", "list")]}
-            print(json.dumps(stdout_tree, indent=2))
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("table", "list")]}
+                print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"execution-map:{output_path}"],
                                   evidence=[{"execution_map": tree}])
         if view == "docker-status":
@@ -1260,9 +1270,13 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "docker-status.json")
             artifact = {**tree, "repo": None, "error": error}
             _write_widget_artifact(artifact, output_path)
-            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
-                                                           if node["primitive"] in ("table", "list", "key-value", "metric")]}
-            print(json.dumps(stdout_tree, indent=2))
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("table", "list", "key-value", "metric")]}
+                print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"docker-status:{output_path}"],
                                   evidence=[{"docker_status": tree}])
         if view == "webhooks":
@@ -1325,9 +1339,13 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "webhooks.json")
             artifact = {**tree, "repo": repo, "error": error}
             _write_widget_artifact(artifact, output_path)
-            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
-                                                           if node["primitive"] in ("table", "metric", "key-value")]}
-            print(json.dumps(stdout_tree, indent=2))
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("table", "metric", "key-value")]}
+                print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"webhooks:{output_path}"],
                                   evidence=[{"webhooks": tree}])
         if view == "pages-deploys":
@@ -1366,9 +1384,13 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "pages-deploys.json")
             artifact = {**tree, "repo": None, "error": error}
             _write_widget_artifact(artifact, output_path)
-            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
-                                                           if node["primitive"] in ("table", "key-value")]}
-            print(json.dumps(stdout_tree, indent=2))
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("table", "key-value")]}
+                print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"pages-deploys:{output_path}"],
                                   evidence=[{"pages_deploys": tree}])
         if view == "usage-cost":
@@ -1423,16 +1445,19 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
                                    "authorization": dict(a.authorization), "confirm": dict(a.confirm)}
                                   for a in widget.actions]
             model = read_candidates_view(repo, actions=action_descriptors)
-            if getattr(args, "widget_command", None) is None:
-                source_status = model["source"]["status"]
-                tree = render(widget, {"candidates": model}, {"candidates": source_status})
-                output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "candidates.json")
-                artifact = {**tree, "handoffs": model["handoffs"], "repo": repo}
-                _write_widget_artifact(artifact, output_path)
+            source_status = model["source"]["status"]
+            tree = render(widget, {"candidates": model}, {"candidates": source_status})
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "candidates.json")
+            artifact = {**tree, "handoffs": model["handoffs"], "repo": repo}
+            _write_widget_artifact(artifact, output_path)
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi))
+            elif getattr(args, "widget_command", None) is None:
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"]["children"]
                                                                if node["primitive"] == "table"]}
                 print(json.dumps(stdout_tree, indent=2))
-            elif args.format == "json":
+            elif getattr(args, "format", None) == "json":
                 print(json.dumps(model, indent=2))
             else:
                 for group in model["groups"]:
@@ -2410,10 +2435,14 @@ def main(argv: list[str] | None = None) -> int:
     widget_parser.add_argument("--plan-input", type=Path, help="Execution-map plan input JSON for the execution-map view")
     widget_parser.add_argument("--enable-actions", action="store_true",
                                help="Mount the operator-gated mutation endpoint (POST /api/action) on the loopback host (ADR-038 host boundary); default remains read-only")
+    widget_parser.add_argument("--tui", action="store_true", help="Render token-styled TUI output (forces ANSI even if piped)")
+    widget_parser.add_argument("--format", choices=["table", "json", "tui"], default=None,
+                               help="Output format for view output (default: table / json backward compatible)")
     widget_sub = widget_parser.add_subparsers(dest="widget_command")
     widget_candidates = widget_sub.add_parser("candidates", help="List the canonical actionable frontier and all open issues")
     widget_candidates.add_argument("--repo", required=True, help="GitHub owner/repo")
-    widget_candidates.add_argument("--format", choices=["table", "json"], default="table")
+    widget_candidates.add_argument("--format", choices=["table", "json", "tui"], default="table")
+    widget_candidates.add_argument("--tui", action="store_true", help="Render token-styled TUI output (forces ANSI even if piped)")
     widget_action = widget_sub.add_parser("action", help="Execute a registered authorized widget action")
     widget_action.add_argument("action_id", choices=["mark-ready", "claim-run"], help="Registered action id")
     widget_action.add_argument("--repo", required=True, help="GitHub owner/repo")
