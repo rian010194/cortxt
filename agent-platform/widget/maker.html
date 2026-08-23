@@ -294,6 +294,35 @@
       font-size: 10px;
       font-family: var(--mono);
     }
+    .token-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .token-chip {
+      padding: 6px 8px;
+      border: 1px solid var(--stroke);
+      border-radius: 6px;
+      background: var(--layer);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .token-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      border: 1px solid var(--stroke);
+      flex: none;
+    }
+    .token-label {
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -315,6 +344,7 @@
   <nav class="main-nav">
     <button class="tab-btn active" id="btn-gallery" onclick="switchMode('gallery')">Gallery View</button>
     <button class="tab-btn" id="btn-studio" onclick="switchMode('studio')">Maker Studio &amp; Spec Editor</button>
+    <button class="tab-btn" id="btn-tokens" onclick="switchMode('tokens')">Tokens Editor</button>
   </nav>
 
   <!-- Section 1: Gallery View -->
@@ -374,6 +404,39 @@
             </div>
             <pre class="cli-json" id="studio-json-text">{}</pre>
           </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Tokens Editor -->
+  <section class="view-section hidden" id="section-tokens">
+    <div class="studio-container">
+      <div class="editor-pane">
+        <div class="editor-toolbar">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="eyebrow">Visual Design Tokens (JSON)</span>
+            <span class="badge ok" id="tokens-status-badge">applied</span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="candidate-copy" id="tokens-apply-btn" onclick="applyEditedTokens()">Apply</button>
+            <button class="candidate-copy" id="tokens-reset-btn" onclick="resetTokensToDefaults()">Reset to defaults</button>
+          </div>
+        </div>
+        <div class="editor-body">
+          <span class="eyebrow">Editable Tokens</span>
+          <textarea class="code-input" id="tokens-editor-input" spellcheck="false" oninput="handleTokensInput()"></textarea>
+          <div class="error-banner hidden" id="tokens-error-line"></div>
+          <div class="status-ok hidden" id="tokens-success-line">Tokens valid and applied.</div>
+        </div>
+      </div>
+      <div class="editor-pane">
+        <div class="editor-toolbar">
+          <span class="eyebrow">Live Token Preview &amp; Color Chips</span>
+          <span class="badge" id="tokens-preview-badge">live preview</span>
+        </div>
+        <div class="editor-body" id="tokens-preview-pane" style="background:#090c1580;overflow:auto;">
+          <!-- Injected by renderTokensPreview() -->
         </div>
       </div>
     </div>
@@ -737,12 +800,209 @@ render:
 
     let studioCliCmd = "cortxt widget load --spec custom.yaml --view loaded";
 
+    let currentTokens = WidgetMaker.defaultTokens();
+    let lastGoodTokens = WidgetMaker.defaultTokens();
+    let tokensDebounce = null;
+
     function switchMode(mode) {
       const isGallery = mode === "gallery";
+      const isStudio = mode === "studio";
+      const isTokens = mode === "tokens";
+
       document.getElementById("btn-gallery").classList.toggle("active", isGallery);
-      document.getElementById("btn-studio").classList.toggle("active", !isGallery);
+      document.getElementById("btn-studio").classList.toggle("active", isStudio);
+      document.getElementById("btn-tokens").classList.toggle("active", isTokens);
+
       document.getElementById("section-gallery").classList.toggle("hidden", !isGallery);
-      document.getElementById("section-studio").classList.toggle("hidden", isGallery);
+      document.getElementById("section-studio").classList.toggle("hidden", !isStudio);
+      document.getElementById("section-tokens").classList.toggle("hidden", !isTokens);
+    }
+
+    async function initTokens() {
+      try {
+        const resp = await fetch("tokens.json", { cache: "no-store" });
+        if (resp.ok) {
+          const json = await resp.json();
+          currentTokens = json;
+          lastGoodTokens = JSON.parse(JSON.stringify(json));
+          WidgetMaker.applyTokens(currentTokens);
+        }
+      } catch (e) {
+        currentTokens = WidgetMaker.defaultTokens();
+        lastGoodTokens = WidgetMaker.defaultTokens();
+        WidgetMaker.applyTokens(currentTokens);
+      }
+      populateTokensEditor();
+      renderTokensPreview();
+    }
+
+    function populateTokensEditor() {
+      const input = document.getElementById("tokens-editor-input");
+      if (input) {
+        input.value = JSON.stringify(currentTokens, null, 2);
+      }
+    }
+
+    function handleTokensInput() {
+      clearTimeout(tokensDebounce);
+      tokensDebounce = setTimeout(applyEditedTokens, 150);
+    }
+
+    function applyEditedTokens() {
+      const input = document.getElementById("tokens-editor-input");
+      const errLine = document.getElementById("tokens-error-line");
+      const succLine = document.getElementById("tokens-success-line");
+      const statusBadge = document.getElementById("tokens-status-badge");
+      if (!input) return;
+
+      const raw = input.value.trim();
+      let parsed = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        // Fail-closed: Show error, keep lastGoodTokens applied, never crash/blank
+        if (errLine) {
+          errLine.textContent = "Malformed JSON: " + e.message;
+          errLine.classList.remove("hidden");
+        }
+        if (succLine) succLine.classList.add("hidden");
+        if (statusBadge) {
+          statusBadge.className = "badge err";
+          statusBadge.textContent = "error";
+        }
+        return;
+      }
+
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        if (errLine) {
+          errLine.textContent = "Tokens must be a JSON object.";
+          errLine.classList.remove("hidden");
+        }
+        if (succLine) succLine.classList.add("hidden");
+        if (statusBadge) {
+          statusBadge.className = "badge err";
+          statusBadge.textContent = "invalid";
+        }
+        return;
+      }
+
+      const requiredSections = ["colors", "typography", "spacing", "radius", "density"];
+      const missing = requiredSections.filter(s => !parsed[s] || typeof parsed[s] !== "object");
+      if (missing.length > 0) {
+        if (errLine) {
+          errLine.textContent = "Missing required token sections: " + missing.join(", ");
+          errLine.classList.remove("hidden");
+        }
+        if (succLine) succLine.classList.add("hidden");
+        if (statusBadge) {
+          statusBadge.className = "badge err";
+          statusBadge.textContent = "invalid";
+        }
+        return;
+      }
+
+      // Valid tokens: apply and update last good state
+      currentTokens = parsed;
+      lastGoodTokens = JSON.parse(JSON.stringify(parsed));
+      WidgetMaker.applyTokens(currentTokens);
+
+      if (errLine) errLine.classList.add("hidden");
+      if (succLine) {
+        succLine.textContent = "Tokens valid and applied.";
+        succLine.classList.remove("hidden");
+      }
+      if (statusBadge) {
+        statusBadge.className = "badge ok";
+        statusBadge.textContent = "applied";
+      }
+
+      renderTokensPreview();
+    }
+
+    function resetTokensToDefaults() {
+      currentTokens = WidgetMaker.defaultTokens();
+      lastGoodTokens = WidgetMaker.defaultTokens();
+      WidgetMaker.applyTokens(currentTokens);
+      populateTokensEditor();
+
+      const errLine = document.getElementById("tokens-error-line");
+      const succLine = document.getElementById("tokens-success-line");
+      const statusBadge = document.getElementById("tokens-status-badge");
+      if (errLine) errLine.classList.add("hidden");
+      if (succLine) {
+        succLine.textContent = "Reset to default tokens.";
+        succLine.classList.remove("hidden");
+      }
+      if (statusBadge) {
+        statusBadge.className = "badge ok";
+        statusBadge.textContent = "defaults";
+      }
+
+      renderTokensPreview();
+    }
+
+    function renderTokensPreview() {
+      const pane = document.getElementById("tokens-preview-pane");
+      if (!pane) return;
+      pane.replaceChildren();
+
+      const colors = currentTokens.colors || {};
+      const colorSec = document.createElement("div");
+      colorSec.className = "candidate-group";
+      const colorHead = document.createElement("h3");
+      colorHead.textContent = "Color Palette Chips";
+      colorSec.append(colorHead);
+
+      const grid = document.createElement("div");
+      grid.className = "token-grid";
+      Object.keys(colors).forEach(k => {
+        const chip = document.createElement("div");
+        chip.className = "token-chip";
+        const swatch = document.createElement("div");
+        swatch.className = "token-swatch";
+        swatch.style.backgroundColor = colors[k];
+        const lbl = document.createElement("span");
+        lbl.className = "token-label";
+        lbl.textContent = `${k}: ${colors[k]}`;
+        chip.append(swatch, lbl);
+        grid.append(chip);
+      });
+      colorSec.append(grid);
+      pane.append(colorSec);
+
+      // Components sample preview
+      const compSec = document.createElement("div");
+      compSec.className = "candidate-group";
+      compSec.style.marginTop = "10px";
+      const compHead = document.createElement("h3");
+      compHead.textContent = "Sample Widget Elements";
+      compSec.append(compHead);
+
+      const stack = document.createElement("div");
+      stack.className = "widget-stack";
+
+      const badgeRow = document.createElement("div");
+      badgeRow.className = "widget-row";
+      badgeRow.innerHTML = `
+        <span class="badge">accent</span>
+        <span class="badge ok">ok</span>
+        <span class="badge err">bad</span>
+        <span class="badge off">off / dim</span>
+      `;
+      stack.append(badgeRow);
+
+      const stat = document.createElement("div");
+      stat.className = "pulse-stat";
+      stat.innerHTML = `<b>99.9%</b><span>Health SLA</span>`;
+      stack.append(stat);
+
+      const statusBlock = document.createElement("div");
+      statusBlock.className = "pulse-status";
+      statusBlock.textContent = "Visual tokens active across browser host, maker studio, and CLI.";
+      stack.append(statusBlock);
+
+      compSec.append(stack);
+      pane.append(compSec);
     }
 
     function copyText(text, btn) {
@@ -964,6 +1224,7 @@ render:
     }
 
     // Initialize
+    initTokens();
     loadManifestAndRender();
     loadPreset("candidates");
   </script>

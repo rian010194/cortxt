@@ -618,11 +618,156 @@
     return JSON.stringify(tree, null, 2);
   }
 
+  /**
+   * Bundled default visual tokens fallback.
+   * Encodes the dark-theme defaults shared across browser, maker, and CLI surfaces.
+   */
+  const DEFAULT_TOKENS = {
+    schema_version: 1,
+    colors: {
+      background: "#080b14",
+      surface: "#101522",
+      layer: "#ffffff0d",
+      hover: "#ffffff15",
+      stroke: "#29324a",
+      strong: "#3a4562",
+      text: "#f4f7ff",
+      muted: "#aab3c5",
+      dim: "#8792a8",
+      accent: "#4d6bfe",
+      blue: "#3151d8",
+      ok: "#68d391",
+      warn: "#f6c85f",
+      bad: "#ff7a90"
+    },
+    typography: {
+      sans: ["Inter", "Segoe UI Variable", "Segoe UI", "sans-serif"],
+      mono: ["Cascadia Code", "Cascadia Mono", "Consolas", "monospace"],
+      size_base: "12px",
+      size_small: "10px",
+      size_heading: "14px",
+      weight_normal: 400,
+      weight_bold: 600
+    },
+    spacing: {
+      unit: "4px",
+      gap_small: "4px",
+      gap_medium: "8px",
+      gap_large: "16px",
+      padding_small: "6px",
+      padding_medium: "12px"
+    },
+    radius: {
+      small: "4px",
+      medium: "6px",
+      large: "12px"
+    },
+    density: {
+      row_height: "28px",
+      card_max_height: "520px",
+      grid_min_card_width: "280px"
+    }
+  };
+
+  /**
+   * Returns a copy of the bundled default visual tokens.
+   */
+  function defaultTokens() {
+    return JSON.parse(JSON.stringify(DEFAULT_TOKENS));
+  }
+
+  /**
+   * Apply visual tokens to a DOM element (defaults to document.documentElement :root).
+   * Sets both --token-* custom properties and base theme variables for backward compatibility.
+   */
+  function applyTokens(tokens, target) {
+    if (!tokens || typeof tokens !== "object") return;
+    const el = target || (typeof document !== "undefined" && document.documentElement ? document.documentElement : null);
+    if (!el || !el.style || typeof el.style.setProperty !== "function") return;
+
+    if (tokens.colors && typeof tokens.colors === "object") {
+      const c = tokens.colors;
+      if (c.background) { el.style.setProperty("--token-bg", c.background); el.style.setProperty("--token-background", c.background); el.style.setProperty("--background", c.background); }
+      if (c.surface) { el.style.setProperty("--token-surface", c.surface); el.style.setProperty("--surface", c.surface); }
+      if (c.layer) { el.style.setProperty("--token-layer", c.layer); el.style.setProperty("--layer", c.layer); }
+      if (c.hover) { el.style.setProperty("--token-hover", c.hover); el.style.setProperty("--hover", c.hover); }
+      if (c.stroke) { el.style.setProperty("--token-stroke", c.stroke); el.style.setProperty("--stroke", c.stroke); }
+      if (c.strong) { el.style.setProperty("--token-strong", c.strong); el.style.setProperty("--strong", c.strong); }
+      if (c.text) { el.style.setProperty("--token-text", c.text); el.style.setProperty("--text", c.text); }
+      if (c.muted) { el.style.setProperty("--token-muted", c.muted); el.style.setProperty("--muted", c.muted); }
+      if (c.dim) { el.style.setProperty("--token-dim", c.dim); el.style.setProperty("--dim", c.dim); }
+      if (c.accent) { el.style.setProperty("--token-accent", c.accent); el.style.setProperty("--accent", c.accent); }
+      if (c.blue) { el.style.setProperty("--token-blue", c.blue); el.style.setProperty("--blue", c.blue); }
+      if (c.ok) { el.style.setProperty("--token-ok", c.ok); el.style.setProperty("--ok", c.ok); }
+      if (c.warn) { el.style.setProperty("--token-warn", c.warn); el.style.setProperty("--warn", c.warn); }
+      if (c.bad) { el.style.setProperty("--token-bad", c.bad); el.style.setProperty("--bad", c.bad); }
+    }
+
+    if (tokens.typography && typeof tokens.typography === "object") {
+      const t = tokens.typography;
+      if (t.sans) {
+        const sansVal = Array.isArray(t.sans) ? t.sans.join(", ") : String(t.sans);
+        el.style.setProperty("--token-font-sans", sansVal);
+        el.style.setProperty("--sans", sansVal);
+      }
+      if (t.mono) {
+        const monoVal = Array.isArray(t.mono) ? t.mono.join(", ") : String(t.mono);
+        el.style.setProperty("--token-font-mono", monoVal);
+        el.style.setProperty("--mono", monoVal);
+      }
+      if (t.size_base !== undefined) el.style.setProperty("--token-size-base", typeof t.size_base === "number" ? t.size_base + "px" : String(t.size_base));
+      if (t.size_small !== undefined) el.style.setProperty("--token-size-small", typeof t.size_small === "number" ? t.size_small + "px" : String(t.size_small));
+      if (t.size_heading !== undefined) el.style.setProperty("--token-size-heading", typeof t.size_heading === "number" ? t.size_heading + "px" : String(t.size_heading));
+      if (t.weight_normal !== undefined) el.style.setProperty("--token-weight-normal", String(t.weight_normal));
+      if (t.weight_bold !== undefined) el.style.setProperty("--token-weight-bold", String(t.weight_bold));
+    }
+
+    if (tokens.spacing && typeof tokens.spacing === "object") {
+      const s = tokens.spacing;
+      if (s.unit !== undefined) el.style.setProperty("--token-unit", typeof s.unit === "number" ? s.unit + "px" : String(s.unit));
+      if (s.gap_small !== undefined) el.style.setProperty("--token-gap-small", typeof s.gap_small === "number" ? s.gap_small + "px" : String(s.gap_small));
+      if (s.gap_medium !== undefined) {
+        const gapVal = typeof s.gap_medium === "number" ? s.gap_medium + "px" : String(s.gap_medium);
+        el.style.setProperty("--token-gap-medium", gapVal);
+        el.style.setProperty("--token-gap", gapVal);
+      }
+      if (s.gap_large !== undefined) el.style.setProperty("--token-gap-large", typeof s.gap_large === "number" ? s.gap_large + "px" : String(s.gap_large));
+      if (s.padding_small !== undefined) el.style.setProperty("--token-padding-small", typeof s.padding_small === "number" ? s.padding_small + "px" : String(s.padding_small));
+      if (s.padding_medium !== undefined) el.style.setProperty("--token-padding-medium", typeof s.padding_medium === "number" ? s.padding_medium + "px" : String(s.padding_medium));
+    }
+
+    if (tokens.radius && typeof tokens.radius === "object") {
+      const r = tokens.radius;
+      if (r.small !== undefined) el.style.setProperty("--token-radius-small", typeof r.small === "number" ? r.small + "px" : String(r.small));
+      if (r.medium !== undefined) {
+        const radVal = typeof r.medium === "number" ? r.medium + "px" : String(r.medium);
+        el.style.setProperty("--token-radius-medium", radVal);
+        el.style.setProperty("--token-radius", radVal);
+      }
+      if (r.large !== undefined) el.style.setProperty("--token-radius-large", typeof r.large === "number" ? r.large + "px" : String(r.large));
+    }
+
+    if (tokens.density && typeof tokens.density === "object") {
+      const d = tokens.density;
+      if (d.row_height !== undefined) el.style.setProperty("--token-row-height", typeof d.row_height === "number" ? d.row_height + "px" : String(d.row_height));
+      if (d.card_max_height !== undefined) el.style.setProperty("--token-card-max-height", typeof d.card_max_height === "number" ? d.card_max_height + "px" : String(d.card_max_height));
+      if (d.grid_min_card_width !== undefined) el.style.setProperty("--token-grid-min-card-width", typeof d.grid_min_card_width === "number" ? d.grid_min_card_width + "px" : String(d.grid_min_card_width));
+    }
+  }
+
+  // Automatically apply default tokens on DOM load if running in browser
+  if (typeof document !== "undefined" && document.documentElement) {
+    applyTokens(DEFAULT_TOKENS);
+  }
+
   return {
     resolvePointer: resolvePointer,
     parseYamlSubset: parseYamlSubset,
     renderSpec: renderSpec,
     renderNodeToDom: renderNodeToDom,
     formatCliOutput: formatCliOutput,
+    DEFAULT_TOKENS: DEFAULT_TOKENS,
+    defaultTokens: defaultTokens,
+    applyTokens: applyTokens,
   };
 });
