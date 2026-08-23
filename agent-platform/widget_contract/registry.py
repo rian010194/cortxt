@@ -61,6 +61,8 @@ CANDIDATES_VIEW_SCHEMA = {"type": "object", "additionalProperties": False, "requ
 EXECUTION_MAP_ISSUE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["id", "wave", "blockers", "drift_codes", "launchable"], "properties": {"id": {"type": "string"}, "wave": {"type": ["integer", "null"]}, "blockers": {"type": "array", "items": {"type": "string"}}, "drift_codes": {"type": "array", "items": {"type": "string"}}, "launchable": {"type": "boolean"}}}
 EXECUTION_MAP_CLAIM_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["claim_id", "issue_id", "run_id", "state", "lease_expires_at", "driver_id"], "properties": {"claim_id": {"type": "string"}, "issue_id": {"type": "string"}, "run_id": {"type": "string"}, "state": {"type": "string"}, "lease_expires_at": {"type": ["number", "null"]}, "driver_id": {"type": "string"}}}
 EXECUTION_MAP_PLAN_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["role", "issues", "waves", "claims", "collision_codes"], "properties": {"role": {"type": "string"}, "issues": {"type": "array", "items": EXECUTION_MAP_ISSUE_SCHEMA}, "waves": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}, "claims": {"type": "array", "items": EXECUTION_MAP_CLAIM_SCHEMA}, "collision_codes": {"type": "array", "items": {"type": "string"}}}}
+DOCKER_CONTAINER_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["id", "name", "image", "status"], "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "image": {"type": "string"}, "status": {"type": "string"}}}
+DOCKER_STATUS_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "engine", "containers", "images", "total_containers", "running_containers"], "properties": {"schema_version": {"const": 1}, "engine": {"type": "object"}, "containers": {"type": "array", "items": DOCKER_CONTAINER_SCHEMA}, "images": {"type": "array", "items": {"type": "string"}}, "total_containers": {"type": "integer", "minimum": 0}, "running_containers": {"type": "integer", "minimum": 0}}}
 
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
@@ -69,6 +71,7 @@ TYPES = {
     "issues.all-open.list.v1": TypeEntry(ALL_OPEN_ISSUES_SCHEMA, "public-metadata"),
     "candidates.view.v1": TypeEntry(CANDIDATES_VIEW_SCHEMA, "public-metadata"),
     "execution-map.plan.v1": TypeEntry(EXECUTION_MAP_PLAN_SCHEMA, "operational"),
+    "docker.status.v1": TypeEntry(DOCKER_STATUS_SCHEMA, "operational"),
     "issue.workflow.v1": TypeEntry({"type": "object"}, "public-metadata"),
     "core.string.v1": TypeEntry({"type": "string"}, "public-metadata"),
     "core.number.v1": TypeEntry({"type": "number"}, "public-metadata"),
@@ -85,6 +88,7 @@ READ_OPERATIONS = {
     "issues.all_open.list.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo"], "properties": {"repo": {"type": "string"}}}, "issues.all-open.list.v1", "public-metadata", 30000, 30, 30, "read:issues"),
     "candidates.view.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo"], "properties": {"repo": {"type": "string"}}}, "candidates.view.v1", "public-metadata", 30000, 30, 30, "read:issues"),
     "execution-map.plan.v1": ReadOperation("store", JSON_OBJECT, "execution-map.plan.v1", "operational", 500, 60, 2, "read:execution-map"),
+    "docker.status.v1": ReadOperation("store", JSON_OBJECT, "docker.status.v1", "operational", 500, 60, 2, "read:docker"),
     "issue.workflow.get.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["issue_number"], "properties": {"issue_number": {"type": "integer", "minimum": 1}}}, "issue.workflow.v1", "public-metadata", 2000, 30, 30, "read:issue-workflow", True),
 }
 
