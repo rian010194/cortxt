@@ -16,6 +16,10 @@ from dispatcher import Dispatcher, RunRegistry
 from execution_map import (ClaimConflict, ClaimRecord, ClaimStore, Issue,
                            SqliteClaimStore, collision_keys, derive_graph,
                            preflight_validate, validate_receipt)
+from launcher_inventory import (InventoryUnavailable, daemon_claims_reader,
+                                dispatcher_registry_reader, git_resources_reader,
+                                lifecycle_sessions_reader, make_graph_reader,
+                                writer_domain_reader)
 from worker_adapters import dispatch_async
 
 FORBIDDEN = re.compile(r"[\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6]")
@@ -119,10 +123,20 @@ class WorkLauncher:
     def _missing_issue_reader(issue_id: str) -> Mapping[str, Any]:
         raise ExecutionGateError("issue_reader_required")
 
-    def _snapshot(self) -> tuple[dict[str, Sequence[Mapping[str, Any]]], Sequence[Mapping[str, Any]]]:
-        inventories = {name: tuple(self.inventory_readers.get(name, lambda: ())())
-                       for name in self.INVENTORY_NAMES}
-        return inventories, tuple(self.writer_reader())
+    def _snapshot(self) -> tuple[dict[str, Sequence[Mapping[str, Any]]], Sequence[Mapping[str, Any]], list[tuple[str, str]]]:
+        inventories: dict[str, Sequence[Mapping[str, Any]]] = {}
+        unavailable: list[tuple[str, str]] = []
+        for name in self.INVENTORY_NAMES:
+            reader = self.inventory_readers.get(name)
+            if reader is None:
+                inventories[name] = ()
+                continue
+            try:
+                inventories[name] = tuple(reader())
+            except InventoryUnavailable as exc:
+                inventories[name] = ()
+                unavailable.append((name, str(exc)))
+        return inventories, tuple(self.writer_reader()), unavailable
 
     def _gate(self, issue_id: str, workflow: str, runtime: str, lease: int,
               run_id: str, worktree: Path) -> tuple[ClaimRecord, object]:
@@ -132,7 +146,9 @@ class WorkLauncher:
         issue = first if isinstance(first, Issue) else Issue.from_dict(first)
         graph_values = self.graph_reader(issue_id) if self.graph_reader else (issue,)
         graph = derive_graph(graph_values)
-        inventories, writers = self._snapshot()
+        inventories, writers, unavailable = self._snapshot()
+        if unavailable:
+            raise ExecutionGateError("inventory_unavailable")
         # A disjoint concurrent acquire may advance the store generation between
         # read and conditional insert. Re-snapshot boundedly; a real overlap is
         # then observed as an occupied resource and remains a stable rejection.
@@ -286,6 +302,20 @@ class WorkLauncher:
     combined_status = list_active
 
 
-def default_launcher(registry_path: Path) -> WorkLauncher:
+def default_launcher(registry_path: Path, *, daemon_state_dir: Path | None = None,
+                     lifecycle_store: Path | None = None) -> WorkLauncher:
     store = SqliteClaimStore(registry_path.with_suffix(".claims.sqlite3"))
-    return WorkLauncher(Dispatcher(RunRegistry(registry_path)), LauncherGitHub(), claim_store=store)
+    dispatcher = Dispatcher(RunRegistry(registry_path))
+    github = LauncherGitHub()
+    return WorkLauncher(
+        dispatcher, github, claim_store=store,
+        graph_reader=make_graph_reader(github.get_issue),
+        inventory_readers={
+            "active_claims": lambda: (),
+            "dispatcher_registry": dispatcher_registry_reader(dispatcher.registry),
+            "daemon_claims": daemon_claims_reader(daemon_state_dir),
+            "git_resources": git_resources_reader(),
+            "lifecycle_sessions": lifecycle_sessions_reader(lifecycle_store),
+        },
+        writer_reader=writer_domain_reader(),
+    )
