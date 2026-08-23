@@ -725,6 +725,14 @@ def _run_widget_load(args: argparse.Namespace) -> ResultEnvelope:
                     from widget_contract.adapters.store_reads import read_pages_deploys_v1
                     pages_input = getattr(args, "pages_input", None) or (ap_path / "widget" / "pages-deploys.json")
                     data[read.id] = read_pages_deploys_v1(json.loads(Path(pages_input).read_text(encoding="utf-8")))
+                elif read.operation == "usage-cost.v1":
+                    from widget_contract.adapters.store_reads import read_usage_cost_v1
+                    usage_input = getattr(args, "usage_input", None)
+                    if usage_input and Path(usage_input).is_file():
+                        data[read.id] = read_usage_cost_v1(json.loads(Path(usage_input).read_text(encoding="utf-8")))
+                    else:
+                        reader = getattr(args, "usage_reader", None) or _default_usage_reader
+                        data[read.id] = read_usage_cost_v1(reader())
                 else:
                     return ResultEnvelope(status="failed", error={"category": "input_error",
                                                                   "message": f"unsupported emitted store read {read.operation}"})
@@ -882,6 +890,15 @@ def _run_widget_compose(args: argparse.Namespace) -> ResultEnvelope:
                             child_data[read.id] = {"schema_version": 1, "project": "cortxt", "account": "c7c04f119f81234dc3d851bf6ff2adfe",
                                                    "latest": {"id": "none", "environment": "none", "created_on": "none", "stage": "none", "status": "none"},
                                                    "deployments": []}
+                    elif read.operation == "usage-cost.v1":
+                        from widget_contract.adapters.store_reads import read_usage_cost_v1
+                        usage_input = getattr(args, "usage_input", None)
+                        if usage_input and Path(usage_input).is_file():
+                            raw_data = json.loads(Path(usage_input).read_text(encoding="utf-8"))
+                            child_data[read.id] = read_usage_cost_v1(raw_data)
+                        else:
+                            reader = getattr(args, "usage_reader", None) or _default_usage_reader
+                            child_data[read.id] = read_usage_cost_v1(reader())
                     else:
                         return ResultEnvelope(status="failed", error={"category": "input_error",
                                                                       "message": f"unsupported emitted store read {read.operation}"})
@@ -1081,7 +1098,47 @@ def _default_docker_reader() -> dict[str, Any]:
     }
 
 
-def _run_widget(args: argparse.Namespace, docker_reader: Any = None) -> ResultEnvelope:
+def _default_usage_reader() -> dict[str, Any]:
+    """Capture local usage and cost metrics into a safe projection dictionary."""
+    ap_path = _get_agent_platform_path()
+    usage_file = ap_path / "widget" / "fixtures" / "usage_data.json"
+    if usage_file.is_file():
+        try:
+            data = json.loads(usage_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                if "usage" in data and isinstance(data["usage"], dict):
+                    return data["usage"]
+                if "states" in data and isinstance(data["states"], list) and data["states"]:
+                    last = data["states"][-1]
+                    if isinstance(last, dict):
+                        return last.get("usage", last)
+                if "runtimes" in data and "history" in data:
+                    return data
+        except Exception:
+            pass
+
+    return {
+        "schema_version": 1,
+        "period": "current",
+        "total_cost_usd": 0.42,
+        "total_tokens": 24800,
+        "runtimes": [
+            {"id": "hermes", "name": "Hermes", "tokens_in": 8000, "tokens_out": 4000, "cost_usd": 0.12, "model": "hermes-3-70b"},
+            {"id": "codex", "name": "Codex", "tokens_in": 6000, "tokens_out": 2500, "cost_usd": 0.15, "model": "gpt-4o"},
+            {"id": "claude", "name": "Claude", "tokens_in": 2000, "tokens_out": 1200, "cost_usd": 0.10, "model": "claude-3-7-sonnet"},
+            {"id": "dsh", "name": "DSH", "tokens_in": 800, "tokens_out": 300, "cost_usd": 0.05, "model": "deepseek-v3"},
+        ],
+        "history": [
+            {"at": "10:00", "tokens": 3000, "cost_usd": 0.05},
+            {"at": "10:15", "tokens": 7500, "cost_usd": 0.12},
+            {"at": "10:30", "tokens": 14000, "cost_usd": 0.22},
+            {"at": "10:45", "tokens": 19500, "cost_usd": 0.31},
+            {"at": "11:00", "tokens": 24800, "cost_usd": 0.42},
+        ],
+    }
+
+
+def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reader: Any = None) -> ResultEnvelope:
     """Serve the sessions widget or execute a registered widget action.
 
     `cortxt widget` without a subcommand serves the sessions widget
@@ -1090,8 +1147,9 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None) -> ResultEn
     widget-contract renderer. `--view session-pulse` renders the
     orchestrator/session snapshot through the contract. `--view execution-map`
     renders the execution-map plan. `--view docker-status` renders local
-    docker status. `cortxt widget action <id>` dispatches a registered
-    authorized action through ActionExecutor with the operator gate.
+    docker status. `--view usage-cost` renders token usage and cost metrics.
+    `cortxt widget action <id>` dispatches a registered authorized action
+    through ActionExecutor with the operator gate.
     """
     try:
         view = getattr(args, "view", None)
@@ -1313,6 +1371,41 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None) -> ResultEn
             print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"pages-deploys:{output_path}"],
                                   evidence=[{"pages_deploys": tree}])
+        if view == "usage-cost":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_usage_cost_v1
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "usage-cost-0.1.yaml")
+            reader = usage_reader or getattr(args, "usage_reader", None) or _default_usage_reader
+            try:
+                raw_data = reader() if callable(reader) else reader
+                projection = read_usage_cost_v1(raw_data)
+                source_status = "fresh"
+                error = None
+            except (OSError, ValueError, Exception) as exc:
+                projection = {}
+                source_status = "error"
+                error = {"kind": "usage_cost_read", "message": str(exc)}
+            if error is None:
+                tree = render(widget, {"usage": projection}, {"usage": source_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {"contract_version": widget.contract_version,
+                        "widget": {"id": widget.id, "version": widget.version},
+                        "render": render_primitive("error-state",
+                                                   {"message": f"Usage cost read failed: {error['message']}"},
+                                                   [], "error")}
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "usage-cost.json")
+            artifact = {**tree, "repo": None, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                           if node["primitive"] in ("metric", "bar", "line", "table", "list", "key-value")]}
+            print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"usage-cost:{output_path}"],
+                                  evidence=[{"usage_cost": tree}])
         candidate_mode = getattr(args, "widget_command", None) == "candidates" or view == "candidates"
         if candidate_mode:
             ap_path = _get_agent_platform_path()
@@ -2310,7 +2403,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
-    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map", "docker-status", "webhooks", "pages-deploys"], help="Render a named read-only widget view")
+    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map", "docker-status", "webhooks", "pages-deploys", "usage-cost"], help="Render a named read-only widget view")
     widget_parser.add_argument("--repo", help="GitHub owner/repo for a named view")
     widget_parser.add_argument("--snapshot", type=Path, help="Widget render output path")
     widget_parser.add_argument("--snapshot-input", type=Path, help="Snapshot input path for the session-pulse view")

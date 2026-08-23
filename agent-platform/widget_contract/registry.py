@@ -154,6 +154,51 @@ VISUAL_TOKENS_SCHEMA = {
     },
 }
 
+RUNTIME_USAGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["id", "name", "tokens_in", "tokens_out", "cost_usd", "model"],
+    "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "tokens_in": {"type": "integer", "minimum": 0},
+        "tokens_out": {"type": "integer", "minimum": 0},
+        "cost_usd": {"type": "number", "minimum": 0},
+        "model": {"type": "string"},
+        "tokens": {"type": "integer", "minimum": 0},
+    },
+}
+HISTORY_USAGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["at", "tokens", "cost_usd"],
+    "properties": {
+        "at": {"type": "string"},
+        "tokens": {"type": "integer", "minimum": 0},
+        "cost_usd": {"type": "number", "minimum": 0},
+    },
+}
+USAGE_COST_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["schema_version", "period", "total_cost_usd", "total_tokens", "runtimes", "history"],
+    "properties": {
+        "schema_version": {"const": 1},
+        "period": {"type": "string"},
+        "total_cost_usd": {"type": "number", "minimum": 0},
+        "total_tokens": {"type": "integer", "minimum": 0},
+        "runtimes": {"type": "array", "items": RUNTIME_USAGE_SCHEMA},
+        "history": {"type": "array", "items": HISTORY_USAGE_SCHEMA},
+        "runtime_tokens": {"type": "array", "items": {"type": "integer"}},
+        "runtime_names": {"type": "array", "items": {"type": "string"}},
+        "model_costs": {"type": "array", "items": {"type": "number"}},
+        "model_names": {"type": "array", "items": {"type": "string"}},
+        "history_tokens": {"type": "array", "items": {"type": "integer"}},
+        "history_points": {"type": "array", "items": {"type": "string"}},
+        "history_costs": {"type": "array", "items": {"type": "number"}},
+    },
+}
+
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
     "dispatcher.active-runs.v1": TypeEntry(ACTIVE_RUNS_SCHEMA, "operational"),
@@ -165,6 +210,7 @@ TYPES = {
     "webhooks.status.v1": TypeEntry(WEBHOOKS_STATUS_SCHEMA, "public-metadata"),
     "pages.deploys.v1": TypeEntry(PAGES_DEPLOYS_SCHEMA, "operational"),
     "visual-tokens.v1": TypeEntry(VISUAL_TOKENS_SCHEMA, "public-metadata"),
+    "usage-cost.v1": TypeEntry(USAGE_COST_SCHEMA, "operational"),
     "issue.workflow.v1": TypeEntry({"type": "object"}, "public-metadata"),
     "core.string.v1": TypeEntry({"type": "string"}, "public-metadata"),
     "core.number.v1": TypeEntry({"type": "number"}, "public-metadata"),
@@ -184,6 +230,7 @@ READ_OPERATIONS = {
     "docker.status.v1": ReadOperation("store", JSON_OBJECT, "docker.status.v1", "operational", 500, 60, 2, "read:docker"),
     "webhooks.status.v1": ReadOperation("store", JSON_OBJECT, "webhooks.status.v1", "public-metadata", 500, 60, 2, "read:webhooks"),
     "pages.deploys.v1": ReadOperation("store", JSON_OBJECT, "pages.deploys.v1", "operational", 500, 60, 2, "read:pages"),
+    "usage-cost.v1": ReadOperation("store", JSON_OBJECT, "usage-cost.v1", "operational", 500, 60, 2, "read:usage-cost"),
     "issue.workflow.get.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["issue_number"], "properties": {"issue_number": {"type": "integer", "minimum": 1}}}, "issue.workflow.v1", "public-metadata", 2000, 30, 30, "read:issue-workflow", True),
 }
 
@@ -207,6 +254,8 @@ PRIMITIVES.update({
     "list": PrimitiveEntry(frozenset({"items", "label", "empty", "error"}), {"items": "core.array.v1"}, "empty", "error"),
     "table": PrimitiveEntry(frozenset({"rows", "columns", "label", "empty", "error"}), {"rows": "core.array.v1"}, "empty", "error"),
     "key-value": PrimitiveEntry(frozenset({"value", "empty", "error"}), {"value": "core.object.v1"}, "empty", "error"),
+    "bar": PrimitiveEntry(frozenset({"label", "categories", "empty", "error"}), {"values": "core.array.v1"}, "empty", "error"),
+    "line": PrimitiveEntry(frozenset({"label", "points", "empty", "error"}), {"series": "core.array.v1"}, "empty", "error"),
     "button": PrimitiveEntry(frozenset({"label", "action"}), {}, "denied", "error", True),
     "choice": PrimitiveEntry(frozenset({"label", "action", "options"}), {}, "denied", "error", True),
 })

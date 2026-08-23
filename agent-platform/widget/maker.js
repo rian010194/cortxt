@@ -559,6 +559,229 @@
       return;
     }
 
+    // Bar Chart
+    if (primitive === "bar") {
+      const group = document.createElement("div");
+      group.className = "candidate-group widget-chart-bar";
+
+      if (p.label) {
+        const heading = document.createElement("h3");
+        heading.textContent = p.label;
+        group.append(heading);
+      }
+
+      const rawValues = p.values;
+      if (!Array.isArray(rawValues) || rawValues.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "empty";
+        emptyDiv.textContent = p.empty || "No data.";
+        group.append(emptyDiv);
+        container.append(group);
+        return;
+      }
+
+      const categories = Array.isArray(p.categories) ? p.categories : [];
+      const items = [];
+
+      for (let i = 0; i < rawValues.length; i++) {
+        const item = rawValues[i];
+        const catName = categories[i] !== undefined ? String(categories[i]) : "";
+        if (typeof item === "number") {
+          items.push({ name: catName || ("Item " + (i + 1)), value: item });
+        } else if (item && typeof item === "object") {
+          const name = item.name || item.label || item.model || item.id || catName || ("Item " + (i + 1));
+          const val = item.tokens !== undefined ? item.tokens :
+                      item.cost_usd !== undefined ? item.cost_usd :
+                      item.value !== undefined ? item.value :
+                      (item.tokens_in || 0) + (item.tokens_out || 0);
+          items.push({ name: String(name), value: Number(val) || 0 });
+        }
+      }
+
+      if (items.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "empty";
+        emptyDiv.textContent = p.empty || "No data.";
+        group.append(emptyDiv);
+        container.append(group);
+        return;
+      }
+
+      let maxVal = 0;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].value > maxVal) maxVal = items[i].value;
+      }
+      if (maxVal <= 0) maxVal = 1;
+
+      const chartBox = document.createElement("div");
+      chartBox.className = "chart-bars-container";
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const row = document.createElement("div");
+        row.className = "chart-bar-row";
+
+        const labelSpan = document.createElement("span");
+        labelSpan.className = "chart-bar-label";
+        labelSpan.textContent = it.name;
+        labelSpan.title = it.name;
+
+        const track = document.createElement("div");
+        track.className = "chart-bar-track";
+
+        const fill = document.createElement("div");
+        const pct = Math.min(100, Math.max(0, (it.value / maxVal) * 100));
+        fill.className = "chart-bar-fill" + (i === items.length - 1 ? " chart-latest pulse-dot" : "");
+        fill.style.width = pct.toFixed(1) + "%";
+
+        track.append(fill);
+
+        const valSpan = document.createElement("span");
+        valSpan.className = "chart-bar-value";
+        valSpan.textContent = typeof it.value === "number" && it.value % 1 !== 0
+          ? "$" + it.value.toFixed(2)
+          : Number(it.value).toLocaleString();
+
+        row.append(labelSpan, track, valSpan);
+        chartBox.append(row);
+      }
+
+      group.append(chartBox);
+      container.append(group);
+      return;
+    }
+
+    // Line Chart
+    if (primitive === "line") {
+      const group = document.createElement("div");
+      group.className = "candidate-group widget-chart-line";
+
+      if (p.label) {
+        const heading = document.createElement("h3");
+        heading.textContent = p.label;
+        group.append(heading);
+      }
+
+      const rawSeries = p.series;
+      if (!Array.isArray(rawSeries) || rawSeries.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "empty";
+        emptyDiv.textContent = p.empty || "No data.";
+        group.append(emptyDiv);
+        container.append(group);
+        return;
+      }
+
+      const points = Array.isArray(p.points) ? p.points : [];
+      const values = [];
+      const pointLabels = [];
+
+      for (let i = 0; i < rawSeries.length; i++) {
+        const item = rawSeries[i];
+        const ptName = points[i] !== undefined ? String(points[i]) : "";
+        if (typeof item === "number") {
+          values.push(item);
+          pointLabels.push(ptName);
+        } else if (item && typeof item === "object") {
+          const name = item.at || item.point || item.label || ptName || ("P" + (i + 1));
+          const val = item.tokens !== undefined ? item.tokens :
+                      item.cost_usd !== undefined ? item.cost_usd :
+                      item.value !== undefined ? item.value : 0;
+          values.push(Number(val) || 0);
+          pointLabels.push(String(name));
+        }
+      }
+
+      if (values.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "empty";
+        emptyDiv.textContent = p.empty || "No data.";
+        group.append(emptyDiv);
+        container.append(group);
+        return;
+      }
+
+      let minVal = values[0];
+      let maxVal = values[0];
+      for (let i = 1; i < values.length; i++) {
+        if (values[i] < minVal) minVal = values[i];
+        if (values[i] > maxVal) maxVal = values[i];
+      }
+      const range = maxVal - minVal || 1;
+
+      const svgW = 260;
+      const svgH = 64;
+      const padX = 12;
+      const padY = 8;
+      const innerW = svgW - padX * 2;
+      const innerH = svgH - padY * 2;
+
+      const coords = [];
+      for (let i = 0; i < values.length; i++) {
+        const x = values.length === 1 ? padX + innerW / 2 : padX + (i / (values.length - 1)) * innerW;
+        const y = padY + innerH - ((values[i] - minVal) / range) * innerH;
+        coords.push({ x: x, y: y, val: values[i], label: pointLabels[i] || "" });
+      }
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 " + svgW + " " + svgH);
+      svg.setAttribute("class", "chart-line-svg");
+      svg.style.width = "100%";
+      svg.style.height = "70px";
+      svg.style.overflow = "visible";
+
+      // Polyline
+      const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      const ptsStr = coords.map(function (c) { return c.x.toFixed(1) + "," + c.y.toFixed(1); }).join(" ");
+      polyline.setAttribute("points", ptsStr);
+      polyline.setAttribute("fill", "none");
+      polyline.setAttribute("stroke", "var(--accent)");
+      polyline.setAttribute("stroke-width", "2");
+      polyline.setAttribute("stroke-linecap", "round");
+      polyline.setAttribute("stroke-linejoin", "round");
+      svg.append(polyline);
+
+      // Dots
+      for (let i = 0; i < coords.length; i++) {
+        const c = coords[i];
+        const isLatest = (i === coords.length - 1);
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", c.x.toFixed(1));
+        circle.setAttribute("cy", c.y.toFixed(1));
+        circle.setAttribute("r", isLatest ? "4" : "3");
+        circle.setAttribute("fill", isLatest ? "var(--ok)" : "var(--accent)");
+        circle.setAttribute("class", isLatest ? "pulse-dot chart-latest" : "chart-dot");
+
+        const titleEl = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        titleEl.textContent = (c.label ? c.label + ": " : "") + (typeof c.val === "number" && c.val % 1 !== 0 ? "$" + c.val.toFixed(2) : c.val.toLocaleString());
+        circle.append(titleEl);
+
+        svg.append(circle);
+      }
+
+      group.append(svg);
+
+      if (pointLabels.some(Boolean)) {
+        const labelsRow = document.createElement("div");
+        labelsRow.className = "chart-line-points-row";
+        labelsRow.style.display = "flex";
+        labelsRow.style.justifyContent = "space-between";
+        labelsRow.style.fontSize = "9px";
+        labelsRow.style.color = "var(--dim)";
+        labelsRow.style.marginTop = "2px";
+
+        for (let i = 0; i < pointLabels.length; i++) {
+          const ptSpan = document.createElement("span");
+          ptSpan.textContent = pointLabels[i] || "";
+          labelsRow.append(ptSpan);
+        }
+        group.append(labelsRow);
+      }
+
+      container.append(group);
+      return;
+    }
+
     // Empty state
     if (primitive === "empty-state") {
       const el = document.createElement("div");
@@ -760,6 +983,22 @@
     applyTokens(DEFAULT_TOKENS);
   }
 
+  /**
+   * Stepper for multi-state living fixture demo sequences.
+   */
+  function createSequenceStepper(states, callback, intervalMs) {
+    if (!Array.isArray(states) || states.length === 0) return null;
+    let index = 0;
+    const timer = setInterval(function () {
+      index = (index + 1) % states.length;
+      callback(states[index], index);
+    }, intervalMs || 2500);
+    return {
+      stop: function () { clearInterval(timer); },
+      getIndex: function () { return index; },
+    };
+  }
+
   return {
     resolvePointer: resolvePointer,
     parseYamlSubset: parseYamlSubset,
@@ -769,5 +1008,6 @@
     DEFAULT_TOKENS: DEFAULT_TOKENS,
     defaultTokens: defaultTokens,
     applyTokens: applyTokens,
+    createSequenceStepper: createSequenceStepper,
   };
 });

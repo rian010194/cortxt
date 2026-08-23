@@ -1,0 +1,93 @@
+{
+  "contract_version": "0.1",
+  "widget": {
+    "id": "usage-cost",
+    "version": "0.1"
+  },
+  "render": {
+    "primitive": "stack",
+    "state": "ready",
+    "props": {
+      "label": "Usage & Cost"
+    },
+    "children": [
+      {
+        "primitive": "metric",
+        "state": "ready",
+        "props": {
+          "label": "Total cost",
+          "value": 0.42
+        }
+      },
+      {
+        "primitive": "metric",
+        "state": "ready",
+        "props": {
+          "label": "Total tokens",
+          "value": 24800
+        }
+      },
+      {
+        "primitive": "bar",
+        "state": "ready",
+        "props": {
+          "categories": [
+            "Hermes",
+            "Codex",
+            "Claude",
+            "DSH"
+          ],
+          "label": "Tokens by runtime",
+          "values": [
+            12000,
+            8500,
+            3200,
+            1100
+          ]
+        }
+      },
+      {
+        "primitive": "bar",
+        "state": "ready",
+        "props": {
+          "categories": [
+            "hermes-3-70b",
+            "gpt-4o",
+            "claude-3-7-sonnet",
+            "deepseek-v3"
+          ],
+          "label": "Cost by model",
+          "values": [
+            0.12,
+            0.15,
+            0.1,
+            0.05
+          ]
+        }
+      },
+      {
+        "primitive": "line",
+        "state": "ready",
+        "props": {
+          "label": "Usage over time",
+          "points": [
+            "10:00",
+            "10:15",
+            "10:30",
+            "10:45",
+            "11:00"
+          ],
+          "series": [
+            3000,
+            7500,
+            14000,
+            19500,
+            24800
+          ]
+        }
+      }
+    ]
+  },
+  "repo": null,
+  "error": null
+}
