@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-22T23:15:16Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T07:01:10Z`.
 
 ### Roadmap areas
 
@@ -15,7 +15,6 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 ### Actionable frontier
 
 - CI fixture: real dispatch commit proof (#207)
-- Build: cortxt mandate CLI — operator issuance + inspect surface (ADR-032 Open Question) (#281)
 
 Claimed work in progress (workflow:in-progress):
 (none)
@@ -82,7 +81,12 @@ Claimed work in progress (workflow:in-progress):
 - Build: candidates view rendered through the widget contract into the loopback browser widget (#274): contract fit = MISSING; repository fit = MISSING
 - Build: first authorized action ports — mark-ready (operator gate) + claim/run through the execution map (#276): contract fit = MISSING; repository fit = MISSING
 - Build: Open in CLI handoff controls in the browser candidates view (#278): contract fit = MISSING; repository fit = MISSING
+- Build: cortxt mandate CLI — operator issuance + inspect surface (ADR-032 Open Question) (#281): contract fit = MISSING; repository fit = MISSING
 - Build: session-pulse widget — contract-compliant orchestrator/session state view (#282): contract fit = MISSING; repository fit = MISSING
+- Build: Atlas site-view — emit status page into docs (frontier, blockers, milestones) (#285): contract fit = MISSING; repository fit = MISSING
+- Build: LLM-generated widget dogfood — emitted spec loads, renders, serves (prompt yourself tools) (#286): contract fit = MISSING; repository fit = MISSING
+- Docs: publish verified dispatch path page (golden path evidence, issue #207) (#289): contract fit = MISSING; repository fit = MISSING
+- Build: execution-map view as a contract widget — render work plan (waves/drift/claims) through the contract (#291): contract fit = MISSING; repository fit = MISSING
 
 ### Relationship drift
 
@@ -90,4 +94,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-22T23:15:16Z
+2026-08-23T07:01:10Z
