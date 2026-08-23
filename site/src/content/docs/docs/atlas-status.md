@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T19:27:31Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T19:51:44Z`.
 
 ### Roadmap areas
 
@@ -15,6 +15,10 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 ### Actionable frontier
 
 - CI fixture: real dispatch commit proof (#207)
+- Build: shared editable visual tokens (browser + maker + CLI TUI) (#343)
+- Build: host view grid (all widgets visible) + tabs as optional + better sizing (#344)
+- Build: CLI TUI matches widget appearance (shared tokens + primitives) (#345)
+- Build: self-contained widget export/import packages (#346)
 
 Claimed work in progress (workflow:in-progress):
 (none)
@@ -116,4 +120,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-23T19:27:31Z
+2026-08-23T19:51:44Z
