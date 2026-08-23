@@ -36,29 +36,33 @@ class FakeGitHub:
     def comment(self, repo, number, body):
         pass
 
+def main():
+    root = Path(tempfile.mkdtemp(prefix="launcher-test-"))
+    gh = FakeGitHub()
+    disp = d.Dispatcher(d.RunRegistry(root / "runs.json"), gh)
+    prompts = []
+    launcher = w.WorkLauncher(
+        disp, gh, dispatch=lambda dispatcher, run, prompt: prompts.append(prompt),
+        worktree_root=root / "trees",
+        run_worktree=lambda *a, **k: SimpleNamespace(returncode=0),
+    )
+    result = launcher.create("o/r", "Task", "Build a safe launcher", ["Tests pass"],
+                             runtime="fake", worker_role="builder", workflow="v1",
+                             max_runtime_seconds=60, max_cost_usd=1.0, approved=True)
+    check("new returns generated run id", bool(result["run_id"]))
+    check("issue moved through claim to in-progress", gh.labels["o/r#7"] == ["workflow:in-progress"])
+    check("worker prompt includes scope, AC, limits, and policy", all(x in prompts[0] for x in
+          ("Build a safe launcher", "Tests pass", "max_runtime_seconds", "Artifact policy")))
+    check("list returns active run metadata", launcher.list_active()[0]["worker"] == "builder")
+    try:
+        w.generate_worker_prompt("bad \u00e5", ["ok"], {})
+        check("diacritics rejected", False)
+    except ValueError:
+        check("diacritics rejected", True)
 
-root = Path(tempfile.mkdtemp(prefix="launcher-test-"))
-gh = FakeGitHub()
-disp = d.Dispatcher(d.RunRegistry(root / "runs.json"), gh)
-prompts = []
-launcher = w.WorkLauncher(
-    disp, gh, dispatch=lambda dispatcher, run, prompt: prompts.append(prompt),
-    worktree_root=root / "trees",
-    run_worktree=lambda *a, **k: SimpleNamespace(returncode=0),
-)
-result = launcher.create("o/r", "Task", "Build a safe launcher", ["Tests pass"],
-                         runtime="fake", worker_role="builder", workflow="v1",
-                         max_runtime_seconds=60, max_cost_usd=1.0, approved=True)
-check("new returns generated run id", bool(result["run_id"]))
-check("issue moved through claim to in-progress", gh.labels["o/r#7"] == ["workflow:in-progress"])
-check("worker prompt includes scope, AC, limits, and policy", all(x in prompts[0] for x in
-      ("Build a safe launcher", "Tests pass", "max_runtime_seconds", "Artifact policy")))
-check("list returns active run metadata", launcher.list_active()[0]["worker"] == "builder")
-try:
-    w.generate_worker_prompt("bad \u00e5", ["ok"], {})
-    check("diacritics rejected", False)
-except ValueError:
-    check("diacritics rejected", True)
+    print(f"\n{'PASS' if not fail else 'FAIL'}: {len(fail)} failure(s)")
+    raise SystemExit(1 if fail else 0)
 
-print(f"\n{'PASS' if not fail else 'FAIL'}: {len(fail)} failure(s)")
-raise SystemExit(1 if fail else 0)
+
+if __name__ == "__main__":
+    main()
