@@ -1,0 +1,49 @@
+---
+import AtlasGraph from '../components/AtlasGraph';
+import '@xyflow/react/dist/style.css';
+import '../styles/atlas.css';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta
+      name="description"
+      content="Visual Atlas roadmap graph for Cortxt: issues, blockers, milestones, and the actionable frontier."
+    />
+    <title>Visual Atlas | Cortxt</title>
+  </head>
+  <body>
+    <header class="atlas-header">
+      <nav class="atlas-nav">
+        <a class="atlas-brand" href="/"><span>C</span>Cortxt</a>
+        <div class="atlas-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/roadmap/">Roadmap</a>
+          <a href="https://github.com/rian010194/cortxt">GitHub</a>
+        </div>
+      </nav>
+      <div class="atlas-title">
+        <h1>Visual Atlas</h1>
+        <p class="atlas-lede">
+          The Cortxt roadmap as a graph: issues are nodes, blockers and containment are edges, milestones group the
+          work, and the actionable frontier is highlighted. By default the graph shows only active work — closed issues
+          are history and sit behind the archive toggle. Derived from the GitHub issue record.
+        </p>
+      </div>
+    </header>
+
+    <main class="atlas-main">
+      <AtlasGraph client:load />
+    </main>
+
+    <footer class="atlas-footer">
+      <p>
+        Issues remain the single source of truth (<a href="https://github.com/rian010194/cortxt/issues/214"
+          >global map</a
+        >). This graph is a derived view; graph position never grants dispatch authority.
+      </p>
+    </footer>
+  </body>
+</html>
