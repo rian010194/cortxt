@@ -1,0 +1,27 @@
+contract_version: "0.1"
+widget:
+  id: pulse-table
+  version: "0.1"
+  title: Pulse Table
+data:
+  reads:
+    - id: snapshot
+      source: store
+      operation: sessions.snapshot.v2
+      input: {}
+      select: []
+      refresh:
+        mode: poll
+        interval_seconds: 5
+      output_type: sessions.snapshot.v2
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Pulse Table}
+  children:
+    - primitive: table
+      props: {label: Workstreams, columns: [workstream_id, status]}
+      bindings:
+        rows: {read: snapshot, pointer: /workstreams, type: core.array.v1}
+actions: []
+capabilities: [read:sessions]

@@ -1,0 +1,27 @@
+contract_version: "0.1"
+widget:
+  id: pulse-child
+  version: "0.1"
+  title: Pulse Child
+data:
+  reads:
+    - id: snapshot
+      source: store
+      operation: sessions.snapshot.v2
+      input: {}
+      select: []
+      refresh:
+        mode: poll
+        interval_seconds: 5
+      output_type: sessions.snapshot.v2
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Pulse Child}
+  children:
+    - primitive: metric
+      props: {label: Active sessions}
+      bindings:
+        value: {read: snapshot, pointer: /orchestrator/active_agent_sessions, type: core.number.v1}
+actions: []
+capabilities: [read:sessions]
