@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T20:12:09Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T20:26:31Z`.
 
 ### Roadmap areas
 
@@ -15,12 +15,10 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 ### Actionable frontier
 
 - CI fixture: real dispatch commit proof (#207)
-- Build: shared editable visual tokens (browser + maker + CLI TUI) (#343)
 - Build: CLI TUI matches widget appearance (shared tokens + primitives) (#345)
 - Build: self-contained widget export/import packages (#346)
 - Build: swimlane primitive + live session-agents widget (#347)
 - Build: landing proof band - live CLI (TUI) + widget example pairs, horizontal scroll (#348)
-- Build: chart primitives (bar/line) + live usage/cost widget (#349)
 
 Claimed work in progress (workflow:in-progress):
 (none)
@@ -115,7 +113,9 @@ Claimed work in progress (workflow:in-progress):
 - Build: Docker status widget - read-only observer of local container state (#337): contract fit = MISSING; repository fit = MISSING
 - Build: Webhooks/Cloudflare status widget - read-only observer of webhook and Pages deploy state (#338): contract fit = MISSING; repository fit = MISSING
 - Build: Widget maker - gallery + CLI side-by-side + spec studio (loopback + docs) (#339): contract fit = MISSING; repository fit = MISSING
+- Build: shared editable visual tokens (browser + maker + CLI TUI) (#343): contract fit = MISSING; repository fit = MISSING
 - Build: host view grid (all widgets visible) + tabs as optional + better sizing (#344): contract fit = MISSING; repository fit = MISSING
+- Build: chart primitives (bar/line) + live usage/cost widget (#349): contract fit = MISSING; repository fit = MISSING
 
 ### Relationship drift
 
@@ -123,4 +123,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-23T20:12:09Z
+2026-08-23T20:26:31Z
