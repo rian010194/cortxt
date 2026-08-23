@@ -106,3 +106,21 @@ jobs:
           adrs_oneline="$(echo "${accepted}" | paste -sd' ' -)"
           echo "::error::Accepted ADR(s) changed without updating docs/architecture/REVIEW_LOG.md: ${adrs_oneline} -- per AGENTS.md section \"Documentation currency\", an Accepted ADR must add a row to docs/architecture/REVIEW_LOG.md (append-only register) in the same PR."
           exit 1
+
+  label-invariant:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - run: python scripts/test_label_invariant.py
+      - name: Check ADR-040 label invariant
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/label_invariant.py --repo "${{ github.repository }}" --limit 50
