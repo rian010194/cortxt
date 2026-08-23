@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T19:16:08Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-23T19:27:31Z`.
 
 ### Roadmap areas
 
@@ -15,7 +15,6 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 ### Actionable frontier
 
 - CI fixture: real dispatch commit proof (#207)
-- Build: Widget maker - gallery + CLI side-by-side + spec studio (loopback + docs) (#339)
 
 Claimed work in progress (workflow:in-progress):
 (none)
@@ -109,6 +108,7 @@ Claimed work in progress (workflow:in-progress):
 - Build: label→dispatch design + read-only notice scaffold (operator gate preserved) (#330): contract fit = MISSING; repository fit = MISSING
 - Build: Docker status widget - read-only observer of local container state (#337): contract fit = MISSING; repository fit = MISSING
 - Build: Webhooks/Cloudflare status widget - read-only observer of webhook and Pages deploy state (#338): contract fit = MISSING; repository fit = MISSING
+- Build: Widget maker - gallery + CLI side-by-side + spec studio (loopback + docs) (#339): contract fit = MISSING; repository fit = MISSING
 
 ### Relationship drift
 
@@ -116,4 +116,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-23T19:16:08Z
+2026-08-23T19:27:31Z
