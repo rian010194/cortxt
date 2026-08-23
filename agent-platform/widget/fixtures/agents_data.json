@@ -1,0 +1,156 @@
+{
+  "agents": {
+    "schema_version": 1,
+    "agents": [
+      {
+        "id": "agent-hermes",
+        "name": "Hermes",
+        "runtime": "hermes",
+        "status": "running",
+        "current_task": "Load context",
+        "tasks": [
+          {"id": "t1", "title": "Load context", "state": "running", "progress": 30},
+          {"id": "t2", "title": "Execute session plan", "state": "queued", "progress": 0},
+          {"id": "t3", "title": "Verification", "state": "queued", "progress": 0}
+        ]
+      },
+      {
+        "id": "agent-pi",
+        "name": "Pi",
+        "runtime": "pi",
+        "status": "running",
+        "current_task": "Inspect AST",
+        "tasks": [
+          {"id": "t4", "title": "Inspect AST", "state": "running", "progress": 20},
+          {"id": "t5", "title": "Analyze codebase invariants", "state": "queued", "progress": 0}
+        ]
+      },
+      {
+        "id": "agent-codex",
+        "name": "Codex",
+        "runtime": "codex",
+        "status": "queued",
+        "current_task": null,
+        "tasks": [
+          {"id": "t6", "title": "Contract validation", "state": "queued", "progress": 0}
+        ]
+      }
+    ]
+  },
+  "sequence": [
+    {
+      "schema_version": 1,
+      "agents": [
+        {
+          "id": "agent-hermes",
+          "name": "Hermes",
+          "runtime": "hermes",
+          "status": "running",
+          "current_task": "Load context",
+          "tasks": [
+            {"id": "t1", "title": "Load context", "state": "running", "progress": 30},
+            {"id": "t2", "title": "Execute session plan", "state": "queued", "progress": 0},
+            {"id": "t3", "title": "Verification", "state": "queued", "progress": 0}
+          ]
+        },
+        {
+          "id": "agent-pi",
+          "name": "Pi",
+          "runtime": "pi",
+          "status": "running",
+          "current_task": "Inspect AST",
+          "tasks": [
+            {"id": "t4", "title": "Inspect AST", "state": "running", "progress": 20},
+            {"id": "t5", "title": "Analyze codebase invariants", "state": "queued", "progress": 0}
+          ]
+        },
+        {
+          "id": "agent-codex",
+          "name": "Codex",
+          "runtime": "codex",
+          "status": "queued",
+          "current_task": null,
+          "tasks": [
+            {"id": "t6", "title": "Contract validation", "state": "queued", "progress": 0}
+          ]
+        }
+      ]
+    },
+    {
+      "schema_version": 1,
+      "agents": [
+        {
+          "id": "agent-hermes",
+          "name": "Hermes",
+          "runtime": "hermes",
+          "status": "running",
+          "current_task": "Execute session plan",
+          "tasks": [
+            {"id": "t1", "title": "Load context", "state": "done", "progress": 100},
+            {"id": "t2", "title": "Execute session plan", "state": "running", "progress": 65},
+            {"id": "t3", "title": "Verification", "state": "queued", "progress": 0}
+          ]
+        },
+        {
+          "id": "agent-pi",
+          "name": "Pi",
+          "runtime": "pi",
+          "status": "running",
+          "current_task": "Analyze codebase invariants",
+          "tasks": [
+            {"id": "t4", "title": "Inspect AST", "state": "done", "progress": 100},
+            {"id": "t5", "title": "Analyze codebase invariants", "state": "running", "progress": 60}
+          ]
+        },
+        {
+          "id": "agent-codex",
+          "name": "Codex",
+          "runtime": "codex",
+          "status": "running",
+          "current_task": "Contract validation",
+          "tasks": [
+            {"id": "t6", "title": "Contract validation", "state": "running", "progress": 45}
+          ]
+        }
+      ]
+    },
+    {
+      "schema_version": 1,
+      "agents": [
+        {
+          "id": "agent-hermes",
+          "name": "Hermes",
+          "runtime": "hermes",
+          "status": "running",
+          "current_task": "Verification",
+          "tasks": [
+            {"id": "t1", "title": "Load context", "state": "done", "progress": 100},
+            {"id": "t2", "title": "Execute session plan", "state": "done", "progress": 100},
+            {"id": "t3", "title": "Verification", "state": "running", "progress": 90}
+          ]
+        },
+        {
+          "id": "agent-pi",
+          "name": "Pi",
+          "runtime": "pi",
+          "status": "done",
+          "current_task": null,
+          "tasks": [
+            {"id": "t4", "title": "Inspect AST", "state": "done", "progress": 100},
+            {"id": "t5", "title": "Analyze codebase invariants", "state": "done", "progress": 100}
+          ]
+        },
+        {
+          "id": "agent-codex",
+          "name": "Codex",
+          "runtime": "codex",
+          "status": "done",
+          "current_task": null,
+          "tasks": [
+            {"id": "t6", "title": "Contract validation", "state": "done", "progress": 100}
+          ]
+        }
+      ]
+    }
+  ]
+}

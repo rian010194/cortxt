@@ -198,6 +198,9 @@ USAGE_COST_SCHEMA = {
         "history_costs": {"type": "array", "items": {"type": "number"}},
     },
 }
+SESSION_AGENTS_TASK_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["id", "title", "state", "progress"], "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "state": {"type": "string"}, "progress": {"type": "integer", "minimum": 0, "maximum": 100}}}
+SESSION_AGENTS_AGENT_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["id", "name", "runtime", "status", "current_task", "tasks"], "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "runtime": {"type": "string"}, "status": {"type": "string", "enum": ["running", "blocked", "done", "queued"]}, "current_task": {"type": ["string", "null"]}, "tasks": {"type": "array", "items": SESSION_AGENTS_TASK_SCHEMA}}}
+SESSION_AGENTS_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "agents"], "properties": {"schema_version": {"const": 1}, "agents": {"type": "array", "items": SESSION_AGENTS_AGENT_SCHEMA}}}
 
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
@@ -211,6 +214,7 @@ TYPES = {
     "pages.deploys.v1": TypeEntry(PAGES_DEPLOYS_SCHEMA, "operational"),
     "visual-tokens.v1": TypeEntry(VISUAL_TOKENS_SCHEMA, "public-metadata"),
     "usage-cost.v1": TypeEntry(USAGE_COST_SCHEMA, "operational"),
+    "session-agents.v1": TypeEntry(SESSION_AGENTS_SCHEMA, "operational"),
     "issue.workflow.v1": TypeEntry({"type": "object"}, "public-metadata"),
     "core.string.v1": TypeEntry({"type": "string"}, "public-metadata"),
     "core.number.v1": TypeEntry({"type": "number"}, "public-metadata"),
@@ -231,6 +235,7 @@ READ_OPERATIONS = {
     "webhooks.status.v1": ReadOperation("store", JSON_OBJECT, "webhooks.status.v1", "public-metadata", 500, 60, 2, "read:webhooks"),
     "pages.deploys.v1": ReadOperation("store", JSON_OBJECT, "pages.deploys.v1", "operational", 500, 60, 2, "read:pages"),
     "usage-cost.v1": ReadOperation("store", JSON_OBJECT, "usage-cost.v1", "operational", 500, 60, 2, "read:usage-cost"),
+    "session-agents.v1": ReadOperation("store", JSON_OBJECT, "session-agents.v1", "operational", 500, 60, 2, "read:session-agents"),
     "issue.workflow.get.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["issue_number"], "properties": {"issue_number": {"type": "integer", "minimum": 1}}}, "issue.workflow.v1", "public-metadata", 2000, 30, 30, "read:issue-workflow", True),
 }
 
@@ -256,6 +261,7 @@ PRIMITIVES.update({
     "key-value": PrimitiveEntry(frozenset({"value", "empty", "error"}), {"value": "core.object.v1"}, "empty", "error"),
     "bar": PrimitiveEntry(frozenset({"label", "categories", "empty", "error"}), {"values": "core.array.v1"}, "empty", "error"),
     "line": PrimitiveEntry(frozenset({"label", "points", "empty", "error"}), {"series": "core.array.v1"}, "empty", "error"),
+    "swimlane": PrimitiveEntry(frozenset({"label", "columns", "empty", "error"}), {"rows": "core.array.v1"}, "empty", "error"),
     "button": PrimitiveEntry(frozenset({"label", "action"}), {}, "denied", "error", True),
     "choice": PrimitiveEntry(frozenset({"label", "action", "options"}), {}, "denied", "error", True),
 })

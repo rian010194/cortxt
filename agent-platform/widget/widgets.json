@@ -43,6 +43,13 @@
       "hint": "cortxt widget --view usage-cost"
     },
     {
+      "id": "agents",
+      "title": "Agents",
+      "spec": "widget_contract/specs/session-agents-0.1.yaml",
+      "artifact": "session-agents.json",
+      "hint": "cortxt widget --view session-agents"
+    },
+    {
       "id": "loaded",
       "title": "Loaded",
       "spec": null,

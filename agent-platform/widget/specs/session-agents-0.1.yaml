@@ -1,0 +1,30 @@
+contract_version: "0.1"
+widget:
+  id: session-agents
+  version: "0.1"
+  title: Session Agents
+data:
+  reads:
+    - id: agents
+      source: store
+      operation: session-agents.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: session-agents.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Session Agents}
+  children:
+    - primitive: heading
+      props: {value: Session Agents}
+    - primitive: text
+      props: {value: Live Multi-Agent Workspace}
+    - primitive: swimlane
+      props: {label: Agents, columns: [Agent, Tasks]}
+      bindings:
+        rows: {read: agents, pointer: /agents, type: core.array.v1}
+actions: []
+capabilities: [read:session-agents]

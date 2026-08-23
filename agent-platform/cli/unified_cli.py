@@ -798,6 +798,14 @@ def _run_widget_load(args: argparse.Namespace) -> ResultEnvelope:
                     else:
                         reader = getattr(args, "usage_reader", None) or _default_usage_reader
                         data[read.id] = read_usage_cost_v1(reader())
+                elif read.operation == "session-agents.v1":
+                    from widget_contract.adapters.store_reads import read_session_agents_v1
+                    agents_input = getattr(args, "agents_input", None) or (ap_path / "widget" / "session-agents.json")
+                    if agents_input and Path(agents_input).is_file():
+                        data[read.id] = read_session_agents_v1(json.loads(Path(agents_input).read_text(encoding="utf-8")))
+                    else:
+                        reader = getattr(args, "agents_reader", None) or _default_session_agents_reader
+                        data[read.id] = read_session_agents_v1(reader())
                 else:
                     return ResultEnvelope(status="failed", error={"category": "input_error",
                                                                   "message": f"unsupported emitted store read {read.operation}"})
@@ -964,6 +972,14 @@ def _run_widget_compose(args: argparse.Namespace) -> ResultEnvelope:
                         else:
                             reader = getattr(args, "usage_reader", None) or _default_usage_reader
                             child_data[read.id] = read_usage_cost_v1(reader())
+                    elif read.operation == "session-agents.v1":
+                        from widget_contract.adapters.store_reads import read_session_agents_v1
+                        agents_input = getattr(args, "agents_input", None) or (ap_path / "widget" / "session-agents.json")
+                        if Path(agents_input).is_file():
+                            child_data[read.id] = read_session_agents_v1(json.loads(Path(agents_input).read_text(encoding="utf-8")))
+                        else:
+                            reader = getattr(args, "agents_reader", None) or _default_session_agents_reader
+                            child_data[read.id] = read_session_agents_v1(reader())
                     else:
                         return ResultEnvelope(status="failed", error={"category": "input_error",
                                                                       "message": f"unsupported emitted store read {read.operation}"})
@@ -1203,7 +1219,97 @@ def _default_usage_reader() -> dict[str, Any]:
     }
 
 
-def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reader: Any = None) -> ResultEnvelope:
+def _default_session_agents_reader() -> dict[str, Any]:
+    """Capture local session/agent state into a safe projection dictionary."""
+    ap_path = _get_agent_platform_path()
+    snapshot_path = ap_path / "widget" / "snapshot.json"
+    if snapshot_path.is_file():
+        try:
+            data = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            sessions = data.get("sessions", [])
+            if isinstance(sessions, list) and sessions:
+                agents = []
+                for s in sessions:
+                    if not isinstance(s, dict):
+                        continue
+                    s_id = str(s.get("session_id") or s.get("id") or "agent-1")
+                    role = str(s.get("worker_role") or s.get("role") or s.get("name") or "Agent")
+                    runtime = str(s.get("runtime") or "hermes")
+                    raw_status = str(s.get("status") or s.get("state") or "running").lower()
+                    status = raw_status if raw_status in ("running", "blocked", "done", "queued") else ("running" if "run" in raw_status else "done")
+                    curr_task = str(s.get("current_task") or s.get("task_id") or "Session task")
+                    tasks_raw = s.get("tasks")
+                    if not isinstance(tasks_raw, list) or not tasks_raw:
+                        tasks = [{
+                            "id": f"{s_id}-t1",
+                            "title": curr_task,
+                            "state": status,
+                            "progress": 100 if status == "done" else (50 if status == "running" else 0),
+                        }]
+                    else:
+                        safe_tasks = []
+                        for idx, t in enumerate(tasks_raw):
+                            if isinstance(t, dict):
+                                safe_tasks.append({
+                                    "id": str(t.get("id") or f"{s_id}-t{idx+1}"),
+                                    "title": str(t.get("title") or f"Task {idx+1}"),
+                                    "state": str(t.get("state") or "running"),
+                                    "progress": int(t.get("progress") or (100 if t.get("state") == "done" else 50)),
+                                })
+                        tasks = safe_tasks
+                    agents.append({
+                        "id": s_id,
+                        "name": role,
+                        "runtime": runtime,
+                        "status": status,
+                        "current_task": curr_task,
+                        "tasks": tasks,
+                    })
+                if agents:
+                    return {"schema_version": 1, "agents": agents}
+        except Exception:
+            pass
+    return {
+        "schema_version": 1,
+        "agents": [
+            {
+                "id": "agent-hermes",
+                "name": "Hermes",
+                "runtime": "hermes",
+                "status": "running",
+                "current_task": "Execute session plan",
+                "tasks": [
+                    {"id": "t1", "title": "Load context", "state": "done", "progress": 100},
+                    {"id": "t2", "title": "Execute session plan", "state": "running", "progress": 65},
+                    {"id": "t3", "title": "Verification", "state": "queued", "progress": 0},
+                ],
+            },
+            {
+                "id": "agent-pi",
+                "name": "Pi",
+                "runtime": "pi",
+                "status": "running",
+                "current_task": "Analyze codebase invariants",
+                "tasks": [
+                    {"id": "t4", "title": "Inspect AST", "state": "done", "progress": 100},
+                    {"id": "t5", "title": "Analyze codebase invariants", "state": "running", "progress": 40},
+                ],
+            },
+            {
+                "id": "agent-codex",
+                "name": "Codex",
+                "runtime": "codex",
+                "status": "done",
+                "current_task": None,
+                "tasks": [
+                    {"id": "t6", "title": "Contract validation", "state": "done", "progress": 100},
+                ],
+            },
+        ],
+    }
+
+
+def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reader: Any = None, agents_reader: Any = None) -> ResultEnvelope:
     """Serve the sessions widget or execute a registered widget action.
 
     `cortxt widget` without a subcommand serves the sessions widget
@@ -1213,6 +1319,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
     orchestrator/session snapshot through the contract. `--view execution-map`
     renders the execution-map plan. `--view docker-status` renders local
     docker status. `--view usage-cost` renders token usage and cost metrics.
+    `--view session-agents` renders multi-agent session swimlanes.
     `cortxt widget action <id>` dispatches a registered authorized action
     through ActionExecutor with the operator gate.
     """
@@ -1488,11 +1595,54 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "usage-cost.json")
             artifact = {**tree, "repo": None, "error": error}
             _write_widget_artifact(artifact, output_path)
-            stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
-                                                           if node["primitive"] in ("metric", "bar", "line", "table", "list", "key-value")]}
-            print(json.dumps(stdout_tree, indent=2))
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("metric", "bar", "line", "table", "list", "key-value")]}
+                print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"usage-cost:{output_path}"],
                                   evidence=[{"usage_cost": tree}])
+        if view == "session-agents":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_session_agents_v1
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "session-agents-0.1.yaml")
+            reader = agents_reader or getattr(args, "agents_reader", None) or _default_session_agents_reader
+            try:
+                raw_data = reader() if callable(reader) else reader
+                projection = read_session_agents_v1(raw_data)
+                source_status = "fresh"
+                error = None
+            except (OSError, ValueError, Exception) as exc:
+                projection = {}
+                source_status = "error"
+                error = {"kind": "session_agents_read", "message": str(exc)}
+            if error is None:
+                tree = render(widget, {"agents": projection}, {"agents": source_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {"contract_version": widget.contract_version,
+                        "widget": {"id": widget.id, "version": widget.version},
+                        "render": render_primitive("error-state",
+                                                   {"message": f"Session agents read failed: {error['message']}"},
+                                                   [], "error")}
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "session-agents.json")
+            artifact = {**tree, "repo": None, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("table", "list", "key-value", "metric", "swimlane")]}
+                print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"session-agents:{output_path}"],
+                                  evidence=[{"session_agents": tree}])
         candidate_mode = getattr(args, "widget_command", None) == "candidates" or view == "candidates"
         if candidate_mode:
             ap_path = _get_agent_platform_path()
@@ -2495,7 +2645,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
-    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map", "docker-status", "webhooks", "pages-deploys", "usage-cost"], help="Render a named read-only widget view")
+    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map", "docker-status", "webhooks", "pages-deploys", "usage-cost", "session-agents"], help="Render a named read-only widget view")
     widget_parser.add_argument("--repo", help="GitHub owner/repo for a named view")
     widget_parser.add_argument("--snapshot", type=Path, help="Widget render output path")
     widget_parser.add_argument("--snapshot-input", type=Path, help="Snapshot input path for the session-pulse view")
