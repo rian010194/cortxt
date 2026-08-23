@@ -1,0 +1,89 @@
+{
+  "contract_version": "0.1",
+  "widget": {
+    "id": "session-agents",
+    "version": "0.1"
+  },
+  "render": {
+    "primitive": "stack",
+    "state": "ready",
+    "props": {
+      "label": "Session Agents"
+    },
+    "children": [
+      {
+        "primitive": "metric",
+        "state": "ready",
+        "props": {
+          "label": "Active agents",
+          "value": 3
+        }
+      },
+      {
+        "primitive": "swimlane",
+        "state": "ready",
+        "props": {
+          "label": "Workstreams",
+          "items": [
+            {
+              "id": "ws-builder-348",
+              "name": "builder",
+              "status": "running",
+              "active": true,
+              "progress": 75
+            },
+            {
+              "id": "ws-atlas-sync",
+              "name": "atlas-sync",
+              "status": "idle",
+              "active": false,
+              "progress": 100
+            },
+            {
+              "id": "ws-eval-gate",
+              "name": "eval-gate",
+              "status": "running",
+              "active": true,
+              "progress": 45
+            }
+          ]
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "label": "Agent sessions",
+          "columns": [
+            "workstream_id",
+            "runtime",
+            "status",
+            "updated_at"
+          ],
+          "rows": [
+            {
+              "workstream_id": "ws-builder-348",
+              "runtime": "hermes",
+              "status": "running",
+              "updated_at": "2026-08-23T19:00:00Z"
+            },
+            {
+              "workstream_id": "ws-atlas-sync",
+              "runtime": "codex",
+              "status": "idle",
+              "updated_at": "2026-08-23T18:55:00Z"
+            },
+            {
+              "workstream_id": "ws-eval-gate",
+              "runtime": "dsh",
+              "status": "running",
+              "updated_at": "2026-08-23T19:02:00Z"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "repo": null,
+  "error": null
+}

@@ -1,11 +1,13 @@
 ---
 import '../styles/landing.css';
+import examplesManifest from '../../public/widgets/examples.json';
 const principles = [
   ['Mandate first', 'Work runs only inside explicit scope, limits, and authority.'],
   ['Provider neutral', 'Models and agent engines remain replaceable behind Cortxt-owned contracts.'],
   ['Evidence before approval', 'Every run returns inspectable evidence before a human makes the final call.'],
   ['Your stack, rendered', 'The operator view is generated from the workflow, never imposed on it.'],
 ];
+const examples = examplesManifest.examples || [];
 ---
 <!doctype html>
 <html lang="en">
@@ -19,7 +21,7 @@ const principles = [
     <header class="nav shell">
       <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
       <nav aria-label="Primary navigation">
-        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a>
+        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/widgets/">Widgets</a><a href="#proof-examples">Examples</a>
         <a class="nav-cta" href="https://github.com/rian010194/cortxt">GitHub</a>
       </nav>
     </header>
@@ -62,9 +64,138 @@ const principles = [
         <p class="eyebrow">The contract</p><h2 id="principles-title">Control that survives a model change.</h2>
         <div class="grid">{principles.map(([title, body], index) => <article><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>)}</div>
       </section>
+
+      <section class="proof-band shell" id="proof-examples" aria-labelledby="examples-title">
+        <div class="proof-band-header">
+          <div>
+            <p class="eyebrow"><i></i> Live CLI + Widget Pairs</p>
+            <h2 id="examples-title">Your stack, rendered. Real CLI, real widget contracts.</h2>
+          </div>
+          <p class="proof-band-lede">
+            Every Cortxt view is declarative: inspect plain-text TUI streams in your terminal or render interactive web widgets with shared visual tokens. Scroll horizontally through live examples.
+          </p>
+        </div>
+        <div class="proof-band-scroll" aria-label="Widget examples horizontal scroll">
+          {examples.map((ex) => (
+            <article class="proof-pair-card" data-widget-id={ex.id} data-live={ex.live ? "true" : "false"}>
+              <header class="proof-card-header">
+                <div class="proof-card-title-group">
+                  <div class="proof-card-title-row">
+                    <h3>{ex.title}</h3>
+                    {ex.live && <span class="live-badge pulse-dot"><i></i> LIVE</span>}
+                  </div>
+                  <p class="proof-card-desc">{ex.description}</p>
+                </div>
+              </header>
+              <div class="proof-card-body">
+                <div class="proof-cli-pane">
+                  <div class="pane-tag">CLI / TUI stream</div>
+                  <div class="proof-cli-cmd"><span>$</span> {ex.cli_command}</div>
+                  <pre class="proof-cli-tui" aria-label={`${ex.title} CLI text`}><code>{ex.tui_text}</code></pre>
+                </div>
+                <div class="proof-widget-pane">
+                  <div class="pane-tag">Widget render &bull; <code>maker.js</code></div>
+                  <div class="proof-widget-mount" id={`widget-mount-${ex.id}`} data-artifact={ex.artifact}>
+                    <div class="widget-mount-placeholder">Loading widget...</div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div class="proof-band-actions">
+          <a class="secondary" href="/widgets/">Explore interactive Widget Maker &amp; Studio -&gt;</a>
+        </div>
+      </section>
+
       <section class="proof shell"><div><p class="eyebrow">Built for inspectability</p><h2>Your workflow is the product. The runtime is replaceable.</h2></div><div><p>GitHub Issues hold durable scope and evidence. The Cortxt CLI drives execution. External runtimes sit behind adapters, and every terminal result follows a shared contract.</p><a href="/docs/operating-model/">Read the operating model -&gt;</a></div></section>
       <section class="docs-band"><div class="shell"><p class="eyebrow">Reference</p><h2>Decisions, contracts, and what comes next.</h2><div class="links"><a href="/docs/adrs/"><strong>Accepted ADRs</strong><span>Normative architecture decisions -&gt;</span></a><a href="/docs/architecture/"><strong>Architecture</strong><span>Boundaries and execution contracts -&gt;</span></a><a href="/docs/roadmap/"><strong>Roadmap</strong><span>Current status and direction -&gt;</span></a></div></div></section>
     </main>
     <footer class="shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><a href="/docs/">Documentation -&gt;</a></footer>
+
+    <script src="/widgets/maker.js" is:inline></script>
+    <script is:inline>
+      document.addEventListener("DOMContentLoaded", async function () {
+        if (typeof WidgetMaker === "undefined") return;
+
+        // Load tokens
+        try {
+          const tokRes = await fetch("/widgets/tokens.json");
+          if (tokRes.ok) {
+            const tokens = await tokRes.json();
+            WidgetMaker.applyTokens(tokens);
+          }
+        } catch (e) {}
+
+        // Load multi-state demo data
+        let agentsData = null;
+        let usageData = null;
+        try {
+          const aRes = await fetch("/widgets/fixtures/agents_data.json");
+          if (aRes.ok) agentsData = await aRes.json();
+        } catch (e) {}
+        try {
+          const uRes = await fetch("/widgets/fixtures/usage_data.json");
+          if (uRes.ok) usageData = await uRes.json();
+        } catch (e) {}
+
+        // Hydrate each widget mount
+        const mounts = document.querySelectorAll(".proof-widget-mount");
+        for (const mount of mounts) {
+          const artifactPath = mount.getAttribute("data-artifact");
+          if (!artifactPath) continue;
+
+          try {
+            const res = await fetch("/widgets/" + artifactPath);
+            if (!res.ok) continue;
+            const artifact = await res.json();
+            const tree = artifact.render || artifact;
+
+            mount.replaceChildren();
+            WidgetMaker.renderNodeToDom(tree, mount);
+
+            const card = mount.closest(".proof-pair-card");
+            const widgetId = card ? card.getAttribute("data-widget-id") : null;
+
+            if (widgetId === "session-agents" && agentsData && agentsData.states) {
+              WidgetMaker.startLivingDemo(mount, agentsData.states, 2800, function (container, state) {
+                const stepTree = JSON.parse(JSON.stringify(tree));
+                if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) {
+                  stepTree.children[1].props.items = state.agents;
+                }
+                if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) {
+                  stepTree.children[0].props.value = state.active_count;
+                }
+                container.replaceChildren();
+                WidgetMaker.renderNodeToDom(stepTree, container);
+              });
+            } else if (widgetId === "usage-cost" && usageData && usageData.states) {
+              WidgetMaker.startLivingDemo(mount, usageData.states, 3000, function (container, state) {
+                const u = state.usage;
+                const stepTree = JSON.parse(JSON.stringify(tree));
+                if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) stepTree.children[0].props.value = u.total_cost_usd;
+                if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) stepTree.children[1].props.value = u.total_tokens;
+                if (stepTree.children && stepTree.children[2] && stepTree.children[2].props) {
+                  stepTree.children[2].props.categories = u.runtime_names;
+                  stepTree.children[2].props.values = u.runtime_tokens;
+                }
+                if (stepTree.children && stepTree.children[3] && stepTree.children[3].props) {
+                  stepTree.children[3].props.categories = u.model_names;
+                  stepTree.children[3].props.values = u.model_costs;
+                }
+                if (stepTree.children && stepTree.children[4] && stepTree.children[4].props) {
+                  stepTree.children[4].props.points = u.history_points;
+                  stepTree.children[4].props.series = u.history_tokens;
+                }
+                container.replaceChildren();
+                WidgetMaker.renderNodeToDom(stepTree, container);
+              });
+            }
+          } catch (err) {
+            console.error("Failed to render widget:", artifactPath, err);
+          }
+        }
+      });
+    </script>
   </body>
 </html>

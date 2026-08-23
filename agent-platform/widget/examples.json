@@ -1,0 +1,64 @@
+{
+  "examples": [
+    {
+      "id": "candidates",
+      "title": "Candidates",
+      "description": "Ready frontier issues and workstream dispatch candidates with dependency status.",
+      "cli_command": "cortxt widget --view candidates --repo rian010194/cortxt",
+      "tui_text": "=== Candidates ===\n\n  complete: true\n  status: fresh\n  age_seconds: 0\n  error: None\n\nTotal: 2\n\n[frontier]\n  number  title    workflow        area  milestone  open_blocker_count\n  ------  -------  --------------  ----  ---------  ------------------\n  1       Issue 1  workflow:ready  -     M1         0                 \n\n[in_progress]\n  (No entries)\n\n[blocked]\n  (No entries)\n\n[other]\n  number  title    workflow        area  milestone  open_blocker_count\n  ------  -------  --------------  ----  ---------  ------------------\n  2       Issue 2  workflow:inbox  -     -          0                 \n\n[violations]\n  (No entries)\n\n[atlas_maps]\n  (No entries)",
+      "artifact": "fixtures/candidates.json",
+      "tokens": "tokens.json",
+      "live": false
+    },
+    {
+      "id": "session-agents",
+      "title": "Session Agents",
+      "description": "Live agent workstreams, execution state swimlanes, and active subagent telemetry.",
+      "cli_command": "cortxt widget --view session-agents",
+      "tui_text": "=== Session Agents ===\n\nActive agents: 3\n\nWorkstreams | builder \u25cf  atlas-sync \u25cb  eval-gate \u25cf\n\n[Agent sessions]\n  workstream_id   runtime  status   updated_at          \n  --------------  -------  -------  --------------------\n  ws-builder-348  hermes   running  2026-08-23T19:00:00Z\n  ws-atlas-sync   codex    idle     2026-08-23T18:55:00Z\n  ws-eval-gate    dsh      running  2026-08-23T19:02:00Z",
+      "artifact": "fixtures/session-agents.json",
+      "tokens": "tokens.json",
+      "live": true
+    },
+    {
+      "id": "usage-cost",
+      "title": "Usage & Cost",
+      "description": "Token consumption, model breakdown, and cost trajectory over time.",
+      "cli_command": "cortxt widget --view usage-cost",
+      "tui_text": "=== Usage & Cost ===\n\nTotal cost: 0.42\n\nTotal tokens: 24800\n\nTokens by runtime\nHermes  |####################| 12,000\nCodex   |##############------| 8,500\nClaude  |#####---------------| 3,200\nDSH     |##------------------| 1,100\n\nCost by model\nhermes-3-70b       |################----| 0.12\ngpt-4o             |####################| 0.15\nclaude-3-7-sonnet  |#############-------| 0.10\ndeepseek-v3        |#######-------------| 0.05\n\nUsage over time\nPoints: 10:00 -> 10:15 -> 10:30 -> 10:45 -> 11:00\nSeries: 3,000 -> 7,500 -> 14,000 -> 19,500 -> 24,800",
+      "artifact": "fixtures/usage-cost.json",
+      "tokens": "tokens.json",
+      "live": true
+    },
+    {
+      "id": "pulse",
+      "title": "Session Pulse",
+      "description": "Real-time orchestrator heartbeat, active run count, and dispatch activity feed.",
+      "cli_command": "cortxt widget --view session-pulse",
+      "tui_text": "=== Session Pulse ===\n\n  status: idle\n  active_agent_sessions: 2\n  abandoned_agent_sessions: 0\n  blocked_agent_sessions: 0\n  failed_agent_sessions: 0\n  attention_items: 0\n  message: 2 active runs\n\nActive sessions: 2\n\n[Workstreams]\n  workstream_id   status   updated_at          \n  --------------  -------  --------------------\n  ws-builder-339  running  2026-08-23T19:00:00Z\n  ws-atlas-sync   idle     2026-08-23T18:55:00Z\n\n[Activity]\n  timestamp             event_type      workstream_id   actor  \n  --------------------  --------------  --------------  -------\n  2026-08-23T19:00:00Z  turn_completed  ws-builder-339  builder\n  2026-08-23T18:55:00Z  graph_updated   ws-atlas-sync   atlas  ",
+      "artifact": "fixtures/session-pulse.json",
+      "tokens": "tokens.json",
+      "live": true
+    },
+    {
+      "id": "docker",
+      "title": "Docker Status",
+      "description": "Container engine status, active sandbox runtimes, and image inventory.",
+      "cli_command": "cortxt widget --view docker-status",
+      "tui_text": "=== Docker Status ===\n\n  server_version: 27.1.1\n  os: linux\n  architecture: x86_64\n  status: running\n\nRunning: 2\n\nTotal: 3\n\n[Containers]\n  id            name               image               status                \n  ------------  -----------------  ------------------  ----------------------\n  c1a2b3c4d5e6  cortxt-redis       redis:7-alpine      Up 2 hours            \n  f7e8d9c0b1a2  cortxt-postgres    postgres:16-alpine  Up 2 hours            \n  334455667788  cortxt-worker-old  cortxt/worker:v1    Exited (0) 5 hours ago\n\nImages:\n  \u2022 redis:7-alpine\n  \u2022 postgres:16-alpine\n  \u2022 cortxt/worker:v1",
+      "artifact": "fixtures/docker-status.json",
+      "tokens": "tokens.json",
+      "live": false
+    },
+    {
+      "id": "webhooks",
+      "title": "Webhooks & Deploys",
+      "description": "GitHub webhook subscription health and Cloudflare Pages deployment status.",
+      "cli_command": "cortxt widget --view webhooks --repo rian010194/cortxt",
+      "tui_text": "=== Webhooks ===\n\nActive webhooks: 2\n\n[Hooks]\n  id   url                                                events              active\n  ---  -------------------------------------------------  ------------------  ------\n  101  https://api.cloudflare.com/pages/deploy-hook/demo  push, pull_request  true  \n  102  https://notify.example.org/events                  issues              true  \n\n  id: dep-789\n  environment: production\n  created_on: 2026-08-23T18:30:00Z\n  stage: deploy\n  status: success\n\n[Deployments]\n  id       environment  created_on            stage \n  -------  -----------  --------------------  ------\n  dep-789  production   2026-08-23T18:30:00Z  deploy\n  dep-788  preview      2026-08-23T17:45:00Z  deploy",
+      "artifact": "fixtures/webhooks.json",
+      "tokens": "tokens.json",
+      "live": false
+    }
+  ]
+}

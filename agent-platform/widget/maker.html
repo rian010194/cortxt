@@ -76,6 +76,63 @@
     .view-section { display: flex; flex-direction: column; gap: 16px; }
     .hidden { display: none !important; }
 
+    /* Horizontal Examples Band */
+    .examples-band {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .examples-band-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 4px;
+    }
+    .examples-scroll {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      padding-bottom: 8px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .example-chip {
+      flex: 0 0 240px;
+      min-width: 240px;
+      scroll-snap-align: start;
+      border: 1px solid var(--strong);
+      border-radius: 8px;
+      background: #101522d9;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: all .15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      backdrop-filter: blur(10px);
+    }
+    .example-chip:hover {
+      border-color: var(--accent);
+      background: #182033;
+      transform: translateY(-2px);
+    }
+    .example-chip-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .example-chip-hint {
+      font: 9.5px var(--mono);
+      color: var(--ok);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     /* Gallery Cards */
     .gallery-grid {
       display: grid;
@@ -379,6 +436,17 @@
 
   <!-- Section 1: Gallery View -->
   <section class="view-section" id="section-gallery">
+    <!-- Horizontal Examples Band -->
+    <div class="examples-band" id="examples-band" aria-label="Widget examples horizontal row">
+      <div class="examples-band-header">
+        <span class="eyebrow">Widget Examples Band &bull; Horizontal Scroll</span>
+        <span class="card-meta">Scroll or click to inspect</span>
+      </div>
+      <div class="examples-scroll" id="examples-scroll">
+        <!-- Injected by renderExamplesBand() -->
+      </div>
+    </div>
+
     <div class="gallery-grid" id="gallery-grid">
       <!-- Injected by renderGallery() -->
     </div>
@@ -1252,6 +1320,34 @@ render:
       }
     }
 
+    function renderExamplesBand(manifestList) {
+      const scroll = document.getElementById("examples-scroll");
+      if (!scroll) return;
+      scroll.replaceChildren();
+
+      for (const w of manifestList) {
+        const chip = document.createElement("div");
+        chip.className = "example-chip";
+        const isLive = ["session-agents", "usage", "pulse"].includes(w.id);
+        chip.innerHTML = `
+          <div class="example-chip-title">
+            <span>${escapeHtml(w.title || w.id)}</span>
+            <span class="badge ${isLive ? "ok pulse-dot" : "off"}">${isLive ? "live" : "ready"}</span>
+          </div>
+          <div class="example-chip-hint">${escapeHtml(w.hint || "")}</div>
+        `;
+        chip.onclick = function () {
+          const targetCard = document.getElementById("card-" + w.id);
+          if (targetCard) {
+            targetCard.scrollIntoView({ behavior: "smooth", block: "center" });
+            targetCard.style.outline = "2px solid var(--accent)";
+            setTimeout(() => { targetCard.style.outline = "none"; }, 1500);
+          }
+        };
+        scroll.append(chip);
+      }
+    }
+
     async function loadManifestAndRender() {
       const grid = document.getElementById("gallery-grid");
       grid.replaceChildren();
@@ -1273,11 +1369,14 @@ render:
           { id: "map", title: "Map", spec: "widget_contract/specs/execution-map-0.1.yaml", artifact: "execution-map.json", hint: "cortxt widget --view execution-map --plan-input <file>" },
           { id: "docker", title: "Docker", spec: "widget_contract/specs/docker-status-0.1.yaml", artifact: "docker-status.json", hint: "cortxt widget --view docker-status" },
           { id: "webhooks", title: "Webhooks", spec: "widget_contract/specs/webhooks-0.1.yaml", artifact: "webhooks.json", hint: "cortxt widget --view webhooks" },
-          { id: "agents", title: "Agents", spec: "widget_contract/specs/session-agents-0.1.yaml", artifact: "session-agents.json", hint: "cortxt widget --view session-agents" },
+{ id: "agents", title: "Agents", spec: "widget_contract/specs/session-agents-0.1.yaml", artifact: "session-agents.json", hint: "cortxt widget --view session-agents" },
+{ id: "usage", title: "Usage & Cost", spec: "widget_contract/specs/usage-cost-0.1.yaml", artifact: "usage-cost.json", hint: "cortxt widget --view usage-cost" },
           { id: "loaded", title: "Loaded", spec: null, artifact: "loaded.json", hint: "cortxt widget load --spec <file> --view loaded" },
           { id: "composed", title: "Composed", spec: null, artifact: "composed.json", hint: "cortxt widget compose --spec <file> --widgets-dir <dir>" }
         ];
       }
+
+      renderExamplesBand(manifestList);
 
       for (const w of manifestList) {
         const card = document.createElement("div");
