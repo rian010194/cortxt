@@ -1,0 +1,38 @@
+contract_version: "0.1"
+widget:
+  id: session-pulse
+  version: "0.1"
+  title: Session Pulse
+data:
+  reads:
+    - id: snapshot
+      source: store
+      operation: sessions.snapshot.v2
+      input: {}
+      select: []
+      refresh:
+        mode: poll
+        interval_seconds: 5
+      output_type: sessions.snapshot.v2
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Session Pulse}
+  children:
+    - primitive: key-value
+      bindings:
+        value: {read: snapshot, pointer: /orchestrator, type: core.object.v1}
+    - primitive: metric
+      props: {label: Active sessions}
+      bindings:
+        value: {read: snapshot, pointer: /orchestrator/active_agent_sessions, type: core.number.v1}
+    - primitive: table
+      props: {label: Workstreams, columns: [workstream_id, status, updated_at]}
+      bindings:
+        rows: {read: snapshot, pointer: /workstreams, type: core.array.v1}
+    - primitive: table
+      props: {label: Activity, columns: [timestamp, event_type, workstream_id, actor]}
+      bindings:
+        rows: {read: snapshot, pointer: /activity, type: core.array.v1}
+actions: []
+capabilities: [read:sessions]

@@ -1,0 +1,63 @@
+{
+  "contract_version": "0.1",
+  "widget": {
+    "id": "compliance-audit",
+    "version": "0.1"
+  },
+  "render": {
+    "primitive": "stack",
+    "state": "ready",
+    "props": {
+      "label": "Compliance Audit"
+    },
+    "children": [
+      {
+        "primitive": "metric",
+        "state": "ready",
+        "props": {
+          "label": "Score",
+          "value": 98
+        }
+      },
+      {
+        "primitive": "badge",
+        "state": "ready",
+        "props": {
+          "label": "Passed",
+          "value": "Passed"
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "label": "Controls",
+          "columns": [
+            "control_id",
+            "status",
+            "category"
+          ],
+          "rows": [
+            {
+              "control_id": "AC-1",
+              "status": "passed",
+              "category": "access_control"
+            },
+            {
+              "control_id": "AU-2",
+              "status": "passed",
+              "category": "audit_trail"
+            },
+            {
+              "control_id": "SC-7",
+              "status": "passed",
+              "category": "boundary_protection"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "emitted": true,
+  "document_hash": "a1b2c3d4e5f60718"
+}

@@ -24,6 +24,7 @@ export default defineConfig({
         { label: 'Decisions', items: [{ label: 'Accepted ADRs', link: '/docs/adrs/' }] },
         { label: 'Roadmap', items: [
             { label: 'Visual Atlas', link: '/atlas/' },
+            { label: 'Widget prototypes', link: '/widgets/' },
             { label: 'Status and Atlas hook', link: '/docs/roadmap/' },
         ] },
       ],

@@ -1,0 +1,42 @@
+contract_version: "0.1"
+widget:
+  id: execution-map
+  version: "0.1"
+  title: Execution Map
+data:
+  reads:
+    - id: plan
+      source: store
+      operation: execution-map.plan.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: execution-map.plan.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Execution Map}
+  children:
+    - primitive: text
+      props: {label: Role}
+      bindings:
+        value: {read: plan, pointer: /role, type: core.string.v1}
+    - primitive: table
+      props: {label: Issues, columns: [id, wave, blockers, drift_codes, launchable]}
+      bindings:
+        rows: {read: plan, pointer: /issues, type: core.array.v1}
+    - primitive: table
+      props: {label: Claims, columns: [claim_id, issue_id, run_id, state, lease_expires_at, driver_id]}
+      bindings:
+        rows: {read: plan, pointer: /claims, type: core.array.v1}
+    - primitive: list
+      props: {label: Waves, empty: No waves}
+      bindings:
+        items: {read: plan, pointer: /waves, type: core.array.v1}
+    - primitive: list
+      props: {label: Collision codes, empty: No collisions}
+      bindings:
+        items: {read: plan, pointer: /collision_codes, type: core.array.v1}
+actions: []
+capabilities: [read:execution-map]

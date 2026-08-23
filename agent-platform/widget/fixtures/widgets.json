@@ -33,7 +33,7 @@
       "title": "Webhooks",
       "spec": "widget_contract/specs/webhooks-0.1.yaml",
       "artifact": "webhooks.json",
-      "hint": "cortxt widget --view webhooks --repo OWNER/REPO"
+      "hint": "cortxt widget --view webhooks"
     },
     {
       "id": "loaded",

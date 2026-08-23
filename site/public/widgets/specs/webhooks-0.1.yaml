@@ -1,0 +1,46 @@
+contract_version: "0.1"
+widget:
+  id: webhooks
+  version: "0.1"
+  title: Webhooks
+data:
+  reads:
+    - id: webhooks
+      source: store
+      operation: webhooks.status.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: webhooks.status.v1
+      on_error: stale
+    - id: pages
+      source: store
+      operation: pages.deploys.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: pages.deploys.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Webhooks}
+  children:
+    - primitive: metric
+      props: {label: Active webhooks}
+      bindings:
+        value: {read: webhooks, pointer: /active, type: core.number.v1}
+    - primitive: table
+      props: {label: Hooks, columns: [id, url, events, active]}
+      bindings:
+        rows: {read: webhooks, pointer: /hooks, type: core.array.v1}
+    - primitive: key-value
+      bindings:
+        value: {read: pages, pointer: /latest, type: core.object.v1}
+    - primitive: table
+      props: {label: Deployments, columns: [id, environment, created_on, stage]}
+      bindings:
+        rows: {read: pages, pointer: /deployments, type: core.array.v1}
+actions: []
+capabilities: [read:webhooks, read:pages]
