@@ -76,15 +76,18 @@ def test_transcript_record_engine_session_id_defaults_to_none():
     assert record["engine_session_id"] is None
 
 
-def test_widget_matches_v04_tabs_and_real_swimlane_surface():
+def test_widget_is_manifest_driven_shell_without_legacy_tabs():
     widget = Path(__file__).parents[2] / "widget" / "index.html"
     html = widget.read_text(encoding="utf-8")
 
     assert 'class="window"' in html
-    assert 'data-tab="pipeline"' in html
-    assert 'data-tab="logg"' in html
-    assert 'data-tab="flotta"' in html
-    assert 'id="workstream-select"' in html
-    assert 'id="lanes"' in html
-    assert 'id="runtimes"' in html
-    assert 'id="skills"' in html
+    # Legacy admin-surface tabs and swimlane surface are removed from the widget.
+    assert 'data-tab="pipeline"' not in html
+    assert 'data-tab="logg"' not in html
+    assert 'data-tab="flotta"' not in html
+    assert 'id="workstream-select"' not in html
+    assert 'id="lanes"' not in html
+    # The shell is manifest-driven and generic.
+    assert "loadManifest" in html
+    assert "renderGenericNode" in html
+    assert "widgets.json" in html

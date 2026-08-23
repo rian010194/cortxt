@@ -89,10 +89,10 @@ def test_cli_load_writes_emitted_artifact_and_rejects_unsafe(monkeypatch, capsys
 
 
 def test_widget_has_loaded_view_with_generic_renderer_and_no_post():
-    html = (WIDGET_DIR / "index.html").read_text(encoding="utf-8")
-    assert "loaded-tab" in html
-    assert "renderLoaded" in html
-    assert "pollLoaded" in html
+    widget_dir = WIDGET_DIR
+    html = (widget_dir / "index.html").read_text(encoding="utf-8")
+    manifest = json.loads((widget_dir / "widgets.json").read_text(encoding="utf-8"))
+    assert any(w["id"] == "loaded" and w["artifact"] == "loaded.json" for w in manifest["widgets"])
     assert "renderGenericNode" in html
-    assert "loaded.json" in html
+    assert "loadManifest" in html
     assert "do_POST" not in html
