@@ -204,12 +204,14 @@ def test_cli_visual_path_atomically_writes_contract_artifact(monkeypatch, capsys
     ]
 
 
-def test_widget_renders_open_in_cli_handoff_controls_without_post():
+def test_widget_renders_copy_command_handoff_controls_without_post():
     from pathlib import Path
     html = (Path(__file__).resolve().parents[2] / "widget" / "index.html").read_text(encoding="utf-8")
-    assert "Open in CLI" in html
+    assert "Copy command" in html
+    assert "Open in CLI" not in html
     assert "copyCommand" in html
     assert "candidate-chain" in html
+    assert "candidate-cmd" in html
     assert "cortxt widget action" in html
     assert "do_POST" not in html
 
