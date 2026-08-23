@@ -14,14 +14,16 @@ on:
   workflow_dispatch: {}
   schedule:
     - cron: "17 6 * * *" # daily, off the hour to avoid GitHub Actions load spikes
-  # Event-triggered refresh (issue #311, C.2): refresh the maps + site page +
-  # graph when issues or their labels change, instead of only the daily
-  # schedule. The actor guard below prevents the atlas bot's own comments and
-  # label writes from re-triggering the workflow (anti-loop).
+  # Event-triggered refresh (issue #311, C.2; issue #329): refresh the maps +
+  # site page + graph when issues, comments, or merged PRs change, instead of
+  # only the daily schedule. The actor guard below prevents the atlas bot's and
+  # github-actions bot's own writes from re-triggering the workflow (anti-loop).
   issues:
     types: [opened, edited, labeled, unlabeled, closed, reopened, transferred]
   issue_comment:
     types: [created, edited]
+  pull_request:
+    types: [closed]
 
 concurrency:
   group: atlas-sync
@@ -31,10 +33,10 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Anti-loop: the atlas bot's own sync comments/label writes must not
+    # Anti-loop: the atlas bot's and github-actions bot's own sync writes must not
     # re-trigger an event run; the daily schedule and manual dispatch are
-    # unaffected (they run without this filter).
-    if: ${{ github.event_name != 'issues' && github.event_name != 'issue_comment' || github.actor != 'cortxt-atlas[bot]' }}
+    # unaffected (they run without this filter). PR events only run if merged.
+    if: ${{ (github.event_name != 'issues' && github.event_name != 'issue_comment' && github.event_name != 'pull_request' || (github.actor != 'cortxt-atlas[bot]' && github.actor != 'github-actions[bot]')) && (github.event_name != 'pull_request' || github.event.pull_request.merged == true) }}
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
