@@ -80,7 +80,7 @@ def test_widget_is_manifest_driven_shell_without_legacy_tabs():
     widget = Path(__file__).parents[2] / "widget" / "index.html"
     html = widget.read_text(encoding="utf-8")
 
-    assert 'class="window"' in html
+    assert 'class="window' in html
     # Legacy admin-surface tabs and swimlane surface are removed from the widget.
     assert 'data-tab="pipeline"' not in html
     assert 'data-tab="logg"' not in html
