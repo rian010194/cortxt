@@ -324,3 +324,51 @@ def read_usage_cost_v1(projection_or_store: Any) -> dict[str, Any]:
         raise ReadAdapterError(str(exc)) from exc
     return result
 
+
+def read_session_agents_v1(projection_or_store: Any) -> dict[str, Any]:
+    """Produce the safe session-agents projection and validate it."""
+    if callable(projection_or_store):
+        raw = projection_or_store()
+    elif isinstance(projection_or_store, Mapping):
+        raw = projection_or_store
+    else:
+        raise ReadAdapterError("session-agents store must be an object or callable")
+
+    if not isinstance(raw, Mapping):
+        raise ReadAdapterError("session-agents raw data must be an object")
+
+    agents_raw = raw.get("agents")
+    if not isinstance(agents_raw, list):
+        raise ReadAdapterError("session-agents store must contain an agents array")
+
+    safe_agents = []
+    allowed_agent_keys = ("id", "name", "runtime", "status", "current_task", "tasks")
+    allowed_task_keys = ("id", "title", "state", "progress")
+
+    for agent in agents_raw:
+        if not isinstance(agent, Mapping):
+            raise ReadAdapterError("agent row must be an object")
+        tasks_raw = agent.get("tasks")
+        if not isinstance(tasks_raw, list):
+            raise ReadAdapterError("agent tasks must be a list")
+        safe_tasks = []
+        for task in tasks_raw:
+            if not isinstance(task, Mapping):
+                raise ReadAdapterError("task item must be an object")
+            safe_task = {k: deepcopy(task[k]) for k in allowed_task_keys if k in task}
+            safe_tasks.append(safe_task)
+
+        safe_agent = {k: deepcopy(agent[k]) for k in allowed_agent_keys if k in agent and k != "tasks"}
+        safe_agent["tasks"] = safe_tasks
+        safe_agents.append(safe_agent)
+
+    result = {
+        "schema_version": 1,
+        "agents": safe_agents,
+    }
+    try:
+        validate(result, TYPES["session-agents.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+

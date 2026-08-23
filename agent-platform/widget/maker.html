@@ -229,6 +229,24 @@
     .pulse-dot { animation: pulse 1.5s ease-in-out infinite; transform-origin: center; }
     .chart-latest { animation: pulse 1.5s ease-in-out infinite; }
 
+    /* Swimlane Styles */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; filter: drop-shadow(0 0 8px rgba(77, 107, 254, 0.85)); }
+      50% { opacity: 0.65; filter: drop-shadow(0 0 2px rgba(77, 107, 254, 0.3)); }
+    }
+    .swimlane-container { display: flex; flex-direction: column; gap: 6px; margin: 4px 0; width: 100%; }
+    .swimlane-header { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); font-weight: 600; margin: 0 0 4px; }
+    .swimlane-columns { display: grid; grid-template-columns: 90px 1fr; font-size: 9.5px; color: var(--dim); font-weight: 500; padding: 2px 4px; border-bottom: 1px solid var(--stroke); }
+    .swimlane-lane { display: grid; grid-template-columns: 90px 1fr; align-items: center; min-height: 28px; padding: 3px 5px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--stroke); border-radius: 5px; gap: 6px; }
+    .swimlane-label { font-size: 10.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .swimlane-track { display: flex; align-items: center; gap: 6px; position: relative; flex-wrap: wrap; min-height: 20px; }
+    .swimlane-track-line { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--stroke); z-index: 0; }
+    .swimlane .marker, .swimlane-marker { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 9.5px; font-family: var(--mono); background: #171d2e; border: 1px solid var(--stroke); color: var(--muted); }
+    .swimlane .marker.done, .swimlane-marker.done { border-color: rgba(104, 211, 145, 0.4); color: var(--ok); background: rgba(104, 211, 145, 0.08); }
+    .swimlane .marker.running, .swimlane .marker.active, .swimlane-marker.active, .swimlane-marker.running { background: linear-gradient(90deg, #3151d8, var(--accent)); border-color: var(--accent); color: #fff; font-weight: 600; box-shadow: 0 0 9px #4d6bfe88; animation: pulse 2s infinite ease-in-out; }
+    .swimlane .marker.blocked, .swimlane-marker.blocked { border-color: rgba(255, 122, 144, 0.4); color: var(--bad); background: rgba(255, 122, 144, 0.08); }
+    .swimlane .marker.queued, .swimlane-marker.queued { opacity: 0.6; }
+
     /* Maker Studio Layout */
     .studio-container {
       display: grid;
@@ -380,6 +398,7 @@
               <option value="docker">Docker Status</option>
               <option value="webhooks">Webhooks / Cloudflare</option>
               <option value="usage">Usage &amp; Cost</option>
+              <option value="agents">Session Agents (Swimlanes)</option>
               <option value="compliance">Compliance Audit (Custom)</option>
               <option value="custom">Blank Spec</option>
             </select>
@@ -864,6 +883,79 @@ capabilities: [read:usage-cost]`,
         },
         hint: "cortxt widget --view usage-cost"
       },
+      agents: {
+        spec: `contract_version: "0.1"
+widget:
+  id: session-agents
+  version: "0.1"
+  title: Session Agents
+data:
+  reads:
+    - id: agents
+      source: store
+      operation: session-agents.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: session-agents.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Session Agents}
+  children:
+    - primitive: heading
+      props: {value: Session Agents}
+    - primitive: text
+      props: {value: Live Multi-Agent Workspace}
+    - primitive: swimlane
+      props: {label: Agents, columns: [Agent, Tasks]}
+      bindings:
+        rows: {read: agents, pointer: /agents, type: core.array.v1}
+actions: []
+capabilities: [read:session-agents]`,
+        data: {
+          agents: {
+            schema_version: 1,
+            agents: [
+              {
+                id: "agent-hermes",
+                name: "Hermes",
+                runtime: "hermes",
+                status: "running",
+                current_task: "Execute session plan",
+                tasks: [
+                  { id: "t1", title: "Load context", state: "done", progress: 100 },
+                  { id: "t2", title: "Execute session plan", state: "running", progress: 65 },
+                  { id: "t3", title: "Verification", state: "queued", progress: 0 }
+                ]
+              },
+              {
+                id: "agent-pi",
+                name: "Pi",
+                runtime: "pi",
+                status: "running",
+                current_task: "Analyze codebase invariants",
+                tasks: [
+                  { id: "t4", title: "Inspect AST", state: "done", progress: 100 },
+                  { id: "t5", title: "Analyze codebase invariants", state: "running", progress: 40 }
+                ]
+              },
+              {
+                id: "agent-codex",
+                name: "Codex",
+                runtime: "codex",
+                status: "done",
+                current_task: null,
+                tasks: [
+                  { id: "t6", title: "Contract validation", state: "done", progress: 100 }
+                ]
+              }
+            ]
+          }
+        },
+        hint: "cortxt widget --view session-agents"
+      },
       compliance: {
         spec: `contract_version: "0.1"
 widget:
@@ -1181,6 +1273,7 @@ render:
           { id: "map", title: "Map", spec: "widget_contract/specs/execution-map-0.1.yaml", artifact: "execution-map.json", hint: "cortxt widget --view execution-map --plan-input <file>" },
           { id: "docker", title: "Docker", spec: "widget_contract/specs/docker-status-0.1.yaml", artifact: "docker-status.json", hint: "cortxt widget --view docker-status" },
           { id: "webhooks", title: "Webhooks", spec: "widget_contract/specs/webhooks-0.1.yaml", artifact: "webhooks.json", hint: "cortxt widget --view webhooks" },
+          { id: "agents", title: "Agents", spec: "widget_contract/specs/session-agents-0.1.yaml", artifact: "session-agents.json", hint: "cortxt widget --view session-agents" },
           { id: "loaded", title: "Loaded", spec: null, artifact: "loaded.json", hint: "cortxt widget load --spec <file> --view loaded" },
           { id: "composed", title: "Composed", spec: null, artifact: "composed.json", hint: "cortxt widget compose --spec <file> --widgets-dir <dir>" }
         ];

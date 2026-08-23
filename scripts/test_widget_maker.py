@@ -62,7 +62,7 @@ def main() -> int:
     primitives = [
         "stack", "row", "grid", "panel", "tabs",
         "heading", "text", "badge", "metric",
-        "key-value", "table", "list",
+        "key-value", "table", "list", "swimlane",
         "empty-state", "error-state", "divider", "spacer"
     ]
     for prim in primitives:
@@ -208,9 +208,11 @@ render:
         AP / "widget" / "execution-map.json",
         AP / "widget" / "docker-status.json",
         AP / "widget" / "webhooks.json",
+        AP / "widget" / "session-agents.json",
         AP / "widget" / "loaded.json",
         AP / "widget" / "composed.json",
         AP / "widget_contract" / "specs" / "webhooks-0.1.yaml",
+        AP / "widget_contract" / "specs" / "session-agents-0.1.yaml",
         REPO / "site" / "public" / "widgets" / "maker.js",
         REPO / "site" / "public" / "widgets" / "index.html",
         REPO / "site" / "astro.config.mjs",

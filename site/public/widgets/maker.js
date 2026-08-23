@@ -782,6 +782,117 @@
       return;
     }
 
+    // Swimlane
+    if (primitive === "swimlane") {
+      const rows = Array.isArray(p.rows) ? p.rows : [];
+      const group = document.createElement("div");
+      group.className = "candidate-group swimlane swimlane-container";
+
+      const heading = document.createElement("h3");
+      heading.className = "swimlane-header";
+      heading.textContent = (p.label || "Swimlanes") + " (" + rows.length + ")";
+      group.append(heading);
+
+      if (!rows.length) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "empty";
+        emptyDiv.textContent = p.empty || "No swimlanes.";
+        group.append(emptyDiv);
+        container.append(group);
+        return;
+      }
+
+      const columns = Array.isArray(p.columns) && p.columns.length ? p.columns : ["Lane", "Tasks"];
+      const colHeader = document.createElement("div");
+      colHeader.className = "swimlane-columns";
+      const col1 = document.createElement("div");
+      col1.textContent = columns[0] || "Lane";
+      const col2 = document.createElement("div");
+      col2.textContent = columns.slice(1).join(" / ") || "Tasks";
+      colHeader.append(col1, col2);
+      group.append(colHeader);
+
+      const tableBox = document.createElement("div");
+      tableBox.className = "swimlane-table";
+
+      rows.forEach(function (row) {
+        if (!row) return;
+        const laneEl = document.createElement("div");
+        laneEl.className = "swimlane-lane lane";
+
+        const labelCell = document.createElement("div");
+        labelCell.className = "swimlane-label";
+        const laneName = row.label || row.name || row.id || "Lane";
+        const laneRuntime = row.runtime ? " (" + row.runtime + ")" : "";
+        labelCell.textContent = laneName + laneRuntime;
+        labelCell.title = laneName + (row.status ? " - " + row.status : "");
+
+        const trackCell = document.createElement("div");
+        trackCell.className = "swimlane-track";
+
+        const trackLine = document.createElement("div");
+        trackLine.className = "swimlane-track-line";
+        trackCell.append(trackLine);
+
+        const items = row.items || row.tasks || [];
+        if (Array.isArray(items) && items.length) {
+          items.forEach(function (item) {
+            if (!item) return;
+            const marker = document.createElement("div");
+            const itemTitle = item.title || item.name || item.id || item.label || "task";
+            const itemState = String(item.state || item.status || "").toLowerCase();
+            const isActive = Boolean(item.active) || itemState === "running";
+
+            let markerClass = "marker swimlane-marker";
+            if (isActive) {
+              markerClass += " active running";
+            } else if (itemState === "done" || itemState === "completed") {
+              markerClass += " done";
+            } else if (itemState === "blocked" || itemState === "error") {
+              markerClass += " blocked";
+            } else if (itemState === "queued" || itemState === "pending") {
+              markerClass += " queued";
+            }
+
+            marker.className = markerClass;
+
+            const iconSpan = document.createElement("span");
+            iconSpan.className = "marker-icon";
+            iconSpan.textContent = isActive ? "\u25cf" : (itemState === "done" ? "\u2713" : "\u25cb");
+            marker.append(iconSpan);
+
+            const titleSpan = document.createElement("span");
+            titleSpan.className = "marker-title";
+            titleSpan.textContent = itemTitle;
+            marker.append(titleSpan);
+
+            if (item.progress !== undefined && item.progress !== null) {
+              const progSpan = document.createElement("span");
+              progSpan.className = "marker-progress";
+              progSpan.style.fontSize = "9px";
+              progSpan.style.opacity = "0.75";
+              progSpan.textContent = item.progress + "%";
+              marker.append(progSpan);
+            }
+
+            trackCell.append(marker);
+          });
+        } else {
+          const idleSpan = document.createElement("span");
+          idleSpan.className = "marker swimlane-marker queued";
+          idleSpan.textContent = "idle";
+          trackCell.append(idleSpan);
+        }
+
+        laneEl.append(labelCell, trackCell);
+        tableBox.append(laneEl);
+      });
+
+      group.append(tableBox);
+      container.append(group);
+      return;
+    }
+
     // Empty state
     if (primitive === "empty-state") {
       const el = document.createElement("div");
@@ -999,6 +1110,36 @@
     };
   }
 
+  /**
+   * Start a living demo timer that cycles through fixture states.
+   */
+  function startLivingDemo(spec, fixtureData, container, options) {
+    options = options || {};
+    const intervalMs = options.intervalMs || 3000;
+    const sequence = (fixtureData && Array.isArray(fixtureData.sequence)) ? fixtureData.sequence : null;
+    if (!sequence || sequence.length <= 1) {
+      const rendered = renderSpec(spec, fixtureData);
+      container.innerHTML = "";
+      renderNodeToDom(rendered.render, container, options);
+      return null;
+    }
+    let step = 0;
+    function tick() {
+      const currentSnapshot = sequence[step % sequence.length];
+      const boundData = Object.assign({}, fixtureData, { agents: currentSnapshot });
+      const rendered = renderSpec(spec, boundData);
+      container.innerHTML = "";
+      renderNodeToDom(rendered.render, container, options);
+      step++;
+    }
+    tick();
+    const timerId = setInterval(tick, intervalMs);
+    return {
+      stop: function () { clearInterval(timerId); },
+      getStep: function () { return step; },
+    };
+  }
+
   return {
     resolvePointer: resolvePointer,
     parseYamlSubset: parseYamlSubset,
@@ -1009,5 +1150,6 @@
     defaultTokens: defaultTokens,
     applyTokens: applyTokens,
     createSequenceStepper: createSequenceStepper,
+    startLivingDemo: startLivingDemo,
   };
 });
