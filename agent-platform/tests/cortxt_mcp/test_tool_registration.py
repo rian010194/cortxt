@@ -21,6 +21,7 @@ TIER0_NAMES = {
 }
 TIER1_NAMES = {
     "cortxt_dispatch", "cortxt_addons_submit", "cortxt_daemon_status",
+    "cortxt_widget_generate", "cortxt_widget_edit", "cortxt_widget_remove", "cortxt_widget_reset",
     "cortxt_run_create", "cortxt_run_resume", "cortxt_run_submit_for_review",
 }
 

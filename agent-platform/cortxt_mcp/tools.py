@@ -205,6 +205,48 @@ def _tool_cortxt_daemon_status(arguments: dict[str, Any]) -> dict[str, Any]:
     return _run_daemon(args).to_dict()
 
 
+def _tool_cortxt_widget_generate(arguments: dict[str, Any]) -> dict[str, Any]:
+    from cli.unified_cli import _run_widget_generate
+
+    args = _ns(
+        prompt=arguments["prompt"],
+        confirm=bool(arguments.get("confirm", False)),
+        specs_dir=_path(arguments.get("specs_dir")),
+    )
+    return _run_widget_generate(args).to_dict()
+
+
+def _tool_cortxt_widget_edit(arguments: dict[str, Any]) -> dict[str, Any]:
+    from cli.unified_cli import _run_widget_edit
+
+    args = _ns(
+        widget_id=arguments["widget_id"],
+        widget_version=arguments["widget_version"],
+        prompt=arguments["prompt"],
+        confirm=bool(arguments.get("confirm", False)),
+        specs_dir=_path(arguments.get("specs_dir")),
+    )
+    return _run_widget_edit(args).to_dict()
+
+
+def _tool_cortxt_widget_remove(arguments: dict[str, Any]) -> dict[str, Any]:
+    from cli.unified_cli import _run_widget_remove
+
+    args = _ns(
+        widget_id=arguments["widget_id"],
+        widget_version=arguments["widget_version"],
+        specs_dir=_path(arguments.get("specs_dir")),
+    )
+    return _run_widget_remove(args).to_dict()
+
+
+def _tool_cortxt_widget_reset(arguments: dict[str, Any]) -> dict[str, Any]:
+    from cli.unified_cli import _run_widget_reset
+
+    args = _ns(specs_dir=_path(arguments.get("specs_dir")))
+    return _run_widget_reset(args).to_dict()
+
+
 def _tool_cortxt_run_create(arguments: dict[str, Any], *, mandate_binding: dict, lifecycle: Any) -> dict[str, Any]:
     return lifecycle.create_run(arguments, mandate_binding)
 
@@ -288,6 +330,28 @@ _SPECS = (
         "cortxt_daemon_status", TIER_DISPATCH,
         "Print the daemon section of the widget snapshot (ResultEnvelope).",
         _tool_cortxt_daemon_status,
+    ),
+    ToolSpec(
+        "cortxt_widget_generate", TIER_DISPATCH,
+        "Generate a widget spec by prompt through the strict ADR-038 loader; "
+        "preview-only unless confirm=true (ResultEnvelope).",
+        _tool_cortxt_widget_generate,
+    ),
+    ToolSpec(
+        "cortxt_widget_edit", TIER_DISPATCH,
+        "Edit an installed widget spec by prompt through the strict ADR-038 "
+        "loader; preview-only unless confirm=true (ResultEnvelope).",
+        _tool_cortxt_widget_edit,
+    ),
+    ToolSpec(
+        "cortxt_widget_remove", TIER_DISPATCH,
+        "Remove one installed widget spec (ResultEnvelope).",
+        _tool_cortxt_widget_remove,
+    ),
+    ToolSpec(
+        "cortxt_widget_reset", TIER_DISPATCH,
+        "Remove all installed widget specs (ResultEnvelope).",
+        _tool_cortxt_widget_reset,
     ),
     ToolSpec("cortxt_run_create", TIER_DISPATCH,
              "Create a durable mandate-bound run and invoke its engine broker "
