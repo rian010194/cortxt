@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T10:34:50Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T10:48:51Z`.
 
 ### Roadmap areas
 
@@ -101,6 +101,7 @@ Claimed work in progress (workflow:in-progress):
 - Build: C.2 - event-triggered Atlas sync (issue/label events, anti-loop guard) (#311): contract fit = MISSING; repository fit = MISSING
 - Build: C.3 - review-sync trigger (run the daemon review-sync pass on review events) (#312): contract fit = MISSING; repository fit = MISSING
 - Build: C.4 - generic webhook/event surface design (inbound HMAC/replay/retries, outbound transitions) (#313): contract fit = MISSING; repository fit = MISSING
+- Build: Atlas v2 — interactive React Flow graph view with live-work default, filters, and search (#316): contract fit = MISSING; repository fit = MISSING
 - Build: ADR-040 label-invariant enforcement (CI check + launcher guard) (#325): contract fit = MISSING; repository fit = MISSING
 - Build: widget host bounded polling and result-size defaults (#326): contract fit = MISSING; repository fit = MISSING
 - Build: dashboard composition path (cortxt widget compose) (#327): contract fit = MISSING; repository fit = MISSING
@@ -125,4 +126,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-24T10:34:50Z
+2026-08-24T10:48:51Z
