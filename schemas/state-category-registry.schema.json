@@ -32,7 +32,7 @@
           "mandate_scope": {
             "type": "string",
             "pattern": "^state\\.[a-z][a-z0-9-]*$",
-            "description": "Mandate envelope allowed_tools entry scoping this category (ADR-032)."
+            "description": "The CallContext.scope_text for a state-sync call on this category, hashed into scope_fingerprint and checked against the mandate envelope's scope_fingerprint (ADR-032; see agent-platform/cortxt_mcp/mandate.py CallContext and verify_mandate). This is NOT an allowed_tools entry: tool-level gating is a separate check against the envelope's allowed_tools list, which must contain the actual MCP tool names (state_read, state_write, state_delete, state_since), not this dotted category string."
           },
           "description": {
             "type": "string",

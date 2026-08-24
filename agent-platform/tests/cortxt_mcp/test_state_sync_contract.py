@@ -162,6 +162,47 @@ def test_state_since_response_carries_changes_and_a_new_cursor():
     )
 
 
+def test_state_since_response_accepts_a_deleted_change_with_no_payload():
+    jsonschema.validate(
+        instance={
+            "category": "session-state",
+            "changes": [
+                {"version": 5, "updated_at": "2026-08-24T12:10:00+00:00", "deleted": True}
+            ],
+            "cursor": "opaque-cursor-3",
+        },
+        schema=_definition("state_since_response"),
+    )
+
+
+def test_state_conflict_error_shape():
+    jsonschema.validate(
+        instance={
+            "category": "session-state",
+            "current_version": 5,
+            "expected_version": 3,
+            "message": "version mismatch",
+        },
+        schema=_definition("state_conflict_error"),
+    )
+
+
+def test_state_read_request_rejects_an_unknown_category():
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            instance={"category": "not-a-real-category"},
+            schema=_definition("state_read_request"),
+        )
+
+
+def test_state_read_request_rejects_an_unexpected_extra_property():
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            instance={"category": "session-state", "extra_field": "nope"},
+            schema=_definition("state_read_request"),
+        )
+
+
 def test_all_category_values_across_the_contract_match_the_registry():
     registry = _load(REGISTRY_DATA_PATH)
     known_ids = {entry["category_id"] for entry in registry["categories"]}
