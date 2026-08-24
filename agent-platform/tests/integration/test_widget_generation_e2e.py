@@ -4,8 +4,6 @@ Uses a fake LLM client (no network) so this runs in the default
 `not real_inference` test lane.
 """
 import textwrap
-from argparse import Namespace
-from pathlib import Path
 
 VALID_SPEC = textwrap.dedent('''\
     contract_version: "0.1"

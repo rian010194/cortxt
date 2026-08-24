@@ -1,5 +1,4 @@
 import ast
-from pathlib import Path
 
 from widget_contract.scaffold import find_missing_operations, write_operation_scaffold
 
@@ -19,6 +18,15 @@ def test_find_missing_operations_empty_when_all_registered():
 
 def test_find_missing_operations_handles_missing_reads_key():
     assert find_missing_operations({}) == []
+
+
+def test_find_missing_operations_excludes_malformed_operation_id():
+    raw = {"data": {"reads": [
+        {"id": "a", "operation": 'widgets."; import os; os.system("x")'},
+        {"id": "b", "operation": "widgets.bad\nid.v1"},
+        {"id": "c", "operation": "widgets.good-id.v1"},
+    ]}}
+    assert find_missing_operations(raw) == ["widgets.good-id.v1"]
 
 
 def test_write_operation_scaffold_creates_reviewable_file(tmp_path):

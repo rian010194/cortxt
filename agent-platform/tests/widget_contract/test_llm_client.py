@@ -1,4 +1,3 @@
-import os
 import pytest
 
 from widget_contract.llm_client import LLMCallError, generate_text

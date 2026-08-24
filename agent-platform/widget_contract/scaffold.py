@@ -11,6 +11,11 @@ from typing import Any
 
 from .registry import READ_OPERATIONS
 
+# Same pattern the strict loader uses for widget/read ids (widget_contract/loader.py:19),
+# reused here so a malformed operation id (quotes, newlines, path separators, ...) is
+# excluded rather than interpolated into a filename or a generated Python file.
+_OPERATION_ID = re.compile(r"^[a-z][a-z0-9.-]{0,63}$")
+
 
 def find_missing_operations(raw_spec: dict[str, Any]) -> list[str]:
     reads = raw_spec.get("data", {}).get("reads", []) if isinstance(raw_spec.get("data"), dict) else []
@@ -19,7 +24,12 @@ def find_missing_operations(raw_spec: dict[str, Any]) -> list[str]:
         if not isinstance(item, dict):
             continue
         op = item.get("operation")
-        if isinstance(op, str) and op not in READ_OPERATIONS and op not in missing:
+        if (
+            isinstance(op, str)
+            and op not in READ_OPERATIONS
+            and op not in missing
+            and _OPERATION_ID.fullmatch(op)
+        ):
             missing.append(op)
     return missing
 

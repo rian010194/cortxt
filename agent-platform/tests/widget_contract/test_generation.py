@@ -1,8 +1,6 @@
 import textwrap
 
-import pytest
-
-from widget_contract.generation import GenerationOutcome, generate_widget_spec
+from widget_contract.generation import generate_widget_spec
 from widget_contract.llm_client import LLMCallError
 
 VALID_SPEC = textwrap.dedent('''\
@@ -76,3 +74,13 @@ def test_generate_propagates_llm_call_error(monkeypatch):
     outcome = generate_widget_spec("build anything")
     assert outcome.status == "invalid"
     assert "not configured" in outcome.error_message
+
+
+def test_generate_handles_top_level_non_dict_yaml(monkeypatch):
+    """A fake LLM returning a YAML list (not a mapping) instead of a widget
+    document must fail closed as 'invalid', not raise or produce 'ok'."""
+    import widget_contract.generation as mod
+    monkeypatch.setattr(mod, "generate_text", lambda prompt, **kw: "- one\n- two\n- three\n")
+    outcome = generate_widget_spec("build a pulse widget")
+    assert outcome.status == "invalid"
+    assert outcome.error_message

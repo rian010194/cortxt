@@ -208,43 +208,59 @@ def _tool_cortxt_daemon_status(arguments: dict[str, Any]) -> dict[str, Any]:
 def _tool_cortxt_widget_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     from cli.unified_cli import _run_widget_generate
 
-    args = _ns(
-        prompt=arguments["prompt"],
-        confirm=bool(arguments.get("confirm", False)),
-        specs_dir=_path(arguments.get("specs_dir")),
-    )
-    return _run_widget_generate(args).to_dict()
+    try:
+        args = _ns(
+            prompt=arguments["prompt"],
+            confirm=bool(arguments.get("confirm", False)),
+            specs_dir=_path(arguments.get("specs_dir")),
+        )
+        return _run_widget_generate(args).to_dict()
+    except Exception as exc:
+        return {"status": "failed", "error": {"category": "runtime_error", "message": str(exc)}}
 
 
 def _tool_cortxt_widget_edit(arguments: dict[str, Any]) -> dict[str, Any]:
     from cli.unified_cli import _run_widget_edit
 
-    args = _ns(
-        widget_id=arguments["widget_id"],
-        widget_version=arguments["widget_version"],
-        prompt=arguments["prompt"],
-        confirm=bool(arguments.get("confirm", False)),
-        specs_dir=_path(arguments.get("specs_dir")),
-    )
-    return _run_widget_edit(args).to_dict()
+    try:
+        args = _ns(
+            widget_id=arguments["widget_id"],
+            widget_version=arguments["widget_version"],
+            prompt=arguments["prompt"],
+            confirm=bool(arguments.get("confirm", False)),
+            specs_dir=_path(arguments.get("specs_dir")),
+        )
+        return _run_widget_edit(args).to_dict()
+    except Exception as exc:
+        return {"status": "failed", "error": {"category": "runtime_error", "message": str(exc)}}
 
 
 def _tool_cortxt_widget_remove(arguments: dict[str, Any]) -> dict[str, Any]:
     from cli.unified_cli import _run_widget_remove
 
-    args = _ns(
-        widget_id=arguments["widget_id"],
-        widget_version=arguments["widget_version"],
-        specs_dir=_path(arguments.get("specs_dir")),
-    )
-    return _run_widget_remove(args).to_dict()
+    try:
+        args = _ns(
+            widget_id=arguments["widget_id"],
+            widget_version=arguments["widget_version"],
+            specs_dir=_path(arguments.get("specs_dir")),
+            confirm=bool(arguments.get("confirm", False)),
+        )
+        return _run_widget_remove(args).to_dict()
+    except Exception as exc:
+        return {"status": "failed", "error": {"category": "runtime_error", "message": str(exc)}}
 
 
 def _tool_cortxt_widget_reset(arguments: dict[str, Any]) -> dict[str, Any]:
     from cli.unified_cli import _run_widget_reset
 
-    args = _ns(specs_dir=_path(arguments.get("specs_dir")))
-    return _run_widget_reset(args).to_dict()
+    try:
+        args = _ns(
+            specs_dir=_path(arguments.get("specs_dir")),
+            confirm=bool(arguments.get("confirm", False)),
+        )
+        return _run_widget_reset(args).to_dict()
+    except Exception as exc:
+        return {"status": "failed", "error": {"category": "runtime_error", "message": str(exc)}}
 
 
 def _tool_cortxt_run_create(arguments: dict[str, Any], *, mandate_binding: dict, lifecycle: Any) -> dict[str, Any]:

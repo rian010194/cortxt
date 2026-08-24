@@ -1,3 +1,5 @@
+import pytest
+
 from cortxt_mcp.tools import TIER_DISPATCH, TOOL_REGISTRY, list_tools
 
 
@@ -37,3 +39,33 @@ def test_widget_generate_tool_delegates_to_cli(monkeypatch):
     result = _tool_cortxt_widget_generate({"prompt": "build a pulse widget", "confirm": True})
     assert calls == {"prompt": "build a pulse widget", "confirm": True}
     assert result["status"] == "succeeded"
+
+
+@pytest.mark.parametrize(
+    "tool_name, cli_fn_name, arguments",
+    [
+        ("_tool_cortxt_widget_generate", "_run_widget_generate",
+         {"prompt": "build a pulse widget"}),
+        ("_tool_cortxt_widget_edit", "_run_widget_edit",
+         {"widget_id": "pulse", "widget_version": "0.1", "prompt": "edit it"}),
+        ("_tool_cortxt_widget_remove", "_run_widget_remove",
+         {"widget_id": "pulse", "widget_version": "0.1"}),
+        ("_tool_cortxt_widget_reset", "_run_widget_reset", {}),
+    ],
+)
+def test_widget_tool_wraps_unexpected_exception_as_result_envelope(monkeypatch, tool_name, cli_fn_name, arguments):
+    """An unexpected exception from deep inside the CLI function must come
+    back as a {"status": "failed", "error": {...}} dict, not propagate raw --
+    these tools call the CLI function directly, bypassing any outer
+    try/except the CLI's own dispatch path has."""
+    import cortxt_mcp.tools as tools_mod
+
+    def boom(args):
+        raise RuntimeError("disk exploded")
+
+    monkeypatch.setattr(f"cli.unified_cli.{cli_fn_name}", boom)
+    tool_fn = getattr(tools_mod, tool_name)
+    result = tool_fn(arguments)
+    assert result["status"] == "failed"
+    assert result["error"]["category"] == "runtime_error"
+    assert "disk exploded" in result["error"]["message"]
