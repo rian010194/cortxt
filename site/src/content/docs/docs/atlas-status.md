@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T10:07:29Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T10:24:15Z`.
 
 ### Roadmap areas
 
@@ -16,7 +16,6 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 
 - CI fixture: real dispatch commit proof (#207)
 - Widget host: free-form drag/resize canvas (replaces Grid+Warroom) (#362)
-- Backend state persistence surface (ADR-041): design gate (#364)
 
 Claimed work in progress (workflow:in-progress):
 (none)
@@ -118,6 +117,7 @@ Claimed work in progress (workflow:in-progress):
 - Build: swimlane primitive + live session-agents widget (#347): contract fit = MISSING; repository fit = MISSING
 - Build: landing proof band - live CLI (TUI) + widget example pairs, horizontal scroll (#348): contract fit = MISSING; repository fit = MISSING
 - Build: chart primitives (bar/line) + live usage/cost widget (#349): contract fit = MISSING; repository fit = MISSING
+- Backend state persistence surface (ADR-041): design gate (#364): contract fit = MISSING; repository fit = MISSING
 
 ### Relationship drift
 
@@ -125,4 +125,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-24T10:07:29Z
+2026-08-24T10:24:15Z
