@@ -6,11 +6,11 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T09:32:44Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T09:57:46Z`.
 
 ### Roadmap areas
 
-- **MCP lifecycle and dispatch stack** -- milestone: Open-source product packaging, open: 0, closed: 4
+- **MCP lifecycle and dispatch stack** -- milestone: Open-source product packaging, open: 1, closed: 4
 
 ### Actionable frontier
 
@@ -26,7 +26,7 @@ Claimed work in progress (workflow:in-progress):
 
 ### Milestone overview
 
-- Open-source product packaging: open 0, closed 4
+- Open-source product packaging: open 1, closed 4
 - Vertical 01 v0.1: open 0, closed 7
 - Web surface decision: open 0, closed 1
 
@@ -124,4 +124,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-24T09:32:44Z
+2026-08-24T09:57:46Z
