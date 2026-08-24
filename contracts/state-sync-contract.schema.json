@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CBSStateSyncContractV1",
+  "description": "Phase 1 (ADR-041) request/response shapes for the CBS state-sync MCP tools: state_read, state_write, state_delete, state_since. Delivered as MCP tool call arguments/results (agent-platform/cortxt_mcp/tools.py convention), not REST routes -- see the plan's Architecture note for why the spec's REST-vs-gRPC open question is resolved this way.",
+  "definitions": {
+    "state_read_request": {
+      "type": "object",
+      "required": ["category"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"enum": ["session-state", "widget-state", "atlas-cache"]}
+      }
+    },
+    "state_read_response": {
+      "type": "object",
+      "required": ["category", "version", "updated_at", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"enum": ["session-state", "widget-state", "atlas-cache"]},
+        "version": {"type": "integer", "minimum": 0},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "payload": {"type": "object"}
+      }
+    },
+    "state_write_request": {
+      "type": "object",
+      "required": ["category", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"enum": ["session-state", "widget-state", "atlas-cache"]},
+        "payload": {"type": "object"},
+        "expected_version": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Optional optimistic-concurrency check. Omit to write unconditionally."
+        }
+      }
+    },
+    "state_write_response": {
+      "type": "object",
+      "required": ["category", "version", "updated_at"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"enum": ["session-state", "widget-state", "atlas-cache"]},
+        "version": {"type": "integer", "minimum": 0},
+        "updated_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "state_delete_request": {
+      "type": "object",
+      "required": ["category"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"enum": ["session-state", "widget-state", "atlas-cache"]}
+      }
+    },
+    "state_delete_response": {
+      "type": "object",
+      "required": ["category", "deleted", "deleted_at"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"enum": ["session-state", "widget-state", "atlas-cache"]},
+        "deleted": {"const": true},
+        "deleted_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "state_since_request": {
+      "type": "object",
+      "required": ["category", "since_cursor"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"enum": ["session-state", "widget-state", "atlas-cache"]},
+        "since_cursor": {
+          "type": ["string", "null"],
+          "description": "Opaque cursor from a prior state_since_response, or null to request a full sync."
+        }
+      }
+    },
+    "state_since_response": {
+      "type": "object",
+      "required": ["category", "changes", "cursor"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"enum": ["session-state", "widget-state", "atlas-cache"]},
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["version", "updated_at", "payload"],
+            "additionalProperties": false,
+            "properties": {
+              "version": {"type": "integer", "minimum": 0},
+              "updated_at": {"type": "string", "format": "date-time"},
+              "payload": {"type": "object"}
+            }
+          }
+        },
+        "cursor": {"type": "string"}
+      }
+    }
+  }
+}

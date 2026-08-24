@@ -71,3 +71,100 @@ def test_registry_schema_rejects_an_unknown_backend_eligibility_value():
     }
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(instance=bad_registry, schema=schema)
+
+
+CONTRACT_SCHEMA_PATH = REPO_ROOT / "contracts" / "state-sync-contract.schema.json"
+
+
+def _definition(name: str) -> dict:
+    contract = _load(CONTRACT_SCHEMA_PATH)
+    return {"$ref": f"#/definitions/{name}", "definitions": contract["definitions"]}
+
+
+def test_state_read_request_accepts_a_valid_call():
+    jsonschema.validate(
+        instance={"category": "session-state"},
+        schema=_definition("state_read_request"),
+    )
+
+
+def test_state_read_response_accepts_a_valid_payload():
+    jsonschema.validate(
+        instance={
+            "category": "session-state",
+            "version": 3,
+            "updated_at": "2026-08-24T12:00:00+00:00",
+            "payload": {"anything": "the category's own schema governs this"},
+        },
+        schema=_definition("state_read_response"),
+    )
+
+
+def test_state_write_request_requires_a_payload():
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            instance={"category": "session-state"},
+            schema=_definition("state_write_request"),
+        )
+
+
+def test_state_write_request_accepts_optimistic_concurrency_field():
+    jsonschema.validate(
+        instance={
+            "category": "session-state",
+            "payload": {"k": "v"},
+            "expected_version": 2,
+        },
+        schema=_definition("state_write_request"),
+    )
+
+
+def test_state_write_response_requires_the_new_version():
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            instance={"category": "session-state", "updated_at": "2026-08-24T12:00:00+00:00"},
+            schema=_definition("state_write_response"),
+        )
+
+
+def test_state_delete_response_shape():
+    jsonschema.validate(
+        instance={
+            "category": "session-state",
+            "deleted": True,
+            "deleted_at": "2026-08-24T12:00:00+00:00",
+        },
+        schema=_definition("state_delete_response"),
+    )
+
+
+def test_state_since_request_needs_a_cursor_or_null_for_full_sync():
+    jsonschema.validate(
+        instance={"category": "session-state", "since_cursor": None},
+        schema=_definition("state_since_request"),
+    )
+    jsonschema.validate(
+        instance={"category": "session-state", "since_cursor": "opaque-cursor-1"},
+        schema=_definition("state_since_request"),
+    )
+
+
+def test_state_since_response_carries_changes_and_a_new_cursor():
+    jsonschema.validate(
+        instance={
+            "category": "session-state",
+            "changes": [
+                {"version": 4, "updated_at": "2026-08-24T12:05:00+00:00", "payload": {}}
+            ],
+            "cursor": "opaque-cursor-2",
+        },
+        schema=_definition("state_since_response"),
+    )
+
+
+def test_all_category_values_across_the_contract_match_the_registry():
+    registry = _load(REGISTRY_DATA_PATH)
+    known_ids = {entry["category_id"] for entry in registry["categories"]}
+    contract = _load(CONTRACT_SCHEMA_PATH)
+    category_enum = contract["definitions"]["state_read_request"]["properties"]["category"]["enum"]
+    assert set(category_enum) == known_ids
