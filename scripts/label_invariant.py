@@ -15,9 +15,15 @@ import sys
 from typing import Any, Callable, Mapping, Sequence
 
 # Pattern to extract referenced issue numbers from PR bodies.
-# Matches "Closes #123", "Closes: #123", "issue #123", "Part of: #123", "Fixes #123", etc.
+# Matches "Closes #123", "Closes: #123", "Part of: #123", "Fixes #123", etc.
+# Deliberately does NOT match a bare "issue #123" / "issues #123" mention: a PR
+# body can reference an unrelated, unresolved issue purely informationally
+# (e.g. "pre-existing issue #357, not fixed by this PR"), and treating every
+# such mention as a delivery reference produced false-positive invariant
+# violations (observed on issue #357, PRs #358/#360/#361 -- see
+# docs/architecture/REVIEW_LOG.md 2026-08-24).
 ISSUE_REF_PATTERN = re.compile(
-    r"(?i)\b(?:closes?|closed|fixes?|fixed|resolves?|resolved|issues?|part\s+of):?\s*(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\s*([0-9]+)"
+    r"(?i)\b(?:closes?|closed|fixes?|fixed|resolves?|resolved|part\s+of):?\s*(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\s*([0-9]+)"
 )
 
 

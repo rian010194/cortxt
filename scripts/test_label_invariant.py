@@ -51,10 +51,17 @@ def run_checks() -> None:
         extract_referenced_issues("") == [] and extract_referenced_issues(None) == [],
     )
     check(
-        "extract: matches Closes, Fixes, Resolves, issue, and Part of case-insensitively",
+        "extract: matches Closes, Fixes, Resolves, and Part of case-insensitively",
         extract_referenced_issues(
-            "Closes #10\nfixes #11\nRESOLVES #12\nPart of: #13\nPart of #14\nissue #15\nIssue: #16"
-        ) == [10, 11, 12, 13, 14, 15, 16],
+            "Closes #10\nfixes #11\nRESOLVES #12\nPart of: #13\nPart of #14"
+        ) == [10, 11, 12, 13, 14],
+    )
+    check(
+        "extract: does NOT match a bare 'issue #N' / 'issues #N' mention"
+        " (informational reference to an unresolved issue, not a delivery)",
+        extract_referenced_issues(
+            "pre-existing issue #357, not introduced by this PR\nIssue: #16\nissues #17"
+        ) == [],
     )
     check(
         "extract: matches repo-qualified issue reference",
@@ -62,7 +69,7 @@ def run_checks() -> None:
     )
     check(
         "extract: deduplicates repeated references in single body",
-        extract_referenced_issues("Closes #10, also issue #10 and Part of: #10") == [10],
+        extract_referenced_issues("Closes #10, also fixes #10 and Part of: #10") == [10],
     )
     check(
         "extract: malformed non-string raises LabelInvariantError",
@@ -113,7 +120,7 @@ def run_checks() -> None:
     # 4. Scenario: no violation (issues at ready, done, review, or closed)
     prs_clean = [
         {"number": 101, "body": "Closes #10"},
-        {"number": 102, "body": "Part of: #20\nissue #30"},
+        {"number": 102, "body": "Part of: #20\nfixes #30"},
     ]
     issues_clean = {
         10: {"state": "open", "labels": ["workflow:done"]},
@@ -141,7 +148,7 @@ def run_checks() -> None:
     # 6. Scenario: multiple violations sorted by issue_number
     prs_multi = [
         {"number": 302, "body": "Closes #50"},
-        {"number": 301, "body": "Part of: #25\nissue #12"},
+        {"number": 301, "body": "Part of: #25\nfixes #12"},
     ]
     issues_multi = {
         50: {"state": "open", "labels": ["workflow:inbox"]},
@@ -183,7 +190,7 @@ def run_checks() -> None:
 
     # 9. Scenario: PR body referencing several issues where only one is inbox
     prs_mixed = [
-        {"number": 601, "body": "Closes #71\nPart of: #72\nissue #73"},
+        {"number": 601, "body": "Closes #71\nPart of: #72\nfixes #73"},
     ]
     issues_mixed = {
         71: {"state": "open", "labels": ["workflow:done"]},
