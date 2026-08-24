@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "StateCategoryRegistry",
+  "type": "object",
+  "required": ["categories"],
+  "properties": {
+    "categories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "payload_schema_ref",
+          "backend_eligibility",
+          "mandate_scope",
+          "description"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "payload_schema_ref": {
+            "type": "string",
+            "description": "Repo-relative path to the JSON schema for this category's payload."
+          },
+          "backend_eligibility": {
+            "enum": ["local-only", "remote-eligible"]
+          },
+          "mandate_scope": {
+            "type": "string",
+            "pattern": "^state\\.[a-z][a-z0-9-]*$",
+            "description": "Mandate envelope allowed_tools entry scoping this category (ADR-032)."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
