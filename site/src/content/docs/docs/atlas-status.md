@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T09:22:33Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T09:32:44Z`.
 
 ### Roadmap areas
 
@@ -32,8 +32,7 @@ Claimed work in progress (workflow:in-progress):
 
 ### Discipline violations (one workflow:* label required)
 
-- #316 Build: Atlas v2 — interactive React Flow graph view with live-work default, filters, and search: labels=[]
-- #357 Site fails to build locally on Windows (Vite module-runner CJS/ESM interop during config load): labels=[]
+(none)
 
 ### Review evidence
 
@@ -125,4 +124,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-24T09:22:33Z
+2026-08-24T09:32:44Z
