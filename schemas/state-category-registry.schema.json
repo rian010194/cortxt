@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "StateCategoryRegistry",
+  "type": "object",
+  "required": ["categories"],
+  "properties": {
+    "categories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "payload_schema_ref",
+          "backend_eligibility",
+          "mandate_scope",
+          "description"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "payload_schema_ref": {
+            "type": "string",
+            "description": "Repo-relative path to the JSON schema for this category's payload."
+          },
+          "backend_eligibility": {
+            "enum": ["local-only", "remote-eligible"]
+          },
+          "mandate_scope": {
+            "type": "string",
+            "pattern": "^state\\.[a-z][a-z0-9-]*$",
+            "description": "The CallContext.scope_text for a state-sync call on this category, hashed into scope_fingerprint and checked against the mandate envelope's scope_fingerprint (ADR-032; see agent-platform/cortxt_mcp/mandate.py CallContext and verify_mandate). This is NOT an allowed_tools entry: tool-level gating is a separate check against the envelope's allowed_tools list, which must contain the actual MCP tool names (state_read, state_write, state_delete, state_since), not this dotted category string."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

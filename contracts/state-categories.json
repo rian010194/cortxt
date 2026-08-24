@@ -1,0 +1,25 @@
+{
+  "categories": [
+    {
+      "category_id": "session-state",
+      "payload_schema_ref": "schemas/profile-manifest.schema.json",
+      "backend_eligibility": "remote-eligible",
+      "mandate_scope": "state.session-state",
+      "description": "Per-operator agent session state (runtime.session_state). Phase 2 reference category -- strongest multi-device/multi-operator argument."
+    },
+    {
+      "category_id": "widget-state",
+      "payload_schema_ref": "schemas/profile-manifest.schema.json",
+      "backend_eligibility": "local-only",
+      "mandate_scope": "state.widget-state",
+      "description": "agent-platform/widget/widgets.json and related local widget layout/state. Remains local-only until Phase 4."
+    },
+    {
+      "category_id": "atlas-cache",
+      "payload_schema_ref": "schemas/profile-manifest.schema.json",
+      "backend_eligibility": "local-only",
+      "mandate_scope": "state.atlas-cache",
+      "description": "Atlas-derived caches (scripts/atlas_sync.py outputs). Derived data, remains local-only until Phase 4."
+    }
+  ]
+}
