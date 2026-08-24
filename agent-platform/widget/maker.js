@@ -999,6 +999,30 @@
       row_height: "28px",
       card_max_height: "520px",
       grid_min_card_width: "280px"
+    },
+    effects: {
+      glow_ok: "rgba(104, 211, 145, 0.55)",
+      glow_warn: "rgba(246, 200, 95, 0.5)",
+      glow_bad: "rgba(255, 122, 144, 0.5)",
+      glow_accent: "rgba(77, 107, 254, 0.55)",
+      sheen_top: "rgba(255, 255, 255, 0.07)",
+      shadow_panel: "0 12px 32px rgba(0, 0, 0, 0.45)",
+      shadow_instrument: "0 24px 64px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
+      shadow_lift: "0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+      bezel: "inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 -10px 24px rgba(0, 0, 0, 0.25)"
+    },
+    motion: {
+      duration_fast: "120ms",
+      duration_medium: "200ms",
+      duration_live: "1600ms",
+      easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      easing_pulse: "ease-in-out"
+    },
+    backdrop: {
+      grid: "linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)",
+      grid_size: "28px",
+      scanline: "repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px)",
+      vignette: "radial-gradient(120% 90% at 50% 0%, rgba(32, 43, 80, 0.35) 0%, transparent 60%)"
     }
   };
 
@@ -1085,6 +1109,38 @@
       if (d.row_height !== undefined) el.style.setProperty("--token-row-height", typeof d.row_height === "number" ? d.row_height + "px" : String(d.row_height));
       if (d.card_max_height !== undefined) el.style.setProperty("--token-card-max-height", typeof d.card_max_height === "number" ? d.card_max_height + "px" : String(d.card_max_height));
       if (d.grid_min_card_width !== undefined) el.style.setProperty("--token-grid-min-card-width", typeof d.grid_min_card_width === "number" ? d.grid_min_card_width + "px" : String(d.grid_min_card_width));
+    }
+
+    if (tokens.effects && typeof tokens.effects === "object") {
+      const e = tokens.effects;
+      const effectKeys = {
+        glow_ok: "--glow-ok", glow_warn: "--glow-warn", glow_bad: "--glow-bad", glow_accent: "--glow-accent",
+        sheen_top: "--sheen-top", shadow_panel: "--shadow-panel", shadow_instrument: "--shadow-instrument",
+        shadow_lift: "--shadow-lift", bezel: "--bezel"
+      };
+      for (const key in effectKeys) {
+        if (e[key] !== undefined) {
+          el.style.setProperty(effectKeys[key], String(e[key]));
+          el.style.setProperty("--token-" + key.replace(/_/g, "-"), String(e[key]));
+        }
+      }
+    }
+
+    if (tokens.motion && typeof tokens.motion === "object") {
+      const m = tokens.motion;
+      if (m.duration_fast !== undefined) el.style.setProperty("--duration-fast", typeof m.duration_fast === "number" ? m.duration_fast + "ms" : String(m.duration_fast));
+      if (m.duration_medium !== undefined) el.style.setProperty("--duration-medium", typeof m.duration_medium === "number" ? m.duration_medium + "ms" : String(m.duration_medium));
+      if (m.duration_live !== undefined) el.style.setProperty("--duration-live", typeof m.duration_live === "number" ? m.duration_live + "ms" : String(m.duration_live));
+      if (m.easing !== undefined) el.style.setProperty("--easing", String(m.easing));
+      if (m.easing_pulse !== undefined) el.style.setProperty("--easing-pulse", String(m.easing_pulse));
+    }
+
+    if (tokens.backdrop && typeof tokens.backdrop === "object") {
+      const b = tokens.backdrop;
+      if (b.grid !== undefined) el.style.setProperty("--backdrop-grid", String(b.grid));
+      if (b.grid_size !== undefined) el.style.setProperty("--backdrop-grid-size", typeof b.grid_size === "number" ? b.grid_size + "px" : String(b.grid_size));
+      if (b.scanline !== undefined) el.style.setProperty("--backdrop-scanline", String(b.scanline));
+      if (b.vignette !== undefined) el.style.setProperty("--backdrop-vignette", String(b.vignette));
     }
   }
 

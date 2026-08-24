@@ -74,6 +74,42 @@ VISUAL_TOKENS_SCHEMA = {
     "required": ["colors", "typography", "spacing", "radius", "density"],
     "properties": {
         "schema_version": {"type": "integer"},
+        "effects": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "glow_ok": {"type": "string"},
+                "glow_warn": {"type": "string"},
+                "glow_bad": {"type": "string"},
+                "glow_accent": {"type": "string"},
+                "sheen_top": {"type": "string"},
+                "shadow_panel": {"type": "string"},
+                "shadow_instrument": {"type": "string"},
+                "shadow_lift": {"type": "string"},
+                "bezel": {"type": "string"},
+            },
+        },
+        "motion": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "duration_fast": {"type": ["string", "number"]},
+                "duration_medium": {"type": ["string", "number"]},
+                "duration_live": {"type": ["string", "number"]},
+                "easing": {"type": "string"},
+                "easing_pulse": {"type": "string"},
+            },
+        },
+        "backdrop": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "grid": {"type": "string"},
+                "grid_size": {"type": ["string", "number"]},
+                "scanline": {"type": "string"},
+                "vignette": {"type": "string"},
+            },
+        },
         "colors": {
             "type": "object",
             "additionalProperties": False,

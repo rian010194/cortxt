@@ -1,0 +1,168 @@
+---
+/**
+ * WidgetEmbed - reusable Astro component that renders a live widget from
+ * site/public/widgets fixtures plus its CLI command, reusing the hydration
+ * pattern proven on the landing page proof band (issue #348).
+ *
+ * Props:
+ *  - id: widget id (must exist in site/public/widgets/examples.json)
+ *  - cliCommand: optional override for the displayed CLI command
+ *  - title: optional override for the card title
+ *  - description: optional override for the card description
+ */
+interface Props {
+  id: string;
+  cliCommand?: string;
+  title?: string;
+  description?: string;
+}
+const { id, cliCommand, title, description } = Astro.props;
+
+// Read examples.json at build time for the fixture artifact path.
+let artifact = '';
+let exampleTitle = title ?? id;
+let exampleDesc = description ?? '';
+let exampleCli = cliCommand ?? '';
+import examplesManifest from '../../public/widgets/examples.json';
+const examples = (examplesManifest as { examples?: Array<Record<string, unknown>> }).examples || [];
+const found = examples.find((ex) => ex.id === id);
+if (found) {
+  artifact = String(found.artifact || '');
+  exampleTitle = title ?? String(found.title || id);
+  exampleDesc = description ?? String(found.description || '');
+  exampleCli = cliCommand ?? String(found.cli_command || '');
+}
+---
+<div class="widget-embed" data-widget-embed={id}>
+  <div class="widget-embed-card">
+    <div class="widget-embed-head">
+      <div>
+        <div class="widget-embed-eyebrow">Widget render</div>
+        <h3>{exampleTitle}</h3>
+        {exampleDesc && <p>{exampleDesc}</p>}
+      </div>
+      <span class="widget-embed-badge">live</span>
+    </div>
+    <div class="widget-embed-body">
+      <div class="widget-embed-cli">
+        <div class="widget-embed-cli-tag">CLI / TUI stream</div>
+        {exampleCli && <div class="widget-embed-cmd"><span>$</span> {exampleCli}</div>}
+      </div>
+      <div class="widget-embed-mount" data-widget-mount={id} data-artifact={artifact}>
+        <div class="widget-embed-placeholder">Loading widget...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .widget-embed-card {
+    border: 1px solid var(--sl-color-gray-5, #29324a);
+    border-radius: 12px;
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, transparent 8%),
+      radial-gradient(120% 140% at 15% -10%, #1a2340 0%, #101522 55%);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    margin: 1rem 0;
+  }
+  .widget-embed-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--sl-color-gray-5, #29324a);
+  }
+  .widget-embed-head h3 { margin: 0; font-size: 1rem; }
+  .widget-embed-head p { margin: 4px 0 0; color: var(--sl-color-gray-3, #aab3c5); font-size: 0.85rem; }
+  .widget-embed-eyebrow {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sl-color-gray-3, #8792a8);
+  }
+  .widget-embed-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 5px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: rgba(104, 211, 145, 0.2);
+    color: #68d391;
+    flex: none;
+  }
+  .widget-embed-badge:before { content: "\25CF"; animation: widget-embed-pulse 1.6s ease-in-out infinite; }
+  @keyframes widget-embed-pulse {
+    0%, 100% { opacity: 1; text-shadow: 0 0 4px rgba(104, 211, 145, 0.55); }
+    50% { opacity: 0.65; }
+  }
+  .widget-embed-body { padding: 14px 16px; }
+  .widget-embed-cli-tag {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--sl-color-gray-3, #8792a8);
+    margin-bottom: 6px;
+  }
+  .widget-embed-cmd {
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.8rem;
+    color: #68d391;
+    background: #0d1220;
+    border: 1px solid var(--sl-color-gray-5, #29324a);
+    border-radius: 5px;
+    padding: 6px 10px;
+    margin-bottom: 12px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .widget-embed-cmd span { color: var(--sl-color-gray-3, #8792a8); margin-right: 6px; }
+  .widget-embed-mount {
+    min-height: 180px;
+    border: 1px solid var(--sl-color-gray-5, #29324a);
+    border-radius: 8px;
+    background: rgba(9, 12, 24, 0.6);
+    padding: 12px;
+  }
+  .widget-embed-placeholder {
+    color: var(--sl-color-gray-3, #8792a8);
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 40px 0;
+  }
+</style>
+
+<script is:inline>
+  document.addEventListener('DOMContentLoaded', async function () {
+    if (typeof WidgetMaker === 'undefined') return;
+
+    // Apply shared tokens once (guarded - multiple embeds share one document).
+    if (!document.documentElement.dataset.widgetTokensApplied) {
+      try {
+        const tokRes = await fetch('/widgets/tokens.json');
+        if (tokRes.ok) {
+          const tokens = await tokRes.json();
+          WidgetMaker.applyTokens(tokens);
+          document.documentElement.dataset.widgetTokensApplied = '1';
+        }
+      } catch (e) {}
+    }
+
+    const mount = document.querySelector(`[data-widget-mount="${id}"]`);
+    if (!mount) return;
+    const artifactPath = mount.getAttribute('data-artifact');
+    if (!artifactPath) return;
+    try {
+      const res = await fetch('/widgets/' + artifactPath);
+      if (!res.ok) return;
+      const artifact = await res.json();
+      const tree = artifact.render || artifact;
+      mount.replaceChildren();
+      WidgetMaker.renderNodeToDom(tree, mount);
+    } catch (err) {
+      console.error('Failed to render widget:', artifactPath, err);
+    }
+  });
+</script>

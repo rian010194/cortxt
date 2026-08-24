@@ -419,6 +419,23 @@
     .status-badge.ok { background: #68d39115; border: 1px solid var(--ok); color: var(--ok); }
     .status-badge.err { background: #ff7a9020; border: 1px solid var(--bad); color: var(--bad); }
 
+    /* CLI display-mode toggle + warroom glow/elevation */
+    .view-mode-toggle { display: flex; gap: 6px; align-items: center; margin-top: 14px; }
+    .view-mode-toggle .toggle-btn {
+      padding: 4px 12px; border: 1px solid var(--atlas-border); border-radius: 6px;
+      background: var(--atlas-panel); color: var(--atlas-muted); font-size: 0.75rem; cursor: pointer;
+      transition: all 120ms ease;
+    }
+    .view-mode-toggle .toggle-btn:hover { background: var(--atlas-panel-2); color: var(--atlas-text); }
+    .view-mode-toggle .toggle-btn.active { background: #4d6bfe22; border-color: var(--atlas-accent-2); color: var(--atlas-text); font-weight: 600; }
+    body.cli-overlay .card-body { grid-template-columns: 1fr !important; }
+    body.cli-overlay .pane-cli { display: none !important; }
+    body.cli-hidden .card-body { grid-template-columns: 1fr !important; }
+    body.cli-hidden .pane-cli { display: none !important; }
+    @keyframes token-pulse{0%,100%{box-shadow:0 0 4px var(--glow-accent,rgba(77,107,254,0.55)),0 0 0 1px var(--glow-accent,rgba(77,107,254,0.55));opacity:1}50%{box-shadow:0 0 16px var(--glow-accent,rgba(77,107,254,0.55));transform:scale(1.04);opacity:.82}}
+    .glow-live{animation:token-pulse 1600ms ease-in-out infinite}
+    .glow-live.ok{--glow-accent:var(--glow-ok,rgba(104,211,145,0.55))}
+
     /* Footer */
     .atlas-footer {
       border-top: 1px solid var(--atlas-border);
@@ -449,6 +466,11 @@
         alongside the exact CLI command and JSON output side-by-side. Use the Spec Studio to live-edit
         contracts entirely client-side.
       </p>
+      <div class="view-mode-toggle" id="cli-view-toggle" role="group" aria-label="CLI display mode">
+        <button class="toggle-btn active" data-mode="split" onclick="setCliMode('split')">Split</button>
+        <button class="toggle-btn" data-mode="overlay" onclick="setCliMode('overlay')">Overlay Console</button>
+        <button class="toggle-btn" data-mode="hidden" onclick="setCliMode('hidden')">Widgets Only</button>
+      </div>
     </div>
   </header>
 
@@ -1137,9 +1159,26 @@ render:
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
+    // CLI display mode: split | overlay | hidden (persisted)
+    const CLI_MODE_KEY = "cortxt-cli-mode";
+    let cliMode = (function () {
+      try { return localStorage.getItem(CLI_MODE_KEY) || "split"; } catch (e) { return "split"; }
+    })();
+    function setCliMode(mode) {
+      cliMode = mode;
+      try { localStorage.setItem(CLI_MODE_KEY, mode); } catch (e) {}
+      document.querySelectorAll("#cli-view-toggle .toggle-btn").forEach(function (b) {
+        b.classList.toggle("active", b.dataset.mode === mode);
+      });
+      document.body.classList.toggle("cli-split", mode === "split");
+      document.body.classList.toggle("cli-overlay", mode === "overlay");
+      document.body.classList.toggle("cli-hidden", mode === "hidden");
+    }
+
     // Initialize
     initGallery();
     applyPreset("candidates");
+    setCliMode(cliMode);
   </script>
 </body>
 </html>
