@@ -14,7 +14,7 @@ from widget_contract.chart_text import render_bar_gauge, render_line_spark
 from widget_contract.loader import load_widget_file
 from widget_contract.renderer import render
 from widget_contract.swimlane_text import render_swimlane_text
-from widget_contract.tokens import DEFAULT_ANSI_MAP, ansi_map, load_tokens
+from widget_contract.tokens import DEFAULT_ANSI_MAP, ansi_map, load_tokens, truecolor_ansi_map
 from widget_contract.tui import colorize_status, render_tui
 
 SPECS_DIR = Path(__file__).resolve().parents[2] / "widget_contract" / "specs"
@@ -323,4 +323,36 @@ def test_cli_webhooks_view_tui(tmp_path, capsys, monkeypatch):
     assert "=== Webhooks ===" in captured.out
     assert "https://example.invalid/hook" in captured.out
     assert "\x1b" in captured.out
+
+
+def test_truecolor_ansi_map_matches_token_hex():
+    """24-bit ANSI codes must be derived from the actual token hex values."""
+    tokens = load_tokens()
+    mapping = truecolor_ansi_map(tokens)
+    # accent #4d6bfe -> 38;2;77;107;254
+    assert mapping["accent"] == "\x1b[38;2;77;107;254m"
+    # ok #68d391 -> 38;2;104;211;145
+    assert mapping["ok"] == "\x1b[38;2;104;211;145m"
+    assert mapping["reset"] == "\x1b[0m"
+
+
+def test_truecolor_ansi_map_falls_back_without_tokens():
+    mapping = truecolor_ansi_map()
+    assert mapping["accent"] == "\x1b[1;34m"
+    assert mapping["reset"] == "\x1b[0m"
+
+
+def test_render_tui_truecolor_differs_from_default():
+    """--tui-truecolor output must use 24-bit codes while default stays stable."""
+    tree = {
+        "primitive": "stack",
+        "children": [
+            {"primitive": "badge", "props": {"value": "running"}},
+            {"primitive": "text", "props": {"label": "Note", "value": "ok"}},
+        ],
+    }
+    default_out = render_tui(tree, force_ansi=True)
+    truecolor_out = render_tui(tree, force_ansi=True, truecolor=True)
+    assert "\x1b[38;2;" in truecolor_out
+    assert "\x1b[38;2;" not in default_out
 

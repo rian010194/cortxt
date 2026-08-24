@@ -73,6 +73,64 @@
     }
     .tab-btn.active { background: #4d6bfe22; border-color: var(--accent); color: var(--text); font-weight: 600; }
 
+    /* CLI display-mode toggle */
+    .view-mode-toggle {
+      display: flex; gap: 6px; align-items: center; margin: 10px 0 2px;
+    }
+    .view-mode-toggle .toggle-btn {
+      padding: 4px 12px; border: 1px solid var(--stroke); border-radius: 6px;
+      background: var(--layer); color: var(--muted); font-size: 11px; cursor: pointer;
+      transition: all var(--duration-fast, 120ms) var(--easing, ease);
+    }
+    .view-mode-toggle .toggle-btn:hover { background: var(--hover); color: var(--text); }
+    .view-mode-toggle .toggle-btn.active {
+      background: #4d6bfe22; border-color: var(--accent); color: var(--text); font-weight: 600;
+    }
+
+    /* CLI pane modes: split (default) | overlay | hidden */
+    body.cli-overlay .card-body { grid-template-columns: 1fr !important; }
+    body.cli-overlay .pane-cli {
+      position: fixed; left: 16px; right: 16px; bottom: 16px; max-height: 40vh;
+      z-index: 20; border: 1px solid var(--strong); border-radius: var(--radius-large, 12px);
+      box-shadow: var(--shadow-instrument, 0 24px 64px rgba(0, 0, 0, 0.6));
+      background: #101522f2;
+    }
+    body.cli-hidden .card-body { grid-template-columns: 1fr !important; }
+    body.cli-hidden .pane-cli { display: none !important; }
+
+    /* Warroom/backdrop texture: subtle grid + vignette, applied once to the page */
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        linear-gradient(var(--grid-line, rgba(255, 255, 255, 0.02)) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line, rgba(255, 255, 255, 0.02)) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 70%);
+    }
+    body > * { position: relative; z-index: 1; }
+
+    /* Glow system: the only continuous animation in the platform */
+    @keyframes token-pulse {
+      0%, 100% { box-shadow: 0 0 4px var(--glow-accent, rgba(77, 107, 254, 0.55)), 0 0 0 1px var(--glow-accent, rgba(77, 107, 254, 0.55)); opacity: 1; }
+      50% { box-shadow: 0 0 16px var(--glow-accent, rgba(77, 107, 254, 0.55)); transform: scale(1.04); opacity: .82; }
+    }
+    .glow-live { animation: token-pulse var(--duration-live, 1600ms) var(--easing-pulse, ease-in-out) infinite; }
+    .glow-live.ok { --glow-accent: var(--glow-ok, rgba(104, 211, 145, 0.55)); }
+    .glow-live.warn { --glow-accent: var(--glow-warn, rgba(246, 200, 95, 0.5)); }
+    .glow-live.bad { --glow-accent: var(--glow-bad, rgba(255, 122, 144, 0.5)); }
+
+    /* Layered instrument surfaces */
+    .card {
+      border: var(--bezel-width, 1px) solid var(--strong);
+      background:
+        linear-gradient(180deg, var(--sheen-top, rgba(255, 255, 255, 0.07)) 0%, transparent 8%),
+        radial-gradient(120% 140% at 15% -10%, #1a2340 0%, var(--surface) 55%);
+      box-shadow: var(--shadow-panel, 0 12px 32px rgba(0, 0, 0, 0.45));
+      transition: box-shadow var(--duration-medium, 200ms) var(--easing, ease),
+                  transform var(--duration-medium, 200ms) var(--easing, ease);
+    }
+    .card:hover { box-shadow: var(--shadow-instrument, 0 24px 64px rgba(0, 0, 0, 0.6)); }
+
     .view-section { display: flex; flex-direction: column; gap: 16px; }
     .hidden { display: none !important; }
 
@@ -431,8 +489,15 @@
     <button class="tab-btn active" id="btn-gallery" onclick="switchMode('gallery')">Gallery View</button>
     <button class="tab-btn" id="btn-studio" onclick="switchMode('studio')">Maker Studio &amp; Spec Editor</button>
     <button class="tab-btn" id="btn-tokens" onclick="switchMode('tokens')">Tokens Editor</button>
+    <button class="tab-btn" id="btn-warroom" onclick="switchMode('warroom')">Warroom Compose</button>
     <button class="tab-btn" id="btn-import" onclick="switchMode('import')">Import Widget</button>
   </nav>
+
+  <div class="view-mode-toggle" id="cli-view-toggle" role="group" aria-label="CLI display mode">
+    <button class="toggle-btn active" data-mode="split" onclick="setCliMode('split')">Split</button>
+    <button class="toggle-btn" data-mode="overlay" onclick="setCliMode('overlay')">Overlay Console</button>
+    <button class="toggle-btn" data-mode="hidden" onclick="setCliMode('hidden')">Widgets Only</button>
+  </div>
 
   <!-- Section 1: Gallery View -->
   <section class="view-section" id="section-gallery">
@@ -545,7 +610,66 @@
     </div>
   </section>
 
-  <!-- Section 4: Import Widget -->
+  <!-- Section 4: Warroom Compose -->
+  <section class="view-section hidden" id="section-warroom">
+    <div class="studio-container">
+      <div class="editor-pane">
+        <div class="editor-toolbar">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="eyebrow">Widget Picker</span>
+            <span class="badge" id="warroom-count-badge">0 selected</span>
+          </div>
+        </div>
+        <div class="editor-body" id="warroom-picker" style="overflow:auto;gap:6px;">
+          <!-- Injected by renderWarroomPicker() -->
+        </div>
+        <div class="editor-toolbar" style="border-top:1px solid var(--stroke);">
+          <span class="eyebrow">Grid Layout</span>
+        </div>
+        <div class="editor-body" style="gap:8px;">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <label class="eyebrow" for="warroom-cols">Columns</label>
+            <select class="editor-select" id="warroom-cols" style="width:72px;" onchange="renderWarroomPreview()">
+              <option value="1">1</option>
+              <option value="2" selected>2</option>
+              <option value="3">3</option>
+            </select>
+            <label class="eyebrow" for="warroom-rows">Rows</label>
+            <select class="editor-select" id="warroom-rows" style="width:72px;" onchange="renderWarroomPreview()">
+              <option value="1">1</option>
+              <option value="2" selected>2</option>
+              <option value="3">3</option>
+            </select>
+          </div>
+          <div id="warroom-cell-assign" style="display:flex;flex-direction:column;gap:6px;">
+            <!-- Injected by renderWarroomPicker() -->
+          </div>
+        </div>
+      </div>
+
+      <div class="editor-pane">
+        <div class="editor-toolbar">
+          <span class="eyebrow">Warroom Preview &amp; Composition</span>
+          <div style="display:flex;gap:6px;">
+            <button class="candidate-copy" onclick="downloadWarroomYaml()">Download composition.yaml</button>
+            <button class="candidate-copy" onclick="copyWarroomCommand()" id="warroom-copy-cmd">Copy CLI command</button>
+          </div>
+        </div>
+        <div class="editor-body" style="gap:8px;overflow:auto;">
+          <div class="pane pane-render" id="warroom-render-pane" style="min-height:200px;border:1px solid var(--stroke);border-radius:6px;">
+            <!-- Composed grid preview injected here -->
+          </div>
+          <span class="pane-title" style="margin-top:4px;">Generated composition.yaml</span>
+          <pre class="cli-json" id="warroom-yaml-text" style="max-height:180px;"># select widgets and arrange the grid</pre>
+          <div class="cli-cmd-box">
+            <div class="cli-cmd" id="warroom-cmd-text">cortxt widget compose --spec warroom.yaml --widgets-dir agent-platform/widget/specs</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Import Widget -->
   <section class="view-section hidden" id="section-import">
     <div class="card" style="max-width: 960px; margin: 0 auto; width: 100%;">
       <div class="card-header">
@@ -1099,17 +1223,286 @@ render:
       const isGallery = mode === "gallery";
       const isStudio = mode === "studio";
       const isTokens = mode === "tokens";
+      const isWarroom = mode === "warroom";
       const isImport = mode === "import";
 
       document.getElementById("btn-gallery").classList.toggle("active", isGallery);
       document.getElementById("btn-studio").classList.toggle("active", isStudio);
       document.getElementById("btn-tokens").classList.toggle("active", isTokens);
+      document.getElementById("btn-warroom").classList.toggle("active", isWarroom);
       document.getElementById("btn-import").classList.toggle("active", isImport);
 
       document.getElementById("section-gallery").classList.toggle("hidden", !isGallery);
       document.getElementById("section-studio").classList.toggle("hidden", !isStudio);
       document.getElementById("section-tokens").classList.toggle("hidden", !isTokens);
+      document.getElementById("section-warroom").classList.toggle("hidden", !isWarroom);
       document.getElementById("section-import").classList.toggle("hidden", !isImport);
+
+      if (isWarroom) renderWarroomPicker();
+    }
+
+    // CLI display mode: split | overlay | hidden (persisted, like index.html's view mode)
+    const CLI_MODE_KEY = "cortxt-cli-mode";
+    let cliMode = (function () {
+      try { return localStorage.getItem(CLI_MODE_KEY) || "split"; } catch (e) { return "split"; }
+    })();
+
+    function setCliMode(mode) {
+      cliMode = mode;
+      try { localStorage.setItem(CLI_MODE_KEY, mode); } catch (e) {}
+      document.querySelectorAll("#cli-view-toggle .toggle-btn").forEach(function (b) {
+        b.classList.toggle("active", b.dataset.mode === mode);
+      });
+      document.body.classList.toggle("cli-split", mode === "split");
+      document.body.classList.toggle("cli-overlay", mode === "overlay");
+      document.body.classList.toggle("cli-hidden", mode === "hidden");
+      // Keep the studio render in sync with the chosen mode.
+      const studioBody = document.querySelector("#section-studio .card-body");
+      if (studioBody) {
+        studioBody.classList.toggle("cli-split", mode === "split");
+        studioBody.classList.toggle("cli-overlay", mode === "overlay");
+        studioBody.classList.toggle("cli-hidden", mode === "hidden");
+      }
+    }
+
+    // ---- Warroom compose ----
+    let warroomSelections = {}; // widget id -> true
+    let warroomManifest = [];   // loaded from widgets.json
+
+    async function renderWarroomPicker() {
+      const picker = document.getElementById("warroom-picker");
+      if (!picker) return;
+      try {
+        const resp = await fetch("widgets.json", { cache: "no-store" });
+        if (!resp.ok) throw Error("widgets.json fetch failed");
+        warroomManifest = (await resp.json()).widgets || [];
+      } catch (e) {
+        warroomManifest = [];
+      }
+
+      picker.replaceChildren();
+      const rows = document.createElement("div");
+      rows.className = "widget-stack";
+      rows.style.width = "100%";
+
+      warroomManifest.forEach(function (w) {
+        if (!w.id || w.id === "composed") return; // composition itself is not a source widget
+        const row = document.createElement("label");
+        row.className = "widget-row";
+        row.style.cssText = "align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--stroke);border-radius:6px;background:var(--layer);cursor:pointer;";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!warroomSelections[w.id];
+        cb.onchange = function () {
+          warroomSelections[w.id] = cb.checked;
+          renderWarroomCellAssign();
+          renderWarroomPreview();
+        };
+        const info = document.createElement("div");
+        info.style.cssText = "display:flex;flex-direction:column;gap:1px;min-width:0;";
+        const title = document.createElement("span");
+        title.className = "row-title";
+        title.textContent = w.title || w.id;
+        const meta = document.createElement("span");
+        meta.className = "card-meta";
+        meta.textContent = w.hint || w.id;
+        info.append(title, meta);
+        row.append(cb, info);
+        rows.append(row);
+      });
+
+      if (!warroomManifest.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "widgets.json manifest missing - run `cortxt widget load` to generate it.";
+        rows.append(empty);
+      }
+      picker.append(rows);
+      renderWarroomCellAssign();
+      renderWarroomPreview();
+    }
+
+    function renderWarroomCellAssign() {
+      const box = document.getElementById("warroom-cell-assign");
+      if (!box) return;
+      const selected = warroomManifest.filter(function (w) { return warroomSelections[w.id]; });
+      box.replaceChildren();
+      if (!selected.length) {
+        const hint = document.createElement("span");
+        hint.className = "eyebrow";
+        hint.textContent = "Select widgets to assign them to grid cells.";
+        box.append(hint);
+        return;
+      }
+      selected.forEach(function (w, i) {
+        const row = document.createElement("div");
+        row.className = "widget-row";
+        row.style.cssText = "align-items:center;gap:8px;";
+        const label = document.createElement("span");
+        label.className = "eyebrow";
+        label.style.width = "110px";
+        label.textContent = (w.title || w.id).slice(0, 22);
+        const cell = document.createElement("select");
+        cell.className = "editor-select";
+        cell.style.cssText = "flex:1;";
+        cell.id = "warroom-cell-" + i;
+        for (let c = 1; c <= 9; c++) {
+          const opt = document.createElement("option");
+          opt.value = String(c);
+          opt.textContent = "Cell " + c;
+          if (c === i + 1) opt.selected = true;
+          cell.append(opt);
+        }
+        cell.onchange = renderWarroomPreview;
+        row.append(label, cell);
+        box.append(row);
+      });
+    }
+
+    async function renderWarroomPreview() {
+      const pane = document.getElementById("warroom-render-pane");
+      if (!pane) return;
+      const selected = warroomManifest.filter(function (w) { return warroomSelections[w.id]; });
+      if (!selected.length) {
+        pane.replaceChildren();
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "Preview (client-side, unsigned): select widgets from the picker.";
+        pane.append(empty);
+        updateWarroomYaml(selected, []);
+        return;
+      }
+
+      const cols = Number(document.getElementById("warroom-cols").value || 2);
+      const rows = Number(document.getElementById("warroom-rows").value || 2);
+      const children = [];
+      const cellsUsed = [];
+
+      for (let i = 0; i < selected.length && i < rows * cols; i++) {
+        const w = selected[i];
+        const cell = Number(document.getElementById("warroom-cell-" + i)?.value || i + 1);
+        cellsUsed.push(cell);
+        const node = document.createElement("div");
+        node.className = "widget-panel";
+        node.style.cssText = "border:1px solid var(--stroke);border-radius:6px;padding:8px;background:var(--layer);min-height:120px;overflow:auto;";
+        const head = document.createElement("div");
+        head.className = "pane-title";
+        head.textContent = w.title || w.id;
+        node.append(head);
+        const body = document.createElement("div");
+        body.className = "widget-stack";
+        body.style.cssText = "gap:6px;";
+        node.append(body);
+        children.push({ w: w, node: node, body: body });
+      }
+
+      pane.replaceChildren();
+      const grid = document.createElement("div");
+      grid.className = "widget-grid";
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(" + cols + ",1fr);gap:8px;width:100%;";
+      // ensure all cells exist up to rows*cols (empty placeholders)
+      for (let c = 1; c <= rows * cols; c++) {
+        const found = children.find(function (ch) { return ch.cell === c; });
+        const cellBox = found ? found.node : document.createElement("div");
+        if (!found) {
+          cellBox.className = "widget-panel";
+          cellBox.style.cssText = "border:1px dashed var(--stroke);border-radius:6px;padding:8px;min-height:120px;display:flex;align-items:center;justify-content:center;";
+          const dash = document.createElement("span");
+          dash.className = "eyebrow";
+          dash.textContent = "empty cell";
+          cellBox.append(dash);
+        }
+        grid.append(cellBox);
+      }
+      pane.append(grid);
+
+      // Hydrate each selected widget body with its fixture render when available.
+      children.forEach(function (ch) {
+        if (typeof WidgetMaker === "undefined") return;
+        const artifactPath = ch.w.artifact;
+        if (!artifactPath) return;
+        fetch(artifactPath, { cache: "no-store" }).then(function (resp) {
+          if (!resp.ok) return;
+          return resp.json();
+        }).then(function (artifact) {
+          if (!artifact) return;
+          const tree = artifact.render || artifact;
+          if (typeof WidgetMaker.renderNodeToDom === "function") {
+            ch.body.replaceChildren();
+            WidgetMaker.renderNodeToDom(tree, ch.body);
+          }
+        }).catch(function () {});
+      });
+
+      updateWarroomYaml(selected, children.map(function (ch) { return ch.w; }));
+    }
+
+    function slugify(id) {
+      return String(id || "widget").replace(/[^a-zA-Z0-9_-]/g, "_");
+    }
+
+    async function updateWarroomYaml(selected) {
+      const pre = document.getElementById("warroom-yaml-text");
+      const cmd = document.getElementById("warroom-cmd-text");
+      if (!pre) return;
+      if (!selected.length) {
+        pre.textContent = "# select widgets and arrange the grid";
+        return;
+      }
+      const cols = Number(document.getElementById("warroom-cols").value || 2);
+      const rows = Number(document.getElementById("warroom-rows").value || 2);
+
+      const lines = [];
+      lines.push("contract_version: \"0.1\"");
+      lines.push("composition:");
+      lines.push("  id: warroom");
+      lines.push("  version: 0.1.0");
+      lines.push("  title: Operator Warroom");
+      lines.push("widgets:");
+      const caps = new Set();
+      selected.forEach(function (w, i) {
+        const ns = slugify(w.id);
+        lines.push("  - namespace: " + ns);
+        lines.push("    widget_id: " + w.id);
+        lines.push("    version: " + (w.version || "0.1.0"));
+        lines.push("    inputs: {}");
+        lines.push("    outputs: {}");
+        (w.capabilities || []).forEach(function (c) { caps.add(c); });
+      });
+      lines.push("capabilities:");
+      (Array.from(caps).sort()).forEach(function (c) { lines.push("  - " + c); });
+      lines.push("layout:");
+      lines.push("  primitive: grid");
+      lines.push("  props: {columns: " + cols + "}");
+      lines.push("  children:");
+      selected.slice(0, rows * cols).forEach(function (w, i) {
+        lines.push("    - primitive: panel");
+        lines.push("      widget: " + slugify(w.id));
+      });
+      lines.push("connections: []");
+      pre.textContent = lines.join("\n");
+
+      if (cmd) {
+        cmd.textContent = "cortxt widget compose --spec warroom.yaml --widgets-dir agent-platform/widget/specs --snapshot agent-platform/widget/composed.json";
+      }
+    }
+
+    function downloadWarroomYaml() {
+      const pre = document.getElementById("warroom-yaml-text");
+      if (!pre) return;
+      const blob = new Blob([pre.textContent], { type: "application/yaml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "warroom.yaml";
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 200);
+    }
+
+    function copyWarroomCommand() {
+      const cmd = document.getElementById("warroom-cmd-text");
+      if (!cmd) return;
+      copyText(cmd.textContent, document.getElementById("warroom-copy-cmd"));
     }
 
     async function initTokens() {
@@ -1875,6 +2268,7 @@ render:
     initTokens();
     loadManifestAndRender();
     loadPreset("candidates");
+    setCliMode(cliMode); // apply persisted CLI display mode (split/overlay/hidden)
   </script>
 </body>
 </html>

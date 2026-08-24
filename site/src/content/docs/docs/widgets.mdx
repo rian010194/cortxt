@@ -1,0 +1,70 @@
+---
+title: Widgets
+description: Render Cortxt CLI state as declarative widgets - gallery, warroom compose, and CLI parity.
+---
+
+Every Cortxt widget is a **declarative mirror of CLI state** (ADR-021): a YAML
+spec declares reads and a render tree; the same render tree drives a browser
+widget, the Widget Maker, and a colorized terminal (TUI) view. Nothing in a
+widget spec can supply HTML, CSS, or JS - only data bindings (ADR-038).
+
+## Try it live
+
+The widgets below render live from the same fixture artifacts the landing page
+uses. Each pairs the widget with the exact CLI command that produces it.
+
+import WidgetEmbed from '../../components/WidgetEmbed.astro';
+
+<WidgetEmbed id="session-agents" cliCommand="cortxt widget --view session-agents" />
+<WidgetEmbed id="usage-cost" cliCommand="cortxt widget --view usage-cost" />
+<WidgetEmbed id="pulse" cliCommand="cortxt widget --view session-pulse" />
+
+## CLI to widget parity
+
+| CLI command | Widget | Spec |
+| --- | --- | --- |
+| `cortxt widget --view candidates --repo OWNER/REPO` | Candidates | `widget_contract/specs/candidates-0.1.yaml` |
+| `cortxt widget --view session-pulse` | Session Pulse | `widget_contract/specs/session-pulse-0.1.yaml` |
+| `cortxt widget --view session-agents` | Session Agents | `widget_contract/specs/session-agents-0.1.yaml` |
+| `cortxt widget --view usage-cost` | Usage and Cost | `widget_contract/specs/usage-cost-0.1.yaml` |
+| `cortxt widget --view docker-status` | Docker Status | `widget_contract/specs/docker-status-0.1.yaml` |
+| `cortxt widget --view webhooks --repo OWNER/REPO` | Webhooks | `widget_contract/specs/webhooks-0.1.yaml` |
+| `cortxt widget compose --spec composition.yaml --widgets-dir <dir>` | Warroom (composed) | any widget + layout |
+
+## TUI mode
+
+Every view above also renders as colorized terminal text via `--tui`:
+
+```bash
+cortxt widget --view session-agents --tui
+```
+
+TUI colors are generated from the same `tokens.json` shared with the browser
+widgets and Widget Maker. On a 24-bit-capable terminal (Windows Terminal,
+iTerm2, modern emulators) you can derive colors directly from the token hex
+values:
+
+```bash
+cortxt widget --view session-agents --tui --tui-truecolor
+```
+
+## Build your own warroom
+
+Open [`/widgets/`](/widgets/) for the interactive Gallery, Spec Studio, Tokens
+editor, and the Warroom Compose view. Compose picks widgets from the gallery,
+arranges them on a grid, generates a `composition.yaml`, and gives you the CLI
+command to materialize it:
+
+```bash
+cortxt widget compose --spec warroom.yaml --widgets-dir agent-platform/widget/specs --snapshot agent-platform/widget/composed.json
+```
+
+Composition is strictly typed per ADR-038: widgets are referenced by exact
+version, connections are typed, and capabilities never widen. The maker is a
+static, backend-less tool; the CLI step validates authoritatively.
+
+## Design tokens
+
+Widgets, the maker, and the CLI TUI all read `tokens.json`. Edit colors,
+elevation, glow, and motion once in the Tokens tab of the maker, and every
+surface - browser, maker, terminal - updates together.

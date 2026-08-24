@@ -9,8 +9,8 @@
 .proof-band-scroll::-webkit-scrollbar{height:6px}
 .proof-band-scroll::-webkit-scrollbar-track{background:transparent}
 .proof-band-scroll::-webkit-scrollbar-thumb{background:var(--stroke);border-radius:999px}
-.proof-pair-card{flex:0 0 720px;min-width:720px;max-width:720px;scroll-snap-align:start;border:1px solid var(--stroke);border-radius:12px;background:var(--surface);overflow:hidden;box-shadow:0 16px 36px #00000066;display:flex;flex-direction:column;transition:border-color .15s ease}
-.proof-pair-card:hover{border-color:var(--bright)}
+.proof-pair-card{flex:0 0 720px;min-width:720px;max-width:720px;scroll-snap-align:start;border:1px solid var(--stroke);border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.07) 0%,transparent 8%),radial-gradient(120% 140% at 15% -10%,#1a2340 0%,var(--surface) 55%);overflow:hidden;box-shadow:0 16px 36px #00000066;display:flex;flex-direction:column;transition:border-color .15s ease,box-shadow .2s ease,transform .2s ease}
+.proof-pair-card:hover{border-color:var(--bright);box-shadow:0 24px 64px #00000099,inset 0 1px 0 rgba(255,255,255,0.06)}
 .proof-card-header{padding:0.75rem 1.15rem;background:#ffffff05;border-bottom:1px solid var(--stroke);display:flex;justify-content:space-between;align-items:center;gap:1rem}
 .proof-card-title-group{display:flex;flex-direction:column;gap:0.2rem;flex:1}
 .proof-card-title-row{display:flex;align-items:center;gap:0.65rem}
@@ -18,6 +18,8 @@
 .proof-card-desc{margin:0;font-size:0.8rem;color:var(--muted)}
 .live-badge{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:999px;background:#68d39120;border:1px solid #68d39150;color:var(--ok);font:700 0.66rem var(--mono);letter-spacing:0.05em;text-transform:uppercase}
 .live-badge i{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok)}
+.live-badge i{animation:live-glow 1.6s ease-in-out infinite}
+@keyframes live-glow{0%,100%{box-shadow:0 0 4px rgba(104,211,145,0.55)}50%{box-shadow:0 0 12px rgba(104,211,145,0.9)}}
 .proof-card-body{display:grid;grid-template-columns:1fr 1fr;min-height:300px}
 .proof-cli-pane{background:#06080e;padding:0.9rem 1rem;display:flex;flex-direction:column;gap:0.6rem;border-right:1px solid var(--stroke);overflow:auto}
 .proof-widget-pane{background:#090d18;padding:0.9rem 1rem;display:flex;flex-direction:column;gap:0.6rem;overflow:auto}
