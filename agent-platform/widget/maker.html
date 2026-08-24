@@ -662,7 +662,7 @@
           <span class="pane-title" style="margin-top:4px;">Generated composition.yaml</span>
           <pre class="cli-json" id="warroom-yaml-text" style="max-height:180px;"># select widgets and arrange the grid</pre>
           <div class="cli-cmd-box">
-            <div class="cli-cmd" id="warroom-cmd-text">cortxt widget compose --spec warroom.yaml --widgets-dir agent-platform/widget/specs</div>
+            <div class="cli-cmd" id="warroom-cmd-text">cortxt widget compose --spec warroom.yaml --widgets-dir agent-platform/widget_contract/specs</div>
           </div>
         </div>
       </div>
@@ -1280,6 +1280,23 @@ render:
         warroomManifest = [];
       }
 
+      // Load each widget's declared capabilities from its spec (specs/ is
+      // served by the loopback host and matches the --widgets-dir convention).
+      await Promise.all(warroomManifest.map(function (w) {
+        if (!w.spec) return Promise.resolve();
+        const base = String(w.spec).split("/").pop();
+        return fetch("specs/" + base, { cache: "no-store" }).then(function (resp) {
+          if (!resp.ok) return;
+          return resp.text();
+        }).then(function (text) {
+          if (!text) return;
+          const parsed = WidgetMaker.parseYamlSubset(text);
+          if (parsed.ok && parsed.data && Array.isArray(parsed.data.capabilities)) {
+            w.capabilities = parsed.data.capabilities;
+          }
+        }).catch(function () {});
+      }));
+
       picker.replaceChildren();
       const rows = document.createElement("div");
       rows.className = "widget-stack";
@@ -1456,15 +1473,14 @@ render:
       lines.push("contract_version: \"0.1\"");
       lines.push("composition:");
       lines.push("  id: warroom");
-      lines.push("  version: 0.1.0");
-      lines.push("  title: Operator Warroom");
+      lines.push("  version: \"0.1\"");
       lines.push("widgets:");
       const caps = new Set();
       selected.forEach(function (w, i) {
         const ns = slugify(w.id);
         lines.push("  - namespace: " + ns);
         lines.push("    widget_id: " + w.id);
-        lines.push("    version: " + (w.version || "0.1.0"));
+        lines.push("    version: \"" + specVersion(w.spec) + "\"");
         lines.push("    inputs: {}");
         lines.push("    outputs: {}");
         (w.capabilities || []).forEach(function (c) { caps.add(c); });
@@ -1473,7 +1489,6 @@ render:
       (Array.from(caps).sort()).forEach(function (c) { lines.push("  - " + c); });
       lines.push("layout:");
       lines.push("  primitive: grid");
-      lines.push("  props: {columns: " + cols + "}");
       lines.push("  children:");
       selected.slice(0, rows * cols).forEach(function (w, i) {
         lines.push("    - primitive: panel");
@@ -1483,8 +1498,16 @@ render:
       pre.textContent = lines.join("\n");
 
       if (cmd) {
-        cmd.textContent = "cortxt widget compose --spec warroom.yaml --widgets-dir agent-platform/widget/specs --snapshot agent-platform/widget/composed.json";
+        cmd.textContent = "cortxt widget compose --spec warroom.yaml --widgets-dir agent-platform/widget_contract/specs --snapshot agent-platform/widget/composed.json";
       }
+    }
+
+    // Derive the widget version from its spec file name (e.g. candidates-0.1.yaml -> "0.1"),
+    // matching the <widget_id>-<version>.yaml convention load_composition resolves against.
+    function specVersion(specPath) {
+      if (!specPath) return "0.1";
+      const m = String(specPath).match(/-([0-9]+\.[0-9]+(?:\.[0-9]+)?)\.ya?ml$/i);
+      return m ? m[1] : "0.1";
     }
 
     function downloadWarroomYaml() {
