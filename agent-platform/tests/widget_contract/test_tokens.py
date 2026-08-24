@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from widget_contract.registry import TYPES, VISUAL_TOKENS_SCHEMA
-from widget_contract.tokens import TokensError, ansi_map, load_tokens
+from widget_contract.tokens import TokensError, ansi_map, load_tokens, truecolor_ansi_map
 from widget_contract.validation import ValidationError, validate
 
 TOKENS_PATH = Path(__file__).resolve().parents[2] / "widget" / "tokens.json"
@@ -115,3 +115,52 @@ def test_ansi_map_contains_required_keys():
     tokens = load_tokens()
     mapping_with_tokens = ansi_map(tokens)
     assert expected_keys <= set(mapping_with_tokens.keys())
+
+
+def test_ansi_map_keeps_classic_codes_stable():
+    """ansi_map() must keep classic 16-color ANSI codes stable for pipes/tests."""
+    tokens = load_tokens()
+    mapping = ansi_map(tokens)
+    assert mapping["accent"] == "\x1b[1;34m"
+    assert mapping["ok"] == "\x1b[32m"
+    assert mapping["warn"] == "\x1b[33m"
+    assert mapping["bad"] == "\x1b[31m"
+    assert mapping["text"] == "\x1b[0m"
+
+
+def test_truecolor_ansi_map_matches_token_hex():
+    """24-bit ANSI codes must be derived from the actual token hex values."""
+    tokens = load_tokens()
+    mapping = truecolor_ansi_map(tokens)
+    # accent #4d6bfe -> truecolor foreground escape
+    assert mapping["accent"] == "\x1b[38;2;77;107;254m"
+    # ok #68d391 -> truecolor foreground escape
+    assert mapping["ok"] == "\x1b[38;2;104;211;145m"
+    assert mapping["reset"] == "\x1b[0m"
+
+
+def test_truecolor_ansi_map_falls_back_without_tokens():
+    mapping = truecolor_ansi_map()
+    assert mapping["accent"] == "\x1b[1;34m"
+    assert mapping["ok"] == "\x1b[32m"
+
+
+def test_ansi_map_256_color_fallback_for_custom_colors():
+    """Non-registered color keys resolve to a 256-color approximation."""
+    from widget_contract.tokens import _parse_hex
+
+    assert _parse_hex("#4d6bfe") == (77, 107, 254)
+    assert _parse_hex("#abc") == (170, 187, 204)
+    assert _parse_hex("not-a-color") is None
+    assert _parse_hex("#12345") is None
+
+
+def test_new_token_sections_valid():
+    """The extended tokens file (effects/motion/backdrop) must still validate."""
+    tokens = load_tokens()
+    assert "effects" in tokens
+    assert "motion" in tokens
+    assert "backdrop" in tokens
+    assert tokens["effects"]["glow_ok"] == "rgba(104, 211, 145, 0.55)"
+    assert "duration_live" in tokens["motion"]
+    assert "grid" in tokens["backdrop"]

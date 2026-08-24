@@ -7,10 +7,14 @@ from typing import Any, Mapping, Sequence
 
 from widget_contract.chart_text import render_bar_gauge, render_line_spark
 from widget_contract.swimlane_text import render_swimlane_text
-from widget_contract.tokens import DEFAULT_ANSI_MAP, ansi_map, load_tokens
+from widget_contract.tokens import DEFAULT_ANSI_MAP, ansi_map, load_tokens, truecolor_ansi_map
 
 
-def _get_colors(tokens: Mapping[str, Any] | None, force_ansi: bool | None) -> dict[str, str]:
+def _get_colors(
+    tokens: Mapping[str, Any] | None,
+    force_ansi: bool | None,
+    truecolor: bool = False,
+) -> dict[str, str]:
     """Determine the active ANSI color map based on tokens and TTY/force settings."""
     if force_ansi is True:
         use_ansi = True
@@ -21,6 +25,9 @@ def _get_colors(tokens: Mapping[str, Any] | None, force_ansi: bool | None) -> di
 
     if not use_ansi:
         return {k: "" for k in DEFAULT_ANSI_MAP}
+
+    if truecolor:
+        return truecolor_ansi_map(tokens)
 
     return ansi_map(tokens)
 
@@ -250,7 +257,10 @@ def _render_node(node: Mapping[str, Any], colors: Mapping[str, str], depth: int 
                 for it in lane_items:
                     t = it.get("title") or it.get("name") or it.get("id") or "task"
                     state = str(it.get("state") or it.get("status") or "").lower()
-                    mark = "●" if state in ("running", "active") else "○"
+                    if state in ("running", "active"):
+                        mark = _c("glow_accent" if "glow_accent" in colors else "accent", "●", colors)
+                    else:
+                        mark = _c("dim", "○", colors)
                     lane_line += f"  {mark} {t}"
                 lines.append(_c("strong", f"{lane_line}", colors))
             return lines
@@ -303,6 +313,7 @@ def render_tui(
     tree: Mapping[str, Any] | Any,
     tokens: Mapping[str, Any] | None = None,
     force_ansi: bool | None = None,
+    truecolor: bool = False,
 ) -> str:
     """Render a widget render tree into styled terminal text using shared visual tokens.
 
@@ -311,6 +322,8 @@ def render_tui(
         tokens: Optional visual tokens mapping. If omitted, default tokens are loaded.
         force_ansi: If True, force ANSI codes. If False, suppress ANSI codes.
                     If None, auto-detect based on whether stdout is a TTY.
+        truecolor: If True, derive 24-bit ANSI codes directly from the token
+                   hex values (requires a 24-bit-capable terminal).
 
     Returns:
         Formatted terminal UI text string.
@@ -321,7 +334,7 @@ def render_tui(
         except Exception:
             tokens = None
 
-    colors = _get_colors(tokens, force_ansi)
+    colors = _get_colors(tokens, force_ansi, truecolor=truecolor)
 
     if isinstance(tree, Mapping) and "render" in tree:
         node = tree["render"]

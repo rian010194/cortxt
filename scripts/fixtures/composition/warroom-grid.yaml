@@ -1,0 +1,26 @@
+contract_version: "0.1"
+composition:
+  id: warroom
+  version: "0.1"
+widgets:
+  - namespace: session_pulse
+    widget_id: session-pulse
+    version: "0.1"
+    inputs: {}
+    outputs: {}
+  - namespace: usage_cost
+    widget_id: usage-cost
+    version: "0.1"
+    inputs: {}
+    outputs: {}
+capabilities:
+  - read:sessions
+  - read:usage-cost
+layout:
+  primitive: grid
+  children:
+    - primitive: panel
+      widget: session_pulse
+    - primitive: panel
+      widget: usage_cost
+connections: []

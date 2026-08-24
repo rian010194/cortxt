@@ -1326,6 +1326,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
     try:
         is_tui = getattr(args, "tui", False) or getattr(args, "format", None) == "tui"
         force_ansi = True if getattr(args, "tui", False) else (None if getattr(args, "format", None) == "tui" else False)
+        truecolor = bool(getattr(args, "tui_truecolor", False))
         view = getattr(args, "view", None)
         if view == "session-pulse":
             ap_path = _get_agent_platform_path()
@@ -1359,7 +1360,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             _write_widget_artifact(artifact, output_path)
             if is_tui:
                 from widget_contract.tui import render_tui
-                print(render_tui(tree, force_ansi=force_ansi))
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
             else:
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
                                                                if node["primitive"] == "table"]}
@@ -1405,7 +1406,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             _write_widget_artifact(artifact, output_path)
             if is_tui:
                 from widget_contract.tui import render_tui
-                print(render_tui(tree, force_ansi=force_ansi))
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
             else:
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
                                                                if node["primitive"] in ("table", "list")]}
@@ -1444,7 +1445,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             _write_widget_artifact(artifact, output_path)
             if is_tui:
                 from widget_contract.tui import render_tui
-                print(render_tui(tree, force_ansi=force_ansi))
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
             else:
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
                                                                if node["primitive"] in ("table", "list", "key-value", "metric")]}
@@ -1513,7 +1514,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             _write_widget_artifact(artifact, output_path)
             if is_tui:
                 from widget_contract.tui import render_tui
-                print(render_tui(tree, force_ansi=force_ansi))
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
             else:
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
                                                                if node["primitive"] in ("table", "metric", "key-value")]}
@@ -1558,7 +1559,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             _write_widget_artifact(artifact, output_path)
             if is_tui:
                 from widget_contract.tui import render_tui
-                print(render_tui(tree, force_ansi=force_ansi))
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
             else:
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
                                                                if node["primitive"] in ("table", "key-value")]}
@@ -1597,7 +1598,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             _write_widget_artifact(artifact, output_path)
             if is_tui:
                 from widget_contract.tui import render_tui
-                print(render_tui(tree, force_ansi=force_ansi))
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
             else:
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
                                                                if node["primitive"] in ("metric", "bar", "line", "table", "list", "key-value")]}
@@ -1636,7 +1637,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             _write_widget_artifact(artifact, output_path)
             if is_tui:
                 from widget_contract.tui import render_tui
-                print(render_tui(tree, force_ansi=force_ansi))
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
             else:
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
                                                                if node["primitive"] in ("table", "list", "key-value", "metric", "swimlane")]}
@@ -1667,7 +1668,7 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             _write_widget_artifact(artifact, output_path)
             if is_tui:
                 from widget_contract.tui import render_tui
-                print(render_tui(tree, force_ansi=force_ansi))
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
             elif getattr(args, "widget_command", None) is None:
                 stdout_tree = {**tree["render"], "children": [node for node in tree["render"]["children"]
                                                                if node["primitive"] == "table"]}
@@ -2653,6 +2654,8 @@ def main(argv: list[str] | None = None) -> int:
     widget_parser.add_argument("--enable-actions", action="store_true",
                                help="Mount the operator-gated mutation endpoint (POST /api/action) on the loopback host (ADR-038 host boundary); default remains read-only")
     widget_parser.add_argument("--tui", action="store_true", help="Render token-styled TUI output (forces ANSI even if piped)")
+    widget_parser.add_argument("--tui-truecolor", action="store_true",
+                               help="With --tui: derive 24-bit ANSI colors directly from tokens.json hex values (requires a 24-bit-capable terminal)")
     widget_parser.add_argument("--format", choices=["table", "json", "tui"], default=None,
                                help="Output format for view output (default: table / json backward compatible)")
     widget_sub = widget_parser.add_subparsers(dest="widget_command")
@@ -2660,6 +2663,8 @@ def main(argv: list[str] | None = None) -> int:
     widget_candidates.add_argument("--repo", required=True, help="GitHub owner/repo")
     widget_candidates.add_argument("--format", choices=["table", "json", "tui"], default="table")
     widget_candidates.add_argument("--tui", action="store_true", help="Render token-styled TUI output (forces ANSI even if piped)")
+    widget_candidates.add_argument("--tui-truecolor", action="store_true",
+                                   help="With --tui: derive 24-bit ANSI colors directly from tokens.json hex values")
     widget_action = widget_sub.add_parser("action", help="Execute a registered authorized widget action")
     widget_action.add_argument("action_id", choices=["mark-ready", "claim-run"], help="Registered action id")
     widget_action.add_argument("--repo", required=True, help="GitHub owner/repo")

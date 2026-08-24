@@ -126,6 +126,45 @@ def test_cli_widget_compose_fails_closed_without_writing_artifact(tmp_path):
     assert not target.exists()
 
 
+def test_cli_widget_compose_warroom_grid_with_real_specs(tmp_path):
+    """The maker-generated warroom format (grid layout, quoted versions,
+    capabilities union from real specs) must compose successfully against
+    agent-platform/widget/specs -- the CLI's --widgets-dir convention."""
+    import json
+    from argparse import Namespace
+    from cli.unified_cli import _run_widget_compose
+
+    fixtures_dir = Path(__file__).resolve().parents[3] / "scripts" / "fixtures" / "composition"
+    spec_file = fixtures_dir / "warroom-grid.yaml"
+    specs_dir = Path(__file__).resolve().parents[2] / "widget" / "specs"
+    assert spec_file.is_file()
+    assert (specs_dir / "session-pulse-0.1.yaml").is_file()
+    assert (specs_dir / "usage-cost-0.1.yaml").is_file()
+
+    target = tmp_path / "warroom-composed.json"
+    snapshot_input = Path(__file__).resolve().parents[2] / "widget" / "snapshot.json"
+
+    res = _run_widget_compose(Namespace(
+        widget_command="compose",
+        spec=spec_file,
+        widgets_dir=specs_dir,
+        snapshot=target,
+        repo=None,
+        snapshot_input=snapshot_input,
+        plan_input=None,
+    ))
+    assert res.status == "succeeded"
+    assert target.is_file()
+    doc = json.loads(target.read_text(encoding="utf-8"))
+    assert doc["composed"] is True
+    assert doc["widget"] == {"id": "warroom", "version": "0.1"}
+    assert doc["render"]["primitive"] == "grid"
+    children = doc["render"]["children"]
+    assert len(children) == 2
+    labels = {c.get("props", {}).get("label") for c in children}
+    assert labels == {"Session Pulse", "Usage & Cost"}
+
+
 def test_widget_has_composed_view_and_no_mutation_route():
     import json
     widget_dir = Path(__file__).resolve().parents[2] / "widget"
