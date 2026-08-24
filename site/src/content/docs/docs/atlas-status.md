@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T11:30:11Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-24T11:49:48Z`.
 
 ### Roadmap areas
 
@@ -15,10 +15,9 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 ### Actionable frontier
 
 - CI fixture: real dispatch commit proof (#207)
-- Widget host: split/docking-tree layout replaces free-form canvas positioning (#369)
 
 Claimed work in progress (workflow:in-progress):
-(none)
+- Widget host: split/docking-tree layout replaces free-form canvas positioning (#369)
 
 ### Blockers
 
@@ -127,4 +126,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-24T11:30:11Z
+2026-08-24T11:49:48Z
