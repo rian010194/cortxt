@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 from widget_contract.scaffold import find_missing_operations, write_operation_scaffold
@@ -27,3 +28,5 @@ def test_write_operation_scaffold_creates_reviewable_file(tmp_path):
     assert "widgets.custom-thing.v1" in text
     assert "READ_OPERATIONS" in text
     assert "def read_widgets_custom_thing_v1" in text
+    # Verify the generated file is valid Python (no nested triple-quote issues)
+    ast.parse(text)

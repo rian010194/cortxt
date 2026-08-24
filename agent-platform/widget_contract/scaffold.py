@@ -35,14 +35,15 @@ def write_operation_scaffold(operation_id: str, out_dir: Path) -> Path:
     fn_name = _function_name(operation_id)
     path = out_dir / f"scaffold-{operation_id}.py"
     path.write_text(
-        f'''"""Reviewable scaffold for read operation "{operation_id}".
+        f'''# Reviewable scaffold for read operation "{operation_id}".
+#
+# This file is NOT installed or executed automatically. A human must:
+# 1. Implement {fn_name}() in the appropriate adapters module
+#    (agent-platform/widget_contract/adapters/).
+# 2. Add a ReadOperation entry for "{operation_id}" to
+#    READ_OPERATIONS in agent-platform/widget_contract/registry.py.
+# 3. Add a test and open a normal PR.
 
-This file is NOT installed or executed automatically. A human must:
-1. Implement {fn_name}() in the appropriate adapters module
-   (agent-platform/widget_contract/adapters/).
-2. Add a ReadOperation entry for "{operation_id}" to
-   READ_OPERATIONS in agent-platform/widget_contract/registry.py.
-3. Add a test and open a normal PR.
 
 def {fn_name}(*args, **kwargs) -> dict:
     """Fill in: read logic for {operation_id}."""
