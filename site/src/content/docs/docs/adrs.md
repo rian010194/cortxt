@@ -5,7 +5,7 @@ description: The Accepted-only ADR index mirrored from the repository authority.
 
 <!-- docs-currency:auto:begin -->
 
-This page is generated from the repository ADR files by `scripts/docs_currency.py`; do not hand-edit the generated block. As of 2026-08-22. [Open the authoritative ADR index](https://github.com/rian010194/cortxt/blob/main/docs/adr/README.md).
+This page is generated from the repository ADR files by `scripts/docs_currency.py`; do not hand-edit the generated block. As of 2026-08-24. [Open the authoritative ADR index](https://github.com/rian010194/cortxt/blob/main/docs/adr/README.md).
 
 | ADR | Decision |
 | --- | --- |
@@ -34,6 +34,7 @@ This page is generated from the repository ADR files by `scripts/docs_currency.p
 | [038](https://github.com/rian010194/cortxt/blob/main/docs/adr/038-declarative-widget-contract-and-authorized-action-ports.md) | Declarative Widget Contract and Authorized Action Ports |
 | [039](https://github.com/rian010194/cortxt/blob/main/docs/adr/039-execution-map-concurrency-claims-and-prerequisite-ordering.md) | Execution Map Concurrency Claims and Prerequisite Ordering |
 | [040](https://github.com/rian010194/cortxt/blob/main/docs/adr/040-delivery-execution-paths-and-label-invariant.md) | Delivery execution paths and workflow-label invariant |
+| [041](https://github.com/rian010194/cortxt/blob/main/docs/adr/041-backend-service-surface-reopens-adr-015.md) | Backend Service Surface Reopens ADR-015 (Surface Dimension Only) |
 
 :::note
 **Proposed** records ([ADR-029](https://github.com/rian010194/cortxt/blob/main/docs/adr/029-unattended-daemon-credential-isolation.md) (Proposed), [ADR-030](https://github.com/rian010194/cortxt/blob/main/docs/adr/030-plan-vs-actual-divergence-tracking.md) (Proposed (Part 1 implemented; Part 2 spec-only))) are reviewable designs, not Accepted decisions; they are intentionally absent from the Accepted table above. **Superseded** records ([ADR-011](https://github.com/rian010194/cortxt/blob/main/docs/adr/011-model-router.md), [ADR-012](https://github.com/rian010194/cortxt/blob/main/docs/adr/012-disaster-recovery.md), [ADR-013](https://github.com/rian010194/cortxt/blob/main/docs/adr/013-skill-composition.md)) are historical references kept for traceability only.
