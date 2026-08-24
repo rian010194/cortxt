@@ -166,5 +166,19 @@ def test_all_category_values_across_the_contract_match_the_registry():
     registry = _load(REGISTRY_DATA_PATH)
     known_ids = {entry["category_id"] for entry in registry["categories"]}
     contract = _load(CONTRACT_SCHEMA_PATH)
-    category_enum = contract["definitions"]["state_read_request"]["properties"]["category"]["enum"]
-    assert set(category_enum) == known_ids
+
+    # All 8 request/response definitions must have consistent category enum
+    definitions_with_category = [
+        "state_read_request",
+        "state_read_response",
+        "state_write_request",
+        "state_write_response",
+        "state_delete_request",
+        "state_delete_response",
+        "state_since_request",
+        "state_since_response",
+    ]
+
+    for defn_name in definitions_with_category:
+        category_enum = contract["definitions"][defn_name]["properties"]["category"]["enum"]
+        assert set(category_enum) == known_ids, f"Category enum mismatch in {defn_name}"
