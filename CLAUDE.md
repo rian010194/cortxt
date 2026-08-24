@@ -129,6 +129,57 @@ Three paths are sanctioned; every path upholds the label invariant:
 3. **Docs/ADR materialization** — no code; feature branch plus pull request
    plus operator merge (`review -> done` in step with the merge).
 
+## Daemon dogfood
+
+The Supervisor Daemon (`cortxt daemon`, `agent-platform/daemon/`) is the
+unattended dispatch loop: it scans GitHub for `workflow:ready` issues, claims
+them, routes them to an engine, invokes the worker in an isolated worktree,
+runs the Evidence Gate, and syncs review submissions (ADR-037). Dogfood it in
+every session that advances ready issues.
+
+Commands:
+
+- `cortxt daemon start --repo owner/repo --state-dir <dir> --snapshot <file>`
+  — run the dispatch loop. `--once` runs a single iteration and exits
+  (testing/proof steps); `--unattended` skips forced supervised-mode pausing
+  (only after a class has earned autonomy: 3 consecutive clean runs per
+  engine/task-shape).
+- `cortxt daemon stop --state-dir <dir>` — request a stop.
+- `cortxt daemon status --snapshot <file>` — read the daemon section of the
+  widget snapshot (claimed issues, budget, last gate outcome, review-sync
+  counts).
+- `cortxt daemon sync-review --state-dir <dir>` — mechanically transition
+  submitted reviews to `workflow:review` (ADR-037); runs automatically at the
+  start of each daemon iteration.
+
+How the loop behaves (verified in `agent-platform/daemon/loop.py`):
+
+- It lists issues via `gh issue list --label workflow:ready --state open` and
+  skips issues with no routable task tag — it never guesses.
+- It persists the claim **before** dispatching: a crash window produces a
+  stuck claim (visible in `claimed.json`, requires manual clear), never a
+  duplicate real-world dispatch.
+- Each dispatch gets its own git worktree and branch `daemon/<issue-id>`,
+  created from the daemon's working directory. The daemon **never removes
+  them**: branch cleanup and merge are operator decisions.
+- It sends the full issue body as the prompt and treats a "succeeded" report
+  with no landed commit as a failure — the Evidence Gate checks a real
+  signal, not self-reported status.
+- Default is supervised mode (`supervised=True`): a clean run pauses for
+  review rather than continuing unattended. Operator approval remains the
+  final gate; the default unattended path for real build issues is not yet
+  the exercised default (see `docs/agents/current-operating-model.md`).
+
+Session discipline:
+
+- Advance `workflow:ready` issues through the daemon or `cortxt work`
+  (`docs/agents/work-launcher.md`) instead of ad-hoc manual execution, and
+  observe the loop via `cortxt daemon status`.
+- Run `cortxt daemon sync-review` before claiming new work so submitted
+  reviews land on `workflow:review` first.
+- Never clean up or merge a `daemon/<issue-id>` branch/worktree without an
+  operator decision; never bypass the Evidence Gate.
+
 ## Session coordination
 
 Parallel sessions coordinate deliveries through a file-based inbox outside the
