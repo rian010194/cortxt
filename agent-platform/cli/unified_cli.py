@@ -826,6 +826,113 @@ def _run_widget_load(args: argparse.Namespace) -> ResultEnvelope:
         return ResultEnvelope(status="failed", error={"category": "load_error", "message": str(exc)})
 
 
+def _run_widget_generate(args: argparse.Namespace) -> ResultEnvelope:
+    """Generate a widget spec by prompt (ADR-038 SS5 LLM-generability path).
+
+    Never installs without --confirm; a missing read operation halts
+    generation and reports the scaffold path instead of installing anything.
+    """
+    ap_path = _get_agent_platform_path()
+    if str(ap_path) not in sys.path:
+        sys.path.insert(0, str(ap_path))
+    from widget_contract.generation import generate_widget_spec
+
+    specs_dir = getattr(args, "specs_dir", None) or (ap_path / "widget_contract" / "specs")
+    outcome = generate_widget_spec(args.prompt, scaffold_dir=specs_dir)
+
+    if outcome.status == "missing_operation":
+        return ResultEnvelope(
+            status="failed",
+            error={
+                "category": "missing_operation",
+                "message": (
+                    f"Unregistered read operation(s): {', '.join(outcome.missing_operations)}. "
+                    f"Scaffold written to: {', '.join(outcome.scaffold_paths)}"
+                ),
+            },
+        )
+    if outcome.status == "invalid":
+        return ResultEnvelope(status="failed", error={"category": "generation_error", "message": outcome.error_message})
+
+    confirmed = bool(getattr(args, "confirm", False))
+    evidence = [{
+        "widget_id": outcome.widget_id, "widget_version": outcome.widget_version,
+        "capabilities": list(outcome.capabilities), "document_hash": outcome.document_hash,
+        "confirmed": confirmed,
+    }]
+    if not confirmed:
+        print(json.dumps(evidence[0], indent=2))
+        print("Not installed -- re-run with --confirm to write this spec.")
+        return ResultEnvelope(status="succeeded", artifacts=[], evidence=evidence)
+
+    Path(specs_dir).mkdir(parents=True, exist_ok=True)
+    out_path = Path(specs_dir) / f"{outcome.widget_id}-{outcome.widget_version}.yaml"
+    out_path.write_text(outcome.spec_text, encoding="utf-8")
+    print(json.dumps(evidence[0], indent=2))
+    return ResultEnvelope(status="succeeded", artifacts=[f"spec:{out_path}"], evidence=evidence)
+
+
+def _run_widget_edit(args: argparse.Namespace) -> ResultEnvelope:
+    """Edit an existing widget spec by prompt; same confirm/scaffold rules as generate."""
+    ap_path = _get_agent_platform_path()
+    if str(ap_path) not in sys.path:
+        sys.path.insert(0, str(ap_path))
+    from widget_contract.generation import generate_widget_spec
+
+    specs_dir = getattr(args, "specs_dir", None) or (ap_path / "widget_contract" / "specs")
+    existing_path = Path(specs_dir) / f"{args.widget_id}-{args.widget_version}.yaml"
+    if not existing_path.exists():
+        return ResultEnvelope(status="failed", error={"category": "input_error",
+                              "message": f"No installed spec at {existing_path}"})
+    existing_spec = existing_path.read_text(encoding="utf-8")
+    outcome = generate_widget_spec(args.prompt, existing_spec=existing_spec, scaffold_dir=specs_dir)
+
+    if outcome.status == "missing_operation":
+        return ResultEnvelope(status="failed", error={"category": "missing_operation",
+                              "message": f"Unregistered read operation(s): {', '.join(outcome.missing_operations)}. "
+                                         f"Scaffold written to: {', '.join(outcome.scaffold_paths)}"})
+    if outcome.status == "invalid":
+        return ResultEnvelope(status="failed", error={"category": "generation_error", "message": outcome.error_message})
+
+    confirmed = bool(getattr(args, "confirm", False))
+    evidence = [{"widget_id": outcome.widget_id, "widget_version": outcome.widget_version,
+                "capabilities": list(outcome.capabilities), "document_hash": outcome.document_hash,
+                "confirmed": confirmed}]
+    if not confirmed:
+        print(json.dumps(evidence[0], indent=2))
+        print("Not installed -- re-run with --confirm to write this spec.")
+        return ResultEnvelope(status="succeeded", artifacts=[], evidence=evidence)
+
+    existing_path.write_text(outcome.spec_text, encoding="utf-8")
+    print(json.dumps(evidence[0], indent=2))
+    return ResultEnvelope(status="succeeded", artifacts=[f"spec:{existing_path}"], evidence=evidence)
+
+
+def _run_widget_remove(args: argparse.Namespace) -> ResultEnvelope:
+    """Remove an installed widget spec."""
+    ap_path = _get_agent_platform_path()
+    specs_dir = getattr(args, "specs_dir", None) or (ap_path / "widget_contract" / "specs")
+    target = Path(specs_dir) / f"{args.widget_id}-{args.widget_version}.yaml"
+    if not target.exists():
+        return ResultEnvelope(status="failed", error={"category": "input_error",
+                              "message": f"No installed spec at {target}"})
+    target.unlink()
+    return ResultEnvelope(status="succeeded", artifacts=[f"removed:{target}"], evidence=[{"widget_id": args.widget_id}])
+
+
+def _run_widget_reset(args: argparse.Namespace) -> ResultEnvelope:
+    """Remove all installed widget specs under specs_dir (replaces the 'Reset widget' UI button)."""
+    ap_path = _get_agent_platform_path()
+    specs_dir = Path(getattr(args, "specs_dir", None) or (ap_path / "widget_contract" / "specs"))
+    removed = []
+    if specs_dir.exists():
+        for spec_file in sorted(specs_dir.glob("*.yaml")):
+            spec_file.unlink()
+            removed.append(str(spec_file))
+    return ResultEnvelope(status="succeeded", artifacts=[f"removed:{p}" for p in removed],
+                          evidence=[{"removed_count": len(removed)}])
+
+
 def _run_widget_compose(args: argparse.Namespace) -> ResultEnvelope:
     """Validate, load, execute, and compose multiple widget specs into a dashboard.
 
@@ -1692,6 +1799,14 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             return _run_widget_load(args)
         if getattr(args, "widget_command", None) == "compose":
             return _run_widget_compose(args)
+        if getattr(args, "widget_command", None) == "generate":
+            return _run_widget_generate(args)
+        if getattr(args, "widget_command", None) == "edit":
+            return _run_widget_edit(args)
+        if getattr(args, "widget_command", None) == "remove":
+            return _run_widget_remove(args)
+        if getattr(args, "widget_command", None) == "reset":
+            return _run_widget_reset(args)
         ap_path = _get_agent_platform_path()
         if str(ap_path) not in sys.path:
             sys.path.insert(0, str(ap_path))
@@ -2693,6 +2808,22 @@ def main(argv: list[str] | None = None) -> int:
     widget_compose.add_argument("--repo", help="GitHub owner/repo for github reads in child widgets")
     widget_compose.add_argument("--snapshot-input", type=Path, help="Snapshot input for store reads")
     widget_compose.add_argument("--plan-input", type=Path, help="Plan input for execution-map store reads")
+    widget_generate = widget_sub.add_parser("generate", help="Generate a widget spec by prompt (ADR-038 SS5)")
+    widget_generate.add_argument("prompt", help="Natural-language description of the widget to generate")
+    widget_generate.add_argument("--confirm", action="store_true", help="Install the generated spec (default: preview only)")
+    widget_generate.add_argument("--specs-dir", type=Path, help="Target specs directory (default: agent-platform/widget_contract/specs)")
+    widget_edit = widget_sub.add_parser("edit", help="Edit an installed widget spec by prompt")
+    widget_edit.add_argument("widget_id", help="Widget id to edit")
+    widget_edit.add_argument("widget_version", help="Widget version to edit")
+    widget_edit.add_argument("prompt", help="Natural-language description of the edit")
+    widget_edit.add_argument("--confirm", action="store_true", help="Install the edited spec (default: preview only)")
+    widget_edit.add_argument("--specs-dir", type=Path, help="Target specs directory (default: agent-platform/widget_contract/specs)")
+    widget_remove = widget_sub.add_parser("remove", help="Remove an installed widget spec")
+    widget_remove.add_argument("widget_id", help="Widget id to remove")
+    widget_remove.add_argument("widget_version", help="Widget version to remove")
+    widget_remove.add_argument("--specs-dir", type=Path, help="Target specs directory")
+    widget_reset = widget_sub.add_parser("reset", help="Remove all installed widget specs")
+    widget_reset.add_argument("--specs-dir", type=Path, help="Target specs directory")
     widget_parser.set_defaults(func=_run_widget)
 
     # mcp subcommand
