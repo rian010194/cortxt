@@ -738,6 +738,7 @@
       polyline.setAttribute("stroke-width", "2");
       polyline.setAttribute("stroke-linecap", "round");
       polyline.setAttribute("stroke-linejoin", "round");
+      polyline.setAttribute("pathLength", "300"); // issue #377: normalizes length so the CSS draw-in dasharray/dashoffset works regardless of geometry
       svg.append(polyline);
 
       // Dots
