@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T20:33:24Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T20:36:45Z`.
 
 ### Roadmap areas
 
@@ -18,7 +18,7 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 - fix(ci): agent-platform-tests/docker-tests fail collection — ModuleNotFoundError: cortxt_resilient_inference (#381)
 
 Claimed work in progress (workflow:in-progress):
-- Widget OS follow-up: integrated Maker pane and dock UX completion (#390)
+(none)
 
 ### Blockers
 
@@ -42,6 +42,7 @@ Claimed work in progress (workflow:in-progress):
 - CORTXT VERTICAL-002 — Provider-resilient model execution (#108): contract fit = MISSING; repository fit = MISSING
 - Minimal end-to-end-dispatcher for wedge B (#122): contract fit = MISSING; repository fit = MISSING
 - CI-pipeline: scope maste beslutas (#126): contract fit = MISSING; repository fit = MISSING
+- hermes-coordinator adapter for terminal-lane dispatch (verify/synthesize) (#142): contract fit = MISSING; repository fit = MISSING
 - ADR-021: formally reopen ADR-015 for v.02 admin surface + widget UI (#157): contract fit = MISSING; repository fit = MISSING
 - Threat model: centralized credential broker for connected agent tools (#158): contract fit = MISSING; repository fit = MISSING
 - Research: capability-manifest extension points for Fas 3 (no build, no decisions) (#159): contract fit = MISSING; repository fit = MISSING
@@ -50,11 +51,14 @@ Claimed work in progress (workflow:in-progress):
 - Fas 2 follow-up: finish widget wiring + fix review findings from #165 (#166): contract fit = MISSING; repository fit = MISSING
 - cortxt runtimes + cortxt credentials CLI (Fas 4 admin-surface wiring) (#174): contract fit = MISSING; repository fit = MISSING
 - cortxt addons CLI (Fas 5 admin-surface wiring) (#175): contract fit = MISSING; repository fit = MISSING
+- [daemon-proof] Task 11 Step 2: end-to-end daemon loop proof-of-life (#180): contract fit = MISSING; repository fit = MISSING
 - License: switch to Apache-2.0 (open source) (#182): contract fit = MISSING; repository fit = MISSING
 - fix(ci): gate test_subprocess_windows on Windows (Linux CI red) (#183): contract fit = MISSING; repository fit = MISSING
+- Product packaging: how does Cortxt distribute (pip/standalone/MCP)? (#184): contract fit = MISSING; repository fit = MISSING
 - Builder workers: enable write permission for subagent-claude-code (dontAsk blocks writes) (#189): contract fit = MISSING; repository fit = MISSING
 - SDK name collision: rename agent-platform/mcp to cortxt_mcp (first workflow:ready dispatch) (#202): contract fit = MISSING; repository fit = MISSING
 - Dispatch follow-up: worker invocation cannot run in current sandbox (default DSH model route + shell EPERM) (#204): contract fit = MISSING; repository fit = MISSING
+- MCP Tier-1 requires a signed, nonce-bound mandate envelope before tool execution (ADR-024 gap closure) (#206): contract fit = MISSING; repository fit = MISSING
 - Atlas: automated roadmap maps on top of GitHub issues (global + per-area, auto-synced + coordinator-driven) (#210): contract fit = MISSING; repository fit = MISSING
 - Website + docs site: Astro + Starlight on Cloudflare Pages (cortxt.io / docs.cortxt.io) [#185 build] (#211): contract fit = MISSING; repository fit = MISSING
 - Visual identity: unified design across CLI, widget, and web (landing + docs) (#217): contract fit = PASS - AC 1-6 verified by Hermes independent review (lab/hermes-review-identity-217.md); scope + design direction per issue comments 2026-08-22; PR #218.; repository fit = PASS - CI green (site-build, agent-platform-tests, agent-platform-docker-tests, web-checks, adr-doc-currency, CodeRabbit); zero a/o/u-with-diacritics; no semantic/contract changes.
@@ -72,7 +76,6 @@ Claimed work in progress (workflow:in-progress):
 - Widget platform design: composable data/action widgets + parallel-execution map (#251): contract fit = MISSING; repository fit = MISSING
 - ADR-037 live acceptance proof: real daemon review-sync GitHub transition (#252): contract fit = MISSING; repository fit = MISSING
 - hermes-free free-tier route live arm (issue #243 follow-up) (#253): contract fit = MISSING; repository fit = MISSING
-- Fast fix: parallel builder isolation via git worktrees (scripts/parallel_dispatch.py) (#257): contract fit = MISSING; repository fit = MISSING
 - Build: widget contract foundation (schema, loader, registry, read-only renderer) — ADR-038 (#259): contract fit = MISSING; repository fit = MISSING
 - Build: candidates widget vertical slice (all open issues, frontier first) under `cortxt widget` (#260): contract fit = MISSING; repository fit = MISSING
 - Build: execution map core and durable claims (graph, collision, pre-flight) — ADR-039 (#261): contract fit = MISSING; repository fit = MISSING
@@ -84,7 +87,6 @@ Claimed work in progress (workflow:in-progress):
 - Build: Open in CLI handoff controls in the browser candidates view (#278): contract fit = MISSING; repository fit = MISSING
 - Build: cortxt mandate CLI — operator issuance + inspect surface (ADR-032 Open Question) (#281): contract fit = MISSING; repository fit = MISSING
 - Build: session-pulse widget — contract-compliant orchestrator/session state view (#282): contract fit = MISSING; repository fit = MISSING
-- Build: Atlas site-view — emit status page into docs (frontier, blockers, milestones) (#285): contract fit = MISSING; repository fit = MISSING
 - Build: LLM-generated widget dogfood — emitted spec loads, renders, serves (prompt yourself tools) (#286): contract fit = MISSING; repository fit = MISSING
 - Docs: publish verified dispatch path page (golden path evidence, issue #207) (#289): contract fit = MISSING; repository fit = MISSING
 - Build: execution-map view as a contract widget — render work plan (waves/drift/claims) through the contract (#291): contract fit = MISSING; repository fit = MISSING
@@ -118,8 +120,10 @@ Claimed work in progress (workflow:in-progress):
 - Build: swimlane primitive + live session-agents widget (#347): contract fit = MISSING; repository fit = MISSING
 - Build: landing proof band - live CLI (TUI) + widget example pairs, horizontal scroll (#348): contract fit = MISSING; repository fit = MISSING
 - Build: chart primitives (bar/line) + live usage/cost widget (#349): contract fit = MISSING; repository fit = MISSING
+- Redesign: living warroom widget surface — builder, widgets, composition, docs examples (#359): contract fit = MISSING; repository fit = MISSING
 - Widget host: free-form drag/resize canvas (replaces Grid+Warroom) (#362): contract fit = MISSING; repository fit = MISSING
 - Backend state persistence surface (ADR-041): design gate (#364): contract fit = MISSING; repository fit = MISSING
+- Widget host: split/docking-tree layout replaces free-form canvas positioning (#369): contract fit = MISSING; repository fit = MISSING
 - Build: theme preset token model (visual-tokens.v2 preset collection) (#373): contract fit = MISSING; repository fit = MISSING
 - Build: theme resolver (session/user precedence) (#374): contract fit = MISSING; repository fit = MISSING
 - Build: cortxt theme CLI commands (list/inspect/preview/use) (#375): contract fit = MISSING; repository fit = MISSING
@@ -128,6 +132,7 @@ Claimed work in progress (workflow:in-progress):
 - Build: contrast and theme-preset accessibility test suite (#378): contract fit = MISSING; repository fit = MISSING
 - fix(site): landing page live widget cards crash — WidgetMaker.startLivingDemo() called with wrong argument order (#387): contract fit = MISSING; repository fit = MISSING
 - fix(site): landing page theme silently reverts to old v1 palette after widgets/maker.js loads (#389): contract fit = MISSING; repository fit = MISSING
+- Widget OS follow-up: integrated Maker pane and dock UX completion (#390): contract fit = MISSING; repository fit = MISSING
 
 ### Relationship drift
 
@@ -135,4 +140,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-25T20:33:24Z
+2026-08-25T20:36:45Z
