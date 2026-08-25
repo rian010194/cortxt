@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T19:50:59Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T20:33:24Z`.
 
 ### Roadmap areas
 
@@ -18,7 +18,7 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 - fix(ci): agent-platform-tests/docker-tests fail collection — ModuleNotFoundError: cortxt_resilient_inference (#381)
 
 Claimed work in progress (workflow:in-progress):
-(none)
+- Widget OS follow-up: integrated Maker pane and dock UX completion (#390)
 
 ### Blockers
 
@@ -135,4 +135,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-25T19:50:59Z
+2026-08-25T20:33:24Z
