@@ -37,7 +37,7 @@ const examples = examplesManifest.examples || [];
     <header class="nav shell">
       <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
       <nav aria-label="Primary navigation">
-        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/widgets/">Widgets</a><a href="/docs/widgets/">Widget docs</a><a href="#proof-examples">Examples</a>
+        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/widgets/">Widgets</a><a href="/docs/widgets/">Widget docs</a><a href="/widgets/">Examples</a>
         <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Preview color theme (this browser only)">
           <button type="button" data-preset="quiet-slate" class="active" title="Quiet Slate">&nbsp;</button>
           <button type="button" data-preset="graphite-ink" title="Graphite Ink">&nbsp;</button>
@@ -57,7 +57,7 @@ const examples = examplesManifest.examples || [];
           </div>
           <p class="hero-secondary-links">
             <a class="secondary" href="#one-contract">Explore the OS direction <span aria-hidden="true">-&gt;</span></a>
-            <a class="secondary" href="#proof-examples">See real examples <span aria-hidden="true">-&gt;</span></a>
+            <a class="secondary" href="/widgets/">See real examples <span aria-hidden="true">-&gt;</span></a>
             <a class="secondary" href="/docs/architecture/">Read the architecture <span aria-hidden="true">-&gt;</span></a>
           </p>
           <div class="command"><span>$</span> cortxt widget load --spec compliance.yaml</div>
@@ -139,49 +139,6 @@ const examples = examplesManifest.examples || [];
             <div class="grid-tile"><b>agents</b><i class="fill-40"></i><span class="dim">running</span></div>
             <div class="grid-tile"><b>pipeline</b><i class="fill-90"></i><span class="dim">done</span></div>
           </div>
-        </div>
-      </section>
-
-      <section class="proof-band shell" id="proof-examples" aria-labelledby="examples-title">
-        <div class="proof-band-header">
-          <div>
-            <p class="eyebrow"><i></i> Live CLI + Widget Pairs</p>
-            <h2 id="examples-title">Your stack, rendered. Real CLI, real widget contracts.</h2>
-          </div>
-          <p class="proof-band-lede">
-            Every Cortxt view is declarative: inspect plain-text TUI streams in your terminal or render interactive web widgets with shared visual tokens. Scroll horizontally through live examples.
-          </p>
-        </div>
-        <div class="proof-band-scroll" aria-label="Widget examples horizontal scroll">
-          {examples.map((ex) => (
-            <article class="proof-pair-card" data-widget-id={ex.id} data-live={ex.live ? "true" : "false"}>
-              <header class="proof-card-header">
-                <div class="proof-card-title-group">
-                  <div class="proof-card-title-row">
-                    <h3>{ex.title}</h3>
-                    {ex.live && <span class="live-badge pulse-dot"><i></i> LIVE</span>}
-                  </div>
-                  <p class="proof-card-desc">{ex.description}</p>
-                </div>
-              </header>
-              <div class="proof-card-body">
-                <div class="proof-cli-pane">
-                  <div class="pane-tag">CLI / TUI stream</div>
-                  <div class="proof-cli-cmd"><span>$</span> {ex.cli_command}</div>
-                  <pre class="proof-cli-tui" aria-label={`${ex.title} CLI text`}><code>{(ex.tui_text || "").split("\n").map((line, i) => <span class="ln" style={`--i:${i}`}>{line}</span>)}</code></pre>
-                </div>
-                <div class="proof-widget-pane">
-                  <div class="pane-tag">Widget render &bull; <code>maker.js</code></div>
-                  <div class="proof-widget-mount" id={`widget-mount-${ex.id}`} data-artifact={ex.artifact}>
-                    <div class="widget-mount-placeholder">Loading widget...</div>
-                  </div>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-        <div class="proof-band-actions">
-          <a class="secondary" href="/widgets/">Explore interactive Widget Maker &amp; Studio -&gt;</a>
         </div>
       </section>
 
