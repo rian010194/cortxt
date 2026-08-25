@@ -1,7 +1,12 @@
 ---
 import '../styles/landing.css';
 import examplesManifest from '../../public/widgets/examples.json';
-const principles = [
+const adaptCards = [
+  ['Any agent engine', 'Hermes and DSH run today behind Cortxt-owned dispatch adapters; Codex, Buzz, and a future runtime are on the same path, never as the product itself.', 'In progress'],
+  ['Any model', 'Inference stays provider-neutral behind Cortxt-owned adapters, so a model swap does not touch scope, evidence, or state.', 'Available now'],
+  ['Any workflow shape', 'Widget views are generated from the actual spec for a run, not hand-built for one fixed dashboard.', 'Available now'],
+];
+const controlPrinciples = [
   ['Mandate first', 'Work runs only inside explicit scope, limits, and authority.'],
   ['Provider neutral', 'Models and agent engines remain replaceable behind Cortxt-owned contracts.'],
   ['Evidence before approval', 'Every run returns inspectable evidence before a human makes the final call.'],
@@ -14,15 +19,30 @@ const examples = examplesManifest.examples || [];
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
-    <meta name="description" content="Cortxt is the provider-neutral control plane for long-running AI work under verifiable human mandate." />
+    <meta name="description" content="Cortxt is the provider-neutral control plane for long-running AI work under verifiable human mandate. Bring your agents, models, and workflows -- keep the state, control, and evidence." />
     <title>Cortxt | AI work under human mandate</title>
-    <script src="/theme-tokens.js" is:inline></script>
+    <!--
+      Issue #377: the public landing page renders a fixed default preset
+      (quiet-slate) for every visitor, independent of whatever preset an
+      operator last resolved server-side via `cortxt theme use` -- that is
+      what /theme-tokens.js applies on every other page. The landing page
+      intentionally does NOT load /theme-tokens.js; landing-theme.js below
+      applies quiet-slate by default and offers a client-side,
+      localStorage-only toggle across all three presets with no
+      server-side visitor-preference persistence.
+    -->
+    <script src="/landing-theme.js" is:inline></script>
   </head>
   <body>
     <header class="nav shell">
       <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
       <nav aria-label="Primary navigation">
         <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/widgets/">Widgets</a><a href="/docs/widgets/">Widget docs</a><a href="#proof-examples">Examples</a>
+        <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Preview color theme (this browser only)">
+          <button type="button" data-preset="quiet-slate" class="active" title="Quiet Slate">&nbsp;</button>
+          <button type="button" data-preset="graphite-ink" title="Graphite Ink">&nbsp;</button>
+          <button type="button" data-preset="soft-dusk" title="Soft Dusk">&nbsp;</button>
+        </div>
         <a class="nav-cta" href="https://github.com/rian010194/cortxt">GitHub</a>
       </nav>
     </header>
@@ -30,12 +50,20 @@ const examples = examplesManifest.examples || [];
       <section class="hero shell">
         <div class="hero-copy">
           <p class="eyebrow"><i></i> Provider-neutral control plane</p>
-          <h1>AI work,<br />under control.</h1>
-          <p class="lede">Create, steer, resume, and verify long-running work from the CLI &mdash; and render the CLI and widget views that match each project's actual stack, not a dashboard you're handed. Scope and approval stay with the operator.</p>
-          <div class="actions"><a class="primary" href="/docs/quick-start/">Start with the CLI</a><a class="secondary" href="/docs/">Read the docs <span aria-hidden="true">-&gt;</span></a></div>
+          <h1>Bring your agents,<br />models, and workflows.</h1>
+          <p class="lede">Keep the state, control, and evidence. Cortxt is not a chat interface, a fixed dashboard, or a single-runtime wrapper &mdash; it is the durable layer underneath whichever agents and models already fit the work, with human mandate and inspectable evidence built into every run.</p>
+          <div class="actions">
+            <a class="primary" href="/docs/quick-start/">Start with the CLI</a>
+          </div>
+          <p class="hero-secondary-links">
+            <a class="secondary" href="#one-contract">Explore the OS direction <span aria-hidden="true">-&gt;</span></a>
+            <a class="secondary" href="#proof-examples">See real examples <span aria-hidden="true">-&gt;</span></a>
+            <a class="secondary" href="/docs/architecture/">Read the architecture <span aria-hidden="true">-&gt;</span></a>
+          </p>
           <div class="command"><span>$</span> cortxt widget load --spec compliance.yaml</div>
         </div>
         <div class="desktop" aria-label="Cortxt CLI, widget, and MCP working together">
+          <p class="composition-tag">Split view &bull; concept, built from real widget-contract primitives <span class="status-tag available">Available now</span></p>
           <div class="desktop-grid"></div>
           <section class="terminal mock-window">
             <div class="chrome"><span class="lights"><i></i><i></i><i></i></span><b>cortxt / compliance</b></div>
@@ -60,10 +88,58 @@ const examples = examplesManifest.examples || [];
           </section>
         </div>
       </section>
+
       <section class="signal shell" aria-label="Cortxt execution flow"><span>Human mandate</span><b>-&gt;</b><span>Controlled run</span><b>-&gt;</b><span>Evidence</span><b>-&gt;</b><span>Independent review</span><b>-&gt;</b><span>Human approval</span></section>
-      <section class="principles shell" aria-labelledby="principles-title">
-        <p class="eyebrow">The contract</p><h2 id="principles-title">Control that survives a model change.</h2>
-        <div class="grid">{principles.map(([title, body], index) => <article><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>)}</div>
+
+      <section class="section-band shell" aria-labelledby="adapt-title">
+        <p class="eyebrow">Adapt to the work</p>
+        <h2 id="adapt-title">The work sets the shape. Not the other way around.</h2>
+        <p class="section-lede">Every project already has agents, models, and a workflow shape that fits it. Cortxt sits underneath that choice instead of replacing it.</p>
+        <div class="grid feature-grid">
+          {adaptCards.map(([title, body, status]) => (
+            <article>
+              <span class={`status-tag ${status === 'Available now' ? 'available' : status === 'In progress' ? 'progress' : 'direction'}`}>{status}</span>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section class="section-band shell alt" aria-labelledby="replace-title">
+        <div class="replace-grid">
+          <div>
+            <p class="eyebrow">Replace anything but the work</p>
+            <h2 id="replace-title">Swap the runtime. Keep the run.</h2>
+            <p class="section-lede">Scope, state, and evidence live in Cortxt-owned contracts -- GitHub Issues, dispatch records, and widget artifacts -- not inside any one engine's memory. Retire a runtime or move to a new model mid-workflow and the run's history, limits, and approvals carry over unchanged.</p>
+          </div>
+          <div class="replace-diagram" role="img" aria-label="Runtimes, models, and interfaces are replaceable behind the Cortxt contract; scope, state, and evidence are not">
+            <div class="replace-col">
+              <span class="replace-col-label">Replaceable</span>
+              <span class="replace-chip">codex</span><span class="replace-chip">hermes</span><span class="replace-chip">buzz</span><span class="replace-chip">dsh</span>
+            </div>
+            <div class="replace-arrow">-&gt;</div>
+            <div class="replace-col fixed">
+              <span class="replace-col-label">Cortxt contract</span>
+              <span class="replace-chip solid">scope</span><span class="replace-chip solid">state</span><span class="replace-chip solid">evidence</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="one-contract" class="section-band shell" aria-labelledby="one-contract-title">
+        <p class="eyebrow">One contract, many surfaces</p>
+        <h2 id="one-contract-title">CLI, widget, and MCP read the same state.</h2>
+        <p class="section-lede">The CLI is the source of truth. The widget host and MCP server render and expose that same state through docking, split, and grid compositions -- reconfigured by the operator, not baked into one screenshot.</p>
+        <div class="composition-two" aria-label="Warroom grid composition, an alternate workspace layout to the split view above">
+          <p class="composition-tag">Warroom grid &bull; concept, built from real widget-contract primitives <span class="status-tag available">Available now</span></p>
+          <div class="grid-mock">
+            <div class="grid-tile"><b>compliance</b><i></i><span class="dim">running</span></div>
+            <div class="grid-tile"><b>usage</b><i class="fill-70"></i><span class="dim">idle</span></div>
+            <div class="grid-tile"><b>agents</b><i class="fill-40"></i><span class="dim">running</span></div>
+            <div class="grid-tile"><b>pipeline</b><i class="fill-90"></i><span class="dim">done</span></div>
+          </div>
+        </div>
       </section>
 
       <section class="proof-band shell" id="proof-examples" aria-labelledby="examples-title">
@@ -92,7 +168,7 @@ const examples = examplesManifest.examples || [];
                 <div class="proof-cli-pane">
                   <div class="pane-tag">CLI / TUI stream</div>
                   <div class="proof-cli-cmd"><span>$</span> {ex.cli_command}</div>
-                  <pre class="proof-cli-tui" aria-label={`${ex.title} CLI text`}><code>{ex.tui_text}</code></pre>
+                  <pre class="proof-cli-tui" aria-label={`${ex.title} CLI text`}><code>{(ex.tui_text || "").split("\n").map((line, i) => <span class="ln" style={`--i:${i}`}>{line}</span>)}</code></pre>
                 </div>
                 <div class="proof-widget-pane">
                   <div class="pane-tag">Widget render &bull; <code>maker.js</code></div>
@@ -109,7 +185,22 @@ const examples = examplesManifest.examples || [];
         </div>
       </section>
 
+      <section class="section-band shell" aria-labelledby="control-title">
+        <p class="eyebrow">How it stays under control</p>
+        <h2 id="control-title">Control that survives a model change.</h2>
+        <div class="grid control-grid">{controlPrinciples.map(([title, body], index) => <article><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>)}</div>
+      </section>
+
       <section class="proof shell"><div><p class="eyebrow">Built for inspectability</p><h2>Your workflow is the product. The runtime is replaceable.</h2></div><div><p>GitHub Issues hold durable scope and evidence. The Cortxt CLI drives execution. External runtimes sit behind adapters, and every terminal result follows a shared contract.</p><a href="/docs/operating-model/">Read the operating model -&gt;</a></div></section>
+
+      <section class="cta-band shell" aria-labelledby="start-title">
+        <p class="eyebrow">Start small</p>
+        <h2 id="start-title">One command, real state from the first run.</h2>
+        <p class="section-lede">No account, no dashboard to configure first. Install the CLI, load a widget spec, and every run from here on is inspectable evidence.</p>
+        <div class="command cta-command"><span>$</span> pip install -e agent-platform/ &amp;&amp; cortxt widget load --spec compliance.yaml</div>
+        <div class="actions"><a class="primary" href="/docs/quick-start/">Start with the CLI</a><a class="secondary" href="/docs/">Read the docs <span aria-hidden="true">-&gt;</span></a></div>
+      </section>
+
       <section class="docs-band"><div class="shell"><p class="eyebrow">Reference</p><h2>Decisions, contracts, and what comes next.</h2><div class="links"><a href="/docs/adrs/"><strong>Accepted ADRs</strong><span>Normative architecture decisions -&gt;</span></a><a href="/docs/architecture/"><strong>Architecture</strong><span>Boundaries and execution contracts -&gt;</span></a><a href="/docs/roadmap/"><strong>Roadmap</strong><span>Current status and direction -&gt;</span></a></div></div></section>
     </main>
     <footer class="shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><a href="/docs/">Documentation -&gt;</a></footer>
@@ -119,14 +210,16 @@ const examples = examplesManifest.examples || [];
       document.addEventListener("DOMContentLoaded", async function () {
         if (typeof WidgetMaker === "undefined") return;
 
-        // Load tokens
-        try {
-          const tokRes = await fetch("/widgets/tokens.json");
-          if (tokRes.ok) {
-            const tokens = await tokRes.json();
-            WidgetMaker.applyTokens(tokens);
-          }
-        } catch (e) {}
+        // Issue #377: the landing page renders a fixed quiet-slate default
+        // (or the visitor's local toggle choice, see /landing-theme.js) --
+        // it deliberately does NOT fetch /widgets/tokens.json here, because
+        // that document reflects whatever preset an operator most recently
+        // resolved server-side via `cortxt theme use` and would silently
+        // override the landing page's own --token-* variables out from
+        // under the toggle. The proof-band mini-widgets below inherit the
+        // landing page's already-resolved --token-*/--accent/--text
+        // variables from :root via landing.css's var(--token-*, fallback)
+        // cascade, so they stay in sync with the toggle for free.
 
         // Load multi-state demo data
         let agentsData = null;

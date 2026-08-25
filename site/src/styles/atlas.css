@@ -402,6 +402,30 @@ a {
   border-color: var(--atlas-accent-2);
   border-width: 2px;
   box-shadow: 0 0 14px color-mix(in srgb, var(--atlas-accent-2) 50%, transparent);
+  animation: atlas-frontier-pulse 2.2s ease-in-out infinite;
+}
+
+/* Issue #377: motion polish ported from /prototypes (docs/daemon-dogfood,
+   commit 74fa822) -- the frontier highlight was a static border/glow with
+   zero @keyframes anywhere in this file; this adds the breathing pulse the
+   prototype demonstrated illustratively. */
+@keyframes atlas-frontier-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--atlas-accent-2) 50%, transparent);
+  }
+  50% {
+    opacity: 0.82;
+    transform: scale(1.015);
+    box-shadow: 0 0 22px color-mix(in srgb, var(--atlas-accent-2) 80%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-node.frontier {
+    animation: none;
+  }
 }
 
 /* wf-* workflow-state colors intentionally stay outside the shared token
@@ -417,6 +441,14 @@ a {
 }
 .atlas-node.wf-review {
   --atlas-node-stroke: #1d76db;
+  /* Issue #377: node-level non-color differentiator, mirroring the
+     dashed/ring/hatch pattern issue #378 already applies to swimlane
+     marker glyphs and the blocked_by/part_of edge dash-vs-solid split
+     (AtlasGraph.tsx ~166-169) -- a color-only cue is not enough for
+     colorblind operators to tell "review" apart from the other six
+     wf-* states at a glance. */
+  border-style: dashed;
+  border-width: 2px;
 }
 .atlas-node.wf-blocked {
   --atlas-node-stroke: #f85149;

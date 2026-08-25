@@ -362,6 +362,18 @@
     .swimlane .marker.blocked, .swimlane-marker.blocked { border-style: double; border-color: var(--bad); color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); }
     .swimlane .marker.queued, .swimlane-marker.queued { border-style: dotted; opacity: 0.6; }
 
+    /* Issue #377: motion polish ported from /prototypes (docs/daemon-dogfood, commit 74fa822) */
+    @keyframes chart-line-draw { to { stroke-dashoffset: 0; } }
+    .chart-line-svg polyline { stroke-dasharray: 300; stroke-dashoffset: 300; animation: chart-line-draw 2s ease-out .1s forwards; }
+    @keyframes lane-run { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(.82); } }
+    .swimlane .marker.running, .swimlane .marker.active, .swimlane-marker.active, .swimlane-marker.running { background: transparent; }
+    .swimlane .marker.running::before, .swimlane .marker.active::before, .swimlane-marker.active::before, .swimlane-marker.running::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, var(--blue), var(--accent)); transform-origin: left; animation: lane-run 2.6s ease-in-out infinite; z-index: -1; }
+    @media (prefers-reduced-motion: reduce) {
+      .chart-line-svg polyline { animation: none; stroke-dashoffset: 0; }
+      .swimlane .marker.running::before, .swimlane .marker.active::before, .swimlane-marker.active::before, .swimlane-marker.running::before { animation: none; }
+      .pulse-dot, .chart-latest, .swimlane .marker.running, .swimlane .marker.active, .swimlane-marker.active, .swimlane-marker.running, .glow-live { animation: none; }
+    }
+
     /* Maker Studio Layout */
     .studio-container {
       display: grid;
