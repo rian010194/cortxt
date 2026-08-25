@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T08:29:07Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T08:35:32Z`.
 
 ### Roadmap areas
 
@@ -15,6 +15,12 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 ### Actionable frontier
 
 - CI fixture: real dispatch commit proof (#207)
+- Build: theme preset token model (visual-tokens.v2 preset collection) (#373)
+- Build: theme resolver (session/user precedence) (#374)
+- Build: cortxt theme CLI commands (list/inspect/preview/use) (#375)
+- Build: apply theme presets across widget host, OS, landing, docs (#376)
+- Redesign: production landing page on theme preset system (#377)
+- Build: contrast and theme-preset accessibility test suite (#378)
 
 Claimed work in progress (workflow:in-progress):
 (none)
@@ -126,4 +132,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-25T08:29:07Z
+2026-08-25T08:35:32Z
