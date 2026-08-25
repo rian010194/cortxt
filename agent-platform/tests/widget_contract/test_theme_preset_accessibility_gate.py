@@ -129,10 +129,11 @@ def test_indicator_contrast_meets_wcag_non_text_minimum(preset_id: str, fg_role:
 # (widget_contract/swimlane_text.py): "running"/"active"/"open" (filled
 # dot), "idle"/"closed"/"done"/"completed" (ring dot), "blocked"/"failed"/
 # "error" (X), "warn"/"warning"/"attention"/"pending" (triangle), and the
-# fallback branch that "ok" (and any other unmatched status) falls into --
-# which happens to render the same filled-dot glyph as "running" (see the
-# xfail below). The `active` boolean field has its own branches in the same
-# function and is not exercised by these status-string samples.
+# fallback branch that "ok" (and any other unmatched status) falls into
+# (filled diamond -- issue #376 gave this its own shape so it no longer
+# collides with "running"'s filled circle). The `active` boolean field has
+# its own branches in the same function and is not exercised by these
+# status-string samples.
 _STATUS_SAMPLES = {
     "running": {"label": "researcher", "status": "running"},
     "idle": {"label": "archiver", "status": "idle"},
@@ -161,12 +162,11 @@ def _extract_marker(rendered_item: str) -> str:
 _STATUS_PAIRS = list(itertools.combinations(sorted(_STATUS_SAMPLES), 2))
 
 # pair -> reason, for pairs known to currently collide in swimlane_text.py.
-_KNOWN_MARKER_COLLISIONS = {
-    frozenset({"running", "ok"}): (
-        "running/ok share a marker glyph in swimlane_text.py -- tracked "
-        "for issue #376 to fix when applying presets to surfaces"
-    ),
-}
+# Empty as of issue #376: the running/ok collision tracked here previously
+# was fixed by giving "ok" its own filled-diamond glyph in
+# render_swimlane_items (widget_contract/swimlane_text.py) so it no longer
+# shares "running"'s filled circle.
+_KNOWN_MARKER_COLLISIONS: dict[frozenset[str], str] = {}
 
 
 def _status_pair_param(pair: tuple[str, str]):

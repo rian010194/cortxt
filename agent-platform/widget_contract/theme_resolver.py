@@ -40,13 +40,20 @@ concurrent write cannot leave a half-written preference file.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from widget_contract.tokens import DEFAULT_PRESET_ID, TokensError, load_presets
+from widget_contract.tokens import (
+    DEFAULT_PRESET_ID,
+    DEFAULT_TOKENS_PATH,
+    TokensError,
+    load_preset_tokens,
+    load_presets,
+)
 
 
 class ThemeResolverError(ValueError):
@@ -249,3 +256,200 @@ def resolve_theme(
             return persisted
 
     return _load_presets_envelope(presets_path)["default_preset"]
+
+
+class SyncResult:
+    """Outcome of a :func:`sync_widget_tokens` call.
+
+    Attributes:
+        preset_id: The preset id resolved by :func:`resolve_theme`.
+        written: True if `widget/tokens.json` was (over)written; False if the
+            write was skipped because the file was hand-edited since the
+            last sync (see :func:`sync_widget_tokens`'s clobber-guard docs).
+        reason: None when ``written`` is True; a short human-readable
+            explanation of why the write was skipped otherwise.
+    """
+
+    __slots__ = ("preset_id", "written", "reason")
+
+    def __init__(self, preset_id: str, written: bool, reason: str | None = None) -> None:
+        self.preset_id = preset_id
+        self.written = written
+        self.reason = reason
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return f"SyncResult(preset_id={self.preset_id!r}, written={self.written!r}, reason={self.reason!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, SyncResult):
+            return NotImplemented
+        return (self.preset_id, self.written, self.reason) == (other.preset_id, other.written, other.reason)
+
+
+def _sync_marker_path(target_path: Path) -> Path:
+    """Sidecar file path recording the hash of the last content sync_widget_tokens wrote.
+
+    Kept alongside the tokens file itself (``tokens.json.sync-marker.json``)
+    rather than folded into tokens.json's own fields, since tokens.json is a
+    flat visual-tokens.v1 document consumed by the widget host and Widget
+    Maker as-is -- adding bookkeeping fields to it would leak into that
+    schema. The marker is purely an implementation detail of the clobber
+    guard below.
+    """
+    return target_path.with_name(target_path.name + ".sync-marker.json")
+
+
+def _hash_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sync_widget_tokens(
+    session_override: str | None = None,
+    *,
+    path: str | Path | None = None,
+    presets_path: str | Path | None = None,
+    widget_tokens_path: str | Path | None = None,
+    force: bool = False,
+) -> SyncResult:
+    """Resolve the applicable preset and write it to the widget host's live tokens file.
+
+    `agent-platform/widget/tokens.json` is the flat visual-tokens.v1-shaped
+    document the widget host's static server (`widget/serve.py`) actually
+    serves, and what `index.html`/`maker.html` poll (issue #376: the widget
+    host must apply the resolver's chosen preset, not invent its own
+    palette). This is the one place that bridges the two: it resolves which
+    preset applies via :func:`resolve_theme` and overwrites the widget
+    host's tokens.json with that preset's flat token document, so a preset
+    switch (`cortxt theme use <preset>`, issue #375) reflects in the widget
+    host without requiring that surface to duplicate resolver precedence
+    logic.
+
+    Clobber guard: tokens.json is also the file the Widget Maker's Tokens
+    tab hand-edits directly, so unconditionally overwriting it every time a
+    preset switch happens would silently discard those edits. This function
+    writes a sidecar marker (see :func:`_sync_marker_path`) recording the
+    hash of the content it wrote, each time it writes. Before writing again,
+    it checks the marker against the *current* on-disk file:
+
+    - No marker yet (this function has never synced before) -- write is
+      allowed unconditionally, since there is nothing of "ours" that could
+      have been hand-edited over.
+    - Marker present and its hash matches the current file's hash -- the
+      file still holds exactly what a previous sync wrote (untouched since),
+      so overwriting it with the newly resolved preset is safe.
+    - Marker present but its hash does NOT match the current file's hash --
+      someone (the Widget Maker, an operator) edited tokens.json by hand
+      since the last sync. The write is skipped and ``SyncResult.written``
+      is False, so a preset switch never silently destroys a hand edit.
+      Pass ``force=True`` to override this and write anyway.
+
+    Deliberately NOT wired into every `cortxt widget` invocation: call this
+    explicitly (from a `theme use` command, or interactively) when applying
+    a preset switch is actually intended.
+
+    Parameters:
+        session_override: Forwarded to :func:`resolve_theme` -- see there.
+        path: Forwarded to :func:`resolve_theme` (persisted-preference file).
+        presets_path: Forwarded to :func:`resolve_theme` and
+            :func:`~widget_contract.tokens.load_preset_tokens`.
+        widget_tokens_path: Optional override for the widget tokens.json
+            destination. Defaults to
+            ``widget_contract.tokens.DEFAULT_TOKENS_PATH``
+            (``agent-platform/widget/tokens.json``).
+        force: If True, skip the clobber guard and always overwrite.
+
+    Returns:
+        A :class:`SyncResult` describing the resolved preset id and whether
+        the file was actually written.
+
+    Raises:
+        ThemeResolverError: If resolution fails, or the destination file
+            cannot be written.
+    """
+    preset_id = resolve_theme(session_override, path=path, presets_path=presets_path)
+    try:
+        tokens = load_preset_tokens(preset_id, presets_path)
+    except TokensError as err:
+        raise ThemeResolverError(f"Cannot load resolved preset '{preset_id}': {err}") from err
+
+    target_path = Path(widget_tokens_path) if widget_tokens_path is not None else DEFAULT_TOKENS_PATH
+    marker_path = _sync_marker_path(target_path)
+    content = json.dumps(tokens, indent=2) + "\n"
+    content_bytes = content.encode("utf-8")
+    new_hash = _hash_bytes(content_bytes)
+
+    if not force and target_path.is_file():
+        stored_hash: str | None = None
+        if marker_path.is_file():
+            try:
+                marker_data = json.loads(marker_path.read_text(encoding="utf-8"))
+                if isinstance(marker_data, dict):
+                    candidate = marker_data.get("hash")
+                    if isinstance(candidate, str):
+                        stored_hash = candidate
+            except Exception:
+                # An unreadable/corrupt marker is treated as "no prior sync
+                # recorded" -- fall through to the unconditional-write path
+                # rather than blocking every future sync on a broken marker.
+                stored_hash = None
+
+        if stored_hash is not None:
+            try:
+                current_hash = _hash_bytes(target_path.read_bytes())
+            except OSError as err:
+                raise ThemeResolverError(f"Cannot read widget tokens file {target_path}: {err}") from err
+
+            if current_hash != stored_hash:
+                return SyncResult(
+                    preset_id,
+                    False,
+                    (
+                        f"{target_path} was hand-edited since the last sync "
+                        "(hash mismatch against the sync marker) -- skipped to "
+                        "avoid clobbering a Widget Maker edit; pass force=True to override"
+                    ),
+                )
+
+    target_dir = target_path.parent
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as err:
+        raise ThemeResolverError(f"Cannot create widget tokens directory {target_dir}: {err}") from err
+
+    try:
+        fd, tmp_name = tempfile.mkstemp(prefix=".tokens-", suffix=".tmp", dir=str(target_dir))
+        try:
+            # Binary mode, writing content_bytes verbatim: text mode would
+            # translate "\n" to the platform line ending (e.g. "\r\n" on
+            # Windows), so the bytes actually on disk would no longer match
+            # content_bytes/new_hash and every subsequent sync would see a
+            # false "hand-edited" mismatch against its own prior write.
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(content_bytes)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_name, target_path)
+        except BaseException:
+            if os.path.exists(tmp_name):
+                os.remove(tmp_name)
+            raise
+    except OSError as err:
+        raise ThemeResolverError(f"Cannot write widget tokens file {target_path}: {err}") from err
+
+    try:
+        marker_fd, marker_tmp = tempfile.mkstemp(prefix=".tokens-sync-", suffix=".tmp", dir=str(target_dir))
+        try:
+            with os.fdopen(marker_fd, "w", encoding="utf-8") as handle:
+                json.dump({"hash": new_hash, "preset": preset_id}, handle, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(marker_tmp, marker_path)
+        except BaseException:
+            if os.path.exists(marker_tmp):
+                os.remove(marker_tmp)
+            raise
+    except OSError as err:
+        raise ThemeResolverError(f"Cannot write widget tokens sync marker {marker_path}: {err}") from err
+
+    return SyncResult(preset_id, True, None)

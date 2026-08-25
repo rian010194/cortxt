@@ -106,7 +106,11 @@ def render_swimlane_items(
             elif status in ("warn", "warning", "attention", "pending"):
                 marker = f"{warn}▲{reset}" if warn else "▲"
             else:
-                marker = f"{ok}●{reset}" if ok else "●"
+                # "ok" (and any other unmatched status) is its own structural
+                # shape -- a filled diamond -- so it never collides with
+                # "running"'s filled circle (issue #376: status roles must be
+                # distinguishable by shape, not just color).
+                marker = f"{ok}◆{reset}" if ok else "◆"
             rendered_items.append(f"{name} {marker}")
         else:
             rendered_items.append(str(item))

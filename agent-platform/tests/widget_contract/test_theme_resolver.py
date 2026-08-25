@@ -4,13 +4,14 @@ from pathlib import Path
 import pytest
 
 from widget_contract import theme_resolver
-from widget_contract.tokens import DEFAULT_PRESET_ID
+from widget_contract.tokens import DEFAULT_PRESET_ID, load_preset_tokens
 from widget_contract.theme_resolver import (
     ThemeResolverError,
     clear_persisted_theme,
     load_persisted_theme,
     resolve_theme,
     save_persisted_theme,
+    sync_widget_tokens,
 )
 
 # Known preset ids shipped in widget/presets/visual-tokens.v2.json (issue #373).
@@ -252,3 +253,101 @@ def test_whitespace_only_session_override_falls_through_to_default(pref_path: Pa
 
 def test_session_override_with_surrounding_whitespace_is_stripped(pref_path: Path):
     assert resolve_theme(f"  {OTHER_PRESET_ID}  ", path=pref_path) == OTHER_PRESET_ID
+
+
+# -- sync_widget_tokens (issue #376 review finding 1) --------------------------
+#
+# `cortxt theme use <preset>` (agent-platform/cli/unified_cli.py's
+# `_run_theme`) calls sync_widget_tokens() right after save_persisted_theme()
+# so the widget host's live widget/tokens.json actually reflects the newly
+# selected preset -- before this fix, sync_widget_tokens() existed but had
+# zero callers, so the widget host / site kept rendering the old v1 default
+# palette forever regardless of `theme use`.
+
+
+@pytest.fixture
+def widget_tokens_path(tmp_path: Path) -> Path:
+    return tmp_path / "widget-tokens.json"
+
+
+def test_sync_widget_tokens_writes_resolved_preset(pref_path: Path, widget_tokens_path: Path):
+    assert not widget_tokens_path.exists()
+    result = sync_widget_tokens(OTHER_PRESET_ID, path=pref_path, widget_tokens_path=widget_tokens_path)
+    assert result.preset_id == OTHER_PRESET_ID
+    assert result.written is True
+    assert result.reason is None
+    assert widget_tokens_path.is_file()
+    written = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    assert written == load_preset_tokens(OTHER_PRESET_ID)
+
+
+def test_sync_widget_tokens_marker_written_alongside_tokens_file(pref_path: Path, widget_tokens_path: Path):
+    sync_widget_tokens(OTHER_PRESET_ID, path=pref_path, widget_tokens_path=widget_tokens_path)
+    marker_path = widget_tokens_path.with_name(widget_tokens_path.name + ".sync-marker.json")
+    assert marker_path.is_file()
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert marker["preset"] == OTHER_PRESET_ID
+    assert isinstance(marker["hash"], str) and marker["hash"]
+
+
+def test_sync_widget_tokens_resync_after_its_own_write_overwrites_cleanly(
+    pref_path: Path, widget_tokens_path: Path
+):
+    # First sync (no marker yet) writes unconditionally.
+    sync_widget_tokens(OTHER_PRESET_ID, path=pref_path, widget_tokens_path=widget_tokens_path)
+    # A second sync to a different preset, with the file untouched since the
+    # first sync, must also succeed (marker hash still matches what's on disk).
+    result = sync_widget_tokens(THIRD_PRESET_ID, path=pref_path, widget_tokens_path=widget_tokens_path)
+    assert result.written is True
+    assert result.preset_id == THIRD_PRESET_ID
+    written = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    assert written == load_preset_tokens(THIRD_PRESET_ID)
+
+
+def test_sync_widget_tokens_does_not_clobber_hand_edited_file(pref_path: Path, widget_tokens_path: Path):
+    # Establish a baseline sync + marker.
+    sync_widget_tokens(OTHER_PRESET_ID, path=pref_path, widget_tokens_path=widget_tokens_path)
+
+    # Simulate a human hand-editing widget/tokens.json directly (e.g. via the
+    # Widget Maker's Tokens tab) after that sync -- the file no longer
+    # matches what the marker recorded.
+    hand_edited = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    hand_edited["colors"]["accent"] = "#123456"
+    widget_tokens_path.write_text(json.dumps(hand_edited, indent=2) + "\n", encoding="utf-8")
+
+    result = sync_widget_tokens(THIRD_PRESET_ID, path=pref_path, widget_tokens_path=widget_tokens_path)
+    assert result.written is False
+    assert result.preset_id == THIRD_PRESET_ID
+    assert result.reason is not None and "hand-edited" in result.reason
+
+    # The hand edit must survive untouched.
+    still_on_disk = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    assert still_on_disk["colors"]["accent"] == "#123456"
+
+
+def test_sync_widget_tokens_force_overrides_clobber_guard(pref_path: Path, widget_tokens_path: Path):
+    sync_widget_tokens(OTHER_PRESET_ID, path=pref_path, widget_tokens_path=widget_tokens_path)
+    hand_edited = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    hand_edited["colors"]["accent"] = "#123456"
+    widget_tokens_path.write_text(json.dumps(hand_edited, indent=2) + "\n", encoding="utf-8")
+
+    result = sync_widget_tokens(
+        THIRD_PRESET_ID, path=pref_path, widget_tokens_path=widget_tokens_path, force=True
+    )
+    assert result.written is True
+    written = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    assert written == load_preset_tokens(THIRD_PRESET_ID)
+
+
+def test_sync_widget_tokens_first_sync_overwrites_preexisting_unmarked_file(
+    pref_path: Path, widget_tokens_path: Path
+):
+    # A file that already exists but was never synced by us before (e.g. the
+    # shipped default widget/tokens.json checked into the repo) has no
+    # marker yet -- there is nothing "of ours" it could have diverged from,
+    # so the first sync must proceed rather than treat it as a clobber.
+    widget_tokens_path.write_text(json.dumps({"colors": {"accent": "#4d6bfe"}}) + "\n", encoding="utf-8")
+    result = sync_widget_tokens(OTHER_PRESET_ID, path=pref_path, widget_tokens_path=widget_tokens_path)
+    assert result.written is True
+    written = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    assert written == load_preset_tokens(OTHER_PRESET_ID)

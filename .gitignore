@@ -49,3 +49,6 @@ Avancerade
 *.init.lock
 .worktrees/
 agent-platform-worktrees/
+
+# ---- Runtime sync bookkeeping (theme_resolver.sync_widget_tokens) ----
+agent-platform/widget/tokens.json.sync-marker.json

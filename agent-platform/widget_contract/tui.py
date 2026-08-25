@@ -7,7 +7,7 @@ from typing import Any, Mapping, Sequence
 
 from widget_contract.chart_text import render_bar_gauge, render_line_spark
 from widget_contract.swimlane_text import render_swimlane_text
-from widget_contract.tokens import DEFAULT_ANSI_MAP, ansi_map, load_tokens, truecolor_ansi_map
+from widget_contract.tokens import DEFAULT_ANSI_MAP, ansi_map, load_preset_tokens, truecolor_ansi_map
 
 
 def _get_colors(
@@ -330,7 +330,20 @@ def render_tui(
     """
     if tokens is None:
         try:
-            tokens = load_tokens()
+            # Resolve which preset applies through the shared resolver
+            # (widget_contract.theme_resolver -- session/persisted/default
+            # precedence, issue #374) rather than always loading the fixed
+            # v1 tokens.json, so `cortxt theme use <preset>` changes TUI
+            # output consistently with every other surface (issue #376).
+            from widget_contract.theme_resolver import ThemeResolverError, resolve_theme
+
+            tokens = load_preset_tokens(resolve_theme())
+        except ThemeResolverError as err:
+            # A corrupted/invalid persisted theme preference should not
+            # silently change the user's palette with no explanation --
+            # surface it, then fall through to the built-in default tokens.
+            print(f"warning: could not resolve theme preference ({err}); using default tokens", file=sys.stderr)
+            tokens = None
         except Exception:
             tokens = None
 

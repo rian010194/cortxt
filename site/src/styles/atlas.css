@@ -1,17 +1,23 @@
 /* Visual Atlas v2 styles (issue #316). Page chrome + controls + React Flow
    node/edge styling. Dark theme, matches the landing palette. */
 
+/*
+ * `--atlas-*` custom properties are sourced from `--token-*` (set at
+ * runtime by /theme-tokens.js from the resolved preset, issue #376), with
+ * the previous fixed dark palette kept only as the pre-fetch/no-JS
+ * fallback -- same bootstrap pattern as the widget host and landing.css.
+ */
 :root {
   color-scheme: dark;
-  --atlas-bg: #080b14;
-  --atlas-panel: #0f1522;
-  --atlas-panel-2: #121a2b;
-  --atlas-border: #29324a;
-  --atlas-text: #d9deea;
-  --atlas-muted: #8792a8;
-  --atlas-accent: #7c8fff;
-  --atlas-accent-2: #4d6bfe;
-  --atlas-node-fill: #171d2e;
+  --atlas-bg: var(--token-background, #080b14);
+  --atlas-panel: var(--token-surface, #0f1522);
+  --atlas-panel-2: var(--token-layer, #121a2b);
+  --atlas-border: var(--token-stroke, #29324a);
+  --atlas-text: var(--token-text, #d9deea);
+  --atlas-muted: var(--token-muted, #8792a8);
+  --atlas-accent: color-mix(in srgb, var(--token-accent, #4d6bfe) 70%, white 30%);
+  --atlas-accent-2: var(--token-accent, #4d6bfe);
+  --atlas-node-fill: var(--token-layer, #171d2e);
 }
 
 * {
@@ -26,7 +32,7 @@ body {
 
 body {
   background:
-    radial-gradient(circle at 75% 0, #162149 0, transparent 28rem),
+    radial-gradient(circle at 75% 0, color-mix(in srgb, var(--atlas-accent-2) 18%, var(--atlas-bg)) 0, transparent 28rem),
     var(--atlas-bg);
   color: var(--atlas-text);
   font-family: Inter, "Avenir Next", system-ui, sans-serif;
@@ -54,7 +60,7 @@ a {
 
 .atlas-header {
   border-bottom: 1px solid var(--atlas-border);
-  background: rgba(8, 11, 20, 0.85);
+  background: color-mix(in srgb, var(--atlas-bg) 85%, transparent);
   backdrop-filter: blur(18px) saturate(140%);
 }
 
@@ -84,8 +90,15 @@ a {
   width: 1.7rem;
   height: 1.7rem;
   border-radius: 0.45rem;
-  color: #fff;
-  background: linear-gradient(135deg, #7c8fff, #4d6bfe);
+  /* Not var(--atlas-bg): that dropped below WCAG AA 4.5:1 at the dark end
+     of the accent gradient for the shipped default palette (issue #376
+     review finding 2). A single literal (white or black) doesn't work
+     either -- the default palette's accent is dark/saturated (wants light
+     text) while the visual-tokens.v2 presets' accent is pastel/lighter
+     (wants dark text) -- so --atlas-on-accent is computed at runtime by
+     /theme-tokens.js from the actually-resolved accent color. */
+  color: var(--atlas-on-accent, #fff);
+  background: linear-gradient(135deg, var(--atlas-accent), var(--atlas-accent-2));
   font: 700 0.8rem ui-monospace, monospace;
 }
 
@@ -286,7 +299,7 @@ a {
 }
 
 .atlas-empty button:hover {
-  background: rgba(77, 107, 254, 0.15);
+  background: color-mix(in srgb, var(--atlas-accent-2) 15%, transparent);
 }
 
 .atlas-sync {
@@ -316,7 +329,7 @@ a {
 }
 
 .react-flow__controls-button:hover {
-  background: #1b2740;
+  background: color-mix(in srgb, var(--atlas-panel-2) 70%, var(--atlas-accent-2) 12%);
 }
 
 .react-flow__minimap {
@@ -336,7 +349,7 @@ a {
   padding: 0.6rem 0.7rem;
   border-radius: 0.55rem;
   background: var(--atlas-node-fill);
-  border: 1px solid var(--atlas-node-stroke, #56617a);
+  border: 1px solid var(--atlas-node-stroke, var(--atlas-muted));
   cursor: pointer;
   transition: filter 0.15s;
 }
@@ -354,7 +367,7 @@ a {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  border-left: 3px solid #56617a;
+  border-left: 3px solid var(--atlas-muted);
   padding-left: 0.45rem;
 }
 
@@ -374,11 +387,11 @@ a {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #0b1020;
-  background: linear-gradient(135deg, #7c8fff, #4d6bfe);
+  color: var(--atlas-bg);
+  background: linear-gradient(135deg, var(--atlas-accent), var(--atlas-accent-2));
   border-radius: 999px;
   padding: 0.12rem 0.5rem;
-  box-shadow: 0 0 12px rgba(77, 107, 254, 0.75);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--atlas-accent-2) 75%, transparent);
 }
 
 .atlas-node.closed {
@@ -386,11 +399,16 @@ a {
 }
 
 .atlas-node.frontier {
-  border-color: #4d6bfe;
+  border-color: var(--atlas-accent-2);
   border-width: 2px;
-  box-shadow: 0 0 14px rgba(77, 107, 254, 0.5);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--atlas-accent-2) 50%, transparent);
 }
 
+/* wf-* workflow-state colors intentionally stay outside the shared token
+   model (issue #376): they mirror GitHub's own label palette so the Atlas
+   legend matches the `workflow:*` labels operators see on github.com, and
+   carry more distinct hues (7) than the token model's 3-role ok/warn/bad
+   set -- collapsing them onto tokens would lose that GitHub-label parity. */
 .atlas-node.wf-ready {
   --atlas-node-stroke: #3fb950;
 }

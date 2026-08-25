@@ -21,11 +21,16 @@ def _isolate_theme_preference_file(tmp_path, monkeypatch):
     """Redirect the no-`--path` default preference file under tmp_path.
 
     Guarantees no test in this module -- even one that omits --path -- can
-    read or write the operator's real ~/.cortxt/theme.json.
+    read or write the operator's real ~/.cortxt/theme.json. Also redirects
+    theme_resolver's widget/tokens.json sync destination (issue #376 review
+    finding 1: `theme use` now calls sync_widget_tokens()) under tmp_path,
+    so no test in this module can write to the real repo-tracked
+    agent-platform/widget/tokens.json either.
     """
     import widget_contract.theme_resolver as theme_resolver
 
     monkeypatch.setattr(theme_resolver, "DEFAULT_THEME_PREFERENCE_PATH", tmp_path / "theme.json")
+    monkeypatch.setattr(theme_resolver, "DEFAULT_TOKENS_PATH", tmp_path / "widget-tokens.json")
 
 
 def test_theme_list_shows_all_three_presets(capsys):
@@ -275,6 +280,83 @@ def test_theme_use_overwrites_prior_persisted_preference(tmp_path, capsys):
 
     assert exit_code == 0
     assert json.loads(pref_path.read_text(encoding="utf-8")) == {"preset": "soft-dusk"}
+
+
+def test_theme_use_syncs_widget_host_tokens(tmp_path, capsys):
+    """Issue #376 review finding 1: `theme use` must also call
+    sync_widget_tokens() so widget/tokens.json (what the widget host, Widget
+    Maker, and site's generated copy actually serve) reflects the newly
+    selected preset -- not just the CLI/TUI's own resolver-backed rendering.
+    Before this fix, sync_widget_tokens() had zero callers anywhere."""
+    import widget_contract.theme_resolver as theme_resolver
+    from widget_contract.tokens import load_preset_tokens
+
+    pref_path = tmp_path / "theme.json"
+    widget_tokens_path = theme_resolver.DEFAULT_TOKENS_PATH  # patched to tmp_path by the autouse fixture
+
+    assert not widget_tokens_path.exists()
+
+    exit_code = main(["theme", "use", "graphite-ink", "--path", str(pref_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "synced" in captured.out.lower()
+    assert widget_tokens_path.is_file()
+    written = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    assert written == load_preset_tokens("graphite-ink")
+
+
+def test_theme_use_resolve_theme_output_matches_widget_tokens_file(tmp_path, capsys):
+    """After `theme use`, widget_contract.theme_resolver.resolve_theme()'s
+    output and what's actually on disk in widget/tokens.json must agree --
+    the whole point of finding 1's fix is that CLI/TUI (which resolves
+    through resolve_theme()) and the widget host (which reads
+    widget/tokens.json) render the same palette."""
+    import widget_contract.theme_resolver as theme_resolver
+    from widget_contract.tokens import load_preset_tokens
+
+    pref_path = tmp_path / "theme.json"
+
+    main(["theme", "use", "soft-dusk", "--path", str(pref_path)])
+    capsys.readouterr()
+
+    resolved_preset = theme_resolver.resolve_theme(path=pref_path)
+    assert resolved_preset == "soft-dusk"
+
+    on_disk = json.loads(theme_resolver.DEFAULT_TOKENS_PATH.read_text(encoding="utf-8"))
+    assert on_disk == load_preset_tokens(resolved_preset)
+
+
+def test_theme_use_does_not_clobber_hand_edited_widget_tokens(tmp_path, capsys):
+    """The clobber guard (theme_resolver.sync_widget_tokens's marker
+    mechanism) must survive being driven through the actual CLI command, not
+    just the resolver function in isolation: a Widget Maker hand edit made
+    since the last sync must not be silently destroyed by `theme use`."""
+    import widget_contract.theme_resolver as theme_resolver
+
+    pref_path = tmp_path / "theme.json"
+
+    # First `theme use` establishes a baseline sync + marker.
+    main(["theme", "use", "graphite-ink", "--path", str(pref_path)])
+    capsys.readouterr()
+
+    # Simulate a hand edit in the Widget Maker's Tokens tab after that sync.
+    widget_tokens_path = theme_resolver.DEFAULT_TOKENS_PATH
+    hand_edited = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    hand_edited["colors"]["accent"] = "#123456"
+    widget_tokens_path.write_text(json.dumps(hand_edited, indent=2) + "\n", encoding="utf-8")
+
+    exit_code = main(["theme", "use", "soft-dusk", "--path", str(pref_path)])
+    captured = capsys.readouterr()
+
+    # The theme preference itself still switches -- only the widget host
+    # tokens.json sync is skipped.
+    assert exit_code == 0
+    assert theme_resolver.resolve_theme(path=pref_path) == "soft-dusk"
+    assert "not synced" in captured.out.lower()
+
+    still_on_disk = json.loads(widget_tokens_path.read_text(encoding="utf-8"))
+    assert still_on_disk["colors"]["accent"] == "#123456"
 
 
 def test_theme_preset_display_dict_is_in_sync_with_the_presets_collection():
