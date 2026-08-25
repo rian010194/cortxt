@@ -134,6 +134,7 @@
     this.manifest = manifest;
     this.cardBuilder = cardBuilder;
     this.byId = {};
+    this._justDropped = null;
     manifest.forEach((w) => { this.byId[w.id] = w; });
     var stored = loadStoredState();
     var known = Object.keys(this.byId);
@@ -235,6 +236,12 @@
     return box;
   };
 
+  // Drags the divider by mutating the flex-basis of the two adjacent panes
+  // directly instead of calling self.render(): a full re-render replaces
+  // this very element with a fresh one (new listeners, no pointer capture),
+  // so the drag would die after the first pointermove. Only the tree's
+  // sizes -- and the DOM -- get a full sync via self.render() once, at
+  // pointerup, when self._persist() also runs.
   DockTree.prototype._buildDivider = function (splitNode, index) {
     var self = this;
     var div = document.createElement("div");
@@ -247,8 +254,12 @@
         start: splitNode.dir === "row" ? ev.clientX : ev.clientY,
         total: splitNode.dir === "row" ? rect.width : rect.height,
         sizesBefore: splitNode.sizes.slice(),
+        paneA: div.previousElementSibling,
+        paneB: div.nextElementSibling,
       };
+      div.classList.add("dragging");
       div.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
     });
     div.addEventListener("pointermove", (ev) => {
       if (!drag) return;
@@ -263,11 +274,13 @@
       }
       splitNode.sizes[index] = a;
       splitNode.sizes[index + 1] = b;
-      self.render();
+      if (drag.paneA) drag.paneA.style.flex = a + " " + a + " 0";
+      if (drag.paneB) drag.paneB.style.flex = b + " " + b + " 0";
     });
     function end() {
       if (!drag) return;
       drag = null;
+      div.classList.remove("dragging");
       self._persist();
     }
     div.addEventListener("pointerup", end);
@@ -290,7 +303,14 @@
       if (!w) return;
       var tab = document.createElement("div");
       tab.className = "dock-tab" + (i === node.active ? " active" : "");
-      tab.textContent = w.title || w.id;
+      if (widgetId === self._justDropped) {
+        tab.classList.add("dock-tab-enter");
+        self._justDropped = null;
+      }
+      var label = document.createElement("span");
+      label.className = "dock-tab-label";
+      label.textContent = w.title || w.id;
+      tab.append(label);
       tab.draggable = true;
       tab.dataset.widgetId = widgetId;
       tab.onclick = () => {
@@ -310,13 +330,18 @@
       tabbar.append(tab);
     });
 
+    var indicator = document.createElement("div");
+    indicator.className = "dock-tab-indicator hidden";
+    tabbar.append(indicator);
+    self._attachTabReorder(tabbar, node);
+
     var activeWidget = self.byId[node.tabs[node.active]];
     if (activeWidget) {
       var built = self.cardBuilder(activeWidget);
       body.append(built.head, built.root);
     }
 
-    self._attachDropZones(wrap, node);
+    self._attachDropZones(body, node);
     wrap.append(tabbar, body);
     return wrap;
   };
@@ -325,43 +350,141 @@
     tabEl.addEventListener("dragstart", (ev) => {
       ev.dataTransfer.setData("text/cortxt-widget-id", widgetId);
       ev.dataTransfer.effectAllowed = "move";
+      tabEl.classList.add("dragging");
+    });
+    tabEl.addEventListener("dragend", () => {
+      tabEl.classList.remove("dragging");
+      document.querySelectorAll(".dock-tab-indicator").forEach((el) => el.classList.add("hidden"));
+      document.querySelectorAll(".dock-drop-overlay").forEach((el) => el.classList.add("hidden"));
     });
   };
 
-  DockTree.prototype._attachDropZones = function (leafEl, node) {
+  // Reordering (and moving a tab between leaves) is handled on the tabbar
+  // itself, separately from the split/merge drop zones on the body below --
+  // dropping on the strip of tabs always means "place as a tab here",
+  // dropping in the content area means "split or merge this pane".
+  DockTree.prototype._attachTabReorder = function (tabbar, node) {
+    var self = this;
+    tabbar.addEventListener("dragover", (ev) => {
+      if (!ev.dataTransfer.types.includes("text/cortxt-widget-id")) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      var idx = self._tabInsertIndex(tabbar, ev.clientX);
+      self._showTabInsertMarker(tabbar, idx);
+    });
+    tabbar.addEventListener("dragleave", (ev) => {
+      if (!tabbar.contains(ev.relatedTarget)) self._clearTabInsertMarker(tabbar);
+    });
+    tabbar.addEventListener("drop", (ev) => {
+      if (!ev.dataTransfer.types.includes("text/cortxt-widget-id")) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      self._clearTabInsertMarker(tabbar);
+      var widgetId = ev.dataTransfer.getData("text/cortxt-widget-id");
+      if (!widgetId || !self.byId[widgetId]) return;
+      var idx = self._tabInsertIndex(tabbar, ev.clientX);
+      self._insertTabAt(node.id, widgetId, idx);
+    });
+  };
+
+  DockTree.prototype._tabInsertIndex = function (tabbar, clientX) {
+    var tabs = Array.prototype.slice.call(tabbar.querySelectorAll(".dock-tab"));
+    for (var i = 0; i < tabs.length; i++) {
+      var rect = tabs[i].getBoundingClientRect();
+      if (clientX < rect.left + rect.width / 2) return i;
+    }
+    return tabs.length;
+  };
+
+  DockTree.prototype._showTabInsertMarker = function (tabbar, idx) {
+    var indicator = tabbar.querySelector(".dock-tab-indicator");
+    if (!indicator) return;
+    var tabs = Array.prototype.slice.call(tabbar.querySelectorAll(".dock-tab"));
+    var x;
+    if (!tabs.length) x = 4;
+    else if (idx >= tabs.length) x = tabs[tabs.length - 1].offsetLeft + tabs[tabs.length - 1].offsetWidth - tabbar.scrollLeft;
+    else x = tabs[idx].offsetLeft - tabbar.scrollLeft;
+    indicator.style.left = x + "px";
+    indicator.classList.remove("hidden");
+  };
+
+  DockTree.prototype._clearTabInsertMarker = function (tabbar) {
+    var indicator = tabbar.querySelector(".dock-tab-indicator");
+    if (indicator) indicator.classList.add("hidden");
+  };
+
+  // Inserts widgetId as a tab in the leaf identified by leafId at the given
+  // index, pulling it out of wherever it currently lives (a no-op removal
+  // if it is already in this leaf, in which case this is a pure reorder).
+  DockTree.prototype._insertTabAt = function (leafId, widgetId, index) {
+    var leafBefore = findLeafById(this.tree, leafId);
+    if (!leafBefore) return;
+    var isSameLeaf = leafBefore.tabs.indexOf(widgetId) !== -1;
+    var base = isSameLeaf ? this.tree : removeTab(this.tree, widgetId);
+    var target = base ? findLeafById(base, leafId) : null;
+    if (!target) return; // dragged tab was the target leaf's only content -- nothing to do.
+    var tabs = target.tabs.slice();
+    var activeId = tabs[target.active];
+    var fromIdx = tabs.indexOf(widgetId);
+    if (fromIdx !== -1) tabs.splice(fromIdx, 1);
+    var clamped = Math.max(0, Math.min(index, tabs.length));
+    if (fromIdx !== -1 && fromIdx < clamped) clamped -= 1;
+    tabs.splice(clamped, 0, widgetId);
+    var newActive = tabs.indexOf(activeId);
+    if (newActive === -1) newActive = tabs.indexOf(widgetId);
+    var merged = leaf(tabs, newActive);
+    this.tree = replaceLeaf(base, leafId, merged);
+    if (!isSameLeaf) this._justDropped = widgetId;
+    this._persist();
+    this.render();
+  };
+
+  DockTree.prototype._attachDropZones = function (body, node) {
     var self = this;
     var overlay = document.createElement("div");
     overlay.className = "dock-drop-overlay hidden";
-    ["top", "bottom", "left", "right", "center"].forEach((zone) => {
-      var z = document.createElement("div");
-      z.className = "dock-drop-zone dock-drop-" + zone;
-      overlay.append(z);
-    });
-    leafEl.append(overlay);
+    var preview = document.createElement("div");
+    preview.className = "dock-drop-preview";
+    var label = document.createElement("div");
+    label.className = "dock-drop-label";
+    preview.append(label);
+    overlay.append(preview);
+    body.append(overlay);
 
-    leafEl.addEventListener("dragover", (ev) => {
+    body.addEventListener("dragover", (ev) => {
       if (!ev.dataTransfer.types.includes("text/cortxt-widget-id")) return;
       ev.preventDefault();
       overlay.classList.remove("hidden");
-      var rect = leafEl.getBoundingClientRect();
+      var rect = body.getBoundingClientRect();
       var x = (ev.clientX - rect.left) / rect.width;
       var y = (ev.clientY - rect.top) / rect.height;
       var zone = self._zoneFor(x, y);
-      overlay.querySelectorAll(".dock-drop-zone").forEach((z) => z.classList.remove("active"));
-      overlay.querySelector(".dock-drop-" + zone)?.classList.add("active");
+      preview.className = "dock-drop-preview dock-drop-preview-" + zone;
+      label.textContent = self._zoneLabel(zone);
       overlay.dataset.zone = zone;
     });
-    leafEl.addEventListener("dragleave", (ev) => {
-      if (ev.target === leafEl) overlay.classList.add("hidden");
+    body.addEventListener("dragleave", (ev) => {
+      if (!body.contains(ev.relatedTarget)) overlay.classList.add("hidden");
     });
-    leafEl.addEventListener("drop", (ev) => {
+    body.addEventListener("drop", (ev) => {
       ev.preventDefault();
       overlay.classList.add("hidden");
       var widgetId = ev.dataTransfer.getData("text/cortxt-widget-id");
       if (!widgetId || !self.byId[widgetId]) return;
       var zone = overlay.dataset.zone || "center";
+      if (zone === "center") self._justDropped = widgetId;
       self._handleDrop(node.id, widgetId, zone);
     });
+  };
+
+  DockTree.prototype._zoneLabel = function (zone) {
+    switch (zone) {
+      case "top": return "Split ↑";
+      case "bottom": return "Split ↓";
+      case "left": return "Split ←";
+      case "right": return "Split →";
+      default: return "Add as tab";
+    }
   };
 
   DockTree.prototype._zoneFor = function (x, y) {
