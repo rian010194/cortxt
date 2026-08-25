@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T09:13:29Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T09:15:30Z`.
 
 ### Roadmap areas
 
@@ -21,7 +21,6 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 - fix(ci): agent-platform-tests/docker-tests fail collection — ModuleNotFoundError: cortxt_resilient_inference (#381)
 
 Claimed work in progress (workflow:in-progress):
-- Build: theme resolver (session/user precedence) (#374)
 - Build: contrast and theme-preset accessibility test suite (#378)
 
 ### Blockers
@@ -125,6 +124,7 @@ Claimed work in progress (workflow:in-progress):
 - Widget host: free-form drag/resize canvas (replaces Grid+Warroom) (#362): contract fit = MISSING; repository fit = MISSING
 - Backend state persistence surface (ADR-041): design gate (#364): contract fit = MISSING; repository fit = MISSING
 - Build: theme preset token model (visual-tokens.v2 preset collection) (#373): contract fit = MISSING; repository fit = MISSING
+- Build: theme resolver (session/user precedence) (#374): contract fit = MISSING; repository fit = MISSING
 
 ### Relationship drift
 
@@ -132,4 +132,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-25T09:13:29Z
+2026-08-25T09:15:30Z
