@@ -46,6 +46,28 @@ jobs:
       - run: docker info
       - run: pytest agent-platform/ -m docker_required -v
 
+  # Issue #378: automated contrast/schema/rendering gate for the
+  # visual-tokens.v2 preset collection (issue #373). Split into its own job
+  # rather than folded into agent-platform-tests because that job is
+  # currently red on main due to an unrelated, pre-existing
+  # ModuleNotFoundError: cortxt_resilient_inference collection error
+  # (tracked separately in issue #381) -- keeping this gate in its own job
+  # means a real contrast/schema/rendering regression is never masked by,
+  # or blamed on, that unrelated failure.
+  theme-preset-accessibility-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest -e agent-platform/
+      - run: >
+          pytest
+          agent-platform/tests/widget_contract/test_theme_preset_accessibility_gate.py
+          agent-platform/tests/widget_contract/test_tokens.py
+          -v
+
   dco-signoff:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
