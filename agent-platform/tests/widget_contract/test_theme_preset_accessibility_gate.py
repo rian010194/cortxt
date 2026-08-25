@@ -30,6 +30,7 @@ values) or issue #4 (surface-level shape/color usage), not here.
 
 from __future__ import annotations
 
+import itertools
 import re
 
 import pytest
@@ -94,9 +95,15 @@ def test_text_contrast_meets_wcag_aa(preset_id: str, fg_role: str, bg_role: str)
 @pytest.mark.parametrize("fg_role", _INDICATOR_ROLES)
 def test_indicator_contrast_meets_wcag_non_text_minimum(preset_id: str, fg_role: str):
     """Stroke and any filled indicator color (accent/blue/ok/warn/bad) must
-    reach >=3:1 against `background`, the surface they are rendered on in
-    the accepted /prototypes reference (panes, dots, bars, graph lines all
-    sit on `--bg`, not `--surface`)."""
+    reach >=3:1 against `background`. Issue #378's acceptance criteria scope
+    this check to stroke/indicator vs *background* only. Stroke vs *surface*
+    is a separate, real gap: `.os`, `.docs pre`, and `.docs>header span` in
+    the accepted /prototypes reference (`site/src/styles/prototypes.css` on
+    branch `docs/daemon-dogfood`) render `--stroke`-bordered elements
+    directly on `--surface`, and measured stroke/surface contrast there is
+    ~2.85-2.89:1 across all three presets -- below the 3:1 floor. That gap
+    is left open for issue #373/#376 to address and is deliberately not
+    gated here."""
     colors = _preset_colors(preset_id)
     ratio = contrast_ratio(colors[fg_role], colors["background"])
     assert ratio is not None
@@ -117,8 +124,15 @@ def test_indicator_contrast_meets_wcag_non_text_minimum(preset_id: str, fg_role:
 # so a viewer who cannot perceive the color difference still sees a
 # different mark.
 
-# (status_category, sample item) pairs exercising every branch of
-# render_swimlane_items' marker selection (widget_contract/swimlane_text.py).
+# (status_category, sample item) pairs. These exercise the status-string
+# branches of render_swimlane_items' marker selection
+# (widget_contract/swimlane_text.py): "running"/"active"/"open" (filled
+# dot), "idle"/"closed"/"done"/"completed" (ring dot), "blocked"/"failed"/
+# "error" (X), "warn"/"warning"/"attention"/"pending" (triangle), and the
+# fallback branch that "ok" (and any other unmatched status) falls into --
+# which happens to render the same filled-dot glyph as "running" (see the
+# xfail below). The `active` boolean field has its own branches in the same
+# function and is not exercised by these status-string samples.
 _STATUS_SAMPLES = {
     "running": {"label": "researcher", "status": "running"},
     "idle": {"label": "archiver", "status": "idle"},
@@ -139,27 +153,54 @@ def _extract_marker(rendered_item: str) -> str:
     return match.group(0)
 
 
+# Every possible status-role pair, not a hand-picked subset -- a hand-picked
+# list can (and did) omit exactly the pair that collides. Known, tracked
+# collisions are marked xfail(strict=True) below rather than excluded, so
+# the gate still reports the real gap and the xfail itself fails loudly
+# (XPASS) the moment someone fixes the underlying glyph selection.
+_STATUS_PAIRS = list(itertools.combinations(sorted(_STATUS_SAMPLES), 2))
+
+# pair -> reason, for pairs known to currently collide in swimlane_text.py.
+_KNOWN_MARKER_COLLISIONS = {
+    frozenset({"running", "ok"}): (
+        "running/ok share a marker glyph in swimlane_text.py -- tracked "
+        "for issue #376 to fix when applying presets to surfaces"
+    ),
+}
+
+
+def _status_pair_param(pair: tuple[str, str]):
+    reason = _KNOWN_MARKER_COLLISIONS.get(frozenset(pair))
+    if reason:
+        return pytest.param(*pair, marks=pytest.mark.xfail(strict=True, reason=reason))
+    return pytest.param(*pair)
+
+
 @pytest.mark.parametrize("preset_id", VISUAL_TOKENS_PRESET_IDS)
-def test_status_roles_are_structurally_distinguishable(preset_id: str):
-    """Every status category renders with its own glyph, independent of
+@pytest.mark.parametrize(
+    ("status_a", "status_b"),
+    [_status_pair_param(pair) for pair in _STATUS_PAIRS],
+)
+def test_status_roles_are_structurally_distinguishable(
+    preset_id: str, status_a: str, status_b: str
+):
+    """Every status category must render with its own glyph, independent of
     which preset's colors are applied -- the shape, not the color, is what
-    a colorblind or non-color-perceiving viewer relies on."""
+    a colorblind or non-color-perceiving viewer relies on. Exercises every
+    possible status-role pair (see _STATUS_PAIRS); known collisions are
+    marked xfail(strict=True) above rather than silently excluded."""
     tokens = load_preset_tokens(preset_id)
     colors_map = truecolor_ansi_map(tokens)
-
-    markers: dict[str, str] = {}
-    for category, item in _STATUS_SAMPLES.items():
-        rendered = render_swimlane_items([item], colors=colors_map)
-        markers[category] = _extract_marker(rendered)
-
-    # Status roles that are plausibly rendered "near each other" (issue
-    # #378's ok/warn/bad and running/waiting examples) must use different
-    # glyphs from one another.
-    assert markers["running"] != markers["idle"]
-    assert markers["running"] != markers["blocked"]
-    assert markers["warn"] != markers["blocked"]
-    assert markers["warn"] != markers["ok"]
-    assert markers["blocked"] != markers["idle"]
+    marker_a = _extract_marker(
+        render_swimlane_items([_STATUS_SAMPLES[status_a]], colors=colors_map)
+    )
+    marker_b = _extract_marker(
+        render_swimlane_items([_STATUS_SAMPLES[status_b]], colors=colors_map)
+    )
+    assert marker_a != marker_b, (
+        f"Status roles '{status_a}' and '{status_b}' render the identical "
+        f"marker glyph {marker_a!r} -- not structurally distinguishable"
+    )
 
 
 def test_status_glyphs_are_preset_independent():
@@ -261,9 +302,29 @@ def test_truecolor_ansi_map_reflects_preset_hex_values(preset_id: str):
 def test_colorize_status_stays_within_registered_semantic_roles(preset_id: str):
     """colorize_status must only ever apply the ok/warn/bad/muted semantic
     roles (never raw preset hex outside the token contract), so every
-    preset's ANSI/truecolor map keeps status coloring meaningful."""
+    preset's ANSI/truecolor map keeps status coloring meaningful. Asserts
+    the actual color code applied, not just that the status string survives
+    -- per colorize_status's real status->role mapping in
+    widget_contract/tui.py."""
     tokens = load_preset_tokens(preset_id)
     colors_map = truecolor_ansi_map(tokens)
-    for value in ("running", "blocked", "pending", "-"):
+    expected_roles = {
+        "running": "ok",
+        "blocked": "bad",
+        "pending": "warn",
+        "-": "muted",
+    }
+    allowed_codes = {colors_map[role] for role in ("ok", "warn", "bad", "muted")}
+    for value, role in expected_roles.items():
         out = colorize_status(value, colors_map)
         assert value in out
+        assert colors_map[role] in out, (
+            f"colorize_status({value!r}) did not apply the '{role}' role "
+            f"color; got {out!r}"
+        )
+        used_codes = set(re.findall(r"\x1b\[[0-9;]*m", out))
+        used_codes.discard(colors_map.get("reset", ""))
+        assert used_codes <= allowed_codes, (
+            f"colorize_status({value!r}) used escape codes outside the "
+            f"registered ok/warn/bad/muted roles: {used_codes - allowed_codes}"
+        )
