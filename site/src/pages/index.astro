@@ -2,7 +2,7 @@
 import '../styles/landing.css';
 import examplesManifest from '../../public/widgets/examples.json';
 const adaptCards = [
-  ['Any agent engine', 'Codex, Hermes, Buzz, DSH, or a future runtime -- each sits behind a Cortxt-owned adapter, never as the product itself.', 'Available now'],
+  ['Any agent engine', 'Hermes and DSH run today behind Cortxt-owned dispatch adapters; Codex, Buzz, and a future runtime are on the same path, never as the product itself.', 'In progress'],
   ['Any model', 'Inference stays provider-neutral behind Cortxt-owned adapters, so a model swap does not touch scope, evidence, or state.', 'Available now'],
   ['Any workflow shape', 'Widget views are generated from the actual spec for a run, not hand-built for one fixed dashboard.', 'Available now'],
 ];
@@ -37,7 +37,7 @@ const examples = examplesManifest.examples || [];
     <header class="nav shell">
       <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
       <nav aria-label="Primary navigation">
-        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/widgets/">Widgets</a><a href="#proof-examples">Examples</a>
+        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/widgets/">Widgets</a><a href="/docs/widgets/">Widget docs</a><a href="#proof-examples">Examples</a>
         <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Preview color theme (this browser only)">
           <button type="button" data-preset="quiet-slate" class="active" title="Quiet Slate">&nbsp;</button>
           <button type="button" data-preset="graphite-ink" title="Graphite Ink">&nbsp;</button>
@@ -98,7 +98,7 @@ const examples = examplesManifest.examples || [];
         <div class="grid feature-grid">
           {adaptCards.map(([title, body, status]) => (
             <article>
-              <span class="status-tag available">{status}</span>
+              <span class={`status-tag ${status === 'Available now' ? 'available' : status === 'In progress' ? 'progress' : 'direction'}`}>{status}</span>
               <h3>{title}</h3>
               <p>{body}</p>
             </article>
@@ -188,7 +188,7 @@ const examples = examplesManifest.examples || [];
       <section class="section-band shell" aria-labelledby="control-title">
         <p class="eyebrow">How it stays under control</p>
         <h2 id="control-title">Control that survives a model change.</h2>
-        <div class="grid">{controlPrinciples.map(([title, body], index) => <article><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>)}</div>
+        <div class="grid control-grid">{controlPrinciples.map(([title, body], index) => <article><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>)}</div>
       </section>
 
       <section class="proof shell"><div><p class="eyebrow">Built for inspectability</p><h2>Your workflow is the product. The runtime is replaceable.</h2></div><div><p>GitHub Issues hold durable scope and evidence. The Cortxt CLI drives execution. External runtimes sit behind adapters, and every terminal result follows a shared contract.</p><a href="/docs/operating-model/">Read the operating model -&gt;</a></div></section>
