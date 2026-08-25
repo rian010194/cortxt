@@ -20,6 +20,11 @@ export default defineConfig({
         { icon: 'github', label: 'GitHub', href: 'https://github.com/rian010194/cortxt' },
       ],
       customCss: ['./src/styles/custom.css'],
+      // Applies the resolved widget theme preset to the docs chrome at
+      // runtime (issue #376) -- see public/theme-tokens.js.
+      head: [
+        { tag: 'script', attrs: { src: '/theme-tokens.js' } },
+      ],
       sidebar: [
         { label: 'Overview', items: [{ label: 'Documentation', link: '/docs/' }, { label: 'Quick start', link: '/docs/quick-start/' }, { label: 'Widgets', link: '/docs/widgets/' }] },
         { label: 'Architecture', items: [{ autogenerate: { directory: 'docs/architecture' } }] },

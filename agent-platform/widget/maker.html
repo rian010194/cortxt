@@ -7,6 +7,8 @@
   <style>
     :root {
       color-scheme: dark;
+      --background: #080b14;
+      --surface: #101522;
       --layer: #ffffff0d;
       --hover: #ffffff15;
       --stroke: #29324a;
@@ -25,7 +27,7 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       min-height: 100vh;
-      background: radial-gradient(circle at 24% 12%, #202b50 0, #0d1220 40%, #080b14 75%);
+      background: var(--backdrop-vignette, radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--accent) 30%, transparent) 0%, transparent 60%)), radial-gradient(circle at 24% 12%, var(--surface) 0, var(--background) 40%, var(--background) 75%);
       font-family: var(--sans);
       color: var(--text);
       display: flex;
@@ -41,7 +43,7 @@
       padding: 10px 16px;
       border: 1px solid var(--strong);
       border-radius: 10px;
-      background: #101522d9;
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
       backdrop-filter: blur(20px);
     }
     .identity { display: flex; align-items: center; gap: 10px; }
@@ -49,7 +51,7 @@
       width: 22px; height: 22px; border-radius: 5px;
       display: grid; place-items: center;
       background: linear-gradient(135deg, var(--accent), var(--blue));
-      color: #06263b; font-size: 12px; font-weight: 700;
+      color: var(--background); font-size: 12px; font-weight: 700;
     }
     .appname { font-size: 14px; font-weight: 600; color: var(--text); }
     .subtitle { font-size: 11px; color: var(--dim); margin-left: 6px; }
@@ -71,7 +73,7 @@
       background: var(--layer); color: var(--muted); font-size: 12px;
       cursor: pointer; transition: all .15s ease;
     }
-    .tab-btn.active { background: #4d6bfe22; border-color: var(--accent); color: var(--text); font-weight: 600; }
+    .tab-btn.active { background: color-mix(in srgb, var(--accent) 13%, transparent); border-color: var(--accent); color: var(--text); font-weight: 600; }
 
     /* CLI display-mode toggle */
     .view-mode-toggle {
@@ -84,7 +86,7 @@
     }
     .view-mode-toggle .toggle-btn:hover { background: var(--hover); color: var(--text); }
     .view-mode-toggle .toggle-btn.active {
-      background: #4d6bfe22; border-color: var(--accent); color: var(--text); font-weight: 600;
+      background: color-mix(in srgb, var(--accent) 13%, transparent); border-color: var(--accent); color: var(--text); font-weight: 600;
     }
 
     /* CLI pane modes: split (default) | overlay | hidden */
@@ -93,7 +95,7 @@
       position: fixed; left: 16px; right: 16px; bottom: 16px; max-height: 40vh;
       z-index: 20; border: 1px solid var(--strong); border-radius: var(--radius-large, 12px);
       box-shadow: var(--shadow-instrument, 0 24px 64px rgba(0, 0, 0, 0.6));
-      background: #101522f2;
+      background: color-mix(in srgb, var(--surface) 95%, transparent);
     }
     body.cli-hidden .card-body { grid-template-columns: 1fr !important; }
     body.cli-hidden .pane-cli { display: none !important; }
@@ -101,11 +103,9 @@
     /* Warroom/backdrop texture: subtle grid + vignette, applied once to the page */
     body::before {
       content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-      background-image:
-        linear-gradient(var(--grid-line, rgba(255, 255, 255, 0.02)) 1px, transparent 1px),
-        linear-gradient(90deg, var(--grid-line, rgba(255, 255, 255, 0.02)) 1px, transparent 1px);
-      background-size: 28px 28px;
-      mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 70%);
+      background-image: var(--backdrop-grid, linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px));
+      background-size: var(--backdrop-grid-size, 28px) var(--backdrop-grid-size, 28px);
+      mask-image: radial-gradient(circle at 50% 0%, var(--background) 0%, transparent 70%);
     }
     body > * { position: relative; z-index: 1; }
 
@@ -124,7 +124,7 @@
       border: var(--bezel-width, 1px) solid var(--strong);
       background:
         linear-gradient(180deg, var(--sheen-top, rgba(255, 255, 255, 0.07)) 0%, transparent 8%),
-        radial-gradient(120% 140% at 15% -10%, #1a2340 0%, var(--surface) 55%);
+        radial-gradient(120% 140% at 15% -10%, var(--layer) 0%, var(--surface) 55%);
       box-shadow: var(--shadow-panel, 0 12px 32px rgba(0, 0, 0, 0.45));
       transition: box-shadow var(--duration-medium, 200ms) var(--easing, ease),
                   transform var(--duration-medium, 200ms) var(--easing, ease);
@@ -161,7 +161,7 @@
       scroll-snap-align: start;
       border: 1px solid var(--strong);
       border-radius: 8px;
-      background: #101522d9;
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
       padding: 10px 12px;
       cursor: pointer;
       transition: all .15s ease;
@@ -172,7 +172,7 @@
     }
     .example-chip:hover {
       border-color: var(--accent);
-      background: #182033;
+      background: color-mix(in srgb, var(--surface) 70%, var(--accent) 5%);
       transform: translateY(-2px);
     }
     .example-chip-title {
@@ -200,16 +200,16 @@
     .card {
       border: 1px solid var(--strong);
       border-radius: 12px;
-      background: #101522d9;
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
       backdrop-filter: blur(20px);
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 12px 32px #0008;
+      box-shadow: var(--shadow-panel, 0 12px 32px rgba(0, 0, 0, 0.45));
     }
     .card-header {
       padding: 10px 14px;
-      background: #ffffff05;
+      background: var(--layer);
       border-bottom: 1px solid var(--stroke);
       display: flex;
       justify-content: space-between;
@@ -233,10 +233,10 @@
     }
     .pane-render {
       border-right: 1px solid var(--stroke);
-      background: #090c1580;
+      background: color-mix(in srgb, var(--surface) 50%, transparent);
     }
     .pane-cli {
-      background: #06080e;
+      background: var(--background);
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -255,7 +255,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      background: #0d1220;
+      background: var(--background);
       border: 1px solid var(--stroke);
       border-radius: 5px;
       padding: 5px 8px;
@@ -271,7 +271,7 @@
     .cli-json {
       font: 9.5px/1.4 var(--mono);
       color: var(--muted);
-      background: #090d18;
+      background: color-mix(in srgb, var(--surface) 50%, transparent);
       border: 1px solid var(--stroke);
       border-radius: 5px;
       padding: 8px;
@@ -286,12 +286,12 @@
     .badge {
       display: inline-flex; align-items: center; gap: 5px;
       padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
-      background: #4d6bfe22; color: var(--accent); flex: none;
+      background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); flex: none;
     }
     .badge:before { content: "●"; }
-    .badge.ok { background: #68d39120; color: var(--ok); }
-    .badge.err { background: #ff7a9020; color: var(--bad); }
-    .badge.off { background: #ffffff12; color: var(--dim); }
+    .badge.ok { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
+    .badge.err { background: color-mix(in srgb, var(--bad) 13%, transparent); color: var(--bad); }
+    .badge.off { background: color-mix(in srgb, var(--dim) 7%, transparent); color: var(--dim); }
     .empty {
       padding: 14px; text-align: center; color: var(--dim);
       font-size: 11px; border: 1px dashed var(--stroke); border-radius: 6px;
@@ -300,7 +300,7 @@
       padding: 6px 8px; border: 1px solid var(--stroke);
       border-radius: 6px; color: var(--muted); font-size: 10.5px;
     }
-    .pulse-status.error { color: var(--bad); background: #ff7a9010; }
+    .pulse-status.error { color: var(--bad); background: color-mix(in srgb, var(--bad) 6%, transparent); }
     .candidate-group { margin: 4px 0; }
     .candidate-group h3 {
       margin: 0 0 4px; font-size: 9.5px; color: var(--muted);
@@ -356,11 +356,11 @@
     .swimlane-label { font-size: 10.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .swimlane-track { display: flex; align-items: center; gap: 6px; position: relative; flex-wrap: wrap; min-height: 20px; }
     .swimlane-track-line { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--stroke); z-index: 0; }
-    .swimlane .marker, .swimlane-marker { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 9.5px; font-family: var(--mono); background: #171d2e; border: 1px solid var(--stroke); color: var(--muted); }
-    .swimlane .marker.done, .swimlane-marker.done { border-color: rgba(104, 211, 145, 0.4); color: var(--ok); background: rgba(104, 211, 145, 0.08); }
-    .swimlane .marker.running, .swimlane .marker.active, .swimlane-marker.active, .swimlane-marker.running { background: linear-gradient(90deg, #3151d8, var(--accent)); border-color: var(--accent); color: #fff; font-weight: 600; box-shadow: 0 0 9px #4d6bfe88; animation: pulse 2s infinite ease-in-out; }
-    .swimlane .marker.blocked, .swimlane-marker.blocked { border-color: rgba(255, 122, 144, 0.4); color: var(--bad); background: rgba(255, 122, 144, 0.08); }
-    .swimlane .marker.queued, .swimlane-marker.queued { opacity: 0.6; }
+    .swimlane .marker, .swimlane-marker { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 9.5px; font-family: var(--mono); background: var(--surface); border: 1px solid var(--stroke); color: var(--muted); }
+    .swimlane .marker.done, .swimlane-marker.done { border-style: solid; border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, transparent); }
+    .swimlane .marker.running, .swimlane .marker.active, .swimlane-marker.active, .swimlane-marker.running { background: linear-gradient(90deg, var(--blue), var(--accent)); border-style: dashed; border-color: var(--accent); color: var(--background); font-weight: 600; box-shadow: 0 0 9px var(--glow-accent, rgba(77, 107, 254, 0.55)); animation: pulse 2s infinite ease-in-out; }
+    .swimlane .marker.blocked, .swimlane-marker.blocked { border-style: double; border-color: var(--bad); color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); }
+    .swimlane .marker.queued, .swimlane-marker.queued { border-style: dotted; opacity: 0.6; }
 
     /* Maker Studio Layout */
     .studio-container {
@@ -372,7 +372,7 @@
     .editor-pane {
       border: 1px solid var(--strong);
       border-radius: 12px;
-      background: #101522d9;
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
       backdrop-filter: blur(20px);
       display: flex;
       flex-direction: column;
@@ -380,7 +380,7 @@
     }
     .editor-toolbar {
       padding: 8px 12px;
-      background: #ffffff05;
+      background: var(--layer);
       border-bottom: 1px solid var(--stroke);
       display: flex;
       justify-content: space-between;
@@ -388,7 +388,7 @@
       gap: 10px;
     }
     .editor-select {
-      background: #0d1220;
+      background: var(--background);
       color: var(--text);
       border: 1px solid var(--stroke);
       border-radius: 5px;
@@ -401,13 +401,13 @@
       flex-direction: column;
       padding: 12px;
       gap: 10px;
-      background: #070a12;
+      background: var(--background);
     }
     .code-input {
       width: 100%;
       flex: 1;
       min-height: 240px;
-      background: #090d18;
+      background: color-mix(in srgb, var(--surface) 50%, transparent);
       border: 1px solid var(--stroke);
       border-radius: 6px;
       color: var(--text);
@@ -421,7 +421,7 @@
     .code-input:focus { outline: 1px solid var(--accent); }
     .error-banner {
       padding: 8px 12px;
-      background: #ff7a9020;
+      background: color-mix(in srgb, var(--bad) 13%, transparent);
       border: 1px solid var(--bad);
       border-radius: 6px;
       color: var(--bad);
@@ -431,7 +431,7 @@
     }
     .status-ok {
       padding: 4px 8px;
-      background: #68d39115;
+      background: color-mix(in srgb, var(--ok) 8%, transparent);
       border: 1px solid var(--ok);
       border-radius: 5px;
       color: var(--ok);
@@ -602,7 +602,7 @@
           <span class="eyebrow">Live Token Preview &amp; Color Chips</span>
           <span class="badge" id="tokens-preview-badge">live preview</span>
         </div>
-        <div class="editor-body" id="tokens-preview-pane" style="background:#090c1580;overflow:auto;">
+        <div class="editor-body" id="tokens-preview-pane" style="background:color-mix(in srgb, var(--surface) 50%, transparent);overflow:auto;">
           <!-- Injected by renderTokensPreview() -->
         </div>
       </div>

@@ -46,7 +46,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from widget_contract.tokens import DEFAULT_PRESET_ID, TokensError, load_presets
+from widget_contract.tokens import (
+    DEFAULT_PRESET_ID,
+    DEFAULT_TOKENS_PATH,
+    TokensError,
+    load_preset_tokens,
+    load_presets,
+)
 
 
 class ThemeResolverError(ValueError):
@@ -249,3 +255,78 @@ def resolve_theme(
             return persisted
 
     return _load_presets_envelope(presets_path)["default_preset"]
+
+
+def sync_widget_tokens(
+    session_override: str | None = None,
+    *,
+    path: str | Path | None = None,
+    presets_path: str | Path | None = None,
+    widget_tokens_path: str | Path | None = None,
+) -> str:
+    """Resolve the applicable preset and write it to the widget host's live tokens file.
+
+    `agent-platform/widget/tokens.json` is the flat visual-tokens.v1-shaped
+    document the widget host's static server (`widget/serve.py`) actually
+    serves, and what `index.html`/`maker.html` poll (issue #376: the widget
+    host must apply the resolver's chosen preset, not invent its own
+    palette). This is the one place that bridges the two: it resolves which
+    preset applies via :func:`resolve_theme` and overwrites the widget
+    host's tokens.json with that preset's flat token document, so a preset
+    switch (`cortxt theme use <preset>`, issue #375) reflects in the widget
+    host without requiring that surface to duplicate resolver precedence
+    logic.
+
+    Deliberately NOT wired into every `cortxt widget` invocation: tokens.json
+    is also the file the Widget Maker's Tokens tab hand-edits directly, and
+    unconditionally overwriting it on every server start would silently
+    discard those edits. Call this explicitly (from a `theme use` command,
+    or interactively) when applying a preset switch is actually intended.
+
+    Parameters:
+        session_override: Forwarded to :func:`resolve_theme` -- see there.
+        path: Forwarded to :func:`resolve_theme` (persisted-preference file).
+        presets_path: Forwarded to :func:`resolve_theme` and
+            :func:`~widget_contract.tokens.load_preset_tokens`.
+        widget_tokens_path: Optional override for the widget tokens.json
+            destination. Defaults to
+            ``widget_contract.tokens.DEFAULT_TOKENS_PATH``
+            (``agent-platform/widget/tokens.json``).
+
+    Returns:
+        The resolved preset id that was written.
+
+    Raises:
+        ThemeResolverError: If resolution fails, or the destination file
+            cannot be written.
+    """
+    preset_id = resolve_theme(session_override, path=path, presets_path=presets_path)
+    try:
+        tokens = load_preset_tokens(preset_id, presets_path)
+    except TokensError as err:
+        raise ThemeResolverError(f"Cannot load resolved preset '{preset_id}': {err}") from err
+
+    target_path = Path(widget_tokens_path) if widget_tokens_path is not None else DEFAULT_TOKENS_PATH
+    target_dir = target_path.parent
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as err:
+        raise ThemeResolverError(f"Cannot create widget tokens directory {target_dir}: {err}") from err
+
+    try:
+        fd, tmp_name = tempfile.mkstemp(prefix=".tokens-", suffix=".tmp", dir=str(target_dir))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(tokens, handle, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_name, target_path)
+        except BaseException:
+            if os.path.exists(tmp_name):
+                os.remove(tmp_name)
+            raise
+    except OSError as err:
+        raise ThemeResolverError(f"Cannot write widget tokens file {target_path}: {err}") from err
+
+    return preset_id

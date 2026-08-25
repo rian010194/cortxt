@@ -1,17 +1,25 @@
+/*
+ * Every color below is expressed as `var(--token-<name>, <fallback>)`.
+ * `--token-*` custom properties are set at runtime by /theme-tokens.js from
+ * the resolved preset's tokens.json (issue #376); the fallback hex is the
+ * quiet-slate-shaped default so the docs chrome still paints correctly
+ * before that fetch resolves, or with JS disabled -- the same bootstrap
+ * pattern the widget host's :root/DEFAULT_FALLBACK_TOKENS already use.
+ */
 :root {
   color-scheme: dark;
-  --sl-color-accent-low: #202b63;
-  --sl-color-accent: #7c8fff;
-  --sl-color-accent-high: #dce2ff;
-  --sl-color-white: #f4f7ff;
-  --sl-color-gray-1: #d9deea;
-  --sl-color-gray-2: #aab3c5;
-  --sl-color-gray-3: #8792a8;
-  --sl-color-gray-4: #56617a;
-  --sl-color-gray-5: #29324a;
-  --sl-color-gray-6: #171d2e;
-  --sl-color-gray-7: #101522;
-  --sl-color-black: #080b14;
+  --sl-color-accent-low: color-mix(in srgb, var(--token-accent, #7c8fff) 35%, var(--token-background, #080b14));
+  --sl-color-accent: var(--token-accent, #7c8fff);
+  --sl-color-accent-high: color-mix(in srgb, var(--token-accent, #7c8fff) 55%, var(--token-text, #f4f7ff) 45%);
+  --sl-color-white: var(--token-text, #f4f7ff);
+  --sl-color-gray-1: color-mix(in srgb, var(--token-text, #f4f7ff) 80%, var(--token-muted, #aab3c5) 20%);
+  --sl-color-gray-2: var(--token-muted, #aab3c5);
+  --sl-color-gray-3: var(--token-dim, #8792a8);
+  --sl-color-gray-4: color-mix(in srgb, var(--token-dim, #8792a8) 55%, var(--token-stroke, #29324a) 45%);
+  --sl-color-gray-5: var(--token-stroke, #29324a);
+  --sl-color-gray-6: var(--token-layer, #171d2e);
+  --sl-color-gray-7: var(--token-surface, #101522);
+  --sl-color-black: var(--token-background, #080b14);
   --sl-font: Inter, "Avenir Next", system-ui, sans-serif;
   --sl-font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Consolas, monospace;
   --sl-content-width: 50rem;
@@ -19,32 +27,20 @@
 
 :root[data-theme='light'] {
   color-scheme: dark;
-  --sl-color-accent-low: #202b63;
-  --sl-color-accent: #7c8fff;
-  --sl-color-accent-high: #dce2ff;
-  --sl-color-white: #f4f7ff;
-  --sl-color-gray-1: #d9deea;
-  --sl-color-gray-2: #aab3c5;
-  --sl-color-gray-3: #8792a8;
-  --sl-color-gray-4: #56617a;
-  --sl-color-gray-5: #29324a;
-  --sl-color-gray-6: #171d2e;
-  --sl-color-gray-7: #101522;
-  --sl-color-black: #080b14;
 }
 
-body { background: radial-gradient(circle at 75% 0, #162149 0, transparent 28rem), #080b14; }
-header.header { height: 4.5rem; border-bottom: 1px solid #29324a; background: #080b14d9; backdrop-filter: blur(18px) saturate(140%); }
+body { background: radial-gradient(circle at 75% 0, color-mix(in srgb, var(--token-accent, #7c8fff) 18%, var(--token-background, #080b14)) 0, transparent 28rem), var(--token-background, #080b14); }
+header.header { height: 4.5rem; border-bottom: 1px solid var(--sl-color-gray-5); background: color-mix(in srgb, var(--token-background, #080b14) 85%, transparent); backdrop-filter: blur(18px) saturate(140%); }
 .site-title { font-weight: 700; letter-spacing: -.02em; }
-.site-title::before { content: 'C'; display: grid; place-items: center; width: 1.9rem; height: 1.9rem; margin-inline-end: .65rem; border-radius: .5rem; color: #fff; background: linear-gradient(135deg,#7c8fff,#4d6bfe); box-shadow: 0 0 24px #4d6bfe55; font: 700 .85rem var(--sl-font-mono); }
-.sidebar-pane { border-inline-end-color: #29324a; background: #0b0f19cc; }
-.right-sidebar { border-inline-start-color: #29324a; }
+.site-title::before { content: 'C'; display: grid; place-items: center; width: 1.9rem; height: 1.9rem; margin-inline-end: .65rem; border-radius: .5rem; color: var(--token-background, #080b14); background: linear-gradient(135deg, var(--token-accent, #7c8fff), var(--token-blue, #4d6bfe)); box-shadow: 0 0 24px color-mix(in srgb, var(--token-blue, #4d6bfe) 33%, transparent); font: 700 .85rem var(--sl-font-mono); }
+.sidebar-pane { border-inline-end-color: var(--sl-color-gray-5); background: color-mix(in srgb, var(--token-background, #080b14) 80%, transparent); }
+.right-sidebar { border-inline-start-color: var(--sl-color-gray-5); }
 .sidebar-content a { border-radius: .375rem; }
-.sidebar-content a[aria-current='page'] { background: linear-gradient(90deg, #4d6bfe3d, #4d6bfe1a); color: var(--sl-color-white); font-weight: 600; border: 1px solid #4d6bfe66; }
+.sidebar-content a[aria-current='page'] { background: linear-gradient(90deg, color-mix(in srgb, var(--token-blue, #4d6bfe) 24%, transparent), color-mix(in srgb, var(--token-blue, #4d6bfe) 10%, transparent)); color: var(--sl-color-white); font-weight: 600; border: 1px solid color-mix(in srgb, var(--token-blue, #4d6bfe) 40%, transparent); }
 .sidebar-content a[aria-current='page'] .group-label, .sidebar-content a[aria-current='page'] span { color: var(--sl-color-white); }
-.sidebar-content a:hover { background: #4d6bfe22; }
-.pagination-links a, .card, pre { border-color: #29324a; border-radius: .625rem; background: #101522cc; }
-:not(pre)>code { border: 1px solid #29324a; border-radius: .3rem; background: #171d2e; color: #b9c4ff; }
+.sidebar-content a:hover { background: color-mix(in srgb, var(--token-blue, #4d6bfe) 13%, transparent); }
+.pagination-links a, .card, pre { border-color: var(--sl-color-gray-5); border-radius: .625rem; background: color-mix(in srgb, var(--token-surface, #101522) 80%, transparent); }
+:not(pre)>code { border: 1px solid var(--sl-color-gray-5); border-radius: .3rem; background: var(--token-layer, #171d2e); color: color-mix(in srgb, var(--token-accent, #7c8fff) 60%, var(--token-text, #f4f7ff) 40%); }
 h1,h2,h3 { letter-spacing: -.035em; }
 h1 { max-width: 18ch; }
 .sl-markdown-content a { text-underline-offset: .2em; }
@@ -52,5 +48,5 @@ h1 { max-width: 18ch; }
 .hero h1 { max-width: 15ch; letter-spacing: -.045em; }
 .hero .tagline { max-width: 58ch; }
 .card { border-radius: .625rem; }
-footer { border-top-color: #29324a; }
-@media (prefers-reduced-transparency:reduce) { header.header { background:#080b14; backdrop-filter:none; } }
+footer { border-top-color: var(--sl-color-gray-5); }
+@media (prefers-reduced-transparency:reduce) { header.header { background: var(--token-background, #080b14); backdrop-filter:none; } }
