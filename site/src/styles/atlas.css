@@ -90,7 +90,14 @@ a {
   width: 1.7rem;
   height: 1.7rem;
   border-radius: 0.45rem;
-  color: var(--atlas-bg);
+  /* Not var(--atlas-bg): that dropped below WCAG AA 4.5:1 at the dark end
+     of the accent gradient for the shipped default palette (issue #376
+     review finding 2). A single literal (white or black) doesn't work
+     either -- the default palette's accent is dark/saturated (wants light
+     text) while the visual-tokens.v2 presets' accent is pastel/lighter
+     (wants dark text) -- so --atlas-on-accent is computed at runtime by
+     /theme-tokens.js from the actually-resolved accent color. */
+  color: var(--atlas-on-accent, #fff);
   background: linear-gradient(135deg, var(--atlas-accent), var(--atlas-accent-2));
   font: 700 0.8rem ui-monospace, monospace;
 }

@@ -231,7 +231,12 @@ def _run_theme(args: argparse.Namespace) -> ResultEnvelope:
     ap_path = _get_agent_platform_path()
     if str(ap_path) not in sys.path:
         sys.path.insert(0, str(ap_path))
-    from widget_contract.theme_resolver import ThemeResolverError, resolve_theme, save_persisted_theme
+    from widget_contract.theme_resolver import (
+        ThemeResolverError,
+        resolve_theme,
+        save_persisted_theme,
+        sync_widget_tokens,
+    )
     from widget_contract.tokens import TokensError, load_preset_tokens, load_presets
     from widget_contract.tui import render_tui
 
@@ -308,10 +313,26 @@ def _run_theme(args: argparse.Namespace) -> ResultEnvelope:
             preset_id = args.preset
             save_persisted_theme(preset_id, path=pref_path)
             print(f"Theme preference set to '{preset_id}' ({_theme_display_name(preset_id)}).")
+            # Also push the newly-selected preset into the widget host's
+            # live tokens.json (issue #376 review finding 1): without this,
+            # `cortxt widget --tui` (which resolves through theme_resolver)
+            # and the widget host / site (which serve widget/tokens.json)
+            # would render two different, unsynced palettes after a preset
+            # switch. sync_widget_tokens() guards against clobbering a
+            # hand-edited Widget Maker tokens.json -- see its docstring.
+            sync_result = sync_widget_tokens(preset_id, path=pref_path)
+            if sync_result.written:
+                print(f"Widget host tokens synced to '{preset_id}'.")
+            else:
+                print(f"warning: widget host tokens NOT synced -- {sync_result.reason}")
             return ResultEnvelope(
                 status="succeeded",
                 artifacts=[f"theme:use:{preset_id}"],
-                evidence=[{"preset": preset_id}],
+                evidence=[{
+                    "preset": preset_id,
+                    "widget_tokens_synced": sync_result.written,
+                    "widget_tokens_sync_reason": sync_result.reason,
+                }],
             )
 
         return ResultEnvelope(

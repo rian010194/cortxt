@@ -358,7 +358,7 @@
     .swimlane-track-line { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--stroke); z-index: 0; }
     .swimlane .marker, .swimlane-marker { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 9.5px; font-family: var(--mono); background: var(--surface); border: 1px solid var(--stroke); color: var(--muted); }
     .swimlane .marker.done, .swimlane-marker.done { border-style: solid; border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, transparent); }
-    .swimlane .marker.running, .swimlane .marker.active, .swimlane-marker.active, .swimlane-marker.running { background: linear-gradient(90deg, var(--blue), var(--accent)); border-style: dashed; border-color: var(--accent); color: var(--background); font-weight: 600; box-shadow: 0 0 9px var(--glow-accent, rgba(77, 107, 254, 0.55)); animation: pulse 2s infinite ease-in-out; }
+    .swimlane .marker.running, .swimlane .marker.active, .swimlane-marker.active, .swimlane-marker.running { background: linear-gradient(90deg, var(--blue), var(--accent)); border-style: dashed; border-color: var(--accent); color: var(--marker-running-text, #fff); font-weight: 600; box-shadow: 0 0 9px var(--glow-accent, rgba(77, 107, 254, 0.55)); animation: pulse 2s infinite ease-in-out; }
     .swimlane .marker.blocked, .swimlane-marker.blocked { border-style: double; border-color: var(--bad); color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); }
     .swimlane .marker.queued, .swimlane-marker.queued { border-style: dotted; opacity: 0.6; }
 
