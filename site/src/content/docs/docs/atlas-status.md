@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T19:17:14Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T19:34:45Z`.
 
 ### Roadmap areas
 
@@ -127,6 +127,7 @@ Claimed work in progress (workflow:in-progress):
 - Redesign: production landing page on theme preset system (#377): contract fit = MISSING; repository fit = MISSING
 - Build: contrast and theme-preset accessibility test suite (#378): contract fit = MISSING; repository fit = MISSING
 - fix(site): landing page live widget cards crash — WidgetMaker.startLivingDemo() called with wrong argument order (#387): contract fit = MISSING; repository fit = MISSING
+- fix(site): landing page theme silently reverts to old v1 palette after widgets/maker.js loads (#389): contract fit = MISSING; repository fit = MISSING
 
 ### Relationship drift
 
@@ -134,4 +135,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-25T19:17:14Z
+2026-08-25T19:34:45Z
