@@ -280,6 +280,20 @@ def _run_theme(args: argparse.Namespace) -> ResultEnvelope:
             else:
                 force_ansi = None
             truecolor = bool(getattr(args, "truecolor", False))
+            auto_truecolor = False
+            if not truecolor:
+                # `ansi_map()` only fills in colors NOT already present in
+                # DEFAULT_ANSI_MAP, and every preset defines the same 14
+                # standard keys -- so the 256-color fallback path never
+                # reflects the actual preset. Auto-enable 24-bit rendering
+                # when the terminal advertises support (COLORTERM convention
+                # used by most modern terminal emulators) so `preview`
+                # reflects the requested preset by default; explicit
+                # --truecolor/--no-ansi/--force-ansi still take precedence.
+                colorterm = os.environ.get("COLORTERM", "").strip().lower()
+                if colorterm in ("truecolor", "24bit"):
+                    truecolor = True
+                    auto_truecolor = True
             rendered = render_tui(
                 _theme_preview_tree(preset_id), tokens=tokens, force_ansi=force_ansi, truecolor=truecolor
             )
@@ -287,7 +301,7 @@ def _run_theme(args: argparse.Namespace) -> ResultEnvelope:
             return ResultEnvelope(
                 status="succeeded",
                 artifacts=[f"theme:preview:{preset_id}"],
-                evidence=[{"preset": preset_id, "truecolor": truecolor}],
+                evidence=[{"preset": preset_id, "truecolor": truecolor, "auto_truecolor": auto_truecolor}],
             )
 
         if command == "use":
@@ -2882,7 +2896,7 @@ def main(argv: list[str] | None = None) -> int:
     # theme subcommand (issue #375)
     theme_parser = sub.add_parser("theme", help="List, inspect, preview, and select visual theme presets")
     theme_sub = theme_parser.add_subparsers(dest="theme_command", required=True)
-    theme_list = theme_sub.add_parser("list", help="Show the three presets with id, name, and a short description")
+    theme_list = theme_sub.add_parser("list", help="Show the available presets with id, name, and a short description")
     theme_list.add_argument("--path", type=Path, help="Preference file override (default: ~/.cortxt/theme.json)")
     theme_list.set_defaults(func=_run_theme)
     theme_inspect = theme_sub.add_parser("inspect", help="Print resolved token values (colors, typography) for a preset")
@@ -2894,9 +2908,13 @@ def main(argv: list[str] | None = None) -> int:
     theme_preview.add_argument("--path", type=Path, help="Preference file override (default: ~/.cortxt/theme.json)")
     theme_preview.add_argument("--truecolor", action="store_true", help="Derive 24-bit ANSI colors directly from the preset's hex values")
     theme_preview.add_argument("--force-ansi", action="store_true", help="Force ANSI output even when stdout is not a TTY")
-    theme_preview.add_argument("--no-ansi", action="store_true", help="Force plain text output (no ANSI escape codes)")
+    theme_preview.add_argument(
+        "--no-ansi",
+        action="store_true",
+        help="Force plain text output (no ANSI escape codes); takes precedence over --force-ansi if both are given",
+    )
     theme_preview.set_defaults(func=_run_theme)
-    theme_use = theme_sub.add_parser("use", help="Set the session/persisted theme preference (resolver precedence: session > persisted > default)")
+    theme_use = theme_sub.add_parser("use", help="Persist the theme preference for this user")
     theme_use.add_argument("preset", help="Preset id to persist")
     theme_use.add_argument("--path", type=Path, help="Preference file override (default: ~/.cortxt/theme.json)")
     theme_use.set_defaults(func=_run_theme)

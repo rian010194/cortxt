@@ -1,13 +1,31 @@
 """Tests for `cortxt theme list/inspect/preview/use` (issue #375).
 
-Every test passes an explicit --path so the persisted-preference file lives
-under tmp_path rather than the real per-user ~/.cortxt/theme.json.
+Not every individual test passes an explicit --path. Regardless, the
+autouse `_isolate_theme_preference_file` fixture below monkeypatches
+`widget_contract.theme_resolver.DEFAULT_THEME_PREFERENCE_PATH` (the path
+used whenever a test/CLI invocation omits --path) so every test's default
+resolution/persistence -- even by omission -- lives under tmp_path rather
+than the real per-user ~/.cortxt/theme.json.
 """
 from __future__ import annotations
 
 import json
 
+import pytest
+
 from cli.unified_cli import main
+
+
+@pytest.fixture(autouse=True)
+def _isolate_theme_preference_file(tmp_path, monkeypatch):
+    """Redirect the no-`--path` default preference file under tmp_path.
+
+    Guarantees no test in this module -- even one that omits --path -- can
+    read or write the operator's real ~/.cortxt/theme.json.
+    """
+    import widget_contract.theme_resolver as theme_resolver
+
+    monkeypatch.setattr(theme_resolver, "DEFAULT_THEME_PREFERENCE_PATH", tmp_path / "theme.json")
 
 
 def test_theme_list_shows_all_three_presets(capsys):
@@ -126,6 +144,83 @@ def test_theme_preview_unknown_preset_fails(capsys):
     assert exit_code == 1
 
 
+def test_theme_preview_auto_enables_truecolor_when_colorterm_advertises_support(monkeypatch, capsys):
+    """Regression for the reviewer finding that preview output was byte-identical
+    across presets in the non-truecolor path: `ansi_map()` only fills in colors
+    NOT already present in DEFAULT_ANSI_MAP, and every preset defines exactly the
+    same 14 standard keys, so the 256-color fallback never reflected the actual
+    preset. `preview` now auto-enables 24-bit rendering when COLORTERM advertises
+    support, so its default output (no --truecolor flag) differs across presets."""
+    monkeypatch.setenv("COLORTERM", "truecolor")
+
+    exit_code_a = main(["theme", "preview", "quiet-slate", "--force-ansi"])
+    out_a = capsys.readouterr().out
+    exit_code_b = main(["theme", "preview", "soft-dusk", "--force-ansi"])
+    out_b = capsys.readouterr().out
+
+    assert exit_code_a == 0
+    assert exit_code_b == 0
+    # Both should be truecolor-rendered (";2;" sequences), and the two
+    # presets' actual hex values must diverge, proving preview reflects the
+    # requested preset rather than a shared generic ANSI approximation.
+    assert ";2;" in out_a
+    assert ";2;" in out_b
+
+    def _strip_header(text: str) -> str:
+        return "\n".join(text.splitlines()[1:])
+
+    assert _strip_header(out_a) != _strip_header(out_b)
+
+
+def test_theme_preview_does_not_auto_enable_truecolor_without_colorterm(monkeypatch, capsys):
+    monkeypatch.delenv("COLORTERM", raising=False)
+
+    exit_code_a = main(["theme", "preview", "quiet-slate", "--force-ansi"])
+    out_a = capsys.readouterr().out
+    exit_code_b = main(["theme", "preview", "soft-dusk", "--force-ansi"])
+    out_b = capsys.readouterr().out
+
+    assert exit_code_a == 0
+    assert exit_code_b == 0
+    assert ";2;" not in out_a
+    assert ";2;" not in out_b
+
+
+def test_theme_preview_explicit_truecolor_flag_overrides_colorterm_absence(monkeypatch, capsys):
+    monkeypatch.delenv("COLORTERM", raising=False)
+
+    exit_code = main(["theme", "preview", "quiet-slate", "--force-ansi", "--truecolor"])
+    out = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert ";2;" in out
+
+
+def test_theme_preview_does_not_persist_anything(tmp_path, capsys):
+    """The issue #375 acceptance criteria require `preview` to never change
+    the persisted selection -- prove it doesn't create the file, and doesn't
+    change an existing persisted value."""
+    pref_path = tmp_path / "theme.json"
+    pref_path.write_text(json.dumps({"preset": "graphite-ink"}), encoding="utf-8")
+    before = pref_path.read_text(encoding="utf-8")
+
+    exit_code = main(["theme", "preview", "soft-dusk", "--path", str(pref_path), "--force-ansi"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    assert pref_path.read_text(encoding="utf-8") == before
+
+
+def test_theme_preview_does_not_create_preference_file_when_absent(tmp_path, capsys):
+    pref_path = tmp_path / "theme.json"
+
+    exit_code = main(["theme", "preview", "soft-dusk", "--path", str(pref_path), "--force-ansi"])
+    capsys.readouterr()
+
+    assert exit_code == 0
+    assert not pref_path.exists()
+
+
 def test_theme_use_persists_preference(tmp_path, capsys):
     pref_path = tmp_path / "theme.json"
 
@@ -180,3 +275,16 @@ def test_theme_use_overwrites_prior_persisted_preference(tmp_path, capsys):
 
     assert exit_code == 0
     assert json.loads(pref_path.read_text(encoding="utf-8")) == {"preset": "soft-dusk"}
+
+
+def test_theme_preset_display_dict_is_in_sync_with_the_presets_collection():
+    """`_THEME_PRESET_DISPLAY`'s module comment claims it's kept in sync with
+    widget/presets/visual-tokens.v2.json, but nothing enforced that. Make the
+    claim actually true: a preset added without a matching display entry (or
+    vice versa) now fails this test loudly instead of degrading silently to
+    name=id / 'No description available.' in `theme list`/`theme inspect`."""
+    from cli.unified_cli import _THEME_PRESET_DISPLAY
+    from widget_contract.tokens import load_presets
+
+    preset_ids = set(load_presets()["presets"])
+    assert preset_ids == set(_THEME_PRESET_DISPLAY)
