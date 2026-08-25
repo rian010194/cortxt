@@ -252,7 +252,11 @@ const examples = examplesManifest.examples || [];
             const widgetId = card ? card.getAttribute("data-widget-id") : null;
 
             if (widgetId === "session-agents" && agentsData && agentsData.states) {
-              WidgetMaker.startLivingDemo(mount, agentsData.states, 2800, function (container, state) {
+              // WidgetMaker.startLivingDemo() expects (spec, fixtureData, container,
+              // options) and has no external step-callback -- createSequenceStepper()
+              // is the helper whose (state, index) callback contract actually matches
+              // this per-step tree-mutation body. See issue #387.
+              WidgetMaker.createSequenceStepper(agentsData.states, function (state) {
                 const stepTree = JSON.parse(JSON.stringify(tree));
                 if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) {
                   stepTree.children[1].props.items = state.agents;
@@ -260,11 +264,11 @@ const examples = examplesManifest.examples || [];
                 if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) {
                   stepTree.children[0].props.value = state.active_count;
                 }
-                container.replaceChildren();
-                WidgetMaker.renderNodeToDom(stepTree, container);
-              });
+                mount.replaceChildren();
+                WidgetMaker.renderNodeToDom(stepTree, mount);
+              }, 2800);
             } else if (widgetId === "usage-cost" && usageData && usageData.states) {
-              WidgetMaker.startLivingDemo(mount, usageData.states, 3000, function (container, state) {
+              WidgetMaker.createSequenceStepper(usageData.states, function (state) {
                 const u = state.usage;
                 const stepTree = JSON.parse(JSON.stringify(tree));
                 if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) stepTree.children[0].props.value = u.total_cost_usd;
@@ -281,9 +285,9 @@ const examples = examplesManifest.examples || [];
                   stepTree.children[4].props.points = u.history_points;
                   stepTree.children[4].props.series = u.history_tokens;
                 }
-                container.replaceChildren();
-                WidgetMaker.renderNodeToDom(stepTree, container);
-              });
+                mount.replaceChildren();
+                WidgetMaker.renderNodeToDom(stepTree, mount);
+              }, 3000);
             }
           } catch (err) {
             console.error("Failed to render widget:", artifactPath, err);
