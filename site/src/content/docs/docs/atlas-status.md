@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T14:48:37Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T18:25:13Z`.
 
 ### Roadmap areas
 
@@ -15,7 +15,6 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 ### Actionable frontier
 
 - CI fixture: real dispatch commit proof (#207)
-- Redesign: production landing page on theme preset system (#377)
 - fix(ci): agent-platform-tests/docker-tests fail collection — ModuleNotFoundError: cortxt_resilient_inference (#381)
 
 Claimed work in progress (workflow:in-progress):
@@ -125,6 +124,7 @@ Claimed work in progress (workflow:in-progress):
 - Build: theme resolver (session/user precedence) (#374): contract fit = MISSING; repository fit = MISSING
 - Build: cortxt theme CLI commands (list/inspect/preview/use) (#375): contract fit = MISSING; repository fit = MISSING
 - Build: apply theme presets across widget host, OS, landing, docs (#376): contract fit = MISSING; repository fit = MISSING
+- Redesign: production landing page on theme preset system (#377): contract fit = MISSING; repository fit = MISSING
 - Build: contrast and theme-preset accessibility test suite (#378): contract fit = MISSING; repository fit = MISSING
 
 ### Relationship drift
@@ -133,4 +133,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-25T14:48:37Z
+2026-08-25T18:25:13Z
