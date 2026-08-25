@@ -207,6 +207,15 @@ const examples = examplesManifest.examples || [];
 
     <script src="/widgets/maker.js" is:inline></script>
     <script is:inline>
+      // maker.js's auto-init stamps its bundled default v1 colors onto
+      // <html> as a side effect of loading -- undo that immediately so the
+      // landing page's fixed quiet-slate default (or the visitor's saved
+      // toggle choice) isn't clobbered. See landing-theme.js and issue #387.
+      if (typeof window.__cortxtReapplyLandingTheme === "function") {
+        window.__cortxtReapplyLandingTheme();
+      }
+    </script>
+    <script is:inline>
       document.addEventListener("DOMContentLoaded", async function () {
         if (typeof WidgetMaker === "undefined") return;
 

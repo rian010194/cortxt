@@ -113,11 +113,28 @@
     var colors = PRESETS[id] || PRESETS[DEFAULT_PRESET];
     var root = document.documentElement;
     if (!root) return;
+    // Set both the --token-* namespaced properties AND the bare names
+    // (--accent, --surface, --stroke, ...), mirroring widgets/maker.js's
+    // own applyTokens() "backward compatibility" dual-write. This matters
+    // here specifically because maker.js is loaded later on this page (for
+    // its render helpers) and stamps those SAME bare names directly as
+    // inline styles when it loads -- once a custom property is set inline,
+    // landing.css's var(--token-x, fallback) cascade for that property can
+    // never take over again, so updating --token-* alone cannot undo it.
+    // Setting the bare name here too lets a later __cortxtReapplyLandingTheme()
+    // call (see below) win that race by running after maker.js. See #387.
     Object.keys(colors).forEach(function (name) {
       root.style.setProperty("--token-" + name, colors[name]);
+      root.style.setProperty("--" + name, colors[name]);
     });
+    // landing.css derives a few of its own differently-named custom
+    // properties from --token-background/--token-layer/--token-accent
+    // rather than reusing maker.js's bare names verbatim -- set those too.
+    root.style.setProperty("--canvas", colors.background);
+    root.style.setProperty("--raised", colors.layer);
     if (typeof colors.accent === "string") {
       var bright = mixWithWhite(colors.accent, 0.7);
+      root.style.setProperty("--bright", bright);
       root.style.setProperty("--atlas-on-accent", pickReadableTextColor([bright, colors.accent]));
     }
   }
@@ -142,6 +159,18 @@
 
   var active = readStoredPreset();
   applyPreset(active);
+
+  // `widgets/maker.js` is loaded later in the page for its render helpers
+  // (createSequenceStepper, renderNodeToDom) and, as a side effect of being
+  // loaded at all, unconditionally stamps its own bundled DEFAULT_TOKENS
+  // (the old v1 palette) onto document.documentElement on script load --
+  // clobbering the --token-*/--accent/etc. this file just set. Expose a
+  // reapply hook so the page can restore the active preset immediately
+  // after maker.js has run (see index.astro, called right after the
+  // maker.js <script> tag, before that stomp gets a chance to paint).
+  window.__cortxtReapplyLandingTheme = function () {
+    applyPreset(active);
+  };
 
   document.addEventListener("DOMContentLoaded", function () {
     var toggle = document.getElementById("theme-toggle");
