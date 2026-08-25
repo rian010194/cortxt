@@ -321,3 +321,20 @@ def test_load_presets_schema_rejects_missing_preset(tmp_path):
 def test_default_presets_path_points_at_platform_owned_source():
     assert DEFAULT_PRESETS_PATH == PRESETS_PATH
     assert DEFAULT_PRESETS_PATH.is_file()
+
+
+def test_load_preset_tokens_honors_envelope_default_preset(tmp_path):
+    """load_preset_tokens() must read `default_preset` from the loaded
+    envelope, not hardcode DEFAULT_PRESET_ID. A caller-supplied `path` whose
+    envelope declares a different default_preset must get that preset, not
+    silently fall back to quiet-slate."""
+    envelope = json.loads(PRESETS_PATH.read_text(encoding="utf-8"))
+    custom = copy.deepcopy(envelope)
+    custom["default_preset"] = "graphite-ink"
+
+    custom_path = tmp_path / "custom-presets.json"
+    custom_path.write_text(json.dumps(custom), encoding="utf-8")
+
+    doc = load_preset_tokens(path=custom_path)
+    assert doc["colors"] == custom["presets"]["graphite-ink"]["colors"]
+    assert doc["colors"] != custom["presets"]["quiet-slate"]["colors"]

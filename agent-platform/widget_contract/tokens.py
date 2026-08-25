@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from widget_contract.registry import TYPES, VISUAL_TOKENS_PRESET_IDS
+from widget_contract.registry import TYPES
 from widget_contract.validation import ValidationError, validate
 
 
@@ -158,7 +158,15 @@ def _relative_luminance(color: str) -> float | None:
 
 
 def contrast_ratio(color_a: str, color_b: str) -> float | None:
-    """WCAG contrast ratio between two hex colors, or None if either is unparseable."""
+    """WCAG contrast ratio between two hex colors, or None if either is unparseable.
+
+    Alpha is ignored (see `_parse_hex`): a color like "#ffffff0d" is treated as
+    fully opaque "#ffffff", not composited against a backdrop. Do not pass
+    translucent colors to this function expecting a real composited ratio —
+    it will be wrong (e.g. "#ffffff0d" vs "#101216" returns ~18.75, not the
+    true composited ratio of ~1.06). Only opaque colors should be checked
+    against it.
+    """
     lum_a = _relative_luminance(color_a)
     lum_b = _relative_luminance(color_b)
     if lum_a is None or lum_b is None:
@@ -239,8 +247,11 @@ def load_preset_tokens(
     the quiet-slate preset when no preset is requested.
 
     Parameters:
-        preset: Preset id (one of VISUAL_TOKENS_PRESET_IDS). Defaults to
-            "quiet-slate" (DEFAULT_PRESET_ID) when None.
+        preset: Preset id (one of VISUAL_TOKENS_PRESET_IDS). Defaults to the
+            presets file's own `default_preset` field when None (this is
+            "quiet-slate"/DEFAULT_PRESET_ID for the shipped presets file, but
+            a caller-supplied `path` with a different `default_preset` is
+            honored).
         path: Optional path to the presets JSON file. Defaults to
             agent-platform/widget/presets/visual-tokens.v2.json.
 
@@ -250,13 +261,14 @@ def load_preset_tokens(
     Raises:
         TokensError: If the presets file is invalid, or the preset id is unknown.
     """
-    preset_id = preset or DEFAULT_PRESET_ID
-    if preset_id not in VISUAL_TOKENS_PRESET_IDS:
+    envelope = load_presets(path)
+    preset_id = preset or envelope["default_preset"]
+    if preset_id not in envelope["presets"]:
         raise TokensError(
-            f"Unknown preset '{preset_id}'; expected one of {', '.join(VISUAL_TOKENS_PRESET_IDS)}"
+            f"Unknown preset '{preset_id}'; expected one of "
+            f"{', '.join(sorted(envelope['presets']))}"
         )
 
-    envelope = load_presets(path)
     return envelope["presets"][preset_id]
 
 
