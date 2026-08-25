@@ -57,12 +57,23 @@ class ThemeResolverError(ValueError):
 DEFAULT_THEME_PREFERENCE_PATH = Path.home() / ".cortxt" / "theme.json"
 
 
-def _known_preset_ids(presets_path: str | Path | None = None) -> frozenset[str]:
-    """The set of valid preset ids, sourced from the visual-tokens.v2 collection."""
+def _load_presets_envelope(presets_path: str | Path | None = None) -> dict[str, Any]:
+    """Load the visual-tokens.v2 envelope, wrapping load failures as ThemeResolverError.
+
+    Shared by every place that needs either the known preset ids or the
+    collection's own ``default_preset`` -- keeping this as one helper means
+    the fallback preset id in :func:`resolve_theme` is always read from the
+    same envelope used to validate ids, never a separate/hardcoded source.
+    """
     try:
-        envelope = load_presets(presets_path)
+        return load_presets(presets_path)
     except TokensError as err:
         raise ThemeResolverError(f"Cannot resolve theme: presets unavailable ({err})") from err
+
+
+def _known_preset_ids(presets_path: str | Path | None = None) -> frozenset[str]:
+    """The set of valid preset ids, sourced from the visual-tokens.v2 collection."""
+    envelope = _load_presets_envelope(presets_path)
     return frozenset(envelope["presets"])
 
 
@@ -108,7 +119,12 @@ def load_persisted_theme(path: str | Path | None = None) -> str | None:
     return preset_id
 
 
-def save_persisted_theme(preset_id: str, path: str | Path | None = None) -> None:
+def save_persisted_theme(
+    preset_id: str,
+    path: str | Path | None = None,
+    *,
+    presets_path: str | Path | None = None,
+) -> None:
     """Persist a theme preference for this user, replacing any prior value.
 
     Parameters:
@@ -116,12 +132,20 @@ def save_persisted_theme(preset_id: str, path: str | Path | None = None) -> None
             the visual-tokens.v2 collection.
         path: Optional override for the preference file location. Defaults to
             :data:`DEFAULT_THEME_PREFERENCE_PATH`.
+        presets_path: Optional override for the visual-tokens.v2 presets file
+            used to validate preset_id. Defaults to
+            ``widget_contract.tokens.DEFAULT_PRESETS_PATH``. Pass the same
+            value used with :func:`resolve_theme` when working against a
+            non-default presets collection, so a preset id is never accepted
+            here only to be rejected by a later :func:`resolve_theme` call
+            against that same collection.
 
     Raises:
-        ThemeResolverError: If preset_id is not a known preset, or the
-            preference file cannot be written.
+        ThemeResolverError: If preset_id is not a known preset in the
+            presets collection at presets_path, or the preference file
+            cannot be written.
     """
-    _validate_preset_id(preset_id)
+    _validate_preset_id(preset_id, presets_path=presets_path)
 
     target_path = Path(path) if path is not None else DEFAULT_THEME_PREFERENCE_PATH
     target_dir = target_path.parent
@@ -138,6 +162,8 @@ def save_persisted_theme(preset_id: str, path: str | Path | None = None) -> None
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2)
                 handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(tmp_name, target_path)
         except BaseException:
             # Clean up the temp file if the write or the atomic replace failed
@@ -181,8 +207,11 @@ def resolve_theme(
            function; call :func:`save_persisted_theme` explicitly to persist
            a choice the user wants to keep across invocations.
         2. The persisted per-user preference (see :func:`load_persisted_theme`).
-        3. The default preset (``widget_contract.tokens.DEFAULT_PRESET_ID``,
-           ``quiet-slate``).
+        3. The presets collection's own ``default_preset`` field (this is
+           ``widget_contract.tokens.DEFAULT_PRESET_ID``, i.e. ``quiet-slate``,
+           for the shipped presets file, but a caller-supplied
+           ``presets_path`` with a different ``default_preset`` is honored --
+           never the hardcoded constant).
 
     Parameters:
         session_override: Optional preset id scoped to this call/session.
@@ -201,6 +230,7 @@ def resolve_theme(
         ThemeResolverError: If session_override is provided but not a known
             preset id, or if the presets collection itself cannot be loaded.
     """
+    session_override = (session_override or "").strip()
     if session_override:
         _validate_preset_id(session_override, presets_path=presets_path)
         return session_override
@@ -218,4 +248,4 @@ def resolve_theme(
         else:
             return persisted
 
-    return DEFAULT_PRESET_ID
+    return _load_presets_envelope(presets_path)["default_preset"]

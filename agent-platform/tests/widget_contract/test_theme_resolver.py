@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from widget_contract import theme_resolver
 from widget_contract.tokens import DEFAULT_PRESET_ID
 from widget_contract.theme_resolver import (
     ThemeResolverError,
@@ -15,6 +16,46 @@ from widget_contract.theme_resolver import (
 # Known preset ids shipped in widget/presets/visual-tokens.v2.json (issue #373).
 OTHER_PRESET_ID = "graphite-ink"
 THIRD_PRESET_ID = "soft-dusk"
+
+# A stand-in path used to select the fake custom presets collection below.
+# It is never touched as a real filesystem path -- _fake_load_presets()
+# intercepts it before any file I/O happens.
+CUSTOM_PRESETS_PATH = "sentinel://custom-presets-collection"
+
+# A custom visual-tokens.v2-shaped collection with its own default_preset
+# ("graphite-ink", not the shipped "quiet-slate") and its own preset id set
+# (deliberately omits "quiet-slate" entirely). Used to prove resolve_theme()
+# and save_persisted_theme() honor presets_path rather than falling back to
+# the hardcoded DEFAULT_PRESET_ID constant or the shipped presets file.
+CUSTOM_DEFAULT_PRESET_ID = "graphite-ink"
+CUSTOM_ENVELOPE = {
+    "schema_version": 2,
+    "default_preset": CUSTOM_DEFAULT_PRESET_ID,
+    "presets": {"graphite-ink": {}, "soft-dusk": {}},
+}
+
+_real_load_presets = theme_resolver.load_presets
+
+
+def _fake_load_presets(path=None):
+    """Return CUSTOM_ENVELOPE for CUSTOM_PRESETS_PATH, else load for real.
+
+    theme_resolver only ever reads envelope["presets"] (for the known-id
+    set) and envelope["default_preset"] (for the fallback), so a minimal
+    fake envelope is sufficient -- no need to satisfy the full
+    visual-tokens.v2 JSON schema (which fixes the preset id set and would
+    make a collection lacking "quiet-slate" impossible to construct via a
+    real file).
+    """
+    if path == CUSTOM_PRESETS_PATH:
+        return CUSTOM_ENVELOPE
+    return _real_load_presets(path)
+
+
+@pytest.fixture
+def custom_presets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make CUSTOM_PRESETS_PATH resolve to CUSTOM_ENVELOPE for this test."""
+    monkeypatch.setattr(theme_resolver, "load_presets", _fake_load_presets)
 
 
 @pytest.fixture
@@ -146,3 +187,68 @@ def test_default_preference_path_is_under_dot_cortxt():
 
     assert DEFAULT_THEME_PREFERENCE_PATH.parent.name == ".cortxt"
     assert DEFAULT_THEME_PREFERENCE_PATH.name == "theme.json"
+
+
+# -- presets_path: custom presets collection ---------------------------------
+#
+# These exercise a presets_path pointing at a *different* presets collection
+# than the shipped visual-tokens.v2.json -- one with its own default_preset
+# and its own preset id set. Regression coverage for two review findings on
+# PR #382 (issue #374): resolve_theme()'s no-override/no-persisted fallback
+# was returning the hardcoded DEFAULT_PRESET_ID constant instead of the
+# loaded envelope's own default_preset, and save_persisted_theme() had no
+# presets_path parameter at all, so it always validated against the default
+# shipped presets file regardless of which collection the caller was
+# actually working against.
+
+
+def test_resolve_theme_fallback_uses_custom_collection_default_preset(
+    custom_presets, pref_path: Path
+):
+    resolved = resolve_theme(path=pref_path, presets_path=CUSTOM_PRESETS_PATH)
+    assert resolved == CUSTOM_DEFAULT_PRESET_ID == "graphite-ink"
+    # Must not be the hardcoded module constant -- the custom collection's
+    # default differs from it, and the constant isn't even a valid preset id
+    # in this collection.
+    assert resolved != DEFAULT_PRESET_ID
+
+
+def test_save_persisted_theme_validates_against_custom_presets_path(
+    custom_presets, pref_path: Path
+):
+    # Success: "soft-dusk" is a valid preset id in the custom collection.
+    save_persisted_theme("soft-dusk", path=pref_path, presets_path=CUSTOM_PRESETS_PATH)
+    assert load_persisted_theme(pref_path) == "soft-dusk"
+
+    # Rejection: DEFAULT_PRESET_ID ("quiet-slate") is valid in the *default*
+    # shipped collection but is not a member of the custom collection --
+    # save_persisted_theme must validate against presets_path, not silently
+    # fall back to the default shipped presets file.
+    with pytest.raises(ThemeResolverError):
+        save_persisted_theme(DEFAULT_PRESET_ID, path=pref_path, presets_path=CUSTOM_PRESETS_PATH)
+
+    # A rejected save must not clobber the previously-persisted valid value.
+    assert load_persisted_theme(pref_path) == "soft-dusk"
+
+
+def test_save_persisted_theme_without_presets_path_still_uses_default_collection(pref_path: Path):
+    # No presets_path override: behavior must be unchanged from before this
+    # fix -- validation is against the default shipped presets collection.
+    save_persisted_theme(DEFAULT_PRESET_ID, path=pref_path)
+    assert load_persisted_theme(pref_path) == DEFAULT_PRESET_ID
+
+
+# -- session_override whitespace handling -------------------------------------
+
+
+def test_whitespace_only_session_override_falls_through_to_persisted(pref_path: Path):
+    save_persisted_theme(OTHER_PRESET_ID, path=pref_path)
+    assert resolve_theme("   ", path=pref_path) == OTHER_PRESET_ID
+
+
+def test_whitespace_only_session_override_falls_through_to_default(pref_path: Path):
+    assert resolve_theme("   ", path=pref_path) == DEFAULT_PRESET_ID
+
+
+def test_session_override_with_surrounding_whitespace_is_stripped(pref_path: Path):
+    assert resolve_theme(f"  {OTHER_PRESET_ID}  ", path=pref_path) == OTHER_PRESET_ID
