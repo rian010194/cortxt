@@ -1,0 +1,246 @@
+{
+  "schema_version": 2,
+  "default_preset": "quiet-slate",
+  "presets": {
+    "quiet-slate": {
+      "schema_version": 1,
+      "colors": {
+        "background": "#101216",
+        "surface": "#181b20",
+        "layer": "#ffffff0d",
+        "hover": "#ffffff15",
+        "stroke": "#5b6471",
+        "strong": "#727c8a",
+        "text": "#e7ebf0",
+        "muted": "#8d97a3",
+        "dim": "#65717f",
+        "accent": "#8fa3c7",
+        "blue": "#7885a7",
+        "ok": "#a8d5ba",
+        "warn": "#d8c49a",
+        "bad": "#d9a6b2"
+      },
+      "typography": {
+        "sans": [
+          "Inter",
+          "Segoe UI Variable",
+          "Segoe UI",
+          "sans-serif"
+        ],
+        "mono": [
+          "Cascadia Code",
+          "Cascadia Mono",
+          "Consolas",
+          "monospace"
+        ],
+        "size_base": "12px",
+        "size_small": "10px",
+        "size_heading": "14px",
+        "weight_normal": 400,
+        "weight_bold": 600
+      },
+      "spacing": {
+        "unit": "4px",
+        "gap_small": "4px",
+        "gap_medium": "8px",
+        "gap_large": "16px",
+        "padding_small": "6px",
+        "padding_medium": "12px"
+      },
+      "radius": {
+        "small": "4px",
+        "medium": "6px",
+        "large": "12px"
+      },
+      "density": {
+        "row_height": "28px",
+        "card_max_height": "520px",
+        "grid_min_card_width": "280px"
+      },
+      "effects": {
+        "glow_ok": "rgba(168, 213, 186, 0.55)",
+        "glow_warn": "rgba(216, 196, 154, 0.5)",
+        "glow_bad": "rgba(217, 166, 178, 0.5)",
+        "glow_accent": "rgba(143, 163, 199, 0.55)",
+        "sheen_top": "rgba(255, 255, 255, 0.07)",
+        "shadow_panel": "0 12px 32px rgba(0, 0, 0, 0.45)",
+        "shadow_instrument": "0 24px 64px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
+        "shadow_lift": "0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+        "bezel": "inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 -10px 24px rgba(0, 0, 0, 0.25)"
+      },
+      "motion": {
+        "duration_fast": "120ms",
+        "duration_medium": "200ms",
+        "duration_live": "1600ms",
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "easing_pulse": "ease-in-out"
+      },
+      "backdrop": {
+        "grid": "linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)",
+        "grid_size": "28px",
+        "scanline": "repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px)",
+        "vignette": "radial-gradient(120% 90% at 50% 0%, rgba(143, 163, 199, 0.3) 0%, transparent 60%)"
+      }
+    },
+    "graphite-ink": {
+      "schema_version": 1,
+      "colors": {
+        "background": "#101112",
+        "surface": "#181a1c",
+        "layer": "#ffffff0d",
+        "hover": "#ffffff15",
+        "stroke": "#606368",
+        "strong": "#777b81",
+        "text": "#e8e9e9",
+        "muted": "#909397",
+        "dim": "#686d73",
+        "accent": "#8aa2ba",
+        "blue": "#73849a",
+        "ok": "#8fb89a",
+        "warn": "#c6b580",
+        "bad": "#c98f96"
+      },
+      "typography": {
+        "sans": [
+          "Inter",
+          "Segoe UI Variable",
+          "Segoe UI",
+          "sans-serif"
+        ],
+        "mono": [
+          "Cascadia Code",
+          "Cascadia Mono",
+          "Consolas",
+          "monospace"
+        ],
+        "size_base": "12px",
+        "size_small": "10px",
+        "size_heading": "14px",
+        "weight_normal": 400,
+        "weight_bold": 600
+      },
+      "spacing": {
+        "unit": "4px",
+        "gap_small": "4px",
+        "gap_medium": "8px",
+        "gap_large": "16px",
+        "padding_small": "6px",
+        "padding_medium": "12px"
+      },
+      "radius": {
+        "small": "4px",
+        "medium": "6px",
+        "large": "12px"
+      },
+      "density": {
+        "row_height": "28px",
+        "card_max_height": "520px",
+        "grid_min_card_width": "280px"
+      },
+      "effects": {
+        "glow_ok": "rgba(143, 184, 154, 0.38)",
+        "glow_warn": "rgba(198, 181, 128, 0.34)",
+        "glow_bad": "rgba(201, 143, 150, 0.34)",
+        "glow_accent": "rgba(138, 162, 186, 0.34)",
+        "sheen_top": "rgba(255, 255, 255, 0.07)",
+        "shadow_panel": "0 12px 32px rgba(0, 0, 0, 0.45)",
+        "shadow_instrument": "0 24px 64px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
+        "shadow_lift": "0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+        "bezel": "inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 -10px 24px rgba(0, 0, 0, 0.25)"
+      },
+      "motion": {
+        "duration_fast": "120ms",
+        "duration_medium": "200ms",
+        "duration_live": "1600ms",
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "easing_pulse": "ease-in-out"
+      },
+      "backdrop": {
+        "grid": "linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)",
+        "grid_size": "28px",
+        "scanline": "repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px)",
+        "vignette": "radial-gradient(120% 90% at 50% 0%, rgba(74, 89, 104, 0.24) 0%, transparent 60%)"
+      }
+    },
+    "soft-dusk": {
+      "schema_version": 1,
+      "colors": {
+        "background": "#12131a",
+        "surface": "#1a1c25",
+        "layer": "#ffffff0d",
+        "hover": "#ffffff15",
+        "stroke": "#5f6375",
+        "strong": "#767b8e",
+        "text": "#ececf1",
+        "muted": "#9699a9",
+        "dim": "#6e7385",
+        "accent": "#9a9dc8",
+        "blue": "#837fa8",
+        "ok": "#abd2bd",
+        "warn": "#d9c69d",
+        "bad": "#d7a8bd"
+      },
+      "typography": {
+        "sans": [
+          "Inter",
+          "Segoe UI Variable",
+          "Segoe UI",
+          "sans-serif"
+        ],
+        "mono": [
+          "Cascadia Code",
+          "Cascadia Mono",
+          "Consolas",
+          "monospace"
+        ],
+        "size_base": "12px",
+        "size_small": "10px",
+        "size_heading": "14px",
+        "weight_normal": 400,
+        "weight_bold": 600
+      },
+      "spacing": {
+        "unit": "4px",
+        "gap_small": "4px",
+        "gap_medium": "8px",
+        "gap_large": "16px",
+        "padding_small": "6px",
+        "padding_medium": "12px"
+      },
+      "radius": {
+        "small": "4px",
+        "medium": "6px",
+        "large": "12px"
+      },
+      "density": {
+        "row_height": "28px",
+        "card_max_height": "520px",
+        "grid_min_card_width": "280px"
+      },
+      "effects": {
+        "glow_ok": "rgba(171, 210, 189, 0.55)",
+        "glow_warn": "rgba(217, 198, 157, 0.5)",
+        "glow_bad": "rgba(215, 168, 189, 0.5)",
+        "glow_accent": "rgba(154, 157, 200, 0.55)",
+        "sheen_top": "rgba(255, 255, 255, 0.07)",
+        "shadow_panel": "0 12px 32px rgba(0, 0, 0, 0.45)",
+        "shadow_instrument": "0 24px 64px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
+        "shadow_lift": "0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+        "bezel": "inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 -10px 24px rgba(0, 0, 0, 0.25)"
+      },
+      "motion": {
+        "duration_fast": "120ms",
+        "duration_medium": "200ms",
+        "duration_live": "1600ms",
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "easing_pulse": "ease-in-out"
+      },
+      "backdrop": {
+        "grid": "linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)",
+        "grid_size": "28px",
+        "scanline": "repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px)",
+        "vignette": "radial-gradient(120% 90% at 50% 0%, rgba(154, 157, 200, 0.3) 0%, transparent 60%)"
+      }
+    }
+  }
+}

@@ -190,6 +190,32 @@ VISUAL_TOKENS_SCHEMA = {
     },
 }
 
+# Fixed preset ids, decided by the operator ahead of issue #373 (quiet-slate
+# is the default). New presets are out of scope for this issue.
+VISUAL_TOKENS_PRESET_IDS = ("quiet-slate", "graphite-ink", "soft-dusk")
+
+# visual-tokens.v2: a versioned envelope carrying the fixed three-preset
+# collection. Each preset value is a full visual-tokens.v1-shaped document
+# (same VISUAL_TOKENS_SCHEMA), so any single preset can be handed to a v1
+# caller unchanged. Role names never vary between presets, only values.
+VISUAL_TOKENS_PRESETS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["schema_version", "default_preset", "presets"],
+    "properties": {
+        "schema_version": {"const": 2},
+        "default_preset": {"enum": list(VISUAL_TOKENS_PRESET_IDS)},
+        "presets": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": list(VISUAL_TOKENS_PRESET_IDS),
+            "properties": {
+                preset_id: VISUAL_TOKENS_SCHEMA for preset_id in VISUAL_TOKENS_PRESET_IDS
+            },
+        },
+    },
+}
+
 RUNTIME_USAGE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -249,6 +275,7 @@ TYPES = {
     "webhooks.status.v1": TypeEntry(WEBHOOKS_STATUS_SCHEMA, "public-metadata"),
     "pages.deploys.v1": TypeEntry(PAGES_DEPLOYS_SCHEMA, "operational"),
     "visual-tokens.v1": TypeEntry(VISUAL_TOKENS_SCHEMA, "public-metadata"),
+    "visual-tokens.v2": TypeEntry(VISUAL_TOKENS_PRESETS_SCHEMA, "public-metadata"),
     "usage-cost.v1": TypeEntry(USAGE_COST_SCHEMA, "operational"),
     "session-agents.v1": TypeEntry(SESSION_AGENTS_SCHEMA, "operational"),
     "issue.workflow.v1": TypeEntry({"type": "object"}, "public-metadata"),
