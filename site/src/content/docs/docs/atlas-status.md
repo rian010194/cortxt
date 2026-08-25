@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T09:38:01Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-25T09:41:06Z`.
 
 ### Roadmap areas
 
@@ -15,13 +15,12 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 ### Actionable frontier
 
 - CI fixture: real dispatch commit proof (#207)
-- Build: cortxt theme CLI commands (list/inspect/preview/use) (#375)
-- Build: apply theme presets across widget host, OS, landing, docs (#376)
 - Redesign: production landing page on theme preset system (#377)
 - fix(ci): agent-platform-tests/docker-tests fail collection — ModuleNotFoundError: cortxt_resilient_inference (#381)
 
 Claimed work in progress (workflow:in-progress):
-(none)
+- Build: cortxt theme CLI commands (list/inspect/preview/use) (#375)
+- Build: apply theme presets across widget host, OS, landing, docs (#376)
 
 ### Blockers
 
@@ -133,4 +132,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-25T09:38:01Z
+2026-08-25T09:41:06Z
