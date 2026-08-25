@@ -7,6 +7,7 @@ Commands:
   provider-policy  — Run provider policy evaluation (provider_policy_cli.py)
   state            — State ledger operations (state_cli.py)
   profile          — Profile management (profile_cli.py)
+  theme            — List/inspect/preview/select visual theme presets (widget_contract.tokens/theme_resolver)
   supervisor       — Supervisor operations (supervisor_cli.py)
   coding           — Coding loop execution (coding_loop_cli.py)
   rlm              — RLM node execution (rlm_child_cli.py)
@@ -167,6 +168,144 @@ def _run_profile(args: argparse.Namespace) -> ResultEnvelope:
             return ResultEnvelope(status="succeeded", artifacts=[f"profile:{args.command}"], evidence=[{"stdout": result.stdout}])
         else:
             return ResultEnvelope(status="failed", error={"category": "cli_error", "message": result.stderr or f"exit code {result.returncode}"})
+    except Exception as e:
+        return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
+
+
+# Short display name + one-line description per preset id (issue #375). The
+# visual-tokens.v2 preset documents (issue #373) carry no name/description
+# fields of their own -- only color/typography/etc. role values -- so this
+# CLI-owned metadata is the source for `theme list`/`theme inspect` display
+# text. Keyed by preset id; keep in sync with widget/presets/visual-tokens.v2.json.
+_THEME_PRESET_DISPLAY: dict[str, tuple[str, str]] = {
+    "quiet-slate": ("Quiet Slate", "Balanced dark neutral with slate-blue accents (default)."),
+    "graphite-ink": ("Graphite Ink", "Cooler ink-dark background with subdued graphite tones."),
+    "soft-dusk": ("Soft Dusk", "Warmer twilight palette with periwinkle-lavender accents."),
+}
+
+
+def _theme_display_name(preset_id: str) -> str:
+    return _THEME_PRESET_DISPLAY.get(preset_id, (preset_id, ""))[0]
+
+
+def _theme_description(preset_id: str) -> str:
+    return _THEME_PRESET_DISPLAY.get(preset_id, (preset_id, "No description available."))[1]
+
+
+def _theme_preview_tree(preset_id: str) -> dict[str, Any]:
+    """A small render tree exercising the status roles + a few UI tones.
+
+    Deliberately built from the same primitives `widget_contract.tui.render_tui`
+    already knows how to color (badge -> colorize_status for ok/warn/bad,
+    metric -> accent/strong, text -> dim label), so `theme preview` reuses the
+    existing renderer rather than reimplementing ANSI wrapping here.
+    """
+    return {
+        "render": {
+            "primitive": "stack",
+            "props": {"label": f"Theme preview: {preset_id}"},
+            "children": [
+                {
+                    "primitive": "row",
+                    "props": {},
+                    "children": [
+                        {"primitive": "badge", "props": {"value": "ok"}},
+                        {"primitive": "badge", "props": {"value": "warn"}},
+                        {"primitive": "badge", "props": {"value": "bad"}},
+                    ],
+                },
+                {"primitive": "metric", "props": {"label": "accent", "value": "Sample metric"}},
+                {"primitive": "text", "props": {"label": "muted", "value": "Sample muted text"}},
+            ],
+        }
+    }
+
+
+def _run_theme(args: argparse.Namespace) -> ResultEnvelope:
+    """List, inspect, preview, and select visual theme presets (issue #375).
+
+    Consumes the issue #373 preset documents and the issue #374 resolver
+    directly -- no subprocess indirection, matching the `widget generate`/
+    `edit`/`remove`/`reset` subcommands added for issue #369.
+    """
+    ap_path = _get_agent_platform_path()
+    if str(ap_path) not in sys.path:
+        sys.path.insert(0, str(ap_path))
+    from widget_contract.theme_resolver import ThemeResolverError, resolve_theme, save_persisted_theme
+    from widget_contract.tokens import TokensError, load_preset_tokens, load_presets
+    from widget_contract.tui import render_tui
+
+    command = args.theme_command
+    pref_path = getattr(args, "path", None)
+
+    try:
+        if command == "list":
+            envelope = load_presets()
+            active = resolve_theme(path=pref_path)
+            preset_ids = sorted(envelope["presets"])
+            for preset_id in preset_ids:
+                marker = "*" if preset_id == active else " "
+                name = _theme_display_name(preset_id)
+                desc = _theme_description(preset_id)
+                print(f"{marker} {preset_id:<14} {name:<14} {desc}")
+            return ResultEnvelope(
+                status="succeeded",
+                artifacts=[f"theme:list:{len(preset_ids)}"],
+                evidence=[{"presets": preset_ids, "active": active}],
+            )
+
+        if command == "inspect":
+            preset_id = getattr(args, "preset", None) or resolve_theme(path=pref_path)
+            tokens = load_preset_tokens(preset_id)
+            print(f"Preset: {preset_id} ({_theme_display_name(preset_id)})")
+            print("Colors:")
+            for key, value in tokens.get("colors", {}).items():
+                print(f"  {key:<12} {value}")
+            print("Typography:")
+            for key, value in tokens.get("typography", {}).items():
+                print(f"  {key:<14} {value}")
+            return ResultEnvelope(
+                status="succeeded",
+                artifacts=[f"theme:inspect:{preset_id}"],
+                evidence=[{"preset": preset_id, "tokens": tokens}],
+            )
+
+        if command == "preview":
+            preset_id = getattr(args, "preset", None) or resolve_theme(path=pref_path)
+            tokens = load_preset_tokens(preset_id)
+            if getattr(args, "no_ansi", False):
+                force_ansi: bool | None = False
+            elif getattr(args, "force_ansi", False):
+                force_ansi = True
+            else:
+                force_ansi = None
+            truecolor = bool(getattr(args, "truecolor", False))
+            rendered = render_tui(
+                _theme_preview_tree(preset_id), tokens=tokens, force_ansi=force_ansi, truecolor=truecolor
+            )
+            print(rendered)
+            return ResultEnvelope(
+                status="succeeded",
+                artifacts=[f"theme:preview:{preset_id}"],
+                evidence=[{"preset": preset_id, "truecolor": truecolor}],
+            )
+
+        if command == "use":
+            preset_id = args.preset
+            save_persisted_theme(preset_id, path=pref_path)
+            print(f"Theme preference set to '{preset_id}' ({_theme_display_name(preset_id)}).")
+            return ResultEnvelope(
+                status="succeeded",
+                artifacts=[f"theme:use:{preset_id}"],
+                evidence=[{"preset": preset_id}],
+            )
+
+        return ResultEnvelope(
+            status="failed",
+            error={"category": "input_error", "message": f"Unknown theme command: {command}"},
+        )
+    except (ThemeResolverError, TokensError) as err:
+        return ResultEnvelope(status="failed", error={"category": "input_error", "message": str(err)})
     except Exception as e:
         return ResultEnvelope(status="failed", error={"category": "runtime_error", "message": str(e)})
 
@@ -2739,6 +2878,28 @@ def main(argv: list[str] | None = None) -> int:
     profile_parser.add_argument("name", nargs="?", help="Profile name")
     profile_parser.add_argument("--json", action="store_true", help="Output as JSON")
     profile_parser.set_defaults(func=_run_profile)
+
+    # theme subcommand (issue #375)
+    theme_parser = sub.add_parser("theme", help="List, inspect, preview, and select visual theme presets")
+    theme_sub = theme_parser.add_subparsers(dest="theme_command", required=True)
+    theme_list = theme_sub.add_parser("list", help="Show the three presets with id, name, and a short description")
+    theme_list.add_argument("--path", type=Path, help="Preference file override (default: ~/.cortxt/theme.json)")
+    theme_list.set_defaults(func=_run_theme)
+    theme_inspect = theme_sub.add_parser("inspect", help="Print resolved token values (colors, typography) for a preset")
+    theme_inspect.add_argument("preset", nargs="?", help="Preset id (default: the currently resolved theme)")
+    theme_inspect.add_argument("--path", type=Path, help="Preference file override (default: ~/.cortxt/theme.json)")
+    theme_inspect.set_defaults(func=_run_theme)
+    theme_preview = theme_sub.add_parser("preview", help="Render an ANSI/truecolor sample using a preset (does not change the persisted selection)")
+    theme_preview.add_argument("preset", nargs="?", help="Preset id (default: the currently resolved theme)")
+    theme_preview.add_argument("--path", type=Path, help="Preference file override (default: ~/.cortxt/theme.json)")
+    theme_preview.add_argument("--truecolor", action="store_true", help="Derive 24-bit ANSI colors directly from the preset's hex values")
+    theme_preview.add_argument("--force-ansi", action="store_true", help="Force ANSI output even when stdout is not a TTY")
+    theme_preview.add_argument("--no-ansi", action="store_true", help="Force plain text output (no ANSI escape codes)")
+    theme_preview.set_defaults(func=_run_theme)
+    theme_use = theme_sub.add_parser("use", help="Set the session/persisted theme preference (resolver precedence: session > persisted > default)")
+    theme_use.add_argument("preset", help="Preset id to persist")
+    theme_use.add_argument("--path", type=Path, help="Preference file override (default: ~/.cortxt/theme.json)")
+    theme_use.set_defaults(func=_run_theme)
 
     # supervisor subcommand
     supervisor_parser = sub.add_parser("supervisor", help="Supervisor operations")
