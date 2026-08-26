@@ -4,14 +4,14 @@
       "id": "candidates",
       "title": "Candidates",
       "spec": "widget_contract/specs/candidates-0.1.yaml",
-      "artifact": "candidates.json",
+      "artifact": "fixtures/candidates.json",
       "hint": "cortxt widget --view candidates --repo OWNER/REPO"
     },
     {
       "id": "pulse",
       "title": "Pulse",
       "spec": "widget_contract/specs/session-pulse-0.1.yaml",
-      "artifact": "session-pulse.json",
+      "artifact": "fixtures/session-pulse.json",
       "hint": "cortxt widget --view session-pulse"
     },
     {

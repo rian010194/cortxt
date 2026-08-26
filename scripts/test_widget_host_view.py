@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Offline checks for Widget Host Grid View with Optional Tabs (Issue #344).
+"""Offline checks for the integrated Widget OS dock host (Issues #369/#390).
 
 Run: python scripts/test_widget_host_view.py
 Prints ok/FAIL lines and exits non-zero on any failure.
 
 Covers:
-1. Grid view is default with responsive container (.wgrid, auto-fit, minmax).
-2. Card-per-widget rendering (.wcard, id="card-...") with bounded card sizing (max-height, overflow-y auto).
-3. Responsive host window sizing in grid mode (.window.grid-mode).
-4. Grid / Tabs view toggle in titlebar with localStorage persistence ("cortxt-view", default "grid").
-5. Legacy tabs view preserved (.tabs, .tab, selectTab, buildShell).
+1. Dock workspace and integrated Maker pane are the default host surface.
+2. Widget cards remain bounded and scroll internally.
+3. Window and Maker pane sizing persist locally.
+4. Dock layout supports split panes, tabs, drag/drop, and reset.
+5. Maker can collapse and resize without leaving the host.
 6. Preserved poll loop and backoff (pollState, nextInterval, pollAll, constants).
 7. Preserved action forms and copy command (probeActions, actionHost, runAction, actionForm, copyCommand, .candidate-cmd).
 8. Preserved composed rendering (renderComposed, tree.composed).
-9. Preserved link to maker page (maker.html).
+9. Maker is mounted into the host.
 10. Node syntax check (node --check) passes on the inline script.
 11. serve.py remains loopback read-only with no POST handler.
 12. Zero a/o/u-with-diacritics across all touched files.
@@ -45,12 +45,9 @@ def main() -> int:
     check("agent-platform/widget/index.html exists", index_html_path.is_file())
     html = index_html_path.read_text(encoding="utf-8")
 
-    # 1. Grid as default view with responsive container
-    check("grid container class (.wgrid) exists in HTML/CSS", ".wgrid" in html and "id=\"grid-view\"" in html)
-    check("grid uses repeat(auto-fit, minmax(...)) responsive layout",
-          "grid-template-columns:repeat(auto-fit,minmax(" in html or
-          "grid-template-columns: repeat(auto-fit, minmax(" in html or
-          "grid-template-columns:repeat(auto-fit, minmax(" in html)
+    # 1. Integrated dock workspace and Maker pane.
+    check("dock root exists", 'id="dock-root"' in html and ".dock-root" in html)
+    check("integrated maker pane exists", 'id="maker-pane"' in html and ".maker-pane" in html)
 
     # 2. Card-per-widget rendering with bounded card sizing
     check("widget card wrapper class (.wcard) defined", ".wcard" in html)
@@ -59,26 +56,14 @@ def main() -> int:
     check("widget card height is bounded (max-height)",
           "max-height:400px" in html or "max-height: 400px" in html or
           bool(re.search(r"\.wcard\s*\{[^}]*max-height:\s*\d+px", html)))
-    check("card creation per manifest widget in buildShell",
-          'card.className="wcard"' in html and 'card.id="card-"+w.id' in html)
+    check("dock renders widget content", "renderWidget" in html and "renderCanvasView" in html)
 
-    # 3. Responsive host window sizing in grid mode
-    check("window grid mode class defined (.window.grid-mode)", ".window.grid-mode" in html)
-    check("window starts in grid-mode by default", 'class="window grid-mode"' in html)
-
-    # 4. Grid / Tabs view toggle with localStorage persistence
-    check("view toggle container present in titlebar", 'class="view-toggle"' in html or 'id="view-toggle"' in html)
-    check("Grid toggle button present", 'id="btn-grid"' in html and "Grid" in html)
-    check("Tabs toggle button present", 'id="btn-tabs"' in html and "Tabs" in html)
-    check("localStorage key 'cortxt-view' used for persistence", "cortxt-view" in html)
-    check("default view fallback is grid", '||"grid"' in html or "|| 'grid'" in html)
-    check("setViewMode function defined to switch views", "function setViewMode(" in html or "const setViewMode=" in html)
-
-    # 5. Legacy tabs view preserved
-    check("tabs container present", 'id="tabs"' in html)
-    check("selectTab function present", "selectTab" in html)
-    check("buildShell function present", "buildShell" in html)
-    check("tab sections created for legacy mode", 'sec.className="tab"' in html or 'sec.className="tab"+' in html)
+    # 3-5. Persistent window, dock, and Maker-pane controls.
+    check("window size persistence exists", "cortxt-window-size" in html and "applyWindowSize" in html)
+    check("maker width persistence exists", "cortxt-maker-pane-width" in html and "initMakerPaneResize" in html)
+    check("maker collapse control exists", 'id="maker-collapse-toggle"' in html and "initMakerPaneCollapse" in html)
+    check("dock layout reset exists", "dockTree.reset" in html and "Reset layout" in html)
+    check("dock script is loaded", '<script src="dock.js"></script>' in html)
 
     # 6. Preserved poll loop and backoff
     match = re.search(r"<script>(.*?)</script>", html, re.DOTALL)
@@ -104,8 +89,8 @@ def main() -> int:
     check("renderComposed function present", "renderComposed" in script)
     check("composed branch on tree.composed present", "tree.composed" in script)
 
-    # 9. Preserved maker link
-    check("link to maker.html present", "maker.html" in html)
+    # 9. Integrated Maker mount
+    check("WidgetMaker mounts into maker pane", "WidgetMaker?.mount?.($(\"maker-pane\"))" in html)
 
     # 10. Node syntax check
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as tmp:
@@ -128,7 +113,6 @@ def main() -> int:
     # 12. Diacritics check across all touched/checked files
     touched_files = [
         AP / "widget" / "index.html",
-        AP / "widget" / "maker.html",
         AP / "widget" / "maker.js",
         AP / "widget" / "widgets.json",
         AP / "widget" / "session-pulse.json",

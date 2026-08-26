@@ -523,4 +523,3 @@
 
   global.CortxtDock = { DockTree: DockTree, defaultTree: defaultTree };
 })(window);
-

@@ -738,6 +738,7 @@
       polyline.setAttribute("stroke-width", "2");
       polyline.setAttribute("stroke-linecap", "round");
       polyline.setAttribute("stroke-linejoin", "round");
+      polyline.setAttribute("pathLength", "300"); // issue #377: normalizes length so the CSS draw-in dasharray/dashoffset works regardless of geometry
       svg.append(polyline);
 
       // Dots
@@ -1034,6 +1035,79 @@
   }
 
   /**
+   * WCAG relative luminance / contrast helpers (mirrors
+   * widget_contract/tokens.py's `_relative_luminance`/`contrast_ratio` --
+   * kept in sync by hand since this file has no build step to share Python).
+   * Used to pick a text color that actually clears AA contrast against the
+   * `--blue`-to-`--accent` gradient (issue #376 review finding 2): no
+   * single literal color clears 4.5:1 across every preset -- the shipped
+   * v1 default palette's blue/accent are dark/saturated (wants light text)
+   * while the visual-tokens.v2 presets' blue/accent are pastel/lighter
+   * (wants dark text) -- so this picks whichever of black/white maximizes
+   * the worst-case contrast against the actual resolved colors instead of
+   * hardcoding one.
+   */
+  function _hexToRgb(hex) {
+    if (typeof hex !== "string") return null;
+    let v = hex.trim();
+    if (v[0] !== "#") return null;
+    v = v.slice(1);
+    if (v.length === 4 || v.length === 8) v = v.slice(0, v.length === 4 ? 3 : 6);
+    if (v.length === 3) v = v.split("").map(function (ch) { return ch + ch; }).join("");
+    if (v.length !== 6) return null;
+    const num = parseInt(v, 16);
+    if (Number.isNaN(num)) return null;
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+
+  function _srgbChannelToLinear(channel) {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+
+  function _relativeLuminance(hex) {
+    const rgb = _hexToRgb(hex);
+    if (!rgb) return null;
+    return 0.2126 * _srgbChannelToLinear(rgb.r) + 0.7152 * _srgbChannelToLinear(rgb.g) + 0.0722 * _srgbChannelToLinear(rgb.b);
+  }
+
+  function _contrastRatio(hexA, hexB) {
+    const la = _relativeLuminance(hexA);
+    const lb = _relativeLuminance(hexB);
+    if (la === null || lb === null) return null;
+    const lighter = Math.max(la, lb);
+    const darker = Math.min(la, lb);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  /**
+   * Pick whichever of black/white maximizes the worst-case (minimum)
+   * contrast ratio against every color in `hexColors`. Falls back to
+   * `fallback` (default white) if none of the colors are parseable.
+   */
+  function pickReadableTextColor(hexColors, fallback) {
+    const candidates = ["#000000", "#ffffff"];
+    let best = fallback || "#ffffff";
+    let bestScore = -1;
+    candidates.forEach(function (candidate) {
+      let minRatio = Infinity;
+      let any = false;
+      (hexColors || []).forEach(function (bg) {
+        const ratio = _contrastRatio(candidate, bg);
+        if (ratio !== null) {
+          any = true;
+          minRatio = Math.min(minRatio, ratio);
+        }
+      });
+      if (any && minRatio > bestScore) {
+        bestScore = minRatio;
+        best = candidate;
+      }
+    });
+    return best;
+  }
+
+  /**
    * Apply visual tokens to a DOM element (defaults to document.documentElement :root).
    * Sets both --token-* custom properties and base theme variables for backward compatibility.
    */
@@ -1058,6 +1132,11 @@
       if (c.ok) { el.style.setProperty("--token-ok", c.ok); el.style.setProperty("--ok", c.ok); }
       if (c.warn) { el.style.setProperty("--token-warn", c.warn); el.style.setProperty("--warn", c.warn); }
       if (c.bad) { el.style.setProperty("--token-bad", c.bad); el.style.setProperty("--bad", c.bad); }
+      if (c.blue && c.accent) {
+        // Text sitting on the .swimlane .marker.running / .active
+        // linear-gradient(--blue, --accent) fill -- see pickReadableTextColor.
+        el.style.setProperty("--marker-running-text", pickReadableTextColor([c.blue, c.accent], "#ffffff"));
+      }
     }
 
     if (tokens.typography && typeof tokens.typography === "object") {
@@ -2263,6 +2342,7 @@
     DEFAULT_TOKENS: DEFAULT_TOKENS,
     defaultTokens: defaultTokens,
     applyTokens: applyTokens,
+    pickReadableTextColor: pickReadableTextColor,
     createSequenceStepper: createSequenceStepper,
     startLivingDemo: startLivingDemo,
     mount: mount,
