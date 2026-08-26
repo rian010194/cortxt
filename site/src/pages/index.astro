@@ -156,5 +156,104 @@ const controlPrinciples = [
     </main>
     <footer class="shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><a href="/docs/">Documentation -&gt;</a></footer>
 
+    <script src="/widgets/maker.js" is:inline></script>
+    <script is:inline>
+      // maker.js's auto-init stamps its bundled default v1 colors onto
+      // <html> as a side effect of loading -- undo that immediately so the
+      // landing page's fixed quiet-slate default (or the visitor's saved
+      // toggle choice) isn't clobbered. See landing-theme.js and issue #387.
+      if (typeof window.__cortxtReapplyLandingTheme === "function") {
+        window.__cortxtReapplyLandingTheme();
+      }
+    </script>
+    <script is:inline>
+      document.addEventListener("DOMContentLoaded", async function () {
+        if (typeof WidgetMaker === "undefined") return;
+
+        // Issue #377: the landing page renders a fixed quiet-slate default
+        // (or the visitor's local toggle choice, see /landing-theme.js) --
+        // it deliberately does NOT fetch /widgets/tokens.json here, because
+        // that document reflects whatever preset an operator most recently
+        // resolved server-side via `cortxt theme use` and would silently
+        // override the landing page's own --token-* variables out from
+        // under the toggle. The proof-band mini-widgets below inherit the
+        // landing page's already-resolved --token-*/--accent/--text
+        // variables from :root via landing.css's var(--token-*, fallback)
+        // cascade, so they stay in sync with the toggle for free.
+
+        // Load multi-state demo data
+        let agentsData = null;
+        let usageData = null;
+        try {
+          const aRes = await fetch("/widgets/fixtures/agents_data.json");
+          if (aRes.ok) agentsData = await aRes.json();
+        } catch (e) {}
+        try {
+          const uRes = await fetch("/widgets/fixtures/usage_data.json");
+          if (uRes.ok) usageData = await uRes.json();
+        } catch (e) {}
+
+        // Hydrate each widget mount
+        const mounts = document.querySelectorAll(".proof-widget-mount");
+        for (const mount of mounts) {
+          const artifactPath = mount.getAttribute("data-artifact");
+          if (!artifactPath) continue;
+
+          try {
+            const res = await fetch("/widgets/" + artifactPath);
+            if (!res.ok) continue;
+            const artifact = await res.json();
+            const tree = artifact.render || artifact;
+
+            mount.replaceChildren();
+            WidgetMaker.renderNodeToDom(tree, mount);
+
+            const card = mount.closest(".proof-pair-card");
+            const widgetId = card ? card.getAttribute("data-widget-id") : null;
+
+            if (widgetId === "session-agents" && agentsData && agentsData.states) {
+              // WidgetMaker.startLivingDemo() expects (spec, fixtureData, container,
+              // options) and has no external step-callback -- createSequenceStepper()
+              // is the helper whose (state, index) callback contract actually matches
+              // this per-step tree-mutation body. See issue #387.
+              WidgetMaker.createSequenceStepper(agentsData.states, function (state) {
+                const stepTree = JSON.parse(JSON.stringify(tree));
+                if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) {
+                  stepTree.children[1].props.items = state.agents;
+                }
+                if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) {
+                  stepTree.children[0].props.value = state.active_count;
+                }
+                mount.replaceChildren();
+                WidgetMaker.renderNodeToDom(stepTree, mount);
+              }, 2800);
+            } else if (widgetId === "usage-cost" && usageData && usageData.states) {
+              WidgetMaker.createSequenceStepper(usageData.states, function (state) {
+                const u = state.usage;
+                const stepTree = JSON.parse(JSON.stringify(tree));
+                if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) stepTree.children[0].props.value = u.total_cost_usd;
+                if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) stepTree.children[1].props.value = u.total_tokens;
+                if (stepTree.children && stepTree.children[2] && stepTree.children[2].props) {
+                  stepTree.children[2].props.categories = u.runtime_names;
+                  stepTree.children[2].props.values = u.runtime_tokens;
+                }
+                if (stepTree.children && stepTree.children[3] && stepTree.children[3].props) {
+                  stepTree.children[3].props.categories = u.model_names;
+                  stepTree.children[3].props.values = u.model_costs;
+                }
+                if (stepTree.children && stepTree.children[4] && stepTree.children[4].props) {
+                  stepTree.children[4].props.points = u.history_points;
+                  stepTree.children[4].props.series = u.history_tokens;
+                }
+                mount.replaceChildren();
+                WidgetMaker.renderNodeToDom(stepTree, mount);
+              }, 3000);
+            }
+          } catch (err) {
+            console.error("Failed to render widget:", artifactPath, err);
+          }
+        }
+      });
+    </script>
   </body>
 </html>
