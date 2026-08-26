@@ -458,7 +458,9 @@ def _credential_segment(value: str) -> str:
 
 
 def _signing_key_credential_id(granted_by: str, kid: str) -> str:
-    return f"{MANDATE_SIGNING_KEY_CREDENTIAL_ID}/{_credential_segment(granted_by)}/{_credential_segment(kid)}"
+    # CredentialBroker validates credential_id against [A-Za-z0-9_-]+ (no
+    # "/"), so segments are joined with "--" rather than a path separator.
+    return f"{MANDATE_SIGNING_KEY_CREDENTIAL_ID}--{_credential_segment(granted_by)}--{_credential_segment(kid)}"
 
 
 def store_signing_key_in_broker(private_key_pem: bytes, *, granted_by: str, kid: str, broker: Any) -> None:

@@ -723,6 +723,32 @@ def test_ac19_v1_clean_cutover_is_unknown_schema(keypair):
     assert decision.reason == mandate.REASON_UNKNOWN_SCHEMA_VERSION
 
 
+def test_ac18b_credential_id_valid_against_real_credential_broker(keypair, tmp_path):
+    """Regression: `_signing_key_credential_id` must produce an id the real
+    `CredentialBroker` accepts. A fake in-memory broker (as used by
+    test_ac18 below) has no id-format validation, so it previously masked a
+    bug where the constructed id embedded literal "/" separators against
+    CredentialBroker's [A-Za-z0-9_-]+ validation -- discovered live via
+    `cortxt mandate issue --confirm` during the ADR-042 continuity-proof
+    dogfood run (2026-08-26)."""
+    from security.credential_broker import CredentialBroker
+
+    private_key, _ = keypair
+    from cryptography.hazmat.primitives import serialization
+    pem = private_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                    serialization.NoEncryption())
+    broker = CredentialBroker(
+        store_dir=tmp_path / "broker",
+        encrypt=lambda data: bytes(b ^ 0xFF for b in data),
+        decrypt=lambda data: bytes(b ^ 0xFF for b in data),
+    )
+    mandate.store_signing_key_in_broker(pem, granted_by="rikard", kid="continuity-proof-2026-08-26", broker=broker)
+    loaded = mandate.load_signing_key_from_broker(
+        granted_by="rikard", kid="continuity-proof-2026-08-26", broker=broker, purpose="test",
+    )
+    assert mandate.public_key_hex_from_private_key(loaded) == mandate.public_key_hex_from_private_key(private_key)
+
+
 def test_ac18_broker_credentials_are_tuple_specific_and_collision_safe(keypair):
     private_key, _ = keypair
     from cryptography.hazmat.primitives import serialization
