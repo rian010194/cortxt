@@ -770,6 +770,25 @@ def test_ac18_broker_credentials_are_tuple_specific_and_collision_safe(keypair):
     assert broker.loads[-1][1:] == ("mandate-cli", "rotate mandate key")
 
 
+def test_ac18c_credential_id_rejects_naive_delimiter_collision():
+    """Adversarial regression: a naive `sep.join([encode(granted_by),
+    encode(kid)])` scheme is not collision-safe when the separator can also
+    appear inside an encoded segment. These two distinct tuples are exactly
+    the shape that collides under a "--"-joined, unpadded-base64url naive
+    scheme (each pair concatenates to the same joined value across the
+    boundary); the real implementation must still tell them apart."""
+    id_a = mandate._signing_key_credential_id("granted_by-x", "y-kid")
+    id_b = mandate._signing_key_credential_id("granted_by", "x-y-kid")
+    assert id_a != id_b
+
+
+def test_ac18c_credential_id_matches_broker_regex_and_is_deterministic():
+    import re
+    id_value = mandate._signing_key_credential_id("rikard", "continuity-proof-2026-08-26")
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", id_value)
+    assert id_value == mandate._signing_key_credential_id("rikard", "continuity-proof-2026-08-26")
+
+
 @pytest.mark.parametrize("raw", [
     "not-json",
     '{"operator":{"kid":123}}',

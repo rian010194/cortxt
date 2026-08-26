@@ -21,6 +21,7 @@ signed.
 from __future__ import annotations
 
 import base64
+import hashlib
 import secrets
 import uuid
 from dataclasses import dataclass, field
@@ -448,19 +449,23 @@ def issue_mandate(
     return IssuedMandate(envelope=envelope, private_key_pem=private_key_pem, public_key_hex=public_key_hex)
 
 
-def _credential_segment(value: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise ValueError("credential identity segments must be non-empty strings")
-    encoded = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
-    if not encoded:
-        raise ValueError("invalid credential identity segment")
-    return encoded
-
-
 def _signing_key_credential_id(granted_by: str, kid: str) -> str:
     # CredentialBroker validates credential_id against [A-Za-z0-9_-]+ (no
-    # "/"), so segments are joined with "--" rather than a path separator.
-    return f"{MANDATE_SIGNING_KEY_CREDENTIAL_ID}--{_credential_segment(granted_by)}--{_credential_segment(kid)}"
+    # "/"). Joining base64url-encoded segments with a literal separator is
+    # not collision-safe: urlsafe_b64encode's alphabet includes "-", so a
+    # segment can itself contain the separator sequence, letting two
+    # distinct (granted_by, kid) pairs produce the identical joined string.
+    # Instead, hash a length-prefixed (netstring-style) encoding of the
+    # tuple -- length prefixes make the pre-image unambiguous, and SHA-256
+    # collision resistance makes two distinct tuples mapping to the same id
+    # computationally infeasible. The hex digest is also trivially valid
+    # against the broker's id regex.
+    for value in (granted_by, kid):
+        if not isinstance(value, str) or not value:
+            raise ValueError("credential identity segments must be non-empty strings")
+    payload = f"{len(granted_by)}:{granted_by}\n{len(kid)}:{kid}".encode("utf-8")
+    digest = hashlib.sha256(payload).hexdigest()
+    return f"{MANDATE_SIGNING_KEY_CREDENTIAL_ID}--{digest}"
 
 
 def store_signing_key_in_broker(private_key_pem: bytes, *, granted_by: str, kid: str, broker: Any) -> None:
