@@ -6,6 +6,8 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-08-26 | ADR-042 | Accepted - status Proposed -> Accepted by operator approval 2026-08-26, including a pre-acceptance amendment (A-F) that retains the existing Cortxt OS canvas/window/app-shell model, names Work Console the default app, and canonicalizes the cockpit's role as Execution Inspector (superseding the "Run Inspector" working name) | #401 |
+| 2026-08-26 | ADR-042 | Added - Work- and Mandate-First Product Surface with Replaceable Secure Execution (Proposed; product-positioning review, no implementation issue assigned) | #401 |
 | 2026-08-24 | ADR-041 | Accepted - status Proposed -> Accepted by operator approval 2026-08-24 | #364 |
 | 2026-08-24 | ADR-041 | Added - reopens ADR-015 on the state-ownership dimension only; permits backend state-sync capability as a new route family on the MCP server (ADR-024), opt-in per state category | #364 |
 | 2026-08-22 | ADR-040 | Accepted - status Proposed -> Accepted by operator approval 2026-08-22 | #273 |
