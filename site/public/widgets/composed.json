@@ -1,0 +1,63 @@
+{
+  "contract_version": "0.1",
+  "widget": {
+    "id": "pulse-dashboard",
+    "version": "0.1"
+  },
+  "composed": true,
+  "render": {
+    "primitive": "stack",
+    "state": "ready",
+    "props": {
+      "label": "System Overview"
+    },
+    "children": [
+      {
+        "primitive": "panel",
+        "state": "ready",
+        "props": {
+          "label": "Pulse Metrics"
+        },
+        "children": [
+          {
+            "primitive": "metric",
+            "state": "ready",
+            "props": {
+              "label": "Active sessions",
+              "value": 2
+            }
+          }
+        ]
+      },
+      {
+        "primitive": "panel",
+        "state": "ready",
+        "props": {
+          "label": "Workstreams"
+        },
+        "children": [
+          {
+            "primitive": "table",
+            "state": "ready",
+            "props": {
+              "label": "Workstreams",
+              "columns": [
+                "workstream_id",
+                "status",
+                "updated_at"
+              ],
+              "rows": [
+                {
+                  "workstream_id": "ws-builder-339",
+                  "status": "running",
+                  "updated_at": "2026-08-23T19:00:00Z"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+

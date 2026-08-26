@@ -153,15 +153,13 @@ def main() -> int:
     res_node = subprocess.run(["node", "-e", node_test], capture_output=True, text=True, cwd=str(REPO))
     check("maker.js token functions execute in Node", "NODE_TOKENS_OK" in res_node.stdout)
 
-    # 6. maker.html contains tokens editor markers
-    maker_html_path = AP / "widget" / "maker.html"
-    check("maker.html exists", maker_html_path.is_file())
-    maker_html = maker_html_path.read_text(encoding="utf-8")
-    check("maker.html contains tokens editor textarea", "tokens-editor-input" in maker_html or "<textarea" in maker_html)
-    check("maker.html contains Apply button", "Apply" in maker_html)
-    check("maker.html contains Reset button", "Reset to defaults" in maker_html or "tokens-reset-btn" in maker_html)
-    check("maker.html contains error line", "tokens-error-line" in maker_html or "error-banner" in maker_html)
-    check("maker.html wires applyTokens", "applyTokens" in maker_html)
+    # 6. The integrated Maker module contains the token editor.
+    maker_surface = maker_js_path.read_text(encoding="utf-8")
+    check("integrated maker contains tokens editor textarea", "data-mk-tokens-input" in maker_surface)
+    check("integrated maker contains Apply button", 'data-mk-action="apply-tokens">Apply' in maker_surface)
+    check("integrated maker contains Reset button", 'data-mk-action="reset-tokens">Reset' in maker_surface)
+    check("integrated maker contains error line", "data-mk-tokens-error" in maker_surface)
+    check("integrated maker wires applyTokens", "applyTokens" in maker_surface)
 
     # 7. index.html contains tokens application marker
     index_html_path = AP / "widget" / "index.html"
@@ -174,7 +172,7 @@ def main() -> int:
     res_mjs = subprocess.run(["node", "--check", str(maker_js_path)], capture_output=True, text=True)
     check("node --check passes on maker.js", res_mjs.returncode == 0)
 
-    for html_path in (maker_html_path, index_html_path):
+    for html_path in (index_html_path,):
         html_content = html_path.read_text(encoding="utf-8")
         scripts = re.findall(r"<script(?:\s+[^>]*)?>(.*?)</script>", html_content, re.DOTALL)
         for idx, script_body in enumerate(scripts):
@@ -193,7 +191,6 @@ def main() -> int:
     checked_files = [
         AP / "widget" / "tokens.json",
         AP / "widget" / "maker.js",
-        AP / "widget" / "maker.html",
         AP / "widget" / "index.html",
         AP / "widget_contract" / "registry.py",
         AP / "widget_contract" / "tokens.py",

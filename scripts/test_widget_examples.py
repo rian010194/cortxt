@@ -98,45 +98,28 @@ def main() -> int:
     check("webhooks tui_text contains Webhooks heading and hooks table",
           "=== Webhooks ===" in tui_by_id.get("webhooks", "") and "[Hooks]" in tui_by_id.get("webhooks", ""))
 
-    # 4. Landing page source contains proof band markers
+    # 4. Landing page points to the full Widget OS instead of duplicating it.
     landing_astro = (REPO / "site" / "src" / "pages" / "index.astro").read_text(encoding="utf-8")
     landing_css = (REPO / "site" / "src" / "styles" / "landing.css").read_text(encoding="utf-8")
 
-    check("index.astro contains proof-band section", "proof-band" in landing_astro)
-    check("index.astro contains proof-band-scroll container", "proof-band-scroll" in landing_astro)
-    check("index.astro contains proof-pair-card articles", "proof-pair-card" in landing_astro)
-    check("index.astro contains proof-cli-pane and proof-widget-pane",
-          "proof-cli-pane" in landing_astro and "proof-widget-pane" in landing_astro)
-    check("index.astro contains proof-cli-tui and proof-widget-mount",
-          "proof-cli-tui" in landing_astro and "proof-widget-mount" in landing_astro)
-    check("index.astro references maker.js", "/widgets/maker.js" in landing_astro or "maker.js" in landing_astro)
-    check("index.astro contains live-badge marker", "live-badge" in landing_astro)
-    check("index.astro contains living demo stepper integration",
-          "startLivingDemo" in landing_astro or "createSequenceStepper" in landing_astro)
+    check("index.astro links to Widget OS", 'href="/widgets/"' in landing_astro)
+    check("index.astro contains control-plane hero", "control-map" in landing_astro)
+    check("landing.css styles control-plane hero", ".control-map" in landing_css)
 
-    check("landing.css contains proof-band styles", ".proof-band" in landing_css)
-    check("landing.css contains horizontal scroll styles",
-          "overflow-x:auto" in landing_css or "overflow-x: auto" in landing_css)
-    check("landing.css contains scroll-snap styles",
-          "scroll-snap-type:x mandatory" in landing_css or "scroll-snap-type: x mandatory" in landing_css)
-    check("landing.css contains proof-pair-card flex layout", ".proof-pair-card" in landing_css)
-    check("landing.css contains live-badge and pulse-dot animation",
-          ".live-badge" in landing_css and ".pulse-dot" in landing_css and "@keyframes pulse" in landing_css)
-
-    # 5. Maker page contains horizontal examples band
-    maker_html = (AP / "widget" / "maker.html").read_text(encoding="utf-8")
-    check("maker.html contains examples-band container", "examples-band" in maker_html)
-    check("maker.html contains examples-scroll container", "examples-scroll" in maker_html)
-    check("maker.html contains example-chip styling", ".example-chip" in maker_html)
-    check("maker.html contains scroll-snap-type on examples-scroll", "scroll-snap-type: x mandatory" in maker_html)
-    check("maker.html renders examples band dynamically", "renderExamplesBand" in maker_html)
+    # 5. Integrated Maker module contains the examples band.
+    maker_html = (AP / "widget" / "index.html").read_text(encoding="utf-8")
+    maker_module = (AP / "widget" / "maker.js").read_text(encoding="utf-8")
+    check("integrated Maker contains examples-band container", "examples-band" in maker_module)
+    check("integrated Maker contains examples-scroll container", "examples-scroll" in maker_module)
+    check("host styles example chips", ".example-chip" in maker_html)
+    check("integrated Maker renders examples dynamically", "renderExamplesBand" in maker_module)
 
     # 6. Public docs widget page contains horizontal examples band
     docs_html = (REPO / "site" / "public" / "widgets" / "index.html").read_text(encoding="utf-8")
     check("docs index.html contains examples-band container", "examples-band" in docs_html)
     check("docs index.html contains examples-scroll container", "examples-scroll" in docs_html)
     check("docs index.html contains example-chip styling", ".example-chip" in docs_html)
-    check("docs index.html renders examples band", "renderExamplesBand" in docs_html)
+    check("docs index.html mounts integrated Maker", 'id="maker-pane"' in docs_html)
 
     # 7. Multi-state living fixtures exist
     agents_data_file = REPO / "site" / "public" / "widgets" / "fixtures" / "agents_data.json"
@@ -182,7 +165,7 @@ def main() -> int:
             Path(tname).unlink(missing_ok=True)
             check(f"node --check passes on {label} inline script #{i}", res.returncode == 0)
 
-    check_inline_scripts(maker_html, "maker.html")
+    check_inline_scripts(maker_html, "host index.html")
     check_inline_scripts(docs_html, "docs index.html")
 
     # 10. Fixtures contain zero secret-shaped markers
@@ -232,7 +215,6 @@ def main() -> int:
         REPO / "site" / "public" / "widgets" / "index.html",
         REPO / "site" / "public" / "widgets" / "fixtures" / "session-agents.json",
         REPO / "site" / "public" / "widgets" / "fixtures" / "agents_data.json",
-        AP / "widget" / "maker.html",
         AP / "widget" / "maker.js",
         AP / "widget" / "examples.json",
         AP / "widget" / "session-agents.json",

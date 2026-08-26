@@ -121,7 +121,7 @@ def test_widget_has_pulse_view_without_post():
     widget_dir = Path(__file__).resolve().parents[2] / "widget"
     html = (widget_dir / "index.html").read_text(encoding="utf-8")
     manifest = json.loads((widget_dir / "widgets.json").read_text(encoding="utf-8"))
-    assert any(w["id"] == "pulse" and w["artifact"] == "session-pulse.json" for w in manifest["widgets"])
+    assert any(w["id"] == "pulse" and w["artifact"] == "fixtures/session-pulse.json" for w in manifest["widgets"])
     assert "renderGenericNode" in html
     assert "loadManifest" in html
     assert "do_POST" not in html

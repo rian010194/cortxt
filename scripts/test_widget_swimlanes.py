@@ -219,14 +219,13 @@ def main() -> int:
     # 6. Shared maker.js and index.html contain swimlane rendering + pulse animation CSS
     maker_src = (AP / "widget" / "maker.js").read_text(encoding="utf-8")
     index_html_src = (AP / "widget" / "index.html").read_text(encoding="utf-8")
-    maker_html_src = (AP / "widget" / "maker.html").read_text(encoding="utf-8")
 
     check("maker.js contains swimlane primitive branch", 'primitive === "swimlane"' in maker_src)
     check("index.html contains swimlane primitive branch", 'primitive==="swimlane"' in index_html_src or 'primitive === "swimlane"' in index_html_src)
     check("maker.js contains active marker class assignment", 'active running' in maker_src or 'swimlane-marker active' in maker_src or '.marker.active' in maker_src or 'markerClass += " active' in maker_src)
     check("index.html contains pulse animation keyframes", '@keyframes pulse' in index_html_src)
     check("index.html contains active marker pulse styling", '.marker.active' in index_html_src or '.marker.running' in index_html_src)
-    check("maker.html contains pulse animation keyframes", '@keyframes pulse' in maker_html_src)
+    check("integrated host contains pulse animation keyframes", '@keyframes pulse' in index_html_src)
 
     # 7. Living fixture multi-state sequence (>= 3 states)
     fixture_path = REPO / "scripts" / "fixtures" / "widget_maker" / "agents_data.json"
@@ -275,7 +274,7 @@ def main() -> int:
     res_site = subprocess.run(["node", "--check", str(REPO / "site" / "public" / "widgets" / "maker.js")], capture_output=True, text=True)
     check("node --check passes on site/public/widgets/maker.js", res_site.returncode == 0)
 
-    for h_path in [AP / "widget" / "index.html", AP / "widget" / "maker.html", REPO / "site" / "public" / "widgets" / "index.html"]:
+    for h_path in [AP / "widget" / "index.html", REPO / "site" / "public" / "widgets" / "index.html"]:
         h_text = h_path.read_text(encoding="utf-8")
         scripts = re.findall(r"<script(?:\s+[^>]*)?>(.*?)</script>", h_text, re.DOTALL)
         for idx, s in enumerate(scripts):
@@ -296,7 +295,6 @@ def main() -> int:
         AP / "widget_contract" / "specs" / "session-agents-0.1.yaml",
         AP / "cli" / "unified_cli.py",
         AP / "widget" / "maker.js",
-        AP / "widget" / "maker.html",
         AP / "widget" / "index.html",
         AP / "widget" / "widgets.json",
         AP / "widget" / "session-agents.json",

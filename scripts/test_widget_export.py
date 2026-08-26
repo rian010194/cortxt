@@ -302,10 +302,10 @@ def main() -> int:
             print("  Node STDERR:", node_res.stderr)
 
     # 7. UI and documentation markers
-    maker_html = (AP / "widget" / "maker.html").read_text(encoding="utf-8")
-    check("maker.html has Export package marker", "exportWidgetPackage" in maker_html or "Export package" in maker_html)
-    check("maker.html has Import package marker", "section-import" in maker_html or "import-textarea" in maker_html)
-    check("maker.html has cortxt widget load --package command marker", "cortxt widget load --package" in maker_html)
+    maker_html = (AP / "widget" / "maker.js").read_text(encoding="utf-8")
+    check("integrated Maker has Export package marker", "exportWidgetPackage" in maker_html or "Export package" in maker_html)
+    check("integrated Maker has Import package marker", "data-mk-section=\"import\"" in maker_html or "data-mk-import-textarea" in maker_html)
+    check("integrated Maker has cortxt widget load --package command marker", "cortxt widget load --package" in maker_html)
 
     docs_file = REPO / "docs" / "widget-package-format.md"
     check("docs/widget-package-format.md exists", docs_file.is_file())
@@ -324,7 +324,7 @@ def main() -> int:
     checked_files = [
         AP / "widget_contract" / "package.py",
         AP / "cli" / "unified_cli.py",
-        AP / "widget" / "maker.html",
+        AP / "widget" / "maker.js",
         REPO / "docs" / "widget-package-format.md",
         Path(__file__),
     ]

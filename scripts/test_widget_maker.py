@@ -11,8 +11,8 @@ Covers:
 4. Every manifest widget has a valid offline fixture that renders without error.
 5. CLI side-by-side data (hint command + CLI JSON output) present for each widget.
 6. Fixtures contain zero secret-shaped markers (no sk-, cfat_, ghp_, -----BEGIN, webhook secret patterns).
-7. Loopback maker page (agent-platform/widget/maker.html) exists with gallery, studio, and CLI side-by-side.
-8. Loopback index.html links to maker.html while preserving host behavior.
+7. The loopback host integrates the Maker pane with gallery, studio, and CLI side-by-side.
+8. The host mounts Maker into the dock workspace instead of linking to a second page.
 9. Public docs page (site/public/widgets/index.html) exists, is wired into docs nav, and renders with shared JS.
 10. serve.py remains read-only (no POST handler, no custom endpoints).
 11. Zero a/o/u-with-diacritics across all touched files.
@@ -159,23 +159,16 @@ render:
         for s in secrets_found:
             print("  FAIL secret leak detected:", s)
 
-    # 7. Loopback maker page exists with required markers
-    maker_html_path = AP / "widget" / "maker.html"
-    check("agent-platform/widget/maker.html exists", maker_html_path.is_file())
-    if maker_html_path.is_file():
-        maker_html = maker_html_path.read_text(encoding="utf-8")
-        check("maker.html contains gallery section", "gallery-grid" in maker_html or "section-gallery" in maker_html)
-        check("maker.html contains studio / spec editor", "studio-spec" in maker_html or "studio-container" in maker_html)
-        check("maker.html contains CLI side-by-side elements", "cli-cmd" in maker_html and "cli-json" in maker_html)
-        check("maker.html includes maker.js", "maker.js" in maker_html)
-        check("maker.html has link back to host", "index.html" in maker_html)
-
-    # 8. Loopback index.html links to maker.html
+    # 7-8. Maker is integrated into the loopback host.
     index_html_path = AP / "widget" / "index.html"
     check("agent-platform/widget/index.html exists", index_html_path.is_file())
     if index_html_path.is_file():
         index_html = index_html_path.read_text(encoding="utf-8")
-        check("index.html contains link to maker.html", "maker.html" in index_html)
+        check("index.html contains integrated maker pane", 'id="maker-pane"' in index_html)
+        check("index.html mounts WidgetMaker", "WidgetMaker?.mount" in index_html)
+        check("integrated maker contains gallery section", "gallery-grid" in maker_src)
+        check("integrated maker contains studio / spec editor", "studio-container" in maker_src)
+        check("integrated maker contains CLI side-by-side elements", "cli-cmd" in maker_src and "cli-json" in maker_src)
 
     # 9. Public docs page exists with required markers and site integration
     docs_page_path = REPO / "site" / "public" / "widgets" / "index.html"
@@ -183,7 +176,7 @@ render:
     if docs_page_path.is_file():
         docs_html = docs_page_path.read_text(encoding="utf-8")
         check("docs page contains prototype gallery", "view-gallery" in docs_html or "gallery-grid" in docs_html)
-        check("docs page contains spec studio", "view-studio" in docs_html or "studio-spec-input" in docs_html)
+        check("docs page contains integrated maker mount", 'id="maker-pane"' in docs_html)
         check("docs page contains CLI side-by-side views", "cli-cmd" in docs_html and "cli-json" in docs_html)
         check("docs page references maker.js", "maker.js" in docs_html)
 
@@ -200,7 +193,6 @@ render:
     # 11. Diacritics check across all touched/created files
     touched_files = [
         AP / "widget" / "maker.js",
-        AP / "widget" / "maker.html",
         AP / "widget" / "index.html",
         AP / "widget" / "widgets.json",
         AP / "widget" / "candidates.json",

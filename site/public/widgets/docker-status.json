@@ -1,0 +1,93 @@
+{
+  "contract_version": "0.1",
+  "widget": {
+    "id": "docker-status",
+    "version": "0.1"
+  },
+  "render": {
+    "primitive": "stack",
+    "state": "ready",
+    "props": {
+      "label": "Docker Status"
+    },
+    "children": [
+      {
+        "primitive": "key-value",
+        "state": "ready",
+        "props": {
+          "value": {
+            "server_version": "27.1.1",
+            "os": "linux",
+            "architecture": "x86_64",
+            "status": "running"
+          }
+        }
+      },
+      {
+        "primitive": "metric",
+        "state": "ready",
+        "props": {
+          "label": "Running",
+          "value": 2
+        }
+      },
+      {
+        "primitive": "metric",
+        "state": "ready",
+        "props": {
+          "label": "Total",
+          "value": 3
+        }
+      },
+      {
+        "primitive": "table",
+        "state": "ready",
+        "props": {
+          "label": "Containers",
+          "columns": [
+            "id",
+            "name",
+            "image",
+            "status"
+          ],
+          "rows": [
+            {
+              "id": "c1a2b3c4d5e6",
+              "name": "cortxt-redis",
+              "image": "redis:7-alpine",
+              "status": "Up 2 hours"
+            },
+            {
+              "id": "f7e8d9c0b1a2",
+              "name": "cortxt-postgres",
+              "image": "postgres:16-alpine",
+              "status": "Up 2 hours"
+            },
+            {
+              "id": "334455667788",
+              "name": "cortxt-worker-old",
+              "image": "cortxt/worker:v1",
+              "status": "Exited (0) 5 hours ago"
+            }
+          ]
+        }
+      },
+      {
+        "primitive": "list",
+        "state": "ready",
+        "props": {
+          "label": "Images",
+          "empty": "No images",
+          "items": [
+            "redis:7-alpine",
+            "postgres:16-alpine",
+            "cortxt/worker:v1"
+          ]
+        }
+      }
+    ]
+  },
+  "repo": null,
+  "error": null
+}
+
