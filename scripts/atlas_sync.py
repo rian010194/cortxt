@@ -705,7 +705,9 @@ def render_site_page(all_issues: dict, nodes: dict, global_drift: list, self_rep
 def emit_site_page(*, out_dir: Path, issues: dict, nodes: dict, global_drift: list,
                    self_repo: str, sync_time_iso: str) -> tuple[Path, bool]:
     """Render the site page and write it only when the content actually
-    changed (matching the sync's no-op discipline). Returns (path, wrote).
+    changed, ignoring the sync timestamp (AC3, same discipline as map-body
+    idempotence): identical issue data at a new timestamp is a no-op that
+    preserves the file already on disk. Returns (path, wrote).
 
     The safe-content scan (AC12) is applied before writing: a page
     containing known-bad markers is never written and raises instead, so
@@ -719,7 +721,7 @@ def emit_site_page(*, out_dir: Path, issues: dict, nodes: dict, global_drift: li
     path = out_dir / SITE_PAGE_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text(encoding="utf-8") if path.exists() else None
-    if existing == page:
+    if existing is not None and _strip_timestamp_for_diff(existing) == _strip_timestamp_for_diff(page):
         return path, False
     path.write_text(page, encoding="utf-8")
     return path, True
@@ -837,7 +839,7 @@ def emit_site_graph(*, out_dir: Path, issues: dict, nodes: dict, global_drift: l
     path = out_dir / SITE_GRAPH_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text(encoding="utf-8") if path.exists() else None
-    if existing == graph:
+    if existing is not None and _strip_timestamp_for_diff(existing) == _strip_timestamp_for_diff(graph):
         return path, False
     path.write_text(graph, encoding="utf-8")
     return path, True
@@ -857,6 +859,19 @@ def _strip_sync_timestamp(auto_text: str) -> str:
         auto_text,
         flags=re.S,
     )
+
+
+SYNC_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+
+
+def _strip_timestamp_for_diff(text: str) -> str:
+    """Normalize every embedded sync timestamp so the site page/graph
+    idempotence check (AC3, same discipline as _strip_sync_timestamp for map
+    bodies) ignores freshness-only differences. Without this, a run against
+    perfectly unchanged issue data still rewrites (and commits) the page and
+    graph on every schedule tick, because the new timestamp always differs
+    from the one already on disk -- a real bug, not intentional freshness."""
+    return SYNC_TIMESTAMP_RE.sub("<redacted-for-diff>", text)
 
 
 def extract_auto(body: str) -> Optional[str]:
