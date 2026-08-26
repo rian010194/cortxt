@@ -1,0 +1,108 @@
+{
+  "contract_version": "0.1",
+  "widget": {
+    "id": "session-agents",
+    "version": "0.1"
+  },
+  "render": {
+    "primitive": "stack",
+    "state": "ready",
+    "props": {
+      "label": "Session Agents"
+    },
+    "children": [
+      {
+        "primitive": "heading",
+        "state": "ready",
+        "props": {
+          "value": "Session Agents"
+        }
+      },
+      {
+        "primitive": "text",
+        "state": "ready",
+        "props": {
+          "value": "Live Multi-Agent Workspace"
+        }
+      },
+      {
+        "primitive": "swimlane",
+        "state": "ready",
+        "props": {
+          "columns": [
+            "Agent",
+            "Tasks"
+          ],
+          "label": "Agents",
+          "rows": [
+            {
+              "id": "agent-hermes",
+              "label": "Hermes",
+              "runtime": "hermes",
+              "status": "running",
+              "current_task": "Load context",
+              "items": [
+                {
+                  "id": "t1",
+                  "title": "Load context",
+                  "state": "running",
+                  "progress": 30
+                },
+                {
+                  "id": "t2",
+                  "title": "Execute session plan",
+                  "state": "queued",
+                  "progress": 0
+                },
+                {
+                  "id": "t3",
+                  "title": "Verification",
+                  "state": "queued",
+                  "progress": 0
+                }
+              ]
+            },
+            {
+              "id": "agent-pi",
+              "label": "Pi",
+              "runtime": "pi",
+              "status": "running",
+              "current_task": "Inspect AST",
+              "items": [
+                {
+                  "id": "t4",
+                  "title": "Inspect AST",
+                  "state": "running",
+                  "progress": 20
+                },
+                {
+                  "id": "t5",
+                  "title": "Analyze codebase invariants",
+                  "state": "queued",
+                  "progress": 0
+                }
+              ]
+            },
+            {
+              "id": "agent-codex",
+              "label": "Codex",
+              "runtime": "codex",
+              "status": "queued",
+              "current_task": null,
+              "items": [
+                {
+                  "id": "t6",
+                  "title": "Contract validation",
+                  "state": "queued",
+                  "progress": 0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "repo": null,
+  "error": null
+}

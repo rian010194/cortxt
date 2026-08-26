@@ -1,6 +1,5 @@
 ---
 import '../styles/landing.css';
-import examplesManifest from '../../public/widgets/examples.json';
 const adaptCards = [
   ['Any agent engine', 'Hermes and DSH run today behind Cortxt-owned dispatch adapters; Codex, Buzz, and a future runtime are on the same path, never as the product itself.', 'In progress'],
   ['Any model', 'Inference stays provider-neutral behind Cortxt-owned adapters, so a model swap does not touch scope, evidence, or state.', 'Available now'],
@@ -12,7 +11,6 @@ const controlPrinciples = [
   ['Evidence before approval', 'Every run returns inspectable evidence before a human makes the final call.'],
   ['Your stack, rendered', 'The operator view is generated from the workflow, never imposed on it.'],
 ];
-const examples = examplesManifest.examples || [];
 ---
 <!doctype html>
 <html lang="en">
@@ -50,7 +48,7 @@ const examples = examplesManifest.examples || [];
       <section class="hero shell">
         <div class="hero-copy">
           <p class="eyebrow"><i></i> Provider-neutral control plane</p>
-          <h1>Bring your agents,<br />models, and workflows.</h1>
+          <h1>Your AI stack.<br /><em>Under your control.</em></h1>
           <p class="lede">Keep the state, control, and evidence. Cortxt is not a chat interface, a fixed dashboard, or a single-runtime wrapper &mdash; it is the durable layer underneath whichever agents and models already fit the work, with human mandate and inspectable evidence built into every run.</p>
           <div class="actions">
             <a class="primary" href="/docs/quick-start/">Start with the CLI</a>
@@ -62,30 +60,26 @@ const examples = examplesManifest.examples || [];
           </p>
           <div class="command"><span>$</span> cortxt widget load --spec compliance.yaml</div>
         </div>
-        <div class="desktop" aria-label="Cortxt CLI, widget, and MCP working together">
-          <p class="composition-tag">Split view &bull; concept, built from real widget-contract primitives <span class="status-tag available">Available now</span></p>
-          <div class="desktop-grid"></div>
-          <section class="terminal mock-window">
-            <div class="chrome"><span class="lights"><i></i><i></i><i></i></span><b>cortxt / compliance</b></div>
-            <div class="terminal-body"><p><span>$</span> cortxt status</p><p class="dim">WORKFLOW&nbsp;&nbsp;&nbsp;STATE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RUNTIME</p><p><b>compliance</b>&nbsp; <em>running</em>&nbsp;&nbsp;&nbsp;codex</p><p class="dim">3 lanes / 2 complete / 1 active</p><p><span>$</span> <i class="cursor"></i></p></div>
-          </section>
-          <section class="widget mock-window">
-            <div class="chrome"><span class="app-icon">C</span><b>Cortxt</b><span class="window-actions">- &nbsp; square &nbsp; x</span></div>
-            <div class="mock-tabs"><b>compliance</b><span>fixture</span><span>pipeline</span></div>
-            <div class="widget-body"><div class="widget-head"><small>WORKFLOW / GENERATED FROM SPEC</small><mark>running</mark></div>
-              <div class="axis"><span></span><span>start</span><span>50%</span><span>now</span></div>
-              <div class="lane"><label>gap</label><i><b style="width:88%"></b></i></div>
-              <div class="lane"><label>statute</label><i><b style="width:61%"></b></i></div>
-              <div class="lane"><label>audit</label><i><b class="active" style="width:34%"></b></i></div>
-              <div class="chips"><span>cost <b>$0.84</b></span><span>time <b>12m</b></span><span>tok <b>28k</b></span></div>
+        <div class="control-map" aria-label="Cortxt connects human mandate to replaceable runtimes through one durable control plane">
+          <div class="map-topline"><span>ACTIVE WORKSTREAM</span><b><i></i> evidence current</b></div>
+          <div class="map-flow">
+            <article class="map-node mandate-node"><small>01 / AUTHORITY</small><strong>Human mandate</strong><span>scope &middot; limits &middot; approval</span></article>
+            <span class="map-connector"><i></i></span>
+            <article class="map-node core-node"><small>02 / CORTXT</small><strong>Durable control plane</strong><span>state &middot; routing &middot; evidence</span></article>
+            <span class="map-connector"><i></i></span>
+            <div class="runtime-stack">
+              <small>03 / REPLACEABLE</small>
+              <span><b>Codex</b><i>active</i></span>
+              <span><b>Hermes</b><i>ready</i></span>
+              <span><b>Any model</b><i>adapter</i></span>
             </div>
-          </section>
-          <section class="mcp mock-window">
-            <div class="mcp-title"><span>MCP</span><b>Evidence surface</b><i>connected</i></div>
-            <div class="mcp-row"><span class="check">+</span><p><b>Scope verified</b><small>compliance workflow</small></p></div>
-            <div class="mcp-row"><span class="check">+</span><p><b>Contracts unchanged</b><small>dispatch / snapshot</small></p></div>
-            <div class="mcp-row pending"><span>...</span><p><b>Review pending</b><small>operator approval</small></p></div>
-          </section>
+          </div>
+          <div class="map-ledger">
+            <span><small>RUN</small><b>compliance-042</b></span>
+            <span><small>STATE</small><b class="running-state">running</b></span>
+            <span><small>EVIDENCE</small><b>12 records</b></span>
+            <span><small>APPROVAL</small><b>human</b></span>
+          </div>
         </div>
       </section>
 
@@ -162,104 +156,5 @@ const examples = examplesManifest.examples || [];
     </main>
     <footer class="shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><a href="/docs/">Documentation -&gt;</a></footer>
 
-    <script src="/widgets/maker.js" is:inline></script>
-    <script is:inline>
-      // maker.js's auto-init stamps its bundled default v1 colors onto
-      // <html> as a side effect of loading -- undo that immediately so the
-      // landing page's fixed quiet-slate default (or the visitor's saved
-      // toggle choice) isn't clobbered. See landing-theme.js and issue #387.
-      if (typeof window.__cortxtReapplyLandingTheme === "function") {
-        window.__cortxtReapplyLandingTheme();
-      }
-    </script>
-    <script is:inline>
-      document.addEventListener("DOMContentLoaded", async function () {
-        if (typeof WidgetMaker === "undefined") return;
-
-        // Issue #377: the landing page renders a fixed quiet-slate default
-        // (or the visitor's local toggle choice, see /landing-theme.js) --
-        // it deliberately does NOT fetch /widgets/tokens.json here, because
-        // that document reflects whatever preset an operator most recently
-        // resolved server-side via `cortxt theme use` and would silently
-        // override the landing page's own --token-* variables out from
-        // under the toggle. The proof-band mini-widgets below inherit the
-        // landing page's already-resolved --token-*/--accent/--text
-        // variables from :root via landing.css's var(--token-*, fallback)
-        // cascade, so they stay in sync with the toggle for free.
-
-        // Load multi-state demo data
-        let agentsData = null;
-        let usageData = null;
-        try {
-          const aRes = await fetch("/widgets/fixtures/agents_data.json");
-          if (aRes.ok) agentsData = await aRes.json();
-        } catch (e) {}
-        try {
-          const uRes = await fetch("/widgets/fixtures/usage_data.json");
-          if (uRes.ok) usageData = await uRes.json();
-        } catch (e) {}
-
-        // Hydrate each widget mount
-        const mounts = document.querySelectorAll(".proof-widget-mount");
-        for (const mount of mounts) {
-          const artifactPath = mount.getAttribute("data-artifact");
-          if (!artifactPath) continue;
-
-          try {
-            const res = await fetch("/widgets/" + artifactPath);
-            if (!res.ok) continue;
-            const artifact = await res.json();
-            const tree = artifact.render || artifact;
-
-            mount.replaceChildren();
-            WidgetMaker.renderNodeToDom(tree, mount);
-
-            const card = mount.closest(".proof-pair-card");
-            const widgetId = card ? card.getAttribute("data-widget-id") : null;
-
-            if (widgetId === "session-agents" && agentsData && agentsData.states) {
-              // WidgetMaker.startLivingDemo() expects (spec, fixtureData, container,
-              // options) and has no external step-callback -- createSequenceStepper()
-              // is the helper whose (state, index) callback contract actually matches
-              // this per-step tree-mutation body. See issue #387.
-              WidgetMaker.createSequenceStepper(agentsData.states, function (state) {
-                const stepTree = JSON.parse(JSON.stringify(tree));
-                if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) {
-                  stepTree.children[1].props.items = state.agents;
-                }
-                if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) {
-                  stepTree.children[0].props.value = state.active_count;
-                }
-                mount.replaceChildren();
-                WidgetMaker.renderNodeToDom(stepTree, mount);
-              }, 2800);
-            } else if (widgetId === "usage-cost" && usageData && usageData.states) {
-              WidgetMaker.createSequenceStepper(usageData.states, function (state) {
-                const u = state.usage;
-                const stepTree = JSON.parse(JSON.stringify(tree));
-                if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) stepTree.children[0].props.value = u.total_cost_usd;
-                if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) stepTree.children[1].props.value = u.total_tokens;
-                if (stepTree.children && stepTree.children[2] && stepTree.children[2].props) {
-                  stepTree.children[2].props.categories = u.runtime_names;
-                  stepTree.children[2].props.values = u.runtime_tokens;
-                }
-                if (stepTree.children && stepTree.children[3] && stepTree.children[3].props) {
-                  stepTree.children[3].props.categories = u.model_names;
-                  stepTree.children[3].props.values = u.model_costs;
-                }
-                if (stepTree.children && stepTree.children[4] && stepTree.children[4].props) {
-                  stepTree.children[4].props.points = u.history_points;
-                  stepTree.children[4].props.series = u.history_tokens;
-                }
-                mount.replaceChildren();
-                WidgetMaker.renderNodeToDom(stepTree, mount);
-              }, 3000);
-            }
-          } catch (err) {
-            console.error("Failed to render widget:", artifactPath, err);
-          }
-        }
-      });
-    </script>
   </body>
 </html>

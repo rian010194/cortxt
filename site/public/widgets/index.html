@@ -1,1184 +1,264 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Cortxt widget prototypes and interactive spec maker: live visual renders and CLI output side-by-side.">
-  <title>Widget Prototypes &amp; Maker | Cortxt</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --atlas-bg: #080b14;
-      --atlas-panel: #0f1522;
-      --atlas-panel-2: #121a2b;
-      --atlas-border: #29324a;
-      --atlas-text: #d9deea;
-      --atlas-muted: #8792a8;
-      --atlas-accent: #7c8fff;
-      --atlas-accent-2: #4d6bfe;
-      --stroke: #29324a;
-      --strong: #3a4562;
-      --text: #f4f7ff;
-      --muted: #aab3c5;
-      --dim: #8792a8;
-      --ok: #68d391;
-      --warn: #f6c85f;
-      --bad: #ff7a90;
-      --layer: #ffffff0d;
-      --hover: #ffffff15;
-      --sans: Inter, "Segoe UI Variable", "Segoe UI", sans-serif;
-      --mono: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background:
-        radial-gradient(circle at 75% 0, #162149 0, transparent 28rem),
-        var(--atlas-bg);
-      color: var(--atlas-text);
-      font-family: var(--sans);
-      line-height: 1.5;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    a { color: var(--atlas-accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    button, select, textarea { font: inherit; }
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cortxt</title>
+<style>
+:root{color-scheme:dark;--layer:#ffffff0d;--hover:#ffffff15;--stroke:#29324a;--strong:#3a4562;--text:#f4f7ff;--muted:#aab3c5;--dim:#8792a8;--accent:#4d6bfe;--blue:#3151d8;--ok:#68d391;--warn:#f6c85f;--bad:#ff7a90;--sans:Inter,"Segoe UI Variable","Segoe UI",sans-serif;--mono:"Cascadia Code","Cascadia Mono",Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 24% 12%,#202b50 0,#0d1220 40%,#080b14 75%);font-family:var(--sans);color:var(--text);padding:16px}
+button,select{font:inherit}
+.window{position:fixed;width:1200px;max-width:calc(100vw - 32px);height:calc(100vh - 32px);max-height:900px;border:1px solid var(--strong);border-radius:14px;overflow:hidden;background:#101522d9;backdrop-filter:blur(30px) saturate(150%);box-shadow:0 32px 80px #000a,0 1px #ffffff0c inset;display:flex;flex-direction:column;box-sizing:border-box}
+.window.maximized{width:calc(100vw - 32px) !important;height:calc(100vh - 32px) !important;max-height:none !important;left:16px !important;top:16px !important}
+.window.minimized{height:34px !important;transition:height .15s ease}
+.window.minimized .content,.window.minimized .window-resize{display:none}
+.titlebar{cursor:grab}
+.titlebar.dragging{cursor:grabbing}
+.win-controls{display:flex;gap:5px;flex:none}
+.win-btn{width:20px;height:20px;border:1px solid var(--strong);border-radius:5px;background:var(--layer);color:var(--muted);font-size:11px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.win-btn:hover{color:var(--text);background:var(--hover)}
+.win-btn.close-btn:hover{color:var(--bad);border-color:var(--bad)}
+.reopen-fab{position:fixed;left:16px;bottom:16px;width:44px;height:44px;border-radius:50%;border:1px solid var(--strong);background:linear-gradient(135deg,var(--accent),var(--blue));color:#06263b;font-weight:700;cursor:pointer;box-shadow:0 12px 32px #000a;z-index:50}
+.reopen-fab.hidden{display:none}
+.window-resize{display:block;position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,var(--strong) 50%);border-bottom-right-radius:14px;z-index:5}
+.window.maximized .window-resize{display:none}
+.titlebar{height:34px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--stroke);background:#ffffff05;flex:none;padding:0 10px}
+.identity{display:flex;align-items:center;gap:8px}
+.icon{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--blue));color:#06263b;font-size:10px;font-weight:700}
+.appname{font-size:12px;color:var(--muted)}
+.toolbar{display:flex;align-items:center;gap:8px}
+.toggle-btn{border:0;background:transparent;color:var(--muted);font-size:11px;padding:2px 9px;cursor:pointer;transition:all .15s}
+.toggle-btn:hover{color:var(--text);background:var(--hover)}
+.toggle-btn.active{background:var(--accent);color:#061325;font-weight:600}
+.content{flex:1;min-height:0;padding:12px;overflow:hidden;display:flex;flex-direction:row;gap:0}
+.maker-pane{flex:none;width:340px;min-width:260px;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:10px;transition:width .2s ease,min-width .2s ease,padding .2s ease}
+.maker-pane.collapsed{width:0 !important;min-width:0;padding:0;border:0;overflow:hidden}
+.content-divider{flex:none;width:6px;margin:0 4px;cursor:col-resize;position:relative;border-radius:3px;background:var(--stroke);transition:background .1s ease}
+.content-divider::after{content:"";position:absolute;top:0;bottom:0;left:-4px;right:-4px}
+.content-divider:hover,.content-divider.dragging{background:var(--accent)}
+.content-divider.collapsed{cursor:default}
+.maker-collapse-toggle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:18px;height:26px;border:1px solid var(--strong);border-radius:5px;background:#101522ea;color:var(--muted);font-size:10px;line-height:1;cursor:pointer;display:grid;place-items:center;z-index:6}
+.maker-collapse-toggle:hover{color:var(--text);background:var(--hover);border-color:var(--accent)}
+.tab{display:flex;flex-direction:column;gap:8px}
+.hidden{display:none !important}
+.wcard{border:1px solid var(--strong);border-radius:10px;background:#0c101c80;display:flex;flex-direction:column;overflow:hidden;max-height:400px;box-shadow:0 8px 24px #0006}
+.wcard .head{padding:10px 12px;border-bottom:1px solid var(--stroke);background:#ffffff04}
+.wcard-body{flex:1;min-height:0;padding:10px 12px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.eyebrow{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.title{font-size:13px;line-height:1.35;margin-top:3px;max-width:330px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:600;background:#4d6bfe22;color:var(--accent);flex:none}
+.badge:before{content:"●"}
+.badge.ok{background:#68d39120;color:var(--ok)}
+.badge.err{background:#ff7a9020;color:var(--bad)}
+.badge.off{background:#ffffff12;color:var(--dim)}
+.empty{margin:auto;padding:18px;text-align:center;color:var(--dim);font-size:11.5px;border:1px dashed var(--stroke);border-radius:7px;width:100%}
+.pulse-status{margin:0;padding:7px 9px;border:1px solid var(--stroke);border-radius:6px;color:var(--muted);font-size:10.5px}
+.pulse-status.error{color:var(--bad)}
+.candidate-group{margin:6px 0}
+.candidate-group h3{margin:0 0 5px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.candidate-table{width:100%;border-collapse:collapse;font-size:10px}
+.candidate-table th,.candidate-table td{padding:5px 6px;border-bottom:1px solid var(--stroke);text-align:left;vertical-align:top}
+.candidate-table th{color:var(--dim);font-weight:500}
+.candidate-table td:nth-child(2){max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.candidate-chain{margin:0;padding:6px 9px;border:1px solid var(--stroke);border-radius:6px;background:var(--layer);font-size:10px;color:var(--muted)}
+.candidate-chain b{color:var(--text);font-weight:600}
+.candidate-action{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.candidate-copy{border:1px solid var(--strong);border-radius:5px;background:var(--layer);color:var(--accent);font-size:10px;padding:3px 7px;cursor:pointer}
+.candidate-copy:hover{background:var(--hover)}
+.candidate-copy.copied{color:var(--ok)}
+.candidate-cmd{font:9.5px var(--mono);color:var(--dim);border:1px solid var(--stroke);border-radius:4px;background:#0d1220;padding:2px 6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pulse-stat{padding:6px 7px;border:1px solid var(--stroke);border-radius:6px;background:var(--layer);min-width:0}
+.pulse-stat b{display:block;font:600 13px var(--mono);color:var(--text)}
+.pulse-stat span{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+.row{display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid var(--stroke)}
+.row-main{flex:1;min-width:0}
+.row-title{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.action-form{margin:2px 0 4px;padding:5px 6px;border:1px solid var(--stroke);border-radius:5px;background:var(--layer);display:flex;flex-direction:column;gap:4px;min-width:200px}
+.action-form label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+.action-ref{width:100%;font:10px var(--mono);background:#0d1220;border:1px solid var(--strong);border-radius:4px;color:var(--text);padding:3px 5px}
+.action-confirm-row{display:flex;gap:5px;align-items:center;font-size:9.5px;color:var(--muted)}
+.action-run{border:1px solid var(--accent);border-radius:5px;background:#0d1220;color:var(--accent);font-size:10px;padding:3px 8px;cursor:pointer}
+.action-run:disabled{opacity:.4;cursor:not-allowed}
+.action-run.running{color:var(--warn)}
+.action-result{margin-top:3px;font-size:9.5px;color:var(--muted);word-break:break-word}
+.action-result.ok{color:var(--ok)}
+.action-result.denied{color:var(--bad)}
+.action-result.error{color:var(--warn)}
+.chart-bars-container{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+.chart-bar-row{display:flex;align-items:center;gap:8px;font-size:10px}
+.chart-bar-label{width:90px;flex:none;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chart-bar-track{flex:1;height:8px;background:var(--layer);border:1px solid var(--stroke);border-radius:4px;overflow:hidden;position:relative}
+.chart-bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s ease}
+.chart-bar-value{width:60px;flex:none;text-align:right;font-family:var(--mono);color:var(--text);font-size:9.5px}
+.chart-line-svg{width:100%;height:70px;overflow:visible}
+.chart-line-points-row{display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-top:2px}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);filter:drop-shadow(0 0 8px rgba(77,107,254,0.85))}50%{opacity:.65;transform:scale(1.05);filter:drop-shadow(0 0 2px rgba(77,107,254,0.3))}}
+.pulse-dot{animation:pulse 1.5s ease-in-out infinite;transform-origin:center}
+.chart-latest{animation:pulse 1.5s ease-in-out infinite}
+.swimlane-container{display:flex;flex-direction:column;gap:6px;margin:4px 0;width:100%}
+.swimlane-header{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);font-weight:600;margin:0 0 4px}
+.swimlane-columns{display:grid;grid-template-columns:90px 1fr;font-size:9.5px;color:var(--dim);font-weight:500;padding:2px 4px;border-bottom:1px solid var(--stroke)}
+.swimlane-table{display:flex;flex-direction:column;gap:5px;width:100%}
+.swimlane-lane{display:grid;grid-template-columns:90px 1fr;align-items:center;min-height:28px;padding:3px 5px;background:rgba(255,255,255,0.02);border:1px solid var(--stroke);border-radius:5px;gap:6px}
+.swimlane-label{font-size:10.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.swimlane-track{display:flex;align-items:center;gap:6px;position:relative;flex-wrap:wrap;min-height:20px}
+.swimlane-track-line{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--stroke);z-index:0}
+.swimlane .marker,.swimlane-marker{position:relative;z-index:1;display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:4px;font-size:9.5px;font-family:var(--mono);background:#171d2e;border:1px solid var(--stroke);color:var(--muted)}
+.swimlane .marker.done,.swimlane-marker.done{border-color:rgba(104,211,145,0.4);color:var(--ok);background:rgba(104,211,145,0.08)}
+.swimlane .marker.running,.swimlane .marker.active,.swimlane-marker.active,.swimlane-marker.running{background:linear-gradient(90deg,#3151d8,var(--accent));border-color:var(--accent);color:#fff;font-weight:600;box-shadow:0 0 9px #4d6bfe88;animation:pulse 2s infinite ease-in-out}
+.swimlane .marker.blocked,.swimlane-marker.blocked{border-color:rgba(255,122,144,0.4);color:var(--bad);background:rgba(255,122,144,0.08)}
+.swimlane .marker.queued,.swimlane-marker.queued{opacity:0.6}
+/* Warroom cockpit treatment */
+@keyframes token-pulse{0%,100%{box-shadow:0 0 4px var(--glow-accent,rgba(77,107,254,0.55)),0 0 0 1px var(--glow-accent,rgba(77,107,254,0.55));opacity:1}50%{box-shadow:0 0 16px var(--glow-accent,rgba(77,107,254,0.55));transform:scale(1.04);opacity:.82}}
+.glow-live{animation:token-pulse var(--duration-live,1600ms) var(--easing-pulse,ease-in-out) infinite}
+.glow-live.ok{--glow-accent:var(--glow-ok,rgba(104,211,145,0.55))}
+.glow-live.warn{--glow-accent:var(--glow-warn,rgba(246,200,95,0.5))}
+.glow-live.bad{--glow-accent:var(--glow-bad,rgba(255,122,144,0.5))}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background-image:linear-gradient(var(--grid-line,rgba(255,255,255,0.02)) 1px,transparent 1px),linear-gradient(90deg,var(--grid-line,rgba(255,255,255,0.02)) 1px,transparent 1px);background-size:28px 28px;mask-image:radial-gradient(circle at 50% 0%,#000 0%,transparent 70%)}
+body>*{position:relative;z-index:1}
+.window{box-shadow:var(--shadow-instrument,0 24px 64px rgba(0,0,0,0.6)),inset 0 1px 0 rgba(255,255,255,0.06);background:linear-gradient(180deg,rgba(255,255,255,0.05) 0%,transparent 10%),#101522e6}
+.wcard{border:var(--bezel-width,1px) solid var(--strong);background:linear-gradient(180deg,var(--sheen-top,rgba(255,255,255,0.07)) 0%,transparent 8%),radial-gradient(120% 140% at 15% -10%,#1a2340 0%,#101522c0 55%);box-shadow:var(--shadow-panel,0 12px 32px rgba(0,0,0,0.45));transition:box-shadow var(--duration-medium,200ms) var(--easing,ease),transform var(--duration-medium,200ms) var(--easing,ease)}
+.wcard:hover{box-shadow:var(--shadow-instrument,0 24px 64px rgba(0,0,0,0.6))}
+.tabs button.active:after{background:var(--accent);box-shadow:0 0 6px var(--glow-accent,var(--accent))}
+.widget-panel{border:1px solid var(--strong);border-radius:10px;background:linear-gradient(180deg,var(--sheen-top,rgba(255,255,255,0.07)) 0%,transparent 8%),var(--layer)}
+.canvas-view{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;gap:8px;position:relative}
+.canvas-toolbar{display:flex;gap:8px;flex:none;position:relative}
+.canvas-tool-btn{border:1px solid var(--strong);border-radius:5px;background:var(--layer);color:var(--muted);font-size:11px;padding:4px 9px;cursor:pointer}
+.canvas-tool-btn:hover{color:var(--text);background:var(--hover)}
+.canvas-picker{position:absolute;top:30px;left:0;z-index:5;background:#101522f0;border:1px solid var(--strong);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:4px;max-height:260px;overflow:auto;min-width:180px;box-shadow:0 12px 32px #000a}
+.canvas-picker-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer}
+.dock-root{position:relative;flex:1;min-height:0;overflow:hidden;border:1px solid var(--stroke);border-radius:8px;display:flex}
+.dock-root>*{flex:1;min-width:0;min-height:0}
+.dock-split{display:flex;flex:1;min-width:0;min-height:0}
+.dock-split.dock-column{flex-direction:column}
+.dock-pane{display:flex;min-width:0;min-height:0;overflow:hidden}
+.dock-pane>*{flex:1;min-width:0;min-height:0}
+.dock-divider{flex:none;background:var(--stroke);position:relative;z-index:2;transition:background .1s ease}
+.dock-divider-row{width:5px;cursor:col-resize}
+.dock-divider-column{height:5px;cursor:row-resize}
+.dock-divider-row::after{content:"";position:absolute;top:0;bottom:0;left:-4px;right:-4px}
+.dock-divider-column::after{content:"";position:absolute;left:0;right:0;top:-4px;bottom:-4px}
+.dock-divider:hover,.dock-divider.dragging{background:var(--accent)}
+.dock-divider.dragging{box-shadow:0 0 8px var(--accent)}
+.dock-leaf{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;background:#0c101c80;border-radius:4px;overflow:hidden}
+.dock-tabbar{position:relative;display:flex;gap:2px;flex:none;padding:3px 3px 0;overflow-x:auto;border-bottom:1px solid var(--stroke)}
+.dock-tab{display:flex;align-items:center;gap:6px;padding:5px 9px;font-size:11px;color:var(--muted);background:var(--layer);border-radius:5px 5px 0 0;cursor:grab;white-space:nowrap;position:relative;transition:background .15s ease,color .15s ease,opacity .15s ease}
+.dock-tab:hover{color:var(--text);background:var(--hover)}
+.dock-tab.active{color:var(--text);background:#0c101c80;box-shadow:0 -2px 0 var(--accent) inset}
+.dock-tab.dragging{opacity:.4}
+.dock-tab-label{pointer-events:none}
+.dock-tab-close{color:var(--dim);font-size:12px;line-height:1;cursor:pointer}
+.dock-tab-close:hover{color:var(--bad)}
+@keyframes dock-tab-enter{0%{opacity:0;transform:translateY(-4px) scale(.92)}100%{opacity:1;transform:none}}
+.dock-tab-enter{animation:dock-tab-enter .22s cubic-bezier(0.2,0.8,0.2,1)}
+.dock-tab-indicator{position:absolute;top:2px;bottom:2px;width:2px;background:var(--accent);border-radius:2px;box-shadow:0 0 6px var(--accent);pointer-events:none;z-index:5;transition:left .08s ease}
+.dock-tab-indicator.hidden{display:none}
+.dock-body{position:relative;flex:1;min-height:0;padding:10px 12px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.dock-drop-overlay{position:absolute;inset:0;z-index:10;pointer-events:none}
+.dock-drop-overlay.hidden{display:none}
+.dock-drop-preview{position:absolute;pointer-events:none;border-radius:7px;border:2px solid var(--accent);background:linear-gradient(180deg,#4d6bfe33,#4d6bfe1a);box-shadow:0 0 0 1px #4d6bfe55 inset,0 12px 32px #000a;display:flex;align-items:center;justify-content:center;transition:top .1s ease,left .1s ease,right .1s ease,bottom .1s ease,width .1s ease,height .1s ease}
+.dock-drop-label{font-size:11px;font-weight:600;color:var(--text);background:#101522ea;border:1px solid var(--strong);border-radius:5px;padding:3px 9px;box-shadow:0 4px 12px #0006;white-space:nowrap}
+.dock-drop-preview-top{top:6px;left:6px;right:6px;height:calc(50% - 9px)}
+.dock-drop-preview-bottom{bottom:6px;left:6px;right:6px;height:calc(50% - 9px)}
+.dock-drop-preview-left{top:6px;bottom:6px;left:6px;width:calc(50% - 9px)}
+.dock-drop-preview-right{top:6px;bottom:6px;right:6px;width:calc(50% - 9px)}
+.dock-drop-preview-center{inset:6px}
+.content::-webkit-scrollbar,.dock-body::-webkit-scrollbar,.wcard-body::-webkit-scrollbar,.maker-pane::-webkit-scrollbar,.pane::-webkit-scrollbar,.code-input::-webkit-scrollbar,.cli-json::-webkit-scrollbar,.tokens-preview-pane::-webkit-scrollbar,.examples-scroll::-webkit-scrollbar,.dock-tabbar::-webkit-scrollbar{width:9px;height:9px}
+.content::-webkit-scrollbar-track,.dock-body::-webkit-scrollbar-track,.wcard-body::-webkit-scrollbar-track,.maker-pane::-webkit-scrollbar-track,.pane::-webkit-scrollbar-track,.code-input::-webkit-scrollbar-track,.cli-json::-webkit-scrollbar-track,.tokens-preview-pane::-webkit-scrollbar-track,.examples-scroll::-webkit-scrollbar-track,.dock-tabbar::-webkit-scrollbar-track{background:transparent}
+.content::-webkit-scrollbar-thumb,.dock-body::-webkit-scrollbar-thumb,.wcard-body::-webkit-scrollbar-thumb,.maker-pane::-webkit-scrollbar-thumb,.pane::-webkit-scrollbar-thumb,.code-input::-webkit-scrollbar-thumb,.cli-json::-webkit-scrollbar-thumb,.tokens-preview-pane::-webkit-scrollbar-thumb,.examples-scroll::-webkit-scrollbar-thumb,.dock-tabbar::-webkit-scrollbar-thumb{background:var(--strong);border-radius:5px;border:2px solid transparent;background-clip:padding-box}
+.content::-webkit-scrollbar-thumb:hover,.dock-body::-webkit-scrollbar-thumb:hover,.wcard-body::-webkit-scrollbar-thumb:hover,.maker-pane::-webkit-scrollbar-thumb:hover,.pane::-webkit-scrollbar-thumb:hover,.code-input::-webkit-scrollbar-thumb:hover,.cli-json::-webkit-scrollbar-thumb:hover,.tokens-preview-pane::-webkit-scrollbar-thumb:hover,.examples-scroll::-webkit-scrollbar-thumb:hover,.dock-tabbar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+.content,.dock-body,.wcard-body,.maker-pane,.pane,.code-input,.cli-json,.tokens-preview-pane,.examples-scroll,.dock-tabbar{scrollbar-width:thin;scrollbar-color:var(--strong) transparent}
+.maker-pane-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none}
+.maker-pane-title{font-size:12.5px;font-weight:600;color:var(--text)}
+.maker-pane .main-nav{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+.maker-pane .tab-btn{padding:4px 9px;border:1px solid var(--stroke);border-radius:6px;background:var(--layer);color:var(--muted);font-size:10.5px;cursor:pointer}
+.maker-pane .tab-btn.active{background:#4d6bfe22;border-color:var(--accent);color:var(--text);font-weight:600}
+.maker-pane .view-mode-toggle{display:flex;gap:5px;align-items:center;flex:none}
+.maker-pane .view-section{display:flex;flex-direction:column;gap:12px}
+.maker-pane .card{border:1px solid var(--strong);border-radius:10px;background:#101522d9;display:flex;flex-direction:column;overflow:hidden}
+.maker-pane .card-header{padding:8px 10px;background:#ffffff05;border-bottom:1px solid var(--stroke);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.maker-pane .card-title-group{display:flex;flex-direction:column;gap:2px;min-width:0}
+.maker-pane .card-title{font-size:12px;font-weight:600;color:var(--text)}
+.maker-pane .card-meta{font-size:9px;color:var(--dim);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.maker-pane .card-body{display:flex;flex-direction:column}
+.maker-pane .pane{padding:10px;display:flex;flex-direction:column;gap:6px;overflow:auto}
+.maker-pane .pane-render{border-bottom:1px solid var(--stroke);background:#090c1580}
+.maker-pane .pane-cli{background:#06080e}
+.maker-pane.cli-hidden .pane-cli{display:none}
+.maker-pane.cli-overlay .pane-cli{border-top:2px solid var(--accent)}
+.maker-pane .pane-title{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.maker-pane .cli-cmd-box{display:flex;align-items:center;gap:6px;background:#0d1220;border:1px solid var(--stroke);border-radius:5px;padding:5px 7px}
+.maker-pane .cli-cmd{font:9.5px var(--mono);color:var(--ok);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.maker-pane .cli-json{font:9px/1.4 var(--mono);color:var(--muted);background:#090d18;border:1px solid var(--stroke);border-radius:5px;padding:7px;overflow:auto;white-space:pre;max-height:220px}
+.maker-pane .examples-band{display:flex;flex-direction:column;gap:6px}
+.maker-pane .examples-band-header{display:flex;justify-content:space-between;align-items:center}
+.maker-pane .examples-scroll{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.maker-pane .example-chip{flex:0 0 160px;min-width:160px;border:1px solid var(--strong);border-radius:8px;background:#101522d9;padding:8px 9px;cursor:pointer;display:flex;flex-direction:column;gap:4px}
+.maker-pane .example-chip:hover{border-color:var(--accent);background:#182033}
+.maker-pane .example-chip-title{font-size:10.5px;font-weight:600;color:var(--text);display:flex;justify-content:space-between;align-items:center;gap:4px}
+.maker-pane .example-chip-hint{font:8.5px var(--mono);color:var(--ok);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.maker-pane .gallery-grid{display:flex;flex-direction:column;gap:12px}
+.maker-pane .studio-container{display:flex;flex-direction:column;gap:10px}
+.maker-pane .editor-pane{border:1px solid var(--strong);border-radius:10px;background:#101522d9;display:flex;flex-direction:column;overflow:hidden}
+.maker-pane .editor-toolbar{padding:7px 9px;background:#ffffff05;border-bottom:1px solid var(--stroke);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.maker-pane .editor-select{background:#0d1220;color:var(--text);border:1px solid var(--stroke);border-radius:5px;padding:3px 6px;font-size:10.5px}
+.maker-pane .editor-body{display:flex;flex-direction:column;padding:9px;gap:8px;background:#070a12}
+.maker-pane .code-input{width:100%;min-height:120px;background:#090d18;border:1px solid var(--stroke);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:10.5px;line-height:1.45;padding:8px;resize:vertical;tab-size:2}
+.maker-pane .code-input:focus{outline:1px solid var(--accent)}
+.maker-pane .error-banner{padding:7px 9px;background:#ff7a9020;border:1px solid var(--bad);border-radius:6px;color:var(--bad);font-size:10px;font-family:var(--mono);word-break:break-word}
+.maker-pane .status-ok{padding:3px 7px;background:#68d39115;border:1px solid var(--ok);border-radius:5px;color:var(--ok);font-size:9.5px;font-family:var(--mono);align-self:flex-start}
+.maker-pane .token-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
+.maker-pane .token-chip{padding:5px 6px;border:1px solid var(--stroke);border-radius:6px;background:var(--layer);display:flex;align-items:center;gap:6px}
+.maker-pane .token-swatch{width:14px;height:14px;border-radius:4px;border:1px solid var(--stroke);flex:none}
+.maker-pane .token-label{font-size:9px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.maker-pane .import-file-label{cursor:pointer;padding:5px 10px;display:inline-flex;align-items:center;gap:6px}
+</style></head><body><div class="window" id="window">
+<div class="titlebar" id="titlebar"><div class="identity"><div class="icon">C</div><div class="appname">Cortxt</div></div><div class="toolbar"><div class="canvas-toolbar" id="canvas-toolbar"></div><div class="win-controls"><button type="button" class="win-btn" id="win-minimize" title="Minimize">&#8211;</button><button type="button" class="win-btn" id="win-maximize" title="Maximize">&#9633;</button><button type="button" class="win-btn close-btn" id="win-close" title="Close">&#10005;</button></div></div></div>
+<div class="content" id="content"><div class="maker-pane" id="maker-pane"></div><div class="content-divider" id="maker-divider"><button type="button" class="maker-collapse-toggle" id="maker-collapse-toggle" title="Collapse sidebar">&#8249;</button></div><div class="canvas-view" id="canvas-view"><div class="dock-root" id="dock-root"></div></div></div>
+<div class="window-resize" id="window-resize"></div>
+</div>
+<button type="button" class="reopen-fab hidden" id="reopen-fab" title="Open Cortxt">C</button>
+<script src="maker.js"></script>
+<script src="dock.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+function empty(root,message){root.replaceChildren();const n=document.createElement("div");n.className="empty";n.textContent=message;root.append(n)}
+function emptyLine(message){const n=document.createElement("div");n.className="empty";n.textContent=message;return n}
+const DEFAULT_FALLBACK_TOKENS={colors:{background:"#080b14",surface:"#101522",layer:"#ffffff0d",hover:"#ffffff15",stroke:"#29324a",strong:"#3a4562",text:"#f4f7ff",muted:"#aab3c5",dim:"#8792a8",accent:"#4d6bfe",blue:"#3151d8",ok:"#68d391",warn:"#f6c85f",bad:"#ff7a90"},typography:{sans:["Inter","Segoe UI Variable","Segoe UI","sans-serif"],mono:["Cascadia Code","Cascadia Mono","Consolas","monospace"],size_base:"12px",size_small:"10px",size_heading:"14px",weight_normal:400,weight_bold:600},spacing:{unit:"4px",gap_small:"4px",gap_medium:"8px",gap_large:"16px",padding_small:"6px",padding_medium:"12px"},radius:{small:"4px",medium:"6px",large:"12px"},density:{row_height:"28px",card_max_height:"520px",grid_min_card_width:"280px"},effects:{glow_ok:"rgba(104,211,145,0.55)",glow_warn:"rgba(246,200,95,0.5)",glow_bad:"rgba(255,122,144,0.5)",glow_accent:"rgba(77,107,254,0.55)",sheen_top:"rgba(255,255,255,0.07)",shadow_panel:"0 12px 32px rgba(0,0,0,0.45)",shadow_instrument:"0 24px 64px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)",shadow_lift:"0 2px 10px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)",bezel:"inset 0 0 0 1px rgba(255,255,255,0.03), inset 0 -10px 24px rgba(0,0,0,0.25)"},motion:{duration_fast:"120ms",duration_medium:"200ms",duration_live:"1600ms",easing:"cubic-bezier(0.2,0.8,0.2,1)",easing_pulse:"ease-in-out"},backdrop:{grid:"linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)",grid_size:"28px",scanline:"repeating-linear-gradient(0deg, rgba(0,0,0,0.14) 0 1px, transparent 1px 3px)",vignette:"radial-gradient(120% 90% at 50% 0%, rgba(32,43,80,0.35) 0%, transparent 60%)"}};
+function applyTokens(tokens){if(window.WidgetMaker&&WidgetMaker.applyTokens){WidgetMaker.applyTokens(tokens);return}const el=document.documentElement;if(!el||!tokens)return;const c=tokens.colors||{};Object.entries(c).forEach(([k,v])=>{el.style.setProperty("--token-"+k,v);el.style.setProperty("--"+k,v)});if(tokens.typography?.sans)el.style.setProperty("--sans",Array.isArray(tokens.typography.sans)?tokens.typography.sans.join(", "):String(tokens.typography.sans));if(tokens.typography?.mono)el.style.setProperty("--mono",Array.isArray(tokens.typography.mono)?tokens.typography.mono.join(", "):String(tokens.typography.mono))}
+async function loadTokens(){try{const r=await fetch("tokens.json",{cache:"no-store"});if(!r.ok)throw Error(r.status);const t=await r.json();applyTokens(t)}catch(e){applyTokens(window.WidgetMaker?.defaultTokens?WidgetMaker.defaultTokens():DEFAULT_FALLBACK_TOKENS)}}
+const POLL_BASE_MS=3000,POLL_MAX_BACKOFF_MS=30000,POLL_CAP_MS=60000,pollState=new Map();
+function nextInterval(failures,base=POLL_BASE_MS,maxBackoff=POLL_MAX_BACKOFF_MS,cap=POLL_CAP_MS){if(failures<=0)return Math.min(base,cap);const b=base*Math.pow(2,Math.min(failures,30));return Math.min(b,maxBackoff,cap)}
+let actionHost={enabled:false,token:null,actions:[]},actionState=new Map();
+async function probeActions(){try{const r=await fetch("api/token",{cache:"no-store"});if(!r.ok)throw Error(r.status);const t=await r.json();const c=await (await fetch("api/capabilities",{cache:"no-store"})).json();actionHost={enabled:true,token:t.token||"",actions:c.actions||[]}}catch(e){actionHost={enabled:false,token:null,actions:[]}}}
+function copyCommand(text,button){const done=()=>{button.textContent="Copied";button.classList.add("copied");setTimeout(()=>{button.textContent="Copy command";button.classList.remove("copied")},1500)};if(navigator.clipboard?.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done))}else{fallbackCopy(text,done)}}
+function fallbackCopy(text,done){const area=document.createElement("textarea");area.value=text;area.style.position="fixed";area.style.opacity="0";document.body.append(area);area.select();try{document.execCommand("copy");done()}catch(e){}area.remove()}
+async function runAction(button,handoff,issueId){const form=button.closest(".action-form"),ref=form?.querySelector(".action-ref")?.value.trim()||"",box=form?.querySelector(".action-confirm"),resultNode=form?.querySelector(".action-result"),key=`${handoff.id}:${issueId}`,persist=()=>actionState.set(key,{ref:form?.querySelector(".action-ref")?.value||"",checked:!!box?.checked,result:resultNode?.textContent||"",cls:resultNode?.className||"action-result"});if(!form||!ref||!box?.checked){resultNode.className="action-result denied";resultNode.textContent="approval reference and confirm are required";persist();return}button.disabled=true;button.textContent="running…";button.classList.add("running");resultNode.className="action-result";resultNode.textContent="dispatching…";try{const response=await fetch("api/action",{method:"POST",headers:{"Content-Type":"application/json","X-Cortxt-Token":actionHost.token},body:JSON.stringify({action_id:handoff.id,issue_id:issueId,approval_ref:ref,confirm:true})});const data=await response.json();if(response.ok&&data.status==="ok"){resultNode.className="action-result ok";resultNode.textContent=`ok · ${data.result?.status||"done"}`;box.checked=false}else{const err=data.error||{};resultNode.className=err.kind==="authorization_denied"?"action-result denied":"action-result error";resultNode.textContent=`${err.kind||"error"}${err.code?` · ${err.code}`:""}${err.message?` · ${err.message}`:""}`}}catch(e){resultNode.className="action-result error";resultNode.textContent=`action_error · ${e.message||"request failed"}`}finally{button.disabled=false;button.textContent="Execute";button.classList.remove("running");persist()}}
+function actionForm(handoff,issueId){const form=document.createElement("div");form.className="action-form";const label=document.createElement("label");label.textContent=`${handoff.id} · ${handoff.effect_class||handoff.operation||""}`;const ref=document.createElement("input");ref.className="action-ref";ref.type="text";ref.placeholder="approval reference";ref.autocomplete="off";ref.spellcheck=false;const row=document.createElement("div");row.className="action-confirm-row";const box=document.createElement("input");box.type="checkbox";box.className="action-confirm";const note=document.createElement("span");note.textContent=handoff.confirm?.summary||"confirm the declared effect";const run=document.createElement("button");run.className="action-run";run.textContent="Execute";run.disabled=true;const result=document.createElement("div");result.className="action-result";const key=`${handoff.id}:${issueId}`,saved=actionState.get(key)||{};ref.value=saved.ref||"";box.checked=!!saved.checked;const update=()=>{run.disabled=!ref.value.trim()||!box.checked;actionState.set(key,{ref:ref.value,checked:box.checked,result:result.textContent,cls:result.className})};ref.oninput=update;box.onchange=update;run.onclick=()=>runAction(run,handoff,issueId);row.append(box,note);form.append(label,ref,row,run,result);if(saved.result){result.textContent=saved.result;result.className=saved.cls||"action-result"}update();return form}
+function renderGenericNode(node,container){if(!node)return;const p=node.props||{};if(node.primitive==="stack"||node.primitive==="row"||node.primitive==="grid"||node.primitive==="panel"){(node.children||[]).forEach(child=>renderGenericNode(child,container));return}if(node.primitive==="heading"||node.primitive==="text"||node.primitive==="badge"){const el=document.createElement("div");el.className=node.primitive==="heading"?"pulse-status":node.primitive==="badge"?"candidate-copy":"pulse-status";el.textContent=p.value??p.label??"";container.append(el);return}if(node.primitive==="metric"){const stat=document.createElement("div");stat.className="pulse-stat";const b=document.createElement("b");b.textContent=p.value??"—";const span=document.createElement("span");span.textContent=p.label||"";stat.append(b,span);container.append(stat);return}if(node.primitive==="key-value"){const block=document.createElement("div");block.className="pulse-status";block.textContent=typeof p.value==="object"&&p.value!==null?JSON.stringify(p.value):p.value??"";container.append(block);return}if(node.primitive==="table"){const rows=p.rows||[];const group=document.createElement("div");group.className="candidate-group";const heading=document.createElement("h3");heading.textContent=`${p.label||"Table"} (${rows.length})`;group.append(heading);if(!rows.length){group.append(emptyLine("No rows."));container.append(group);return}const table=document.createElement("table");table.className="candidate-table";const columns=p.columns||[];const head=document.createElement("tr");columns.forEach(column=>{const th=document.createElement("th");th.textContent=column.replaceAll("_"," ");head.append(th)});const thead=document.createElement("thead");thead.append(head);const body=document.createElement("tbody");rows.forEach(item=>{const row=document.createElement("tr");columns.forEach(column=>{const cell=document.createElement("td");const value=item[column];cell.textContent=typeof value==="object"&&value!==null?JSON.stringify(value):value??"—";row.append(cell)});body.append(row)});table.append(thead,body);group.append(table);if(node.truncated||p.truncated){const tr=document.createElement("div");tr.className="pulse-status";tr.textContent=`truncated (${rows.length} shown)`;group.append(tr)}container.append(group);return}if(node.primitive==="list"){const group=document.createElement("div");group.className="candidate-group";const heading=document.createElement("h3");heading.textContent=p.label||"List";group.append(heading);const items=p.items||[];if(!items.length){group.append(emptyLine(p.empty||"No items."));container.append(group);return}items.forEach(item=>{const row=document.createElement("div");row.className="row";const main=document.createElement("div");main.className="row-main";const title=document.createElement("div");title.className="row-title";title.textContent=typeof item==="object"&&item!==null?JSON.stringify(item):item;main.append(title);row.append(main);group.append(row)});if(node.truncated||p.truncated){const tr=document.createElement("div");tr.className="pulse-status";tr.textContent=`truncated (${items.length} shown)`;group.append(tr)}container.append(group);return}if(node.primitive==="bar"){const group=document.createElement("div");group.className="candidate-group widget-chart-bar";if(p.label){const heading=document.createElement("h3");heading.textContent=p.label;group.append(heading)}const rawValues=p.values;if(!Array.isArray(rawValues)||!rawValues.length){group.append(emptyLine(p.empty||"No data."));container.append(group);return}const categories=Array.isArray(p.categories)?p.categories:[];const items=[];for(let i=0;i<rawValues.length;i++){const item=rawValues[i];const catName=categories[i]!==undefined?String(categories[i]):"";if(typeof item==="number"){items.push({name:catName||`Item ${i+1}`,value:item})}else if(item&&typeof item==="object"){const name=item.name||item.label||item.model||item.id||catName||`Item ${i+1}`;const val=item.tokens!==undefined?item.tokens:item.cost_usd!==undefined?item.cost_usd:item.value!==undefined?item.value:(item.tokens_in||0)+(item.tokens_out||0);items.push({name:String(name),value:Number(val)||0})}}if(!items.length){group.append(emptyLine(p.empty||"No data."));container.append(group);return}let maxVal=0;for(let i=0;i<items.length;i++){if(items[i].value>maxVal)maxVal=items[i].value}if(maxVal<=0)maxVal=1;const chartBox=document.createElement("div");chartBox.className="chart-bars-container";for(let i=0;i<items.length;i++){const it=items[i];const row=document.createElement("div");row.className="chart-bar-row";const labelSpan=document.createElement("span");labelSpan.className="chart-bar-label";labelSpan.textContent=it.name;labelSpan.title=it.name;const track=document.createElement("div");track.className="chart-bar-track";const fill=document.createElement("div");const pct=Math.min(100,Math.max(0,(it.value/maxVal)*100));fill.className="chart-bar-fill"+(i===items.length-1?" chart-latest pulse-dot":"");fill.style.width=pct.toFixed(1)+"%";track.append(fill);const valSpan=document.createElement("span");valSpan.className="chart-bar-value";valSpan.textContent=typeof it.value==="number"&&it.value%1!==0?`$${it.value.toFixed(2)}`:Number(it.value).toLocaleString();row.append(labelSpan,track,valSpan);chartBox.append(row)}group.append(chartBox);container.append(group);return}if(node.primitive==="line"){const group=document.createElement("div");group.className="candidate-group widget-chart-line";if(p.label){const heading=document.createElement("h3");heading.textContent=p.label;group.append(heading)}const rawSeries=p.series;if(!Array.isArray(rawSeries)||!rawSeries.length){group.append(emptyLine(p.empty||"No data."));container.append(group);return}const points=Array.isArray(p.points)?p.points:[];const values=[];const pointLabels=[];for(let i=0;i<rawSeries.length;i++){const item=rawSeries[i];const ptName=points[i]!==undefined?String(points[i]):"";if(typeof item==="number"){values.push(item);pointLabels.push(ptName)}else if(item&&typeof item==="object"){const name=item.at||item.point||item.label||ptName||`P${i+1}`;const val=item.tokens!==undefined?item.tokens:item.cost_usd!==undefined?item.cost_usd:item.value!==undefined?item.value:0;values.push(Number(val)||0);pointLabels.push(String(name))}}if(!values.length){group.append(emptyLine(p.empty||"No data."));container.append(group);return}let minVal=values[0],maxVal=values[0];for(let i=1;i<values.length;i++){if(values[i]<minVal)minVal=values[i];if(values[i]>maxVal)maxVal=values[i]}const range=maxVal-minVal||1;const svgW=260,svgH=64,padX=12,padY=8,innerW=svgW-padX*2,innerH=svgH-padY*2;const coords=[];for(let i=0;i<values.length;i++){const x=values.length===1?padX+innerW/2:padX+(i/(values.length-1))*innerW;const y=padY+innerH-((values[i]-minVal)/range)*innerH;coords.push({x,y,val:values[i],label:pointLabels[i]||""})}const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("viewBox",`0 0 ${svgW} ${svgH}`);svg.setAttribute("class","chart-line-svg");svg.style.width="100%";svg.style.height="70px";svg.style.overflow="visible";const polyline=document.createElementNS("http://www.w3.org/2000/svg","polyline");const ptsStr=coords.map(c=>`${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" ");polyline.setAttribute("points",ptsStr);polyline.setAttribute("fill","none");polyline.setAttribute("stroke","var(--accent)");polyline.setAttribute("stroke-width","2");polyline.setAttribute("stroke-linecap","round");polyline.setAttribute("stroke-linejoin","round");svg.append(polyline);for(let i=0;i<coords.length;i++){const c=coords[i],isLatest=(i===coords.length-1);const circle=document.createElementNS("http://www.w3.org/2000/svg","circle");circle.setAttribute("cx",c.x.toFixed(1));circle.setAttribute("cy",c.y.toFixed(1));circle.setAttribute("r",isLatest?"4":"3");circle.setAttribute("fill",isLatest?"var(--ok)":"var(--accent)");circle.setAttribute("class",isLatest?"pulse-dot chart-latest":"chart-dot");const titleEl=document.createElementNS("http://www.w3.org/2000/svg","title");titleEl.textContent=(c.label?`${c.label}: `:"")+(typeof c.val==="number"&&c.val%1!==0?`$${c.val.toFixed(2)}`:c.val.toLocaleString());circle.append(titleEl);svg.append(circle)}group.append(svg);if(pointLabels.some(Boolean)){const labelsRow=document.createElement("div");labelsRow.className="chart-line-points-row";for(let i=0;i<pointLabels.length;i++){const ptSpan=document.createElement("span");ptSpan.textContent=pointLabels[i]||"";labelsRow.append(ptSpan)}group.append(labelsRow)}container.append(group);return}if(node.primitive==="swimlane"){const rows=p.rows||[];const group=document.createElement("div");group.className="candidate-group swimlane swimlane-container";const heading=document.createElement("h3");heading.className="swimlane-header";heading.textContent=`${p.label||"Swimlanes"} (${rows.length})`;group.append(heading);if(!rows.length){group.append(emptyLine(p.empty||"No swimlanes."));container.append(group);return}const columns=Array.isArray(p.columns)&&p.columns.length?p.columns:["Lane","Tasks"];const colHeader=document.createElement("div");colHeader.className="swimlane-columns";const col1=document.createElement("div");col1.textContent=columns[0]||"Lane";const col2=document.createElement("div");col2.textContent=columns.slice(1).join(" / ")||"Tasks";colHeader.append(col1,col2);group.append(colHeader);const tableBox=document.createElement("div");tableBox.className="swimlane-table";rows.forEach(row=>{if(!row)return;const laneEl=document.createElement("div");laneEl.className="swimlane-lane lane";const labelCell=document.createElement("div");labelCell.className="swimlane-label";const laneName=row.label||row.name||row.id||"Lane";const laneRuntime=row.runtime?` (${row.runtime})`:"";labelCell.textContent=laneName+laneRuntime;labelCell.title=laneName+(row.status?` - ${row.status}`:"");const trackCell=document.createElement("div");trackCell.className="swimlane-track";const trackLine=document.createElement("div");trackLine.className="swimlane-track-line";trackCell.append(trackLine);const items=row.items||row.tasks||[];if(Array.isArray(items)&&items.length){items.forEach(item=>{if(!item)return;const marker=document.createElement("div");const itemTitle=item.title||item.name||item.id||item.label||"task";const itemState=String(item.state||item.status||"").toLowerCase();const isActive=Boolean(item.active)||itemState==="running";let markerClass="marker swimlane-marker";if(isActive)markerClass+=" active running";else if(itemState==="done"||itemState==="completed")markerClass+=" done";else if(itemState==="blocked"||itemState==="error")markerClass+=" blocked";else if(itemState==="queued"||itemState==="pending")markerClass+=" queued";marker.className=markerClass;const iconSpan=document.createElement("span");iconSpan.className="marker-icon";iconSpan.textContent=isActive?"\u25cf":(itemState==="done"?"\u2713":"\u25cb");marker.append(iconSpan);const titleSpan=document.createElement("span");titleSpan.className="marker-title";titleSpan.textContent=itemTitle;marker.append(titleSpan);if(item.progress!==undefined&&item.progress!==null){const progSpan=document.createElement("span");progSpan.className="marker-progress";progSpan.style.fontSize="9px";progSpan.style.opacity="0.75";progSpan.textContent=item.progress+"%";marker.append(progSpan)}trackCell.append(marker)})}else{const idleSpan=document.createElement("span");idleSpan.className="marker swimlane-marker queued";idleSpan.textContent="idle";trackCell.append(idleSpan)}laneEl.append(labelCell,trackCell);tableBox.append(laneEl)});group.append(tableBox);container.append(group);return}if(node.primitive==="empty-state"||node.primitive==="error-state"){container.append(emptyLine(p.message||(node.primitive==="error-state"?"Error":"Empty")));return}if(node.primitive==="divider"||node.primitive==="spacer"){return}container.append(emptyLine(`Unhandled primitive: ${node.primitive}`))}
 
-    /* Header */
-    .atlas-header {
-      border-bottom: 1px solid var(--atlas-border);
-      background: rgba(8, 11, 20, 0.85);
-      backdrop-filter: blur(18px) saturate(140%);
-      padding: 16px 24px;
-    }
-    .atlas-nav {
-      max-width: 1300px;
-      margin: 0 auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-    }
-    .atlas-brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 700;
-      font-size: 1.15rem;
-      color: var(--text);
-      text-decoration: none !important;
-    }
-    .atlas-brand span {
-      width: 24px; height: 24px; border-radius: 5px;
-      display: grid; place-items: center;
-      background: linear-gradient(135deg, var(--atlas-accent-2), #3151d8);
-      color: #06263b; font-size: 13px; font-weight: 800;
-    }
-    .atlas-links { display: flex; gap: 18px; font-size: 0.9rem; align-items: center; }
-    .atlas-title {
-      max-width: 1300px;
-      margin: 20px auto 4px;
-    }
-    .atlas-title h1 {
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: #fff;
-      letter-spacing: -0.02em;
-      margin-bottom: 6px;
-    }
-    .atlas-lede {
-      font-size: 0.95rem;
-      color: var(--atlas-muted);
-      max-width: 860px;
-      line-height: 1.55;
-    }
-
-    /* Main Container */
-    .main-wrap {
-      max-width: 1300px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 20px 24px 40px;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .nav-tabs {
-      display: flex;
-      gap: 8px;
-      border-bottom: 1px solid var(--atlas-border);
-      padding-bottom: 12px;
-    }
-    .tab-btn {
-      padding: 6px 16px;
-      border: 1px solid var(--atlas-border);
-      border-radius: 6px;
-      background: var(--atlas-panel);
-      color: var(--atlas-muted);
-      font-size: 0.85rem;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .tab-btn:hover { color: #fff; border-color: var(--atlas-accent-2); }
-    .tab-btn.active {
-      background: #4d6bfe22;
-      border-color: var(--atlas-accent-2);
-      color: #fff;
-      font-weight: 600;
-    }
-
-    .hidden { display: none !important; }
-
-    /* Horizontal Examples Band */
-    .examples-band {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
-    .examples-band-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0 4px;
-    }
-    .examples-scroll {
-      display: flex;
-      gap: 12px;
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
-      padding-bottom: 8px;
-      -webkit-overflow-scrolling: touch;
-    }
-    .example-chip {
-      flex: 0 0 240px;
-      min-width: 240px;
-      scroll-snap-align: start;
-      border: 1px solid var(--atlas-border);
-      border-radius: 8px;
-      background: var(--atlas-panel);
-      padding: 10px 12px;
-      cursor: pointer;
-      transition: all .15s ease;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .example-chip:hover {
-      border-color: var(--atlas-accent-2);
-      background: var(--atlas-panel-2);
-      transform: translateY(-2px);
-    }
-    .example-chip-title {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--text);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .example-chip-hint {
-      font: 9.5px var(--mono);
-      color: var(--ok);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    /* Gallery Grid */
-    .gallery-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
-      gap: 20px;
-    }
-    .widget-card {
-      border: 1px solid var(--atlas-border);
-      border-radius: 10px;
-      background: var(--atlas-panel);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 0 8px 24px #00000060;
-    }
-    .card-head {
-      padding: 10px 14px;
-      background: #ffffff05;
-      border-bottom: 1px solid var(--atlas-border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-    }
-    .card-title-wrap { display: flex; flex-direction: column; gap: 2px; }
-    .card-title { font-size: 0.95rem; font-weight: 600; color: #fff; }
-    .card-sub { font-size: 0.75rem; color: var(--atlas-muted); font-family: var(--mono); }
-    .card-body {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      min-height: 280px;
-    }
-    .pane {
-      padding: 12px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      overflow: auto;
-    }
-    .pane-render {
-      border-right: 1px solid var(--atlas-border);
-      background: #090c1580;
-    }
-    .pane-cli {
-      background: #06080e;
-    }
-    .pane-label {
-      font-size: 0.7rem;
-      letter-spacing: .06em;
-      text-transform: uppercase;
-      color: var(--dim);
-      font-weight: 600;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .cli-cmd-box {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: #0d1220;
-      border: 1px solid var(--atlas-border);
-      border-radius: 5px;
-      padding: 4px 8px;
-    }
-    .cli-cmd {
-      font: 0.75rem/1.3 var(--mono);
-      color: var(--ok);
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .cli-json {
-      font: 0.72rem/1.4 var(--mono);
-      color: var(--muted);
-      background: #090d18;
-      border: 1px solid var(--atlas-border);
-      border-radius: 5px;
-      padding: 8px;
-      flex: 1;
-      overflow: auto;
-      white-space: pre;
-      max-height: 320px;
-    }
-
-    /* Primitives */
-    .eyebrow { font-size: 0.7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
-    .badge {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 2px 7px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;
-      background: #4d6bfe22; color: var(--atlas-accent); flex: none;
-    }
-    .badge:before { content: "●"; }
-    .badge.ok { background: #68d39120; color: var(--ok); }
-    .badge.err { background: #ff7a9020; color: var(--bad); }
-    .badge.off { background: #ffffff12; color: var(--dim); }
-    .empty {
-      padding: 12px; text-align: center; color: var(--dim);
-      font-size: 0.8rem; border: 1px dashed var(--atlas-border); border-radius: 6px;
-    }
-    .pulse-status {
-      padding: 6px 8px; border: 1px solid var(--atlas-border);
-      border-radius: 6px; color: var(--muted); font-size: 0.78rem;
-    }
-    .pulse-status.error { color: var(--bad); background: #ff7a9010; }
-    .candidate-group { margin: 4px 0; }
-    .candidate-group h3 {
-      margin: 0 0 4px; font-size: 0.7rem; color: var(--muted);
-      text-transform: uppercase; letter-spacing: .05em;
-    }
-    .candidate-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
-    .candidate-table th, .candidate-table td {
-      padding: 4px 5px; border-bottom: 1px solid var(--atlas-border);
-      text-align: left; vertical-align: top;
-    }
-    .candidate-table th { color: var(--dim); font-weight: 500; }
-    .candidate-copy {
-      border: 1px solid var(--strong); border-radius: 4px; background: var(--layer);
-      color: var(--atlas-accent); font-size: 0.7rem; padding: 2px 6px; cursor: pointer;
-    }
-    .candidate-copy:hover { background: var(--hover); }
-    .candidate-copy.copied { color: var(--ok); }
-    .pulse-stat {
-      padding: 6px 8px; border: 1px solid var(--atlas-border);
-      border-radius: 6px; background: var(--layer);
-    }
-    .pulse-stat b { display: block; font: 600 0.95rem var(--mono); color: var(--text); }
-    .pulse-stat span { font-size: 0.65rem; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
-    .widget-stack { display: flex; flex-direction: column; gap: 6px; }
-    .widget-row { display: flex; flex-direction: row; gap: 6px; align-items: stretch; }
-    .widget-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; }
-    .widget-panel { border: 1px solid var(--atlas-border); border-radius: 6px; padding: 8px; background: var(--layer); display: flex; flex-direction: column; gap: 6px; }
-    .widget-divider { border: 0; border-top: 1px solid var(--atlas-border); margin: 4px 0; }
-    .widget-spacer { height: 8px; }
-    .widget-list-items { padding-left: 16px; font-size: 0.75rem; color: var(--muted); }
-    .chart-bars-container { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
-    .chart-bar-row { display: flex; align-items: center; gap: 8px; font-size: 10px; }
-    .chart-bar-label { width: 90px; flex: none; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .chart-bar-track { flex: 1; height: 8px; background: var(--layer); border: 1px solid var(--stroke); border-radius: 4px; overflow: hidden; position: relative; }
-    .chart-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s ease; }
-    .chart-bar-value { width: 60px; flex: none; text-align: right; font-family: var(--mono); color: var(--text); font-size: 9.5px; }
-    .chart-line-svg { width: 100%; height: 70px; overflow: visible; }
-    .chart-line-points-row { display: flex; justify-content: space-between; font-size: 9px; color: var(--dim); margin-top: 2px; }
-    @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: .6; transform: scale(1.1); } 100% { opacity: 1; transform: scale(1); } }
-    .pulse-dot { animation: pulse 1.5s ease-in-out infinite; transform-origin: center; }
-    .chart-latest { animation: pulse 1.5s ease-in-out infinite; }
-
-    /* Swimlane Styles */
-    @keyframes pulse {
-      0%, 100% { opacity: 1; filter: drop-shadow(0 0 8px rgba(77, 107, 254, 0.85)); }
-      50% { opacity: 0.65; filter: drop-shadow(0 0 2px rgba(77, 107, 254, 0.3)); }
-    }
-    .swimlane-container { display: flex; flex-direction: column; gap: 6px; margin: 4px 0; width: 100%; }
-    .swimlane-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); font-weight: 600; margin: 0 0 4px; }
-    .swimlane-columns { display: grid; grid-template-columns: 90px 1fr; font-size: 0.7rem; color: var(--dim); font-weight: 500; padding: 2px 4px; border-bottom: 1px solid var(--atlas-border); }
-    .swimlane-lane { display: grid; grid-template-columns: 90px 1fr; align-items: center; min-height: 28px; padding: 3px 5px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--atlas-border); border-radius: 5px; gap: 6px; }
-    .swimlane-label { font-size: 0.75rem; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .swimlane-track { display: flex; align-items: center; gap: 6px; position: relative; flex-wrap: wrap; min-height: 20px; }
-    .swimlane-track-line { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--atlas-border); z-index: 0; }
-    .swimlane .marker, .swimlane-marker { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-family: var(--mono); background: #171d2e; border: 1px solid var(--atlas-border); color: var(--muted); }
-    .swimlane .marker.done, .swimlane-marker.done { border-color: rgba(104, 211, 145, 0.4); color: var(--ok); background: rgba(104, 211, 145, 0.08); }
-    .swimlane .marker.running, .swimlane .marker.active, .swimlane-marker.active, .swimlane-marker.running { background: linear-gradient(90deg, #3151d8, var(--atlas-accent)); border-color: var(--atlas-accent); color: #fff; font-weight: 600; box-shadow: 0 0 9px #4d6bfe88; animation: pulse 2s infinite ease-in-out; }
-    .swimlane .marker.blocked, .swimlane-marker.blocked { border-color: rgba(255, 122, 144, 0.4); color: var(--bad); background: rgba(255, 122, 144, 0.08); }
-    .swimlane .marker.queued, .swimlane-marker.queued { opacity: 0.6; }
-
-    /* Studio */
-    .studio-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      min-height: 520px;
-    }
-    .studio-box {
-      border: 1px solid var(--atlas-border);
-      border-radius: 10px;
-      background: var(--atlas-panel);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .studio-bar {
-      padding: 8px 12px;
-      background: #ffffff05;
-      border-bottom: 1px solid var(--atlas-border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-    }
-    .studio-select {
-      background: #0d1220;
-      color: var(--text);
-      border: 1px solid var(--atlas-border);
-      border-radius: 5px;
-      padding: 3px 8px;
-      font-size: 0.8rem;
-    }
-    .studio-body {
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      background: #070a12;
-      flex: 1;
-    }
-    .studio-textarea {
-      width: 100%;
-      flex: 1;
-      min-height: 220px;
-      background: #090d18;
-      border: 1px solid var(--atlas-border);
-      border-radius: 6px;
-      color: var(--text);
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      line-height: 1.45;
-      padding: 8px 10px;
-      resize: vertical;
-      tab-size: 2;
-    }
-    .studio-textarea:focus { outline: 1px solid var(--atlas-accent-2); }
-    .status-badge {
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      font-family: var(--mono);
-    }
-    .status-badge.ok { background: #68d39115; border: 1px solid var(--ok); color: var(--ok); }
-    .status-badge.err { background: #ff7a9020; border: 1px solid var(--bad); color: var(--bad); }
-
-    /* CLI display-mode toggle + warroom glow/elevation */
-    .view-mode-toggle { display: flex; gap: 6px; align-items: center; margin-top: 14px; }
-    .view-mode-toggle .toggle-btn {
-      padding: 4px 12px; border: 1px solid var(--atlas-border); border-radius: 6px;
-      background: var(--atlas-panel); color: var(--atlas-muted); font-size: 0.75rem; cursor: pointer;
-      transition: all 120ms ease;
-    }
-    .view-mode-toggle .toggle-btn:hover { background: var(--atlas-panel-2); color: var(--atlas-text); }
-    .view-mode-toggle .toggle-btn.active { background: #4d6bfe22; border-color: var(--atlas-accent-2); color: var(--atlas-text); font-weight: 600; }
-    body.cli-overlay .card-body { grid-template-columns: 1fr !important; }
-    body.cli-overlay .pane-cli { display: none !important; }
-    body.cli-hidden .card-body { grid-template-columns: 1fr !important; }
-    body.cli-hidden .pane-cli { display: none !important; }
-    @keyframes token-pulse{0%,100%{box-shadow:0 0 4px var(--glow-accent,rgba(77,107,254,0.55)),0 0 0 1px var(--glow-accent,rgba(77,107,254,0.55));opacity:1}50%{box-shadow:0 0 16px var(--glow-accent,rgba(77,107,254,0.55));transform:scale(1.04);opacity:.82}}
-    .glow-live{animation:token-pulse 1600ms ease-in-out infinite}
-    .glow-live.ok{--glow-accent:var(--glow-ok,rgba(104,211,145,0.55))}
-
-    /* Footer */
-    .atlas-footer {
-      border-top: 1px solid var(--atlas-border);
-      padding: 20px 24px;
-      text-align: center;
-      font-size: 0.8rem;
-      color: var(--atlas-muted);
-      background: rgba(8, 11, 20, 0.85);
-    }
-  </style>
-</head>
-<body>
-
-  <header class="atlas-header">
-    <nav class="atlas-nav">
-      <a class="atlas-brand" href="/"><span>C</span>Cortxt</a>
-      <div class="atlas-links">
-        <a href="/docs/">Docs</a>
-        <a href="/docs/roadmap/">Roadmap</a>
-        <a href="/atlas/">Visual Atlas</a>
-        <a href="https://github.com/rian010194/cortxt" target="_blank" rel="noopener">GitHub</a>
-      </div>
-    </nav>
-    <div class="atlas-title">
-      <h1>Widget Prototypes &amp; Maker Studio</h1>
-      <p class="atlas-lede">
-        Declarative, provider-neutral inspection surfaces. Every prototype renders its visual contract
-        alongside the exact CLI command and JSON output side-by-side. Use the Spec Studio to live-edit
-        contracts entirely client-side.
-      </p>
-      <div class="view-mode-toggle" id="cli-view-toggle" role="group" aria-label="CLI display mode">
-        <button class="toggle-btn active" data-mode="split" onclick="setCliMode('split')">Split</button>
-        <button class="toggle-btn" data-mode="overlay" onclick="setCliMode('overlay')">Overlay Console</button>
-        <button class="toggle-btn" data-mode="hidden" onclick="setCliMode('hidden')">Widgets Only</button>
-      </div>
-    </div>
-  </header>
-
-  <main class="main-wrap">
-    <div class="nav-tabs">
-      <button class="tab-btn active" id="tab-gallery" onclick="switchView('gallery')">Prototype Gallery</button>
-      <button class="tab-btn" id="tab-studio" onclick="switchView('studio')">Spec Studio</button>
-    </div>
-
-    <!-- Gallery View -->
-    <div id="view-gallery" class="view-gallery-wrap">
-      <div class="examples-band" id="examples-band" aria-label="Widget examples horizontal row">
-        <div class="examples-band-header">
-          <span class="eyebrow">Widget Examples Band &bull; Horizontal Scroll</span>
-          <span class="card-meta" style="font-size:0.75rem;color:var(--dim);">Scroll or click to inspect</span>
-        </div>
-        <div class="examples-scroll" id="examples-scroll">
-          <!-- Injected by JS -->
-        </div>
-      </div>
-      <section class="gallery-grid" id="gallery-grid">
-        <!-- Injected by JS -->
-      </section>
-    </div>
-
-    <!-- Studio View -->
-    <section id="view-studio" class="studio-grid hidden">
-      <div class="studio-box">
-        <div class="studio-bar">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span class="eyebrow">Preset</span>
-            <select class="studio-select" id="studio-preset" onchange="applyPreset(this.value)">
-              <option value="candidates">Candidates (GitHub)</option>
-              <option value="pulse">Session Pulse (Store)</option>
-              <option value="map">Execution Map (Plan)</option>
-              <option value="docker">Docker Status</option>
-              <option value="webhooks">Webhooks / Cloudflare</option>
-              <option value="agents">Session Agents (Swimlanes)</option>
-              <option value="compliance">Compliance Audit (Custom)</option>
-              <option value="custom">Blank Spec</option>
-            </select>
-          </div>
-          <button class="candidate-copy" onclick="triggerStudioRender()">Re-render</button>
-        </div>
-        <div class="studio-body">
-          <span class="eyebrow">YAML Spec</span>
-          <textarea class="studio-textarea" id="studio-spec-input" spellcheck="false" oninput="debounceStudioRender()"></textarea>
-          <span class="eyebrow">Fixture Data (JSON)</span>
-          <textarea class="studio-textarea" id="studio-data-input" spellcheck="false" style="min-height:100px;" oninput="debounceStudioRender()"></textarea>
-        </div>
-      </div>
-
-      <div class="studio-box">
-        <div class="studio-bar">
-          <span class="eyebrow">Live Visual Render &amp; CLI Counterpart</span>
-          <div id="studio-badge" class="status-badge ok">Valid</div>
-        </div>
-        <div class="card-body" style="flex:1;">
-          <div class="pane pane-render" id="studio-dom-target"></div>
-          <div class="pane pane-cli">
-            <div class="pane-label">
-              <span>CLI Command</span>
-              <button class="candidate-copy" onclick="copySnippet(studioCommand, this)">Copy command</button>
-            </div>
-            <div class="cli-cmd-box">
-              <div class="cli-cmd" id="studio-cmd-display">cortxt widget load --spec custom.yaml --view loaded</div>
-            </div>
-            <div class="pane-label" style="margin-top:4px;">
-              <span>CLI JSON Output</span>
-              <button class="candidate-copy" onclick="copySnippet(document.getElementById('studio-json-display').textContent, this)">Copy JSON</button>
-            </div>
-            <pre class="cli-json" id="studio-json-display">{}</pre>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="atlas-footer">
-    <p>
-      Cortxt widget contracts are pure read-only schemas (<a href="/docs/adrs/">ADR-033</a>). Visual inspection surfaces render client-side without server round-trips.
-    </p>
-  </footer>
-
-  <script src="maker.js"></script>
-  <script>
-    const PROTOTYPES = [
-      {
-        id: "candidates",
-        title: "Candidates",
-        spec: "widget_contract/specs/candidates-0.1.yaml",
-        artifact: "candidates.json",
-        hint: "cortxt widget --view candidates --repo OWNER/REPO",
-        fixtureSpec: `contract_version: "0.1"
-widget:
-  id: candidates
-  version: "0.1"
-  title: Candidates
-data:
-  reads:
-    - id: candidates
-      source: github
-      operation: candidates.view.v1
-      input: {repo: owner/repo}
-      output_type: candidates.view.v1
-      on_error: stale
-render:
-  primitive: stack
-  props: {label: Candidates}
-  children:
-    - primitive: key-value
-      bindings: {value: {read: candidates, pointer: /source, type: core.object.v1}}
-    - primitive: metric
-      props: {label: Total}
-      bindings: {value: {read: candidates, pointer: /total, type: core.number.v1}}
-    - primitive: table
-      props: {label: frontier, columns: [number, title, workflow, area, milestone, open_blocker_count]}
-      bindings: {rows: {read: candidates, pointer: /groups/0/rows, type: core.array.v1}}
-    - primitive: table
-      props: {label: other, columns: [number, title, workflow, area, milestone, open_blocker_count]}
-      bindings: {rows: {read: candidates, pointer: /groups/3/rows, type: core.array.v1}}`,
-        fixtureData: {
-          candidates: {
-            schema_version: 1,
-            source: { complete: true, status: "fresh", age_seconds: 0, error: null },
-            total: 2,
-            groups: [
-              { id: "frontier", count: 1, rows: [{ number: 1, title: "Issue 1", workflow: "workflow:ready", area: null, milestone: "M1", open_blocker_count: 0 }] },
-              { id: "in_progress", count: 0, rows: [] },
-              { id: "blocked", count: 0, rows: [] },
-              { id: "other", count: 1, rows: [{ number: 2, title: "Issue 2", workflow: "workflow:inbox", area: null, milestone: null, open_blocker_count: 0 }] }
-            ]
-          }
-        }
-      },
-      {
-        id: "pulse",
-        title: "Session Pulse",
-        spec: "widget_contract/specs/session-pulse-0.1.yaml",
-        artifact: "session-pulse.json",
-        hint: "cortxt widget --view session-pulse",
-        fixtureSpec: `contract_version: "0.1"
-widget:
-  id: session-pulse
-  version: "0.1"
-  title: Session Pulse
-data:
-  reads:
-    - id: snapshot
-      source: store
-      operation: sessions.snapshot.v2
-      output_type: sessions.snapshot.v2
-      on_error: stale
-render:
-  primitive: stack
-  props: {label: Session Pulse}
-  children:
-    - primitive: key-value
-      bindings: {value: {read: snapshot, pointer: /orchestrator, type: core.object.v1}}
-    - primitive: metric
-      props: {label: Active sessions}
-      bindings: {value: {read: snapshot, pointer: /orchestrator/active_agent_sessions, type: core.number.v1}}
-    - primitive: table
-      props: {label: Workstreams, columns: [workstream_id, status, updated_at]}
-      bindings: {rows: {read: snapshot, pointer: /workstreams, type: core.array.v1}}
-    - primitive: table
-      props: {label: Activity, columns: [timestamp, event_type, workstream_id, actor]}
-      bindings: {rows: {read: snapshot, pointer: /activity, type: core.array.v1}}`,
-        fixtureData: {
-          snapshot: {
-            schema_version: 2,
-            orchestrator: { status: "idle", active_agent_sessions: 2, message: "2 active runs" },
-            workstreams: [
-              { workstream_id: "ws-builder-339", status: "running", updated_at: "2026-08-23T19:00:00Z" },
-              { workstream_id: "ws-atlas-sync", status: "idle", updated_at: "2026-08-23T18:55:00Z" }
-            ],
-            activity: [
-              { timestamp: "2026-08-23T19:00:00Z", event_type: "turn_completed", workstream_id: "ws-builder-339", actor: "builder" }
-            ]
-          }
-        }
-      },
-      {
-        id: "map",
-        title: "Execution Map",
-        spec: "widget_contract/specs/execution-map-0.1.yaml",
-        artifact: "execution-map.json",
-        hint: "cortxt widget --view execution-map --plan-input <file>",
-        fixtureSpec: `contract_version: "0.1"
-widget:
-  id: execution-map
-  version: "0.1"
-  title: Execution Map
-data:
-  reads:
-    - id: plan
-      source: store
-      operation: execution-map.plan.v1
-      output_type: execution-map.plan.v1
-      on_error: stale
-render:
-  primitive: stack
-  props: {label: Execution Map}
-  children:
-    - primitive: text
-      props: {label: Role}
-      bindings: {value: {read: plan, pointer: /role, type: core.string.v1}}
-    - primitive: table
-      props: {label: Issues, columns: [id, wave, blockers, drift_codes, launchable]}
-      bindings: {rows: {read: plan, pointer: /issues, type: core.array.v1}}
-    - primitive: table
-      props: {label: Claims, columns: [claim_id, issue_id, run_id, state, driver_id]}
-      bindings: {rows: {read: plan, pointer: /claims, type: core.array.v1}}
-    - primitive: list
-      props: {label: Waves, empty: No waves}
-      bindings: {items: {read: plan, pointer: /waves, type: core.array.v1}}`,
-        fixtureData: {
-          plan: {
-            role: "builder",
-            issues: [
-              { id: "339", wave: 1, blockers: [], drift_codes: [], launchable: true },
-              { id: "342", wave: 2, blockers: ["339"], drift_codes: [], launchable: false }
-            ],
-            claims: [{ claim_id: "claim-339", issue_id: "339", run_id: "run-001", state: "active", driver_id: "builder-1" }],
-            waves: [["339"], ["342"]],
-            collision_codes: []
-          }
-        }
-      },
-      {
-        id: "docker",
-        title: "Docker Status",
-        spec: "widget_contract/specs/docker-status-0.1.yaml",
-        artifact: "docker-status.json",
-        hint: "cortxt widget --view docker-status",
-        fixtureSpec: `contract_version: "0.1"
-widget:
-  id: docker-status
-  version: "0.1"
-  title: Docker Status
-data:
-  reads:
-    - id: docker
-      source: store
-      operation: docker.status.v1
-      output_type: docker.status.v1
-      on_error: stale
-render:
-  primitive: stack
-  props: {label: Docker Status}
-  children:
-    - primitive: key-value
-      bindings: {value: {read: docker, pointer: /engine, type: core.object.v1}}
-    - primitive: metric
-      props: {label: Running}
-      bindings: {value: {read: docker, pointer: /running_containers, type: core.number.v1}}
-    - primitive: metric
-      props: {label: Total}
-      bindings: {value: {read: docker, pointer: /total_containers, type: core.number.v1}}
-    - primitive: table
-      props: {label: Containers, columns: [id, name, image, status]}
-      bindings: {rows: {read: docker, pointer: /containers, type: core.array.v1}}
-    - primitive: list
-      props: {label: Images, empty: No images}
-      bindings: {items: {read: docker, pointer: /images, type: core.array.v1}}`,
-        fixtureData: {
-          docker: {
-            schema_version: 1,
-            engine: { server_version: "27.1.1", os: "linux", architecture: "x86_64", status: "running" },
-            containers: [
-              { id: "c1a2b3c4d5e6", name: "cortxt-redis", image: "redis:7-alpine", status: "Up 2 hours" },
-              { id: "f7e8d9c0b1a2", name: "cortxt-postgres", image: "postgres:16-alpine", status: "Up 2 hours" }
-            ],
-            images: ["redis:7-alpine", "postgres:16-alpine", "cortxt/worker:v1"],
-            total_containers: 3,
-            running_containers: 2
-          }
-        }
-      },
-      {
-        id: "webhooks",
-        title: "Webhooks / Cloudflare",
-        spec: "widget_contract/specs/webhooks-0.1.yaml",
-        artifact: "webhooks.json",
-        hint: "cortxt widget --view webhooks",
-        fixtureSpec: `contract_version: "0.1"
-widget:
-  id: webhooks
-  version: "0.1"
-  title: Webhooks
-data:
-  reads:
-    - id: webhooks
-      source: store
-      operation: webhooks.status.v1
-      output_type: webhooks.status.v1
-      on_error: stale
-    - id: pages
-      source: store
-      operation: pages.deploys.v1
-      output_type: pages.deploys.v1
-      on_error: stale
-render:
-  primitive: stack
-  props: {label: Webhooks}
-  children:
-    - primitive: metric
-      props: {label: Active webhooks}
-      bindings: {value: {read: webhooks, pointer: /active, type: core.number.v1}}
-    - primitive: table
-      props: {label: Hooks, columns: [id, url, events, active]}
-      bindings: {rows: {read: webhooks, pointer: /hooks, type: core.array.v1}}
-    - primitive: key-value
-      bindings: {value: {read: pages, pointer: /latest, type: core.object.v1}}
-    - primitive: table
-      props: {label: Deployments, columns: [id, environment, created_on, stage]}
-      bindings: {rows: {read: pages, pointer: /deployments, type: core.array.v1}}`,
-        fixtureData: {
-          webhooks: {
-            schema_version: 1,
-            repo: "rian010194/cortxt",
-            total: 2,
-            active: 2,
-            hooks: [
-              { id: 101, url: "https://api.cloudflare.com/pages/deploy-hook/demo", events: ["push", "pull_request"], active: true },
-              { id: 102, url: "https://notify.example.org/events", events: ["issues"], active: true }
-            ]
-          },
-          pages: {
-            schema_version: 1,
-            project: "cortxt",
-            account: "c7c04f119f81234dc3d851bf6ff2adfe",
-            latest: { id: "dep-789", environment: "production", created_on: "2026-08-23T18:30:00Z", stage: "deploy", status: "success" },
-            deployments: [
-              { id: "dep-789", environment: "production", created_on: "2026-08-23T18:30:00Z", stage: "deploy" },
-              { id: "dep-788", environment: "preview", created_on: "2026-08-23T17:45:00Z", stage: "deploy" }
-            ]
-          }
-        }
-      },
-      {
-        id: "agents",
-        title: "Session Agents",
-        spec: "widget_contract/specs/session-agents-0.1.yaml",
-        artifact: "session-agents.json",
-        hint: "cortxt widget --view session-agents",
-        fixtureSpec: `contract_version: "0.1"
-widget:
-  id: session-agents
-  version: "0.1"
-  title: Session Agents
-data:
-  reads:
-    - id: agents
-      source: store
-      operation: session-agents.v1
-      output_type: session-agents.v1
-      on_error: stale
-render:
-  primitive: stack
-  props: {label: Session Agents}
-  children:
-    - primitive: heading
-      props: {value: Session Agents}
-    - primitive: text
-      props: {value: Live Multi-Agent Workspace}
-    - primitive: swimlane
-      props: {label: Agents, columns: [Agent, Tasks]}
-      bindings: {rows: {read: agents, pointer: /agents, type: core.array.v1}}`,
-        fixtureData: {
-          agents: {
-            schema_version: 1,
-            agents: [
-              {
-                id: "agent-hermes",
-                name: "Hermes",
-                runtime: "hermes",
-                status: "running",
-                current_task: "Execute session plan",
-                tasks: [
-                  { id: "t1", title: "Load context", state: "done", progress: 100 },
-                  { id: "t2", title: "Execute session plan", state: "running", progress: 65 },
-                  { id: "t3", title: "Verification", state: "queued", progress: 0 }
-                ]
-              },
-              {
-                id: "agent-pi",
-                name: "Pi",
-                runtime: "pi",
-                status: "running",
-                current_task: "Analyze codebase invariants",
-                tasks: [
-                  { id: "t4", title: "Inspect AST", state: "done", progress: 100 },
-                  { id: "t5", title: "Analyze codebase invariants", state: "running", progress: 40 }
-                ]
-              },
-              {
-                id: "agent-codex",
-                name: "Codex",
-                runtime: "codex",
-                status: "done",
-                current_task: null,
-                tasks: [
-                  { id: "t6", title: "Contract validation", state: "done", progress: 100 }
-                ]
-              }
-            ]
-          }
-        }
-      },
-      {
-        id: "compliance",
-        title: "Compliance Audit (Custom)",
-        spec: null,
-        artifact: "loaded.json",
-        hint: "cortxt widget load --spec compliance.yaml --view loaded",
-        fixtureSpec: `contract_version: "0.1"
-widget:
-  id: compliance-audit
-  version: "0.1"
-  title: Compliance Audit
-data:
-  reads:
-    - id: compliance
-      source: store
-      operation: compliance.report.v1
-      output_type: core.object.v1
-      on_error: stale
-render:
-  primitive: stack
-  props: {label: Compliance Audit}
-  children:
-    - primitive: metric
-      props: {label: Score}
-      bindings: {value: {read: compliance, pointer: /score, type: core.number.v1}}
-    - primitive: badge
-      bindings: {value: {read: compliance, pointer: /status, type: core.string.v1}}
-    - primitive: table
-      props: {label: Controls, columns: [control_id, status, category]}
-      bindings: {rows: {read: compliance, pointer: /controls, type: core.array.v1}}`,
-        fixtureData: {
-          compliance: {
-            score: 98,
-            status: "Passed",
-            controls: [
-              { control_id: "AC-1", status: "passed", category: "access_control" },
-              { control_id: "AU-2", status: "passed", category: "audit_trail" },
-              { control_id: "SC-7", status: "passed", category: "boundary_protection" }
-            ]
-          }
-        }
-      },
-      {
-        id: "composed",
-        title: "Composed Dashboard",
-        spec: null,
-        artifact: "composed.json",
-        hint: "cortxt widget compose --spec dashboard.yaml --widgets-dir specs/",
-        fixtureSpec: `contract_version: "0.1"
-widget:
-  id: pulse-dashboard
-  version: "0.1"
-render:
-  primitive: stack
-  props: {label: System Overview}
-  children:
-    - primitive: panel
-      props: {label: Pulse Metrics}
-      children:
-        - primitive: metric
-          props: {label: Active sessions, value: 2}
-    - primitive: panel
-      props: {label: Workstreams}
-      children:
-        - primitive: table
-          props:
-            label: Workstreams
-            columns: [workstream_id, status, updated_at]
-            rows:
-              - {workstream_id: ws-builder-339, status: running, updated_at: "2026-08-23T19:00:00Z"}`,
-        fixtureData: {}
-      }
-    ];
-
-    let studioCommand = "cortxt widget load --spec custom.yaml --view loaded";
-
-    function switchView(view) {
-      const isGallery = view === "gallery";
-      document.getElementById("tab-gallery").classList.toggle("active", isGallery);
-      document.getElementById("tab-studio").classList.toggle("active", !isGallery);
-      document.getElementById("view-gallery").classList.toggle("hidden", !isGallery);
-      document.getElementById("view-studio").classList.toggle("hidden", isGallery);
-    }
-
-    function copySnippet(text, btn) {
-      const done = () => {
-        const orig = btn.textContent;
-        btn.textContent = "Copied!";
-        btn.classList.add("copied");
-        setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1500);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done).catch(done);
-      } else {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed"; ta.style.opacity = "0";
-        document.body.append(ta);
-        ta.select();
-        try { document.execCommand("copy"); } catch (e) {}
-        ta.remove();
-        done();
-      }
-    }
-
-    function renderExamplesBand(protos) {
-      const scroll = document.getElementById("examples-scroll");
-      if (!scroll) return;
-      scroll.replaceChildren();
-
-      for (const proto of protos) {
-        const chip = document.createElement("div");
-        chip.className = "example-chip";
-        const isLive = ["session-agents", "usage", "pulse"].includes(proto.id);
-        chip.innerHTML = `
-          <div class="example-chip-title">
-            <span>${escapeHtml(proto.title)}</span>
-            <span class="badge ${isLive ? "ok pulse-dot" : "off"}">${isLive ? "live" : "ready"}</span>
-          </div>
-          <div class="example-chip-hint">${escapeHtml(proto.hint || "")}</div>
-        `;
-        chip.onclick = function () {
-          const targetCard = document.getElementById("card-" + proto.id);
-          if (targetCard) {
-            targetCard.scrollIntoView({ behavior: "smooth", block: "center" });
-            targetCard.style.outline = "2px solid var(--atlas-accent-2)";
-            setTimeout(() => { targetCard.style.outline = "none"; }, 1500);
-          }
-        };
-        scroll.append(chip);
-      }
-    }
-
-    function initGallery() {
-      renderExamplesBand(PROTOTYPES);
-      const grid = document.getElementById("gallery-grid") || document.getElementById("view-gallery");
-      grid.replaceChildren();
-
-      for (const proto of PROTOTYPES) {
-        const card = document.createElement("div");
-        card.className = "widget-card";
-        card.id = "card-" + proto.id;
-
-        const head = document.createElement("div");
-        head.className = "card-head";
-        head.innerHTML = `
-          <div class="card-title-wrap">
-            <span class="card-title">${escapeHtml(proto.title)}</span>
-            <span class="card-sub">id: ${escapeHtml(proto.id)} &bull; ${proto.spec ? escapeHtml(proto.spec) : "composed / dynamic"}</span>
-          </div>
-          <span class="badge ok">ready</span>
-        `;
-        card.append(head);
-
-        const body = document.createElement("div");
-        body.className = "card-body";
-
-        const renderPane = document.createElement("div");
-        renderPane.className = "pane pane-render";
-
-        const cliPane = document.createElement("div");
-        cliPane.className = "pane pane-cli";
-
-        const cmdLabel = document.createElement("div");
-        cmdLabel.className = "pane-label";
-        cmdLabel.innerHTML = `<span>CLI Command</span>`;
-        const copyCmd = document.createElement("button");
-        copyCmd.className = "candidate-copy";
-        copyCmd.textContent = "Copy command";
-        copyCmd.onclick = () => copySnippet(proto.hint, copyCmd);
-        cmdLabel.append(copyCmd);
-
-        const cmdBox = document.createElement("div");
-        cmdBox.className = "cli-cmd-box";
-        cmdBox.innerHTML = `<div class="cli-cmd">${escapeHtml(proto.hint)}</div>`;
-
-        const jsonLabel = document.createElement("div");
-        jsonLabel.className = "pane-label";
-        jsonLabel.style.marginTop = "4px";
-        jsonLabel.innerHTML = `<span>CLI JSON Output</span>`;
-        const copyJson = document.createElement("button");
-        copyJson.className = "candidate-copy";
-        copyJson.textContent = "Copy JSON";
-
-        const jsonPre = document.createElement("pre");
-        jsonPre.className = "cli-json";
-
-        copyJson.onclick = () => copySnippet(jsonPre.textContent, copyJson);
-        jsonLabel.append(copyJson);
-
-        cliPane.append(cmdLabel, cmdBox, jsonLabel, jsonPre);
-        body.append(renderPane, cliPane);
-        card.append(body);
-        grid.append(card);
-
-        // Render client-side using WidgetMaker
-        const parsed = WidgetMaker.parseYamlSubset(proto.fixtureSpec);
-        if (parsed.ok) {
-          const rendered = WidgetMaker.renderSpec(parsed.data, proto.fixtureData);
-          WidgetMaker.renderNodeToDom(rendered.render, renderPane);
-          jsonPre.textContent = WidgetMaker.formatCliOutput(rendered);
-        } else {
-          renderPane.innerHTML = `<div class="pulse-status error">Render error: ${escapeHtml(parsed.error)}</div>`;
-          jsonPre.textContent = "{}";
-        }
-      }
-    }
-
-    function applyPreset(key) {
-      const match = PROTOTYPES.find(p => p.id === key) || {
-        fixtureSpec: `contract_version: "0.1"\nwidget:\n  id: custom-widget\n  version: "0.1"\nrender:\n  primitive: stack\n  children:\n    - primitive: heading\n      props: {value: "Custom Widget"}\n    - primitive: metric\n      props: {label: "Counter", value: 100}`,
-        fixtureData: {},
-        hint: "cortxt widget load --spec custom.yaml --view loaded"
-      };
-
-      document.getElementById("studio-spec-input").value = match.fixtureSpec;
-      document.getElementById("studio-data-input").value = JSON.stringify(match.fixtureData, null, 2);
-      studioCommand = match.hint;
-      document.getElementById("studio-cmd-display").textContent = studioCommand;
-      triggerStudioRender();
-    }
-
-    let studioTimer = null;
-    function debounceStudioRender() {
-      clearTimeout(studioTimer);
-      studioTimer = setTimeout(triggerStudioRender, 150);
-    }
-
-    function triggerStudioRender() {
-      const specText = document.getElementById("studio-spec-input").value;
-      const dataText = document.getElementById("studio-data-input").value;
-      const domTarget = document.getElementById("studio-dom-target");
-      const badge = document.getElementById("studio-badge");
-      const jsonPre = document.getElementById("studio-json-display");
-
-      domTarget.replaceChildren();
-
-      const parsedYaml = WidgetMaker.parseYamlSubset(specText);
-      if (!parsedYaml.ok) {
-        badge.className = "status-badge err";
-        badge.textContent = "YAML Error";
-        domTarget.innerHTML = `<div class="pulse-status error">YAML parse error: ${escapeHtml(parsedYaml.error)}</div>`;
-        jsonPre.textContent = "{}";
-        return;
-      }
-
-      let dataObj = {};
-      if (dataText.trim()) {
-        try {
-          dataObj = JSON.parse(dataText);
-        } catch (e) {
-          badge.className = "status-badge err";
-          badge.textContent = "JSON Error";
-          domTarget.innerHTML = `<div class="pulse-status error">Fixture JSON error: ${escapeHtml(e.message)}</div>`;
-          jsonPre.textContent = "{}";
-          return;
-        }
-      }
-
-      try {
-        const rendered = WidgetMaker.renderSpec(parsedYaml.data, dataObj);
-        badge.className = "status-badge ok";
-        badge.textContent = "Valid";
-        WidgetMaker.renderNodeToDom(rendered.render, domTarget);
-        jsonPre.textContent = WidgetMaker.formatCliOutput(rendered);
-      } catch (err) {
-        badge.className = "status-badge err";
-        badge.textContent = "Render Error";
-        domTarget.innerHTML = `<div class="pulse-status error">Spec render failed: ${escapeHtml(err.message)}</div>`;
-        jsonPre.textContent = "{}";
-      }
-    }
-
-    function escapeHtml(str) {
-      return (str || "").toString()
-        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    }
-
-    // CLI display mode: split | overlay | hidden (persisted)
-    const CLI_MODE_KEY = "cortxt-cli-mode";
-    let cliMode = (function () {
-      try { return localStorage.getItem(CLI_MODE_KEY) || "split"; } catch (e) { return "split"; }
-    })();
-    function setCliMode(mode) {
-      cliMode = mode;
-      try { localStorage.setItem(CLI_MODE_KEY, mode); } catch (e) {}
-      document.querySelectorAll("#cli-view-toggle .toggle-btn").forEach(function (b) {
-        b.classList.toggle("active", b.dataset.mode === mode);
-      });
-      document.body.classList.toggle("cli-split", mode === "split");
-      document.body.classList.toggle("cli-overlay", mode === "overlay");
-      document.body.classList.toggle("cli-hidden", mode === "hidden");
-    }
-
-    // Initialize
-    initGallery();
-    applyPreset("candidates");
-    setCliMode(cliMode);
-  </script>
-</body>
-</html>
+function renderComposed(node,container){if(!node)return;const p=node.props||{};if(node.primitive==="stack"||node.primitive==="row"||node.primitive==="grid"||node.primitive==="tabs"||node.primitive==="panel"){if(node.primitive==="panel"){const panel=document.createElement("div");panel.className="widget-panel";panel.style.cssText="border:1px solid var(--strong);border-radius:10px;background:var(--layer);padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0;min-height:120px;";const head=document.createElement("div");head.className="eyebrow";head.textContent=(node.props?.label)||(node.widget?String(node.widget):"panel");panel.append(head);(node.children||[]).forEach(child=>renderComposed(child,panel));container.append(panel);return}const isGrid=node.primitive==="grid"||node.primitive==="row";let gridBox=null;if(isGrid){gridBox=document.createElement("div");gridBox.className="widget-grid";gridBox.style.display="grid";gridBox.style.gridTemplateColumns=p.columns?`repeat(${Number(p.columns)||1},1fr)`:"repeat(auto-fit,minmax(240px,1fr))";gridBox.style.gap="12px";gridBox.style.alignItems="start";container.append(gridBox)}const target=gridBox||container;(node.children||[]).forEach(child=>renderComposed(child,target));return}renderGenericNode(node,container)}
+function renderActionable(tree,root){const nodes=tree?.render?.children||[],tables=nodes.filter(x=>x.primitive==="table"),handoffs=tree?.handoffs||[],enabledHandoffs=handoffs.filter(x=>x.enabled),repo=tree.repo||"OWNER/REPO";const total=tables.reduce((sum,x)=>sum+(x.props?.rows||[]).length,0);if(enabledHandoffs.length){const chain=document.createElement("div");chain.className="candidate-chain";chain.textContent=handoffs.map(x=>x.enabled?`${x.id} (${x.effect_class})`:`${x.id} (off)`).join(" → ");chain.append(actionHost.enabled?" — operator-gated: type the approval reference and confirm in the browser":" — Copy command copies the operator-gated command; approve in the terminal");root.append(chain)}if(!total){root.append(emptyLine("No rows."));return}tables.forEach(node=>{const rows=node.props?.rows||[];if(!rows.length)return;const group=document.createElement("div");group.className="candidate-group";const heading=document.createElement("h3");heading.textContent=`${node.props.label} (${rows.length})`;const table=document.createElement("table");table.className="candidate-table";const columns=node.props.columns||[];const head=document.createElement("tr");columns.forEach(column=>{const th=document.createElement("th");th.textContent=column.replaceAll("_"," ");head.append(th)});if(enabledHandoffs.length){const th=document.createElement("th");th.textContent="action";head.append(th)}const thead=document.createElement("thead");thead.append(head);const body=document.createElement("tbody");rows.forEach(item=>{const row=document.createElement("tr");columns.forEach(column=>{const cell=document.createElement("td");cell.textContent=item[column]??"—";if(column==="title")cell.title=item.title||"";row.append(cell)});if(enabledHandoffs.length){const cell=document.createElement("td");const wrap=document.createElement("div");wrap.className="candidate-action";if(actionHost.enabled){enabledHandoffs.forEach(h=>wrap.append(actionForm(h,`${repo}#${item.number}`)))}else{enabledHandoffs.forEach(h=>{const button=document.createElement("button");button.className="candidate-copy";button.textContent="Copy command";const command=`cortxt widget action ${h.id} --repo ${repo} --issue ${item.number} --approval-ref <ref> --confirm`;button.title=command;button.onclick=()=>copyCommand(command,button);const cmd=document.createElement("code");cmd.className="candidate-cmd";cmd.textContent=command;wrap.append(button,cmd)})}cell.append(wrap);row.append(cell)}body.append(row)});table.append(thead,body);group.append(table);if(node.truncated||node.props?.truncated){const tr=document.createElement("div");tr.className="pulse-status";tr.textContent=`truncated (${rows.length} shown)`;group.append(tr)}root.append(group)})}
+let manifest=[];
+function setBadge(id,text,cls){document.querySelectorAll(`.badge-${id}, #badge-${id}, [data-badge="${id}"]`).forEach(b=>{b.textContent=text;b.className="badge "+(cls||"");const isLive=/running|active|poll|fresh/i.test(text)&&text!=="ok";b.classList.toggle("glow-live",isLive);if(isLive)b.classList.add(text==="err"||text==="bad"?"bad":"ok")})}
+async function renderWidget(w){const roots=document.querySelectorAll(`[data-root="${w.id}"], #root-${w.id}`);if(!roots.length)return;const cur=pollState.get(w.id)||{failures:0,nextPoll:0,interval:POLL_BASE_MS};try{const response=await fetch(w.artifact,{cache:"no-store"});if(!response.ok)throw Error(response.status);const tree=await response.json();const err=tree.error||{};if(err.kind){const fails=cur.failures+1,interval=nextInterval(fails);pollState.set(w.id,{failures:fails,nextPoll:Date.now()+interval,interval});roots.forEach(root=>{root.replaceChildren();const status=document.createElement("div");status.className="pulse-status error";const meta=tree.widget?` · ${tree.widget.id} v${tree.widget.version}`:"";status.textContent=`Read failed · ${err.message||"unavailable"} (retrying in ${Math.round(interval/1000)}s)${meta}`;root.append(status)});setBadge(w.id,"err","err");return}pollState.set(w.id,{failures:0,nextPoll:Date.now()+POLL_BASE_MS,interval:POLL_BASE_MS});roots.forEach(root=>{root.replaceChildren();const status=document.createElement("div");status.className="pulse-status";const meta=tree.widget?` · ${tree.widget.id} v${tree.widget.version}`:"";status.textContent=`${w.title||w.id}${meta}`;root.append(status);if(tree.composed){renderComposed(tree.render,root)}else if(tree.handoffs?.length){renderActionable(tree,root)}else if(tree.render){renderGenericNode(tree.render,root)}else{root.append(emptyLine("No render tree."))}});setBadge(w.id,tree.render?.state||"ok",tree.render?.state==="error"?"err":"ok")}catch(e){const fails=cur.failures+1,interval=nextInterval(fails);pollState.set(w.id,{failures:fails,nextPoll:Date.now()+interval,interval});roots.forEach(root=>{root.replaceChildren();empty(root,`Run \`${w.hint||"the widget command"}\` to create ${w.artifact}. Backing off (${Math.round(interval/1000)}s).`)});setBadge(w.id,"off","off")}}
+function buildCardHead(w){const head=document.createElement("div");head.className="head";const left=document.createElement("div");const eye=document.createElement("div");eye.className="eyebrow";eye.textContent="widget · "+w.artifact;const title=document.createElement("div");title.className="title";title.textContent=w.title||w.id;left.append(eye,title);const badge=document.createElement("span");badge.className="badge";badge.setAttribute("data-badge",w.id);badge.textContent="…";head.append(left,badge);return head}
+let dockTree=null;
+function renderCanvasView(){const root=$("dock-root"),toolbar=$("canvas-toolbar");if(!root||!manifest.length)return;const visible=manifest;if(!dockTree){dockTree=new CortxtDock.DockTree(root,visible,w=>{const r=document.createElement("div");r.className="wcard-body candidates";r.setAttribute("data-root",w.id);return{head:buildCardHead(w),root:r}});dockTree.onRender=()=>pollAll(true)}dockTree.render();renderCanvasToolbar(toolbar)}
+function renderCanvasToolbar(toolbar){if(!toolbar)return;toolbar.replaceChildren();const addBtn=document.createElement("button");addBtn.type="button";addBtn.className="canvas-tool-btn";addBtn.textContent="+ Widgets";const panel=document.createElement("div");panel.className="canvas-picker hidden";manifest.forEach(w=>{const row=document.createElement("label");row.className="canvas-picker-row";const box=document.createElement("input");box.type="checkbox";box.checked=dockTree.isVisible(w.id);box.onchange=()=>{if(box.checked)dockTree.showWidget(w.id);else dockTree.hideWidget(w.id)};const label=document.createElement("span");label.textContent=w.title||w.id;row.append(box,label);panel.append(row)});let open=false;addBtn.onclick=()=>{open=!open;panel.classList.toggle("hidden",!open)};const resetBtn=document.createElement("button");resetBtn.type="button";resetBtn.className="canvas-tool-btn";resetBtn.textContent="Reset layout";resetBtn.onclick=()=>{dockTree.reset();renderCanvasToolbar(toolbar)};toolbar.append(addBtn,resetBtn,panel)}
+const WINDOW_SIZE_KEY="cortxt-window-size";
+function applyWindowSize(){try{const raw=localStorage.getItem(WINDOW_SIZE_KEY);if(!raw)return;const s=JSON.parse(raw);if(typeof s.w==="number"&&typeof s.h==="number"){$("window").style.width=s.w+"px";$("window").style.height=s.h+"px"}}catch(e){}}
+function initWindowResize(){const win=$("window"),handle=$("window-resize");if(!win||!handle)return;let drag=null;handle.addEventListener("pointerdown",ev=>{if(win.classList.contains("maximized"))return;drag={startX:ev.clientX,startY:ev.clientY,startW:win.offsetWidth,startH:win.offsetHeight};handle.setPointerCapture(ev.pointerId)});handle.addEventListener("pointermove",ev=>{if(!drag)return;const w=Math.max(480,drag.startW+(ev.clientX-drag.startX)),h=Math.max(400,drag.startH+(ev.clientY-drag.startY));win.style.width=w+"px";win.style.height=h+"px"});function endResize(){if(!drag)return;drag=null;try{localStorage.setItem(WINDOW_SIZE_KEY,JSON.stringify({w:win.offsetWidth,h:win.offsetHeight}))}catch(e){}}handle.addEventListener("pointerup",endResize);handle.addEventListener("pointercancel",endResize)}
+const MAKER_PANE_WIDTH_KEY="cortxt-maker-pane-width",MAKER_PANE_MIN=260,DOCK_MIN=300,MAKER_PANE_COLLAPSED_KEY="cortxt-maker-pane-collapsed";
+function applyMakerPaneWidth(){const pane=$("maker-pane");if(!pane)return;let w=null;try{const raw=localStorage.getItem(MAKER_PANE_WIDTH_KEY);if(raw)w=Number(raw)}catch(e){}if(typeof w==="number"&&Number.isFinite(w)&&w>0)pane.style.width=Math.max(MAKER_PANE_MIN,w)+"px"}
+function setMakerPaneCollapsed(collapsed){const pane=$("maker-pane"),divider=$("maker-divider"),toggle=$("maker-collapse-toggle");if(!pane||!divider)return;pane.classList.toggle("collapsed",collapsed);divider.classList.toggle("collapsed",collapsed);if(toggle){toggle.innerHTML=collapsed?"&#8250;":"&#8249;";toggle.title=collapsed?"Expand sidebar":"Collapse sidebar"}if(!collapsed)applyMakerPaneWidth();try{localStorage.setItem(MAKER_PANE_COLLAPSED_KEY,collapsed?"1":"0")}catch(e){}}
+function initMakerPaneCollapse(){const toggle=$("maker-collapse-toggle");let collapsed=false;try{collapsed=localStorage.getItem(MAKER_PANE_COLLAPSED_KEY)==="1"}catch(e){}setMakerPaneCollapsed(collapsed);if(toggle)toggle.onclick=ev=>{ev.stopPropagation();setMakerPaneCollapsed(!$("maker-pane").classList.contains("collapsed"))}}
+function initMakerPaneResize(){const pane=$("maker-pane"),divider=$("maker-divider"),content=$("content");if(!pane||!divider||!content)return;let drag=null;divider.addEventListener("pointerdown",ev=>{if(ev.target.closest("#maker-collapse-toggle"))return;if(pane.classList.contains("collapsed"))return;drag={startX:ev.clientX,startW:pane.getBoundingClientRect().width};divider.classList.add("dragging");divider.setPointerCapture(ev.pointerId);ev.preventDefault()});divider.addEventListener("pointermove",ev=>{if(!drag)return;const contentW=content.getBoundingClientRect().width;const maxW=Math.max(MAKER_PANE_MIN,contentW-DOCK_MIN-12);let w=drag.startW+(ev.clientX-drag.startX);w=Math.min(maxW,Math.max(MAKER_PANE_MIN,w));pane.style.width=w+"px"});function end(){if(!drag)return;drag=null;divider.classList.remove("dragging");try{localStorage.setItem(MAKER_PANE_WIDTH_KEY,String(pane.getBoundingClientRect().width))}catch(e){}}divider.addEventListener("pointerup",end);divider.addEventListener("pointercancel",end)}
+async function loadManifest(){try{const r=await fetch("widgets.json",{cache:"no-store"});if(!r.ok)throw Error(r.status);const m=await r.json();manifest=(m.widgets||[]).filter(w=>w.id&&w.artifact);if(!manifest.length)throw Error("empty manifest");renderCanvasView();pollAll(true)}catch(e){empty($("dock-root"),"No widgets manifest. Run `cortxt widget` to serve widgets (widgets.json).")}}
+function pollAll(force=false){const now=Date.now();manifest.forEach(w=>{const s=pollState.get(w.id);if(force||!s||now>=s.nextPoll)renderWidget(w)})}
+const WINDOW_POS_KEY="cortxt-window-pos",WINDOW_STATE_KEY="cortxt-window-state";
+function initWindowPosition(){const win=$("window");if(!win)return;let pos=null;try{pos=JSON.parse(localStorage.getItem(WINDOW_POS_KEY))}catch(e){}if(pos&&typeof pos.x==="number"&&typeof pos.y==="number"){win.style.left=pos.x+"px";win.style.top=pos.y+"px"}else{const r=win.getBoundingClientRect();win.style.left=Math.max(0,(window.innerWidth-r.width)/2)+"px";win.style.top=Math.max(0,(window.innerHeight-r.height)/2)+"px"}}
+function initWindowDrag(){const win=$("window"),bar=$("titlebar");if(!win||!bar)return;let drag=null;bar.addEventListener("pointerdown",ev=>{if(ev.target.closest("button,a,input"))return;if(win.classList.contains("maximized"))return;drag={startX:ev.clientX,startY:ev.clientY,origX:win.offsetLeft,origY:win.offsetTop};bar.classList.add("dragging");bar.setPointerCapture(ev.pointerId)});bar.addEventListener("pointermove",ev=>{if(!drag)return;win.style.left=Math.max(0,drag.origX+(ev.clientX-drag.startX))+"px";win.style.top=Math.max(0,drag.origY+(ev.clientY-drag.startY))+"px"});function endDrag(){if(!drag)return;drag=null;bar.classList.remove("dragging");try{localStorage.setItem(WINDOW_POS_KEY,JSON.stringify({x:win.offsetLeft,y:win.offsetTop}))}catch(e){}}bar.addEventListener("pointerup",endDrag);bar.addEventListener("pointercancel",endDrag)}
+function saveWindowState(state){try{localStorage.setItem(WINDOW_STATE_KEY,JSON.stringify(state))}catch(e){}}
+function initWindowControls(){const win=$("window"),fab=$("reopen-fab");let maxRect=null;let saved=null;try{saved=JSON.parse(localStorage.getItem(WINDOW_STATE_KEY))}catch(e){}if(saved){win.classList.toggle("minimized",!!saved.minimized);win.classList.toggle("maximized",!!saved.maximized);if(saved.closed){win.classList.add("hidden");fab.classList.remove("hidden")}}$("win-minimize").onclick=()=>{win.classList.toggle("minimized");saveWindowState({minimized:win.classList.contains("minimized"),maximized:win.classList.contains("maximized")})};$("titlebar").addEventListener("dblclick",ev=>{if(ev.target.closest("button,a,input"))return;if(win.classList.contains("minimized")){win.classList.remove("minimized");saveWindowState({minimized:false,maximized:win.classList.contains("maximized")})}});$("win-maximize").onclick=()=>{const isMax=win.classList.toggle("maximized");if(isMax){maxRect={x:win.offsetLeft,y:win.offsetTop,w:win.offsetWidth,h:win.offsetHeight}}else if(maxRect){win.style.left=maxRect.x+"px";win.style.top=maxRect.y+"px";win.style.width=maxRect.w+"px";win.style.height=maxRect.h+"px"}saveWindowState({minimized:win.classList.contains("minimized"),maximized:isMax})};$("win-close").onclick=()=>{win.classList.add("hidden");fab.classList.remove("hidden");saveWindowState({closed:true})};fab.onclick=()=>{win.classList.remove("hidden");fab.classList.add("hidden");saveWindowState({closed:false})}}
+probeActions();loadTokens();loadManifest();initWindowResize();initWindowPosition();initWindowDrag();initWindowControls();applyWindowSize();applyMakerPaneWidth();initMakerPaneResize();initMakerPaneCollapse();window.WidgetMaker?.mount?.($("maker-pane"));
+setInterval(()=>{probeActions();if(manifest.length)pollAll()},1000);
+</script></body></html>
