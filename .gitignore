@@ -21,6 +21,7 @@ agent-platform/runs/
 docs/superpowers/
 docs/assessments/
 docs/runbooks/
+lab/
 
 # ---- Python ----
 __pycache__/
