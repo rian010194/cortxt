@@ -78,7 +78,7 @@ def test_load_tokens_success_and_failures(tmp_path):
     # Default load
     tokens = load_tokens()
     assert isinstance(tokens, dict)
-    assert tokens["colors"]["accent"] == "#4d6bfe"
+    assert tokens["colors"]["accent"] == "#8fa3c7"
 
     # Custom valid path
     custom = tmp_path / "custom_tokens.json"
@@ -144,10 +144,10 @@ def test_truecolor_ansi_map_matches_token_hex():
     """24-bit ANSI codes must be derived from the actual token hex values."""
     tokens = load_tokens()
     mapping = truecolor_ansi_map(tokens)
-    # accent #4d6bfe -> truecolor foreground escape
-    assert mapping["accent"] == "\x1b[38;2;77;107;254m"
-    # ok #68d391 -> truecolor foreground escape
-    assert mapping["ok"] == "\x1b[38;2;104;211;145m"
+    # accent #8fa3c7 -> truecolor foreground escape
+    assert mapping["accent"] == "\x1b[38;2;143;163;199m"
+    # ok #a8d5ba -> truecolor foreground escape
+    assert mapping["ok"] == "\x1b[38;2;168;213;186m"
     assert mapping["reset"] == "\x1b[0m"
 
 
@@ -173,7 +173,7 @@ def test_new_token_sections_valid():
     assert "effects" in tokens
     assert "motion" in tokens
     assert "backdrop" in tokens
-    assert tokens["effects"]["glow_ok"] == "rgba(104, 211, 145, 0.55)"
+    assert tokens["effects"]["glow_ok"] == "rgba(168, 213, 186, 0.55)"
     assert "duration_live" in tokens["motion"]
     assert "grid" in tokens["backdrop"]
 
@@ -248,16 +248,16 @@ def test_load_preset_tokens_rejects_unknown_preset():
         load_preset_tokens("midnight-neon")
 
 
-def test_load_tokens_v1_back_compat_unaffected_by_presets():
-    """load_tokens() (no args) must keep serving the original v1 document,
-    unchanged, for any caller that has not adopted presets."""
+def test_load_tokens_v1_back_compat_reflects_last_synced_preset():
+    """load_tokens() (no args) must keep working as a flat v1-shaped read
+    for any caller that has not adopted presets -- it never needs to import
+    load_presets()/load_preset_tokens() to succeed. Its *content*, however,
+    is whatever widget_contract.theme_resolver.sync_widget_tokens() last
+    wrote (default: the quiet-slate preset, issue #405) -- tokens.json is
+    not a second, independent color source frozen at some pre-preset value."""
     tokens = load_tokens()
-    assert tokens["colors"]["accent"] == "#4d6bfe"
-    # Not equal to any preset's colors: the original file is independent of
-    # the new preset collection.
     envelope = load_presets()
-    for preset_id in VISUAL_TOKENS_PRESET_IDS:
-        assert tokens["colors"] != envelope["presets"][preset_id]["colors"]
+    assert tokens["colors"] == envelope["presets"][DEFAULT_PRESET_ID]["colors"]
 
 
 def test_contrast_ratio_known_values():

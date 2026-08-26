@@ -959,20 +959,20 @@
   const DEFAULT_TOKENS = {
     schema_version: 1,
     colors: {
-      background: "#080b14",
-      surface: "#101522",
+      background: "#101216",
+      surface: "#181b20",
       layer: "#ffffff0d",
       hover: "#ffffff15",
-      stroke: "#29324a",
-      strong: "#3a4562",
-      text: "#f4f7ff",
-      muted: "#aab3c5",
-      dim: "#8792a8",
-      accent: "#4d6bfe",
-      blue: "#3151d8",
-      ok: "#68d391",
-      warn: "#f6c85f",
-      bad: "#ff7a90"
+      stroke: "#5b6471",
+      strong: "#727c8a",
+      text: "#e7ebf0",
+      muted: "#8d97a3",
+      dim: "#65717f",
+      accent: "#8fa3c7",
+      blue: "#7885a7",
+      ok: "#a8d5ba",
+      warn: "#d8c49a",
+      bad: "#d9a6b2"
     },
     typography: {
       sans: ["Inter", "Segoe UI Variable", "Segoe UI", "sans-serif"],
