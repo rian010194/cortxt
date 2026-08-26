@@ -33,6 +33,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pytest pyyaml jsonschema cryptography
+      - run: pip install git+https://github.com/rian010194/cortxt-resilient-inference.git
       - run: pytest agent-platform/ -m "not real_inference and not docker_required"
 
   agent-platform-docker-tests:
@@ -43,6 +44,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pytest pyyaml jsonschema cryptography
+      - run: pip install git+https://github.com/rian010194/cortxt-resilient-inference.git
       - run: docker info
       - run: pytest agent-platform/ -m docker_required -v
 
