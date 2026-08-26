@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Deterministic regression tests for scripts/session_inbox_contract.py.
 
-Builds fixture inbox trees under a scratch directory inside the repository
-(never touches the real workspace `lab/inbox/`), so this test performs no
-live inbox mutation and no GitHub calls. Run directly:
+Builds fixture inbox trees under a unique system-temporary directory (never
+touches the real workspace `lab/inbox/`), so parallel test processes cannot
+collide and this test performs no live inbox mutation or GitHub calls. Run directly:
 python scripts/test_session_inbox_contract.py (0 = pass)
 """
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -22,7 +23,7 @@ spec.loader.exec_module(sic)
 
 fail = []
 
-SCRATCH = REPO / ".tmp" / "session-inbox-contract-test"
+SCRATCH = Path(tempfile.mkdtemp(prefix="cortxt-session-inbox-contract-test-"))
 
 
 def check(name, cond, detail=""):
@@ -201,6 +202,14 @@ def main() -> int:
         (resolved, err),
     )
 
+    unrelated_stop = fresh_root("unrelated-stop")
+    resolved, err = sic.resolve_lab_root(None, nested_start, stop_at=unrelated_stop)
+    check(
+        "resolve_lab_root: non-ancestor stop boundary is rejected",
+        resolved is None and err == "invalid_stop_at",
+        (resolved, err),
+    )
+
     # -- validate_message: field/type/frontmatter checks -------------------------
     def write_and_validate(name: str, content: str, target_lab_root: Path, target_workspace_root: Path):
         mailbox = target_lab_root / "coordinator" / "in"
@@ -233,6 +242,16 @@ def main() -> int:
         "validate_message: missing frontmatter block reported and short-circuits",
         codes(findings) == {"frontmatter_invalid"},
         codes(findings),
+    )
+
+    legacy_path = lab_root / "done" / "legacy.md"
+    legacy_path.write_text(BAD_TYPE_MESSAGE, encoding="utf-8")
+    legacy_findings = sic.validate_message(legacy_path, lab_root, workspace_root)
+    check(
+        "validate_message: archived legacy schema findings remain visible as warnings",
+        "invalid_type" in codes(legacy_findings)
+        and all(f["severity"] == "warning" for f in legacy_findings),
+        legacy_findings,
     )
 
     findings = write_and_validate("diacritics.md", DIACRITICS_MESSAGE, lab_root, workspace_root)
@@ -300,12 +319,31 @@ Absolute-path artifact.
     rc = sic.main(["--lab-root", str(clean_lab_root), "--json"])
     check("main: exit code 0 when only clean messages present", rc == 0, rc)
 
+    rc = sic.main(
+        [
+            "--lab-root",
+            str(clean_lab_root),
+            "--workspace-root",
+            str(clean_lab_root.parent),
+            "--json",
+        ]
+    )
+    check("main: exit code 2 for mismatched workspace root", rc == 2, rc)
+
+    check(
+        "workspace relationship: canonical workspace/lab/inbox accepted",
+        sic.workspace_relationship_valid(clean_lab_root, clean_lab_root.parent.parent),
+    )
+
     rc = sic.main(["--lab-root", str(not_inbox)])
     check("main: exit code 2 for wrong_root", rc == 2, rc)
 
     empty_start = fresh_root("empty-start-for-main")
     rc = sic.main(["--start", str(empty_start), "--stop-at", str(SCRATCH)])
     check("main: exit code 2 for missing (auto-discovery absence)", rc == 2, rc)
+
+    rc = sic.main(["--start", str(empty_start), "--stop-at", str(unrelated_stop)])
+    check("main: exit code 2 for non-ancestor stop boundary", rc == 2, rc)
 
     # README.md files are documentation, not messages, and must be skipped.
     readme_root = fresh_root("readme-skip")

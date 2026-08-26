@@ -198,7 +198,9 @@ repository at `lab/inbox/` (workspace-local, never tracked). Conventions:
 - See `lab/DESIGN-session-injection.md` for the design; this is its v1.
 - `scripts/session_inbox_contract.py` is a read-only checker for this
   contract (frontmatter fields, `type`, diacritics, artifact existence). It
-  never writes to, moves, or deletes anything under `lab/inbox/`.
+  never writes to, moves, or deletes anything under `lab/inbox/`. Active
+  mailbox messages are strict; historical messages already under `done/`
+  retain visible findings as warnings and are never rewritten.
 
 Handoffs live in `lab/` (workspace-local, never tracked) and are the durable
 start point for each session; the inbox supplements them with live deliveries

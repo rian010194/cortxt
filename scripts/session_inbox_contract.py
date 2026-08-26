@@ -33,18 +33,20 @@ Root resolution has two distinct failure modes, deliberately not conflated:
   nothing anywhere up to the filesystem root -> `missing`. There is simply
   no inbox to check.
 
-Severity: a structural or frontmatter problem (missing root, unparsable
-frontmatter, a missing/empty required field, an invalid `type`) is an
-`error` and fails the run (exit 1). A stale `artifact` path or a diacritics
-hit is a `warning` -- historical messages can go stale without the contract
-itself being violated, so these are reported but do not fail the run.
+Severity: active messages (anything outside `done/`) are checked strictly: a
+frontmatter problem, missing/empty required field, or invalid `type` is an
+`error` and fails the run (exit 1). Messages already archived under `done/`
+are legacy evidence: the same findings remain visible but are downgraded to
+warnings. A stale `artifact` path or a diacritics hit is always a warning.
+This policy never rewrites historical messages.
 
 Usage:
     python scripts/session_inbox_contract.py [--lab-root PATH]
         [--workspace-root PATH] [--start PATH] [--stop-at PATH] [--json]
 
 Exit codes: 0 = clean (only warnings, if any), 1 = one or more errors,
-2 = could not resolve a lab-root to check (missing or wrong_root).
+2 = root/boundary resolution failed (`missing`, `wrong_root`,
+`invalid_stop_at`, or `wrong_workspace_root`).
 """
 from __future__ import annotations
 
@@ -105,6 +107,8 @@ def discover_lab_root(start: Path, stop_at: Path | None = None) -> Path | None:
     """
     current = start.resolve()
     stop = stop_at.resolve() if stop_at is not None else None
+    if stop is not None and stop != current and stop not in current.parents:
+        raise ValueError(f"stop_at must be start or one of its ancestors: {stop}")
     seen = set()
     while current not in seen:
         seen.add(current)
@@ -130,13 +134,17 @@ def resolve_lab_root(
       structurally valid inbox (missing, not a directory, or wrong shape).
     - "missing": no `--lab-root` was given and auto-discovery found nothing
       (up to `stop_at`, when given).
+    - "invalid_stop_at": `stop_at` is not `start` or one of its ancestors.
     """
     if explicit is not None:
         if not _looks_like_inbox(explicit):
             return None, "wrong_root"
         return explicit, None
 
-    found = discover_lab_root(start, stop_at)
+    try:
+        found = discover_lab_root(start, stop_at)
+    except ValueError:
+        return None, "invalid_stop_at"
     if found is None:
         return None, "missing"
     return found, None
@@ -191,9 +199,13 @@ def validate_message(path: Path, lab_root: Path, workspace_root: Path) -> list[d
     """Validate one message file. Returns a list of finding dicts, each
     with keys: file, code, severity, detail."""
     findings: list[dict[str, Any]] = []
-    rel = str(path.relative_to(lab_root))
+    relative_path = path.relative_to(lab_root)
+    rel = str(relative_path)
+    is_legacy = bool(relative_path.parts) and relative_path.parts[0].lower() == "done"
 
     def add(code: str, severity: str, detail: str) -> None:
+        if is_legacy and severity == "error":
+            severity = "warning"
         findings.append({"file": rel, "code": code, "severity": severity, "detail": detail})
 
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -241,6 +253,11 @@ def run_validation(lab_root: Path, workspace_root: Path) -> dict[str, Any]:
         "messages_checked": len(messages),
         "findings": findings,
     }
+
+
+def workspace_relationship_valid(lab_root: Path, workspace_root: Path) -> bool:
+    """Return whether lab_root is exactly <workspace_root>/lab/inbox."""
+    return lab_root.resolve() == (workspace_root.resolve() / "lab" / "inbox").resolve()
 
 
 def _print_report(report: dict[str, Any]) -> None:
@@ -298,6 +315,12 @@ def main(argv: list[str] | None = None) -> int:
                 "structurally resolve to a lab/inbox root (wrong_root)",
                 file=sys.stderr,
             )
+        elif error_code == "invalid_stop_at":
+            print(
+                "session-inbox-contract: FAIL -- --stop-at must be --start or "
+                "one of its ancestors (invalid_stop_at)",
+                file=sys.stderr,
+            )
         else:
             print(
                 f"session-inbox-contract: FAIL -- no lab/inbox found via auto-discovery "
@@ -307,7 +330,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     assert lab_root is not None
-    workspace_root = args.workspace_root or lab_root.parent.parent
+    workspace_root = (args.workspace_root or lab_root.parent.parent).resolve()
+    lab_root = lab_root.resolve()
+    if not workspace_relationship_valid(lab_root, workspace_root):
+        if args.json:
+            print(json.dumps({"error": "wrong_workspace_root"}))
+        else:
+            print(
+                f"session-inbox-contract: FAIL -- lab-root {lab_root} is not exactly "
+                f"{workspace_root / 'lab' / 'inbox'} (wrong_workspace_root)",
+                file=sys.stderr,
+            )
+        return 2
     report = run_validation(lab_root, workspace_root)
 
     if args.json:
