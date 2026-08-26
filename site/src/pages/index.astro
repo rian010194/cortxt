@@ -37,7 +37,7 @@ const examples = examplesManifest.examples || [];
     <header class="nav shell">
       <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
       <nav aria-label="Primary navigation">
-        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/widgets/">Widgets</a><a href="/docs/widgets/">Widget docs</a><a href="#proof-examples">Examples</a>
+        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/widgets/">Widgets</a><a href="/docs/widgets/">Widget docs</a><a href="/widgets/">Examples</a>
         <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Preview color theme (this browser only)">
           <button type="button" data-preset="quiet-slate" class="active" title="Quiet Slate">&nbsp;</button>
           <button type="button" data-preset="graphite-ink" title="Graphite Ink">&nbsp;</button>
@@ -57,7 +57,7 @@ const examples = examplesManifest.examples || [];
           </div>
           <p class="hero-secondary-links">
             <a class="secondary" href="#one-contract">Explore the OS direction <span aria-hidden="true">-&gt;</span></a>
-            <a class="secondary" href="#proof-examples">See real examples <span aria-hidden="true">-&gt;</span></a>
+            <a class="secondary" href="/widgets/">See real examples <span aria-hidden="true">-&gt;</span></a>
             <a class="secondary" href="/docs/architecture/">Read the architecture <span aria-hidden="true">-&gt;</span></a>
           </p>
           <div class="command"><span>$</span> cortxt widget load --spec compliance.yaml</div>
@@ -142,49 +142,6 @@ const examples = examplesManifest.examples || [];
         </div>
       </section>
 
-      <section class="proof-band shell" id="proof-examples" aria-labelledby="examples-title">
-        <div class="proof-band-header">
-          <div>
-            <p class="eyebrow"><i></i> Live CLI + Widget Pairs</p>
-            <h2 id="examples-title">Your stack, rendered. Real CLI, real widget contracts.</h2>
-          </div>
-          <p class="proof-band-lede">
-            Every Cortxt view is declarative: inspect plain-text TUI streams in your terminal or render interactive web widgets with shared visual tokens. Scroll horizontally through live examples.
-          </p>
-        </div>
-        <div class="proof-band-scroll" aria-label="Widget examples horizontal scroll">
-          {examples.map((ex) => (
-            <article class="proof-pair-card" data-widget-id={ex.id} data-live={ex.live ? "true" : "false"}>
-              <header class="proof-card-header">
-                <div class="proof-card-title-group">
-                  <div class="proof-card-title-row">
-                    <h3>{ex.title}</h3>
-                    {ex.live && <span class="live-badge pulse-dot"><i></i> LIVE</span>}
-                  </div>
-                  <p class="proof-card-desc">{ex.description}</p>
-                </div>
-              </header>
-              <div class="proof-card-body">
-                <div class="proof-cli-pane">
-                  <div class="pane-tag">CLI / TUI stream</div>
-                  <div class="proof-cli-cmd"><span>$</span> {ex.cli_command}</div>
-                  <pre class="proof-cli-tui" aria-label={`${ex.title} CLI text`}><code>{(ex.tui_text || "").split("\n").map((line, i) => <span class="ln" style={`--i:${i}`}>{line}</span>)}</code></pre>
-                </div>
-                <div class="proof-widget-pane">
-                  <div class="pane-tag">Widget render &bull; <code>maker.js</code></div>
-                  <div class="proof-widget-mount" id={`widget-mount-${ex.id}`} data-artifact={ex.artifact}>
-                    <div class="widget-mount-placeholder">Loading widget...</div>
-                  </div>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-        <div class="proof-band-actions">
-          <a class="secondary" href="/widgets/">Explore interactive Widget Maker &amp; Studio -&gt;</a>
-        </div>
-      </section>
-
       <section class="section-band shell" aria-labelledby="control-title">
         <p class="eyebrow">How it stays under control</p>
         <h2 id="control-title">Control that survives a model change.</h2>
@@ -206,6 +163,15 @@ const examples = examplesManifest.examples || [];
     <footer class="shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><a href="/docs/">Documentation -&gt;</a></footer>
 
     <script src="/widgets/maker.js" is:inline></script>
+    <script is:inline>
+      // maker.js's auto-init stamps its bundled default v1 colors onto
+      // <html> as a side effect of loading -- undo that immediately so the
+      // landing page's fixed quiet-slate default (or the visitor's saved
+      // toggle choice) isn't clobbered. See landing-theme.js and issue #387.
+      if (typeof window.__cortxtReapplyLandingTheme === "function") {
+        window.__cortxtReapplyLandingTheme();
+      }
+    </script>
     <script is:inline>
       document.addEventListener("DOMContentLoaded", async function () {
         if (typeof WidgetMaker === "undefined") return;
@@ -252,7 +218,11 @@ const examples = examplesManifest.examples || [];
             const widgetId = card ? card.getAttribute("data-widget-id") : null;
 
             if (widgetId === "session-agents" && agentsData && agentsData.states) {
-              WidgetMaker.startLivingDemo(mount, agentsData.states, 2800, function (container, state) {
+              // WidgetMaker.startLivingDemo() expects (spec, fixtureData, container,
+              // options) and has no external step-callback -- createSequenceStepper()
+              // is the helper whose (state, index) callback contract actually matches
+              // this per-step tree-mutation body. See issue #387.
+              WidgetMaker.createSequenceStepper(agentsData.states, function (state) {
                 const stepTree = JSON.parse(JSON.stringify(tree));
                 if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) {
                   stepTree.children[1].props.items = state.agents;
@@ -260,11 +230,11 @@ const examples = examplesManifest.examples || [];
                 if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) {
                   stepTree.children[0].props.value = state.active_count;
                 }
-                container.replaceChildren();
-                WidgetMaker.renderNodeToDom(stepTree, container);
-              });
+                mount.replaceChildren();
+                WidgetMaker.renderNodeToDom(stepTree, mount);
+              }, 2800);
             } else if (widgetId === "usage-cost" && usageData && usageData.states) {
-              WidgetMaker.startLivingDemo(mount, usageData.states, 3000, function (container, state) {
+              WidgetMaker.createSequenceStepper(usageData.states, function (state) {
                 const u = state.usage;
                 const stepTree = JSON.parse(JSON.stringify(tree));
                 if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) stepTree.children[0].props.value = u.total_cost_usd;
@@ -281,9 +251,9 @@ const examples = examplesManifest.examples || [];
                   stepTree.children[4].props.points = u.history_points;
                   stepTree.children[4].props.series = u.history_tokens;
                 }
-                container.replaceChildren();
-                WidgetMaker.renderNodeToDom(stepTree, container);
-              });
+                mount.replaceChildren();
+                WidgetMaker.renderNodeToDom(stepTree, mount);
+              }, 3000);
             }
           } catch (err) {
             console.error("Failed to render widget:", artifactPath, err);
