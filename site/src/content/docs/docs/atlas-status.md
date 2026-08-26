@@ -6,7 +6,7 @@ description: Live-derived status page for the Cortxt roadmap, generated from Atl
 ## Roadmap status
 
 This page is derived automatically from the [Atlas roadmap maps](
-https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-26T09:39:21Z`.
+https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the single source of truth. Last successful sync: `2026-08-26T11:15:15Z`.
 
 ### Roadmap areas
 
@@ -17,7 +17,9 @@ https://github.com/rian010194/cortxt/issues/214) -- the GitHub issues remain the
 - CI fixture: real dispatch commit proof (#207)
 
 Claimed work in progress (workflow:in-progress):
-(none)
+- fix(atlas): PR-govern Atlas publish path and harden force-push safety (#394)
+- feat(ops): add read-only repository hygiene diagnostic (#395)
+- docs(scripts): add session inbox contract diagnostic (#396)
 
 ### Blockers
 
@@ -140,4 +142,4 @@ Claimed work in progress (workflow:in-progress):
 
 ### Last successful sync
 
-2026-08-26T09:39:21Z
+2026-08-26T11:15:15Z
