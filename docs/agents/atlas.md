@@ -237,16 +237,56 @@ Atlas discovery entirely.
 ## Sync mechanics
 
 - **Automatic:** `.github/workflows/atlas-sync.yml` ("Atlas sync") runs on
-  `workflow_dispatch` and a daily `schedule`, with `issues: write`
-  permission. It runs `scripts/atlas_sync.py --repo <owner/repo>`, which
-  reads every open+closed issue via the injectable gh runner, regenerates
-  each map's auto section, and posts a sync summary comment on each changed
-  map.
+  `workflow_dispatch`, a daily `schedule`, and event triggers (issues,
+  issue comments, merged pull requests), with `contents: read` and
+  `issues: write` permission. It runs
+  `scripts/atlas_sync.py --repo <owner/repo>`, which reads every
+  open+closed issue via the injectable gh runner, regenerates each map's
+  auto section, and posts a sync summary comment on each changed map --
+  all of this uses the default `GITHUB_TOKEN`.
+- **Publishing the derived site page/graph (PR-governed):** when the run
+  changes `site/src/content/docs/docs/atlas-status.md` and/or
+  `site/public/atlas/graph.json`, the workflow does **not** commit to
+  `main` directly. It pushes a stable bot branch
+  (`atlas-sync/bot-updates`) and opens or reuses a single pull request,
+  using a short-lived **GitHub App installation token** minted from the
+  `ATLAS_BOT_APP_ID` / `ATLAS_BOT_APP_PRIVATE_KEY` repository secrets (see
+  "GitHub App requirements" below) -- never the default `GITHUB_TOKEN`,
+  and never a plain `--force` push (only `--force-with-lease`, scoped to
+  that one branch). If the App token is unavailable, the job fails with a
+  clear error instead of silently falling back to `GITHUB_TOKEN`: a pull
+  request authored/pushed with the default token does not trigger other
+  workflows' `pull_request` events, so the publish PR's own CI would
+  silently never run. Before committing, the workflow checks the changed
+  paths against an allowlist of exactly those two files and refuses to
+  commit if anything else changed. The workflow never merges, approves,
+  or closes this pull request -- operator review and merge is required,
+  same as any other pull request in this repository. A previous publish PR
+  that an operator closed without merging is treated as an explicit stop:
+  automation fails closed and will not silently open a replacement PR from
+  the same branch. An operator must resolve that state before publishing is
+  resumed. Updates use a force-with-lease bound to the exact remote branch
+  OID observed and fetched by the run; lookup failures and lease races abort
+  rather than overwriting unknown branch state.
 - **Coordinator-driven:** the coordinator updates the coordinator-owned
   sections (`Destination`, `Decisions so far`, `Open questions`, and the
   `Planning stage`/`Work kind` metadata) directly, and may trigger a manual
   `workflow_dispatch` run when a sync is needed sooner than the daily
   schedule.
+
+### GitHub App requirements
+
+The bot GitHub App used to mint the publish token needs exactly:
+
+- **Repository permissions:** Contents (read and write), Pull requests
+  (read and write).
+- **No other permissions** -- in particular, no Issues permission: map
+  issue reads/writes stay on the default `GITHUB_TOKEN`
+  (`issues: write` in the workflow's `permissions:` block), so the App's
+  own scope stays minimal.
+- Installed only on this repository, with its App ID and a generated
+  private key stored as the `ATLAS_BOT_APP_ID` /
+  `ATLAS_BOT_APP_PRIVATE_KEY` repository secrets.
 
 ## Seed
 

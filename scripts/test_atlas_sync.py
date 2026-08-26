@@ -356,8 +356,7 @@ def run_all_checks():
     check("site page has last-sync timestamp", "Last successful sync" in site_page and "2026-01-01T00:00:00Z" in site_page)
 
     with tempfile.TemporaryDirectory() as td:
-        # out_dir is the repo checkout root (emit writes under site/...);
-        # a fresh timestamp renders a fresh page (freshness is part of the page).
+        # out_dir is the repo checkout root (emit writes under site/...).
         out = _Path(td)
         path1, wrote1 = a.emit_site_page(
             out_dir=out, issues=site_issues, nodes=site_nodes,
@@ -370,11 +369,62 @@ def run_all_checks():
             global_drift=site_drift, self_repo=REPO_ID, sync_time_iso="2026-01-01T00:00:00Z",
         )
         check("emit is idempotent at the same timestamp: writes nothing", wrote2 is False)
+
+        # Regression (semantic idempotence): identical issue data at a
+        # DIFFERENT timestamp must be a no-op that preserves the artifact
+        # already on disk. Before this fix, the sync timestamp was compared
+        # verbatim, so every run rewrote (and the workflow re-committed) the
+        # page even though nothing about the roadmap had changed.
+        before = path1.read_text(encoding="utf-8")
         path3, wrote3 = a.emit_site_page(
             out_dir=out, issues=site_issues, nodes=site_nodes,
             global_drift=site_drift, self_repo=REPO_ID, sync_time_iso="2026-01-02T00:00:00Z",
         )
-        check("emit refreshes the page when the sync timestamp advances", wrote3 is True)
+        check("emit is a no-op when only the sync timestamp advances (identical issue data)", wrote3 is False)
+        check("prior page artifact is preserved byte-for-byte (old timestamp retained)",
+              path3.read_text(encoding="utf-8") == before)
+
+        # ISO timestamps in issue-owned data remain semantically significant;
+        # only the two generated freshness fields may be normalized.
+        timestamp_title_issues = dict(site_issues)
+        timestamp_title_issues[2] = a.issue_from_dict(
+            work_issue(2, "Incident at 2026-01-01T00:00:00Z", state="open",
+                       labels=["workflow:ready"], milestone="Open-source product packaging")
+        )
+        timestamp_title_nodes, timestamp_title_drift = a.build_graph(timestamp_title_issues, REPO_ID)
+        _, title_wrote1 = a.emit_site_page(
+            out_dir=out, issues=timestamp_title_issues, nodes=timestamp_title_nodes,
+            global_drift=timestamp_title_drift, self_repo=REPO_ID,
+            sync_time_iso="2026-01-02T00:00:00Z",
+        )
+        timestamp_title_issues[2] = a.issue_from_dict(
+            work_issue(2, "Incident at 2026-01-02T00:00:00Z", state="open",
+                       labels=["workflow:ready"], milestone="Open-source product packaging")
+        )
+        timestamp_title_nodes, timestamp_title_drift = a.build_graph(timestamp_title_issues, REPO_ID)
+        _, title_wrote2 = a.emit_site_page(
+            out_dir=out, issues=timestamp_title_issues, nodes=timestamp_title_nodes,
+            global_drift=timestamp_title_drift, self_repo=REPO_ID,
+            sync_time_iso="2026-01-03T00:00:00Z",
+        )
+        check("site rewrite is not suppressed when an ISO timestamp in an issue title changes",
+              title_wrote1 is True and title_wrote2 is True)
+
+        # A real content change (new work issue) DOES trigger a rewrite,
+        # even though the timestamp also advances in the same call.
+        changed_issues = dict(site_issues)
+        changed_issues[9] = a.issue_from_dict(
+            work_issue(9, "Newly filed work", state="open", labels=["workflow:ready"],
+                       milestone="Open-source product packaging")
+        )
+        changed_nodes, changed_drift = a.build_graph(changed_issues, REPO_ID)
+        path4, wrote4 = a.emit_site_page(
+            out_dir=out, issues=changed_issues, nodes=changed_nodes,
+            global_drift=changed_drift, self_repo=REPO_ID, sync_time_iso="2026-01-03T00:00:00Z",
+        )
+        check("emit still rewrites when the underlying issue data actually changes", wrote4 is True)
+        check("rewritten page reflects the new timestamp",
+              "2026-01-03T00:00:00Z" in path4.read_text(encoding="utf-8"))
 
         # Safe-content scan: a leak in an issue title must never reach the page.
         gh_leak = FakeGh([
@@ -437,12 +487,58 @@ def run_all_checks():
                                    global_drift=graph_drift, self_repo=REPO_ID,
                                    sync_time_iso="2026-01-01T00:00:00Z")
         check("emit graph idempotent at same timestamp", w2 is False)
+
+        # Regression (semantic idempotence): identical issue data at a
+        # DIFFERENT timestamp must be a no-op that preserves the artifact
+        # already on disk (mirrors the site-page regression above).
+        before_graph = p1.read_text(encoding="utf-8")
         p3, w3 = a.emit_site_graph(out_dir=out, issues=graph_issues, nodes=graph_nodes,
                                    global_drift=graph_drift, self_repo=REPO_ID,
                                    sync_time_iso="2026-01-02T00:00:00Z")
-        check("emit graph refreshes when timestamp advances", w3 is True)
+        check("emit graph is a no-op when only the sync timestamp advances (identical issue data)", w3 is False)
+        check("prior graph artifact is preserved byte-for-byte (old sync_time retained)",
+              p3.read_text(encoding="utf-8") == before_graph)
+
+        timestamp_graph_issues = dict(graph_issues)
+        timestamp_graph_issues[2] = a.issue_from_dict(
+            work_issue(2, "Incident at 2026-01-01T00:00:00Z", state="open",
+                       labels=["workflow:ready"], milestone="M1")
+        )
+        timestamp_graph_nodes, timestamp_graph_drift = a.build_graph(timestamp_graph_issues, REPO_ID)
+        _, graph_title_wrote1 = a.emit_site_graph(
+            out_dir=out, issues=timestamp_graph_issues, nodes=timestamp_graph_nodes,
+            global_drift=timestamp_graph_drift, self_repo=REPO_ID,
+            sync_time_iso="2026-01-02T00:00:00Z",
+        )
+        timestamp_graph_issues[2] = a.issue_from_dict(
+            work_issue(2, "Incident at 2026-01-02T00:00:00Z", state="open",
+                       labels=["workflow:ready"], milestone="M1")
+        )
+        timestamp_graph_nodes, timestamp_graph_drift = a.build_graph(timestamp_graph_issues, REPO_ID)
+        _, graph_title_wrote2 = a.emit_site_graph(
+            out_dir=out, issues=timestamp_graph_issues, nodes=timestamp_graph_nodes,
+            global_drift=timestamp_graph_drift, self_repo=REPO_ID,
+            sync_time_iso="2026-01-03T00:00:00Z",
+        )
+        check("graph rewrite is not suppressed when an ISO timestamp in an issue title changes",
+              graph_title_wrote1 is True and graph_title_wrote2 is True)
         written = _json.loads((out / a.SITE_GRAPH_PATH).read_text(encoding="utf-8"))
-        check("emitted graph JSON round-trips", written["frontier_count"] == 1)
+        check("emitted graph JSON round-trips", written["schema_version"] == 1)
+
+        # A real content change DOES trigger a rewrite, even though the
+        # timestamp also advances in the same call.
+        changed_graph_issues = dict(graph_issues)
+        changed_graph_issues[9] = a.issue_from_dict(
+            work_issue(9, "Newly filed work", state="open", labels=["workflow:ready"],
+                       milestone="Open-source product packaging")
+        )
+        changed_graph_nodes, changed_graph_drift = a.build_graph(changed_graph_issues, REPO_ID)
+        p4, w4 = a.emit_site_graph(out_dir=out, issues=changed_graph_issues, nodes=changed_graph_nodes,
+                                   global_drift=changed_graph_drift, self_repo=REPO_ID,
+                                   sync_time_iso="2026-01-03T00:00:00Z")
+        check("emit graph still rewrites when the underlying issue data actually changes", w4 is True)
+        rewritten_graph = _json.loads(p4.read_text(encoding="utf-8"))
+        check("rewritten graph reflects the new sync_time", rewritten_graph["sync_time"] == "2026-01-03T00:00:00Z")
 
         # Safe-content scan: a leak in an issue title must never reach the graph.
         try:

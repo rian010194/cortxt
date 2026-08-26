@@ -2,12 +2,25 @@ name: Atlas sync
 
 # Regenerates the auto-generated sections of every atlas:map issue (#210),
 # and publishes the derived Atlas status page + visual graph to the docs
-# site (#285, #300). Coordinator-owned sections (Destination, Decisions so
-# far, Open questions) are never touched by this workflow -- see
-# docs/agents/atlas.md.
+# site (#285, #300) via a bot branch + pull request. Coordinator-owned
+# sections (Destination, Decisions so far, Open questions) are never touched
+# by this workflow -- see docs/agents/atlas.md.
+#
+# PR governance: map-issue writes stay on the default
+# GITHUB_TOKEN (issues: write below). Publishing the site page/graph instead
+# pushes a stable bot branch and opens/reuses one pull request, using a
+# short-lived GitHub App installation token minted from the
+# ATLAS_BOT_APP_ID / ATLAS_BOT_APP_PRIVATE_KEY secrets -- see
+# "GitHub App requirements" in docs/agents/atlas.md. This is deliberate: a
+# pull request authored/pushed with the default GITHUB_TOKEN does not
+# trigger other workflows' `pull_request` events (GitHub's anti-recursion
+# rule), so the PR's own CI would silently never run. If the App token is
+# unavailable, the job fails loudly instead of falling back to
+# GITHUB_TOKEN. This workflow never merges, approves, or closes its own
+# pull request -- operator review and merge is required.
 
 permissions:
-  contents: write # needed to commit the generated site page/graph (#285, #300)
+  contents: read
   issues: write
 
 on:
@@ -45,6 +58,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -68,19 +82,102 @@ jobs:
           echo "::error::Atlas sync failed -- last-good map content is preserved (no write happened for the failing map(s)). See the job log above for details."
           exit 1
 
-      - name: Commit generated site page + graph (only when changed)
+      - name: Check for publishable site page/graph changes
+        id: diff
         if: steps.sync.outcome == 'success'
         run: |
           set -euo pipefail
+          if git diff --quiet -- site/src/content/docs/docs/atlas-status.md site/public/atlas/graph.json; then
+            echo "Atlas site page and graph unchanged; nothing to publish."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mint Atlas bot GitHub App installation token
+        id: app-token
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/create-github-app-token@v1
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.ATLAS_BOT_APP_ID }}
+          private-key: ${{ secrets.ATLAS_BOT_APP_PRIVATE_KEY }}
+
+      - name: Require a bot app token before publishing
+        if: steps.diff.outputs.changed == 'true' && steps.app-token.outcome != 'success'
+        run: |
+          echo "::error::Atlas publish refused: no usable GitHub App installation token. Set the ATLAS_BOT_APP_ID and ATLAS_BOT_APP_PRIVATE_KEY repository secrets for a minimally-scoped GitHub App (permissions: Contents read/write, Pull requests read/write -- see 'GitHub App requirements' in docs/agents/atlas.md). The default GITHUB_TOKEN is deliberately not used as a fallback here: a branch pushed or PR opened with it does not trigger other workflows' pull_request CI, so the publish PR's own checks would silently never run."
+          exit 1
+
+      - name: Push bot branch and open/reuse the Atlas publish PR
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          ATLAS_BOT_TOKEN: ${{ steps.app-token.outputs.token }}
+          BOT_BRANCH: atlas-sync/bot-updates
+          ALLOWED_PATHS: site/src/content/docs/docs/atlas-status.md site/public/atlas/graph.json
+        run: |
+          set -euo pipefail
+
+          # Unexpected-path allowlist: only the two derived publish artifacts
+          # may ever be part of this commit. Anything else changed in the
+          # working tree (e.g. a stray write from a future script change)
+          # aborts the publish instead of being committed silently.
+          UNEXPECTED="$(git status --porcelain -- . ':!site/src/content/docs/docs/atlas-status.md' ':!site/public/atlas/graph.json')"
+          if [ -n "$UNEXPECTED" ]; then
+            echo "::error::Unexpected changed paths outside the Atlas publish allowlist ($ALLOWED_PATHS) -- refusing to commit:"
+            echo "$UNEXPECTED"
+            exit 1
+          fi
+
           git config user.name "cortxt-atlas[bot]"
           git config user.email "cortxt-atlas[bot]@users.noreply.github.com"
-          if git diff --quiet -- site/src/content/docs/docs/atlas-status.md site/public/atlas/graph.json; then
-            echo "Atlas site page and graph unchanged; nothing to commit."
+          git add site/src/content/docs/docs/atlas-status.md site/public/atlas/graph.json
+          git commit -s -m "docs(atlas): publish derived Atlas status page and visual graph (issues #285, #300)"
+
+          git remote set-url origin "https://x-access-token:${ATLAS_BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          EXISTING_PR="$(GH_TOKEN="$ATLAS_BOT_TOKEN" gh pr list --repo "$GITHUB_REPOSITORY" --head "$BOT_BRANCH" --base main --state open --json number --jq '.[0].number // empty')"
+          CLOSED_UNMERGED_PR="$(GH_TOKEN="$ATLAS_BOT_TOKEN" gh pr list --repo "$GITHUB_REPOSITORY" --head "$BOT_BRANCH" --base main --state closed --json number,mergedAt --jq '[.[] | select(.mergedAt == null)][0].number // empty')"
+          if [ -z "$EXISTING_PR" ] && [ -n "$CLOSED_UNMERGED_PR" ]; then
+            echo "::error::Atlas publish refused: PR #$CLOSED_UNMERGED_PR for $BOT_BRANCH was closed without merge. Operator intervention is required before automation may publish from this branch again."
+            exit 1
+          fi
+
+          # Resolve the remote branch and bind the lease to its exact observed
+          # OID. Exit 2 means the branch is absent; every other lookup error is
+          # fatal and must never be mistaken for a safe first push.
+          set +e
+          REMOTE_LINE="$(git ls-remote --exit-code --heads origin "refs/heads/${BOT_BRANCH}" 2>/dev/null)"
+          LS_REMOTE_STATUS=$?
+          set -e
+          if [ "$LS_REMOTE_STATUS" -eq 0 ]; then
+            EXPECTED_OID="${REMOTE_LINE%%[[:space:]]*}"
+            git fetch --no-tags origin "refs/heads/${BOT_BRANCH}:refs/remotes/origin/${BOT_BRANCH}"
+            FETCHED_OID="$(git rev-parse "refs/remotes/origin/${BOT_BRANCH}")"
+            if [ "$FETCHED_OID" != "$EXPECTED_OID" ]; then
+              echo "::error::Atlas bot branch changed while establishing its lease; refusing to overwrite it."
+              exit 1
+            fi
+            LEASE="--force-with-lease=refs/heads/${BOT_BRANCH}:${EXPECTED_OID}"
+          elif [ "$LS_REMOTE_STATUS" -eq 2 ]; then
+            LEASE="--force-with-lease=refs/heads/${BOT_BRANCH}:"
           else
-            git add site/src/content/docs/docs/atlas-status.md site/public/atlas/graph.json
-            git commit -s -m "docs(atlas): publish derived Atlas status page and visual graph (issues #285, #300)"
-            git push origin HEAD:main
-            echo "Atlas site page and graph committed and pushed."
+            echo "::error::Unable to verify the remote Atlas bot branch (git ls-remote exit $LS_REMOTE_STATUS); refusing to push."
+            exit 1
+          fi
+
+          # Push only to the stable bot branch, never to main, and only with
+          # the explicit verified lease above (never a plain --force).
+          git push "$LEASE" origin "HEAD:refs/heads/${BOT_BRANCH}"
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+
+          if [ -z "$EXISTING_PR" ]; then
+            GH_TOKEN="$ATLAS_BOT_TOKEN" gh pr create --repo "$GITHUB_REPOSITORY" --head "$BOT_BRANCH" --base main \
+              --title "docs(atlas): publish derived Atlas status page and visual graph (issues #285, #300)" \
+              --body "Automated refresh of the derived Atlas status page and visual graph from \`scripts/atlas_sync.py\`. This workflow never merges, approves, or closes its own pull request -- operator review and merge is required."
+            echo "Opened a new Atlas publish PR."
+          else
+            echo "Reused existing Atlas publish PR #$EXISTING_PR (branch updated in place)."
           fi
 
       - name: Job summary
