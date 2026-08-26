@@ -384,6 +384,32 @@ def run_all_checks():
         check("prior page artifact is preserved byte-for-byte (old timestamp retained)",
               path3.read_text(encoding="utf-8") == before)
 
+        # ISO timestamps in issue-owned data remain semantically significant;
+        # only the two generated freshness fields may be normalized.
+        timestamp_title_issues = dict(site_issues)
+        timestamp_title_issues[2] = a.issue_from_dict(
+            work_issue(2, "Incident at 2026-01-01T00:00:00Z", state="open",
+                       labels=["workflow:ready"], milestone="Open-source product packaging")
+        )
+        timestamp_title_nodes, timestamp_title_drift = a.build_graph(timestamp_title_issues, REPO_ID)
+        _, title_wrote1 = a.emit_site_page(
+            out_dir=out, issues=timestamp_title_issues, nodes=timestamp_title_nodes,
+            global_drift=timestamp_title_drift, self_repo=REPO_ID,
+            sync_time_iso="2026-01-02T00:00:00Z",
+        )
+        timestamp_title_issues[2] = a.issue_from_dict(
+            work_issue(2, "Incident at 2026-01-02T00:00:00Z", state="open",
+                       labels=["workflow:ready"], milestone="Open-source product packaging")
+        )
+        timestamp_title_nodes, timestamp_title_drift = a.build_graph(timestamp_title_issues, REPO_ID)
+        _, title_wrote2 = a.emit_site_page(
+            out_dir=out, issues=timestamp_title_issues, nodes=timestamp_title_nodes,
+            global_drift=timestamp_title_drift, self_repo=REPO_ID,
+            sync_time_iso="2026-01-03T00:00:00Z",
+        )
+        check("site rewrite is not suppressed when an ISO timestamp in an issue title changes",
+              title_wrote1 is True and title_wrote2 is True)
+
         # A real content change (new work issue) DOES trigger a rewrite,
         # even though the timestamp also advances in the same call.
         changed_issues = dict(site_issues)
@@ -472,8 +498,32 @@ def run_all_checks():
         check("emit graph is a no-op when only the sync timestamp advances (identical issue data)", w3 is False)
         check("prior graph artifact is preserved byte-for-byte (old sync_time retained)",
               p3.read_text(encoding="utf-8") == before_graph)
+
+        timestamp_graph_issues = dict(graph_issues)
+        timestamp_graph_issues[2] = a.issue_from_dict(
+            work_issue(2, "Incident at 2026-01-01T00:00:00Z", state="open",
+                       labels=["workflow:ready"], milestone="M1")
+        )
+        timestamp_graph_nodes, timestamp_graph_drift = a.build_graph(timestamp_graph_issues, REPO_ID)
+        _, graph_title_wrote1 = a.emit_site_graph(
+            out_dir=out, issues=timestamp_graph_issues, nodes=timestamp_graph_nodes,
+            global_drift=timestamp_graph_drift, self_repo=REPO_ID,
+            sync_time_iso="2026-01-02T00:00:00Z",
+        )
+        timestamp_graph_issues[2] = a.issue_from_dict(
+            work_issue(2, "Incident at 2026-01-02T00:00:00Z", state="open",
+                       labels=["workflow:ready"], milestone="M1")
+        )
+        timestamp_graph_nodes, timestamp_graph_drift = a.build_graph(timestamp_graph_issues, REPO_ID)
+        _, graph_title_wrote2 = a.emit_site_graph(
+            out_dir=out, issues=timestamp_graph_issues, nodes=timestamp_graph_nodes,
+            global_drift=timestamp_graph_drift, self_repo=REPO_ID,
+            sync_time_iso="2026-01-03T00:00:00Z",
+        )
+        check("graph rewrite is not suppressed when an ISO timestamp in an issue title changes",
+              graph_title_wrote1 is True and graph_title_wrote2 is True)
         written = _json.loads((out / a.SITE_GRAPH_PATH).read_text(encoding="utf-8"))
-        check("emitted graph JSON round-trips", written["frontier_count"] == 1)
+        check("emitted graph JSON round-trips", written["schema_version"] == 1)
 
         # A real content change DOES trigger a rewrite, even though the
         # timestamp also advances in the same call.

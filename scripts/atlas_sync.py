@@ -721,7 +721,7 @@ def emit_site_page(*, out_dir: Path, issues: dict, nodes: dict, global_drift: li
     path = out_dir / SITE_PAGE_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text(encoding="utf-8") if path.exists() else None
-    if existing is not None and _strip_timestamp_for_diff(existing) == _strip_timestamp_for_diff(page):
+    if existing is not None and _strip_site_sync_timestamps(existing) == _strip_site_sync_timestamps(page):
         return path, False
     path.write_text(page, encoding="utf-8")
     return path, True
@@ -839,7 +839,7 @@ def emit_site_graph(*, out_dir: Path, issues: dict, nodes: dict, global_drift: l
     path = out_dir / SITE_GRAPH_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text(encoding="utf-8") if path.exists() else None
-    if existing is not None and _strip_timestamp_for_diff(existing) == _strip_timestamp_for_diff(graph):
+    if existing is not None and _strip_graph_sync_time(existing) == _strip_graph_sync_time(graph):
         return path, False
     path.write_text(graph, encoding="utf-8")
     return path, True
@@ -861,17 +861,37 @@ def _strip_sync_timestamp(auto_text: str) -> str:
     )
 
 
-SYNC_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+SYNC_TIMESTAMP_PATTERN = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
 
 
-def _strip_timestamp_for_diff(text: str) -> str:
-    """Normalize every embedded sync timestamp so the site page/graph
-    idempotence check (AC3, same discipline as _strip_sync_timestamp for map
-    bodies) ignores freshness-only differences. Without this, a run against
-    perfectly unchanged issue data still rewrites (and commits) the page and
-    graph on every schedule tick, because the new timestamp always differs
-    from the one already on disk -- a real bug, not intentional freshness."""
-    return SYNC_TIMESTAMP_RE.sub("<redacted-for-diff>", text)
+def _strip_site_sync_timestamps(text: str) -> str:
+    """Normalize only the two generated freshness fields in the site page.
+
+    Other ISO timestamps may be legitimate issue data (for example in a title)
+    and must remain significant to the idempotence comparison.
+    """
+    text = re.sub(
+        rf"(Last successful sync: `){SYNC_TIMESTAMP_PATTERN}(`\.)",
+        r"\1<redacted-for-diff>\2",
+        text,
+    )
+    return re.sub(
+        rf"(## Last successful sync\n\n){SYNC_TIMESTAMP_PATTERN}(?=\n|$)",
+        r"\1<redacted-for-diff>",
+        text,
+    )
+
+
+def _strip_graph_sync_time(text: str) -> str:
+    """Normalize only the graph document's top-level ``sync_time`` field."""
+    try:
+        doc = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
+    if not isinstance(doc, dict) or "sync_time" not in doc:
+        return text
+    doc["sync_time"] = "<redacted-for-diff>"
+    return json.dumps(doc, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
 
 
 def extract_auto(body: str) -> Optional[str]:

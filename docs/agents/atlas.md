@@ -261,7 +261,13 @@ Atlas discovery entirely.
   paths against an allowlist of exactly those two files and refuses to
   commit if anything else changed. The workflow never merges, approves,
   or closes this pull request -- operator review and merge is required,
-  same as any other pull request in this repository.
+  same as any other pull request in this repository. A previous publish PR
+  that an operator closed without merging is treated as an explicit stop:
+  automation fails closed and will not silently open a replacement PR from
+  the same branch. An operator must resolve that state before publishing is
+  resumed. Updates use a force-with-lease bound to the exact remote branch
+  OID observed and fetched by the run; lookup failures and lease races abort
+  rather than overwriting unknown branch state.
 - **Coordinator-driven:** the coordinator updates the coordinator-owned
   sections (`Destination`, `Decisions so far`, `Open questions`, and the
   `Planning stage`/`Work kind` metadata) directly, and may trigger a manual

@@ -134,14 +134,43 @@ jobs:
           git add site/src/content/docs/docs/atlas-status.md site/public/atlas/graph.json
           git commit -s -m "docs(atlas): publish derived Atlas status page and visual graph (issues #285, #300)"
 
-          # Push only to the stable bot branch, never to main, and only ever
-          # force-with-lease that one branch (never a plain --force).
           git remote set-url origin "https://x-access-token:${ATLAS_BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git fetch origin "$BOT_BRANCH" 2>/dev/null || true
-          git push --force-with-lease origin "HEAD:refs/heads/${BOT_BRANCH}"
-          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
 
           EXISTING_PR="$(GH_TOKEN="$ATLAS_BOT_TOKEN" gh pr list --repo "$GITHUB_REPOSITORY" --head "$BOT_BRANCH" --base main --state open --json number --jq '.[0].number // empty')"
+          CLOSED_UNMERGED_PR="$(GH_TOKEN="$ATLAS_BOT_TOKEN" gh pr list --repo "$GITHUB_REPOSITORY" --head "$BOT_BRANCH" --base main --state closed --json number,mergedAt --jq '[.[] | select(.mergedAt == null)][0].number // empty')"
+          if [ -z "$EXISTING_PR" ] && [ -n "$CLOSED_UNMERGED_PR" ]; then
+            echo "::error::Atlas publish refused: PR #$CLOSED_UNMERGED_PR for $BOT_BRANCH was closed without merge. Operator intervention is required before automation may publish from this branch again."
+            exit 1
+          fi
+
+          # Resolve the remote branch and bind the lease to its exact observed
+          # OID. Exit 2 means the branch is absent; every other lookup error is
+          # fatal and must never be mistaken for a safe first push.
+          set +e
+          REMOTE_LINE="$(git ls-remote --exit-code --heads origin "refs/heads/${BOT_BRANCH}" 2>/dev/null)"
+          LS_REMOTE_STATUS=$?
+          set -e
+          if [ "$LS_REMOTE_STATUS" -eq 0 ]; then
+            EXPECTED_OID="${REMOTE_LINE%%[[:space:]]*}"
+            git fetch --no-tags origin "refs/heads/${BOT_BRANCH}:refs/remotes/origin/${BOT_BRANCH}"
+            FETCHED_OID="$(git rev-parse "refs/remotes/origin/${BOT_BRANCH}")"
+            if [ "$FETCHED_OID" != "$EXPECTED_OID" ]; then
+              echo "::error::Atlas bot branch changed while establishing its lease; refusing to overwrite it."
+              exit 1
+            fi
+            LEASE="--force-with-lease=refs/heads/${BOT_BRANCH}:${EXPECTED_OID}"
+          elif [ "$LS_REMOTE_STATUS" -eq 2 ]; then
+            LEASE="--force-with-lease=refs/heads/${BOT_BRANCH}:"
+          else
+            echo "::error::Unable to verify the remote Atlas bot branch (git ls-remote exit $LS_REMOTE_STATUS); refusing to push."
+            exit 1
+          fi
+
+          # Push only to the stable bot branch, never to main, and only with
+          # the explicit verified lease above (never a plain --force).
+          git push "$LEASE" origin "HEAD:refs/heads/${BOT_BRANCH}"
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+
           if [ -z "$EXISTING_PR" ]; then
             GH_TOKEN="$ATLAS_BOT_TOKEN" gh pr create --repo "$GITHUB_REPOSITORY" --head "$BOT_BRANCH" --base main \
               --title "docs(atlas): publish derived Atlas status page and visual graph (issues #285, #300)" \

@@ -112,8 +112,22 @@ def main() -> int:
     bare_force = re.search(r"--force(?!-with-lease)\b", code_lines)
     check("push uses force-with-lease, never a plain --force",
           "--force-with-lease" in text and bare_force is None)
+    check("existing bot branch is fetched into an explicit remote-tracking ref",
+          'refs/heads/${BOT_BRANCH}:refs/remotes/origin/${BOT_BRANCH}' in text)
+    check("force-with-lease is bound to the exact verified remote OID",
+          '--force-with-lease=refs/heads/${BOT_BRANCH}:${EXPECTED_OID}' in text
+          and 'FETCHED_OID' in text and 'EXPECTED_OID' in text)
+    check("absent branch uses an explicit must-not-exist lease",
+          '--force-with-lease=refs/heads/${BOT_BRANCH}:"' in text)
+    check("remote lookup errors fail closed instead of being treated as absence",
+          'LS_REMOTE_STATUS" -eq 2' in text
+          and "Unable to verify the remote Atlas bot branch" in text
+          and "git fetch origin \"$BOT_BRANCH\" 2>/dev/null || true" not in text)
     check("the PR flow reuses an existing open PR instead of always creating one",
           "gh pr list" in text and "gh pr create" in text)
+    check("a closed-unmerged Atlas PR stops replacement publishing",
+          "CLOSED_UNMERGED_PR" in text and "closed without merge" in text
+          and "Operator intervention is required" in text)
     check("no auto-merge of the publish PR",
           "gh pr merge" not in text and "--auto-merge" not in text and "--admin" not in text)
     check("no auto-approve of the publish PR",
