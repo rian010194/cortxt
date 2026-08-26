@@ -1,65 +1,107 @@
 # Cortxt
 
-> A provider-neutral platform for creating, steering, resuming, and verifying
-> long-running AI work under human mandate — built solo, in the open, as a
-> working portfolio of the approach. Licensed under the
-> [Apache License 2.0](LICENSE).
+### An operating layer for durable AI work
 
-Cortxt is a provider-neutral platform for creating, steering, resuming, and
-verifying long-running intelligent work under human mandate. Users own the
-work's state, memory, tools, evidence, and evolution; models, inference
-providers, and external agent engines remain replaceable resources behind
-Cortxt-owned contracts.
+Define the work once. Keep its mandate, state, evidence, and human decisions
+when execution changes.
 
-Visit [cortxt.io](https://cortxt.io) for the product site and
-[docs.cortxt.io](https://docs.cortxt.io) for documentation.
+[Website](https://cortxt.io) ·
+[Documentation](https://cortxt.io/docs/) ·
+[Quick start](https://cortxt.io/docs/quick-start/) ·
+[Architecture](https://cortxt.io/docs/architecture/) ·
+[Roadmap](https://cortxt.io/docs/roadmap/)
 
-The current product wedge is long-running research and analysis governed by
-data-class and provider policy, delivered through a repository-native CLI
-(`cortxt`), with a thin widget complement and an MCP server as the external
-integration surface (see [ADR-015](docs/adr/015-cortxt-f1-first-wedge-and-product-surface.md),
-[ADR-021](docs/adr/021-reopen-adr-015-for-v02-admin-surface-and-widget-ui.md),
-and [ADR-024](docs/adr/024-external-integration-surface-form.md)).
+> **Durable authority. Replaceable execution.**
 
-## Current status
+AI work is often trapped inside one conversation, agent workspace, provider,
+or runtime session. Cortxt keeps the durable identity and authority of the work
+outside any individual execution attempt.
 
-- GitHub Issues are the durable records for approved scope, evidence, review,
-  and decisions.
-- GitHub Project 4 and the older control-plane backlog are frozen legacy.
-- Worker dispatch's workflow-state carrier is GitHub Issue labels
-  `workflow:inbox`/`ready`/`in-progress`/`review`/`blocked`/`done`
-  ([ADR-018](docs/adr/018-workflow-state-carrier.md)).
-- Real customer inputs and run outputs must remain outside Git history in an
-  explicitly approved, isolated workspace.
+```text
+Workstream
+├── desired outcome and acceptance criteria
+├── mandate, limits, budget, and provider policy
+├── Run 1 · executor interrupted
+├── accepted evidence remains attributable
+├── Run 2 · compatible executor continues
+└── consequential decision returns to a human
+```
 
-The current product decisions are recorded as
-[Architecture Decision Records](docs/adr/README.md).
+Runs, models, providers, engines, sessions, and workspaces can change. The
+Workstream does not have to be reconstructed around each replacement.
 
-## Repository map
+## What Cortxt provides
 
-| Path | Role today |
+- **Workstreams** for durable outcomes, state, and continuity.
+- **Mandates** for explicit authority, limits, expiry, and reserved decisions.
+- **Dispatch and Run identity** across compatible execution engines.
+- **Provider and data policy** with deterministic, fail-closed decisions.
+- **Evidence and independent review** before final human acceptance.
+- **CLI and MCP interfaces** over Cortxt-owned contracts.
+- **Declarative views and actions** with explicit authorization boundaries.
+
+The emerging Cortxt OS brings these contracts together through Work Console,
+Decisions, Evidence, Policies, Execution Inspector, Connections, and Studio.
+Its purpose is to make durable work understandable—not to turn agent activity
+into another terminal cockpit.
+
+## Current state
+
+Cortxt is open-source work in active development, built solo and in the open.
+Today the repository includes working CLI, MCP, mandate, provider-policy,
+dispatch, evidence, engine-adapter, state, and declarative widget foundations.
+GitHub Issues and `workflow:*` labels currently carry durable workflow authority.
+
+The broader Cortxt OS product experience and hosted capabilities are under
+active development. Compatibility is adapter-specific; Cortxt does not claim
+that every model, provider, or agent engine is supported.
+
+See the [roadmap](https://cortxt.io/docs/roadmap/) and
+[Architecture Decision Records](docs/adr/README.md) for the verified boundary
+between the current baseline and product direction.
+
+## Architecture at a glance
+
+```text
+Cortxt-owned work authority
+  Workstream · mandate · policy · evidence · decisions
+                         │
+             dispatch and Run identity
+                         │
+       compatible engines, providers, and runtimes
+                         │
+             attributable results and evidence
+```
+
+Cortxt sits above execution. Agent workspaces help an agent perform work;
+secure runtimes isolate execution; Cortxt preserves the work's authority and
+continuity across those replaceable resources.
+
+## Explore the repository
+
+| Path | Purpose |
 | --- | --- |
-| [`agent-platform/`](agent-platform/) | Cortxt-owned platform boundary (reasoning, runtimes, CLI, MCP server, state, adapters). `agent-platform/reasoning/` is accepted per ADR-017; `agent-platform/adapters/inference/` holds the live provider-neutral inference adapters. |
-| [`verticals/`](verticals/README.md) | Domain packages consumed by the agent runtime (profiles, CodingLoop) and tests — live, not historical. |
-| [`contracts/`](contracts/README.md) | Interface schemas and contract experiments. |
-| [`schemas/`](schemas/) | Machine-readable schema definitions. |
-| [`scripts/`](scripts/) | Dispatcher, worker adapters, and profile tooling used by the platform. |
-| [`docs/`](docs/) | Architecture and decisions for the current baseline (ADRs, operating model, dispatch contract, security). |
+| [`agent-platform/`](agent-platform/) | CLI, MCP, mandates, dispatch, state, policies, adapters, evidence, and UI contracts |
+| [`docs/`](docs/) | Architecture, operating model, security boundaries, and ADRs |
+| [`verticals/`](verticals/README.md) | Domain packages and evaluated workflow profiles |
+| [`contracts/`](contracts/README.md) | Shared interface contracts and schemas |
+| [`scripts/`](scripts/) | Repository automation, verification, and operational tooling |
 
-Internal working documents (agent session plans, handoffs, assessments) are
-kept out of the repository and archived locally.
+Start with:
 
-## Start here
-
-Read these before proposing architecture or execution:
-
-1. [`AGENTS.md`](AGENTS.md)
+1. [Quick start](https://cortxt.io/docs/quick-start/)
 2. [Current operating model](docs/agents/current-operating-model.md)
-3. [Goal operating model](docs/agents/goal-operating-model.md)
-4. [Dispatch contract](docs/architecture/dispatch-contract.md)
-5. [Accepted ADRs](docs/adr/)
+3. [Dispatch contract](docs/architecture/dispatch-contract.md)
+4. [Accepted ADRs](docs/adr/README.md)
 
-## Contributing and security
+## Open source and collaboration
+
+Cortxt is licensed under [Apache-2.0](LICENSE). Contributions, technical
+criticism, and concrete workflow discussions are welcome.
 
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
+- [Open an issue](https://github.com/rian010194/cortxt/issues)
+- [Discuss a design-partner workflow](https://cortxt.io)
+
+Built by [Rikard Andersson](https://github.com/rian010194) in Malmö, Sweden.
