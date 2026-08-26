@@ -143,11 +143,11 @@ def main() -> int:
     node_test = """
     const maker = require('./agent-platform/widget/maker.js');
     const t = maker.defaultTokens();
-    if (!t || !t.colors || t.colors.accent !== '#4d6bfe') process.exit(1);
+    if (!t || !t.colors || t.colors.accent !== '#8fa3c7') process.exit(1);
     const target = { style: { setProperty(k, v) { this[k] = v; } } };
     maker.applyTokens(t, target);
-    if (target.style['--token-accent'] !== '#4d6bfe') process.exit(2);
-    if (target.style['--token-ok'] !== '#68d391') process.exit(3);
+    if (target.style['--token-accent'] !== '#8fa3c7') process.exit(2);
+    if (target.style['--token-ok'] !== '#a8d5ba') process.exit(3);
     console.log('NODE_TOKENS_OK');
     """
     res_node = subprocess.run(["node", "-e", node_test], capture_output=True, text=True, cwd=str(REPO))

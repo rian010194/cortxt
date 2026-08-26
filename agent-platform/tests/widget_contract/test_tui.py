@@ -329,10 +329,10 @@ def test_truecolor_ansi_map_matches_token_hex():
     """24-bit ANSI codes must be derived from the actual token hex values."""
     tokens = load_tokens()
     mapping = truecolor_ansi_map(tokens)
-    # accent #4d6bfe -> 38;2;77;107;254
-    assert mapping["accent"] == "\x1b[38;2;77;107;254m"
-    # ok #68d391 -> 38;2;104;211;145
-    assert mapping["ok"] == "\x1b[38;2;104;211;145m"
+    # accent #8fa3c7 -> 38;2;143;163;199
+    assert mapping["accent"] == "\x1b[38;2;143;163;199m"
+    # ok #a8d5ba -> 38;2;168;213;186
+    assert mapping["ok"] == "\x1b[38;2;168;213;186m"
     assert mapping["reset"] == "\x1b[0m"
 
 
