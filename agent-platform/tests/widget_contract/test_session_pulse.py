@@ -119,7 +119,7 @@ def test_cli_session_pulse_writes_artifact_and_error_state(monkeypatch, capsys, 
 
 def test_widget_has_pulse_view_without_post():
     widget_dir = Path(__file__).resolve().parents[2] / "widget"
-    html = (widget_dir / "index.html").read_text(encoding="utf-8")
+    html = (widget_dir / "maker.html").read_text(encoding="utf-8")
     manifest = json.loads((widget_dir / "widgets.json").read_text(encoding="utf-8"))
     assert any(w["id"] == "pulse" and w["artifact"] == "fixtures/session-pulse.json" for w in manifest["widgets"])
     assert "renderGenericNode" in html

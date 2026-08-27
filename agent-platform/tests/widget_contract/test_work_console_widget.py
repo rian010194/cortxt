@@ -146,6 +146,6 @@ def test_cli_work_console_view_failing_reader_produces_error_state(tmp_path):
 
 def test_work_console_default_hides_studio_until_studio_is_opened():
     host = HOST.read_text(encoding="utf-8")
-    assert 'var studioOpen = appId === "studio"' in host
-    assert 'classList.toggle("app-hidden", !studioOpen)' in host
-    assert 'applyApp(appState.activeId)' in host
+    assert 'data-window="console"' in host
+    assert 'data-window="studio" hidden' in host
+    assert 'data-app="studio"' in host
