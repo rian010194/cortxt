@@ -11,6 +11,7 @@ from widget_contract.registry import READ_OPERATIONS, TYPES
 from widget_contract.validation import ValidationError, validate
 
 SPEC = Path(__file__).resolve().parents[2] / "widget_contract" / "specs" / "work-console-0.1.yaml"
+HOST = Path(__file__).resolve().parents[2] / "widget" / "index.html"
 
 
 def summary():
@@ -141,3 +142,10 @@ def test_cli_work_console_view_failing_reader_produces_error_state(tmp_path):
     artifact = json.loads(target.read_text(encoding="utf-8"))
     assert artifact["error"]["kind"] == "workstream_summary_read"
     assert artifact["render"]["primitive"] == "error-state"
+
+
+def test_work_console_default_hides_studio_until_studio_is_opened():
+    host = HOST.read_text(encoding="utf-8")
+    assert 'var studioOpen = appId === "studio"' in host
+    assert 'classList.toggle("app-hidden", !studioOpen)' in host
+    assert 'applyApp(appState.activeId)' in host

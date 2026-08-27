@@ -3,9 +3,9 @@
 <style>
 :root{color-scheme:dark;--layer:#ffffff0d;--hover:#ffffff15;--stroke:#5b6471;--strong:#727c8a;--text:#e7ebf0;--muted:#8d97a3;--dim:#65717f;--accent:#8fa3c7;--blue:#7885a7;--ok:#a8d5ba;--warn:#d8c49a;--bad:#d9a6b2;--sans:Inter,"Segoe UI Variable","Segoe UI",sans-serif;--mono:"Cascadia Code","Cascadia Mono",Consolas,monospace}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 24% 12%,#202b50 0,#0d1220 40%,#101216 75%);font-family:var(--sans);color:var(--text);padding:16px}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(145deg,var(--background,#101216),color-mix(in srgb,var(--surface,#181b20) 72%,var(--background,#101216)));font-family:var(--sans);color:var(--text);padding:16px}
 button,select{font:inherit}
-.window{position:fixed;width:1200px;max-width:calc(100vw - 32px);height:calc(100vh - 32px);max-height:900px;border:1px solid var(--strong);border-radius:14px;overflow:hidden;background:#181b20d9;backdrop-filter:blur(30px) saturate(150%);box-shadow:0 32px 80px #000a,0 1px #ffffff0c inset;display:flex;flex-direction:column;box-sizing:border-box}
+.window{position:fixed;width:1200px;max-width:calc(100vw - 32px);height:calc(100vh - 32px);max-height:900px;border:1px solid var(--stroke);border-radius:16px;overflow:hidden;background:var(--surface,#181b20);box-shadow:0 28px 72px #0008,0 1px #ffffff0a inset;display:flex;flex-direction:column;box-sizing:border-box}
 .window.maximized{width:calc(100vw - 32px) !important;height:calc(100vh - 32px) !important;max-height:none !important;left:16px !important;top:16px !important}
 .window.minimized{height:34px !important;transition:height .15s ease}
 .window.minimized .content,.window.minimized .window-resize{display:none}
@@ -111,6 +111,7 @@ body:not(.arrange-mode) .dock-tab-close{display:none;}
 .toggle-btn.active{background:var(--accent);color:#061325;font-weight:600}
 .content{flex:1;min-height:0;padding:12px;overflow:hidden;display:flex;flex-direction:row;gap:0}
 .maker-pane{flex:none;width:340px;min-width:260px;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:10px;transition:width .2s ease,min-width .2s ease,padding .2s ease}
+.maker-pane.app-hidden,.content-divider.app-hidden{display:none}
 .maker-pane.collapsed{width:0 !important;min-width:0;padding:0;border:0;overflow:hidden}
 .content-divider{flex:none;width:6px;margin:0 4px;cursor:col-resize;position:relative;border-radius:3px;background:var(--stroke);transition:background .1s ease}
 .content-divider::after{content:"";position:absolute;top:0;bottom:0;left:-4px;right:-4px}
@@ -599,6 +600,10 @@ function applyApp(appId){
   var app = appState.apps.find(function(a){return a.id === appId});
   if(!app) return;
   appState.activeId = appId;
+  var studioOpen = appId === "studio";
+  $("maker-pane")?.classList.toggle("app-hidden", !studioOpen);
+  $("maker-divider")?.classList.toggle("app-hidden", !studioOpen);
+  if(studioOpen) setMakerPaneCollapsed(false);
   var allIds = manifest.map(function(w){return w.id});
   allIds.forEach(function(id){
     if(!dockTree) return;
@@ -629,9 +634,9 @@ function renderAppRail(){
     item.append(label);
     item.setAttribute("aria-label", app.title);
     item.onclick = function(){
-      if(app.id === "studio"){ setMakerPaneCollapsed(false); return; }
       if(app.id === appState.activeId && currentWorkstreamId){ currentWorkstreamId = null; renderCanvasView(); renderAppRail(); updateNarrowTopBar(); renderBottomNav(); return; }
       applyApp(app.id);
+      renderAppRail();
     };
     rail.append(item);
   });
@@ -643,6 +648,7 @@ async function loadApps(){
     var data = await r.json();
     appState.apps = data.apps || [];
     renderAppRail();
+    applyApp(appState.activeId);
     updateNarrowTopBar();
     renderBottomNav();
   } catch(e) { /* apps.json is optional; dock behaves unfiltered without it */ }

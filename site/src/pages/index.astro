@@ -54,7 +54,7 @@ const statusRows = [
     <header class="nav shell">
       <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
       <nav aria-label="Primary navigation">
-        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/docs/product-status/">Product status</a>
+        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/privacy/">Privacy</a>
         <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Preview color theme (this browser only)">
           <button type="button" data-preset="quiet-slate" class="active" title="Quiet Slate">&nbsp;</button>
           <button type="button" data-preset="graphite-ink" title="Graphite Ink">&nbsp;</button>
@@ -92,6 +92,24 @@ const statusRows = [
             <span class="proof-strip-pending">Continuity proof write-up &mdash; coming soon</span>
           </div>
         </div>
+        <div class="hero-system" aria-label="Illustrative Cortxt workstream authority view">
+          <div class="system-top"><span><i></i> Workstream authority</span><b>Live contract</b></div>
+          <div class="system-title"><small>Desired outcome</small><strong>Ship reviewed policy evidence</strong><span>WS-042 &middot; Human owned</span></div>
+          <div class="system-grid">
+            <div><small>Mandate</small><b>Signed</b><span>scope + budget fixed</span></div>
+            <div><small>Decision</small><b class="attention">Required</b><span>reserved for human</span></div>
+            <div><small>Evidence</small><b>12 records</b><span>attributable</span></div>
+            <div><small>Policy</small><b>Fail closed</b><span>provider constrained</span></div>
+          </div>
+          <div class="system-run"><span>Run 01 &middot; Hermes</span><i></i><span>Run 02 &middot; Codex</span><b>workstream persisted</b></div>
+        </div>
+      </section>
+
+      <section class="trust-rail shell" aria-label="Privacy and trust summary">
+        <span><b>No tracking cookies</b><small>No ad or visitor profiling scripts</small></span>
+        <span><b>Local-first today</b><small>No Cortxt account required</small></span>
+        <span><b>Mandate protected</b><small>Mutations fail closed</small></span>
+        <a href="/privacy/">Privacy &amp; trust <span aria-hidden="true">-&gt;</span></a>
       </section>
 
       <section class="section-band shell" aria-labelledby="problem-title">
@@ -134,11 +152,11 @@ const statusRows = [
       </section>
 
       <section class="section-band shell alt" aria-labelledby="os-title">
-        <div class="status-banner"><b>In development.</b> The Work Console, Evidence, and Decisions views below exist as tested, working code on an active branch. None of it is merged to <code>main</code> or live on this site yet.</div>
+        <div class="status-banner"><b>In development.</b> The first Work Console, Evidence, Decisions, and Attention Queue slice is merged to <code>main</code> with contract tests. It remains an evolving product surface, not a finished hosted application.</div>
         <p class="eyebrow">Cortxt OS</p>
         <h2 id="os-title">Workstreams, not agent fleets.</h2>
         <p class="section-lede">Cortxt OS is the human-facing workspace for operating durable work &mdash; not a terminal, not a raw agent cockpit. It&rsquo;s organized around workstreams you have a mandate over, the decisions waiting on your attention, and the evidence a run produced.</p>
-        <div class="wc-mock" aria-label="Illustrative Work Console and Decisions mock, in development">
+        <div class="wc-mock" aria-label="Illustrative Work Console and Decisions view based on the merged first slice">
           <div class="wc-mock-badge">Early preview &middot; In development</div>
           <div class="wc-panel">
             <div class="wc-panel-head"><span>Work Console</span><span>3 need attention</span></div>
@@ -167,8 +185,22 @@ const statusRows = [
             </div>
           </div>
         </div>
-        <p class="wc-mock-caption">Illustrative mock with placeholder workstreams &mdash; not real customer data, not a completed case study.</p>
-        <p class="section-lede" style="margin-top:1rem;margin-bottom:0">Individual widget views can already be generated from a prompt today (<code>cortxt widget generate</code>). Composing several into one adaptive workspace view &mdash; a &ldquo;Studio&rdquo; &mdash; is direction, not yet built.</p>
+        <p class="wc-mock-caption">Illustrative presentation of the merged first slice with placeholder workstreams &mdash; not real customer data or a completed case study.</p>
+        <p class="section-lede" style="margin-top:1rem;margin-bottom:0">Individual widget views can be generated from a prompt today (<code>cortxt widget generate</code>). The first Studio describe/generate/confirm flow is now merged; broader adaptive composition remains in development.</p>
+      </section>
+
+      <section class="section-band shell trust-section" aria-labelledby="trust-title">
+        <div>
+          <p class="eyebrow">Privacy by restraint</p>
+          <h2 id="trust-title">A product about durable authority shouldn&rsquo;t quietly profile its visitors.</h2>
+          <p class="section-lede">The public Cortxt site has no advertising, tracking pixels, visitor analytics, account system, or marketing-cookie layer. The theme switch stores one preference in your browser&rsquo;s local storage. Hosting infrastructure still receives ordinary request metadata needed to serve and protect the site.</p>
+          <a class="text-link" href="/privacy/">Read the privacy &amp; trust statement -&gt;</a>
+        </div>
+        <div class="trust-facts">
+          <span><i>01</i><b>No tracking cookies</b><small>No consent theatre for analytics we do not run.</small></span>
+          <span><i>02</i><b>No account required</b><small>Read the site and clone the project without signing up.</small></span>
+          <span><i>03</i><b>Explicit external boundaries</b><small>GitHub and hosting links have their own privacy terms.</small></span>
+        </div>
       </section>
 
       <section class="section-band shell" aria-labelledby="usecase-title">
@@ -228,6 +260,6 @@ cortxt --help</pre>
 
       <section class="docs-band"><div class="shell"><p class="eyebrow">Reference</p><h2>Decisions, contracts, and what comes next.</h2><div class="links"><a href="/docs/adrs/"><strong>Accepted ADRs</strong><span>Normative architecture decisions -&gt;</span></a><a href="/docs/architecture/"><strong>Architecture</strong><span>Boundaries and execution contracts -&gt;</span></a><a href="/docs/roadmap/"><strong>Roadmap</strong><span>Current status and direction -&gt;</span></a></div></div></section>
     </main>
-    <footer class="shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><a href="/docs/">Documentation -&gt;</a></footer>
+    <footer class="shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><span class="footer-links"><a href="/privacy/">Privacy</a><a href="/docs/">Documentation -&gt;</a></span></footer>
   </body>
 </html>
