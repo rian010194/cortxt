@@ -1,0 +1,16 @@
+{
+  "contract_version": "0.1",
+  "widget": {"id": "decisions", "version": "0.1"},
+  "render": {
+    "primitive": "stack",
+    "props": {"label": "Decisions"},
+    "state": "ok",
+    "children": [
+      {"primitive": "text", "props": {"label": "Workflow", "value": "review"}},
+      {"primitive": "text", "props": {"label": "Summary", "value": "Approve the reviewed evidence package for the gap analysis"}},
+      {"primitive": "badge", "props": {"label": "Actionable", "value": true}}
+    ]
+  },
+  "repo": "rian010194/cortxt",
+  "error": null
+}

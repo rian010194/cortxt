@@ -1,0 +1,68 @@
+contract_version: "0.1"
+widget:
+  id: work-console
+  version: "0.1"
+  title: Work Console
+data:
+  reads:
+    - id: summary
+      source: store
+      operation: workstream.summary.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: workstream.summary.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Work Console}
+  children:
+    - primitive: heading
+      props: {label: Workstream}
+      bindings:
+        value: {read: summary, pointer: /title, type: core.string.v1}
+    - primitive: text
+      props: {label: Outcome}
+      bindings:
+        value: {read: summary, pointer: /outcome, type: core.string.v1}
+    - primitive: text
+      props: {label: Workflow}
+      bindings:
+        value: {read: summary, pointer: /workflow, type: core.string.v1}
+    - primitive: badge
+      props: {label: Pending decision}
+      bindings:
+        value: {read: summary, pointer: /pending_decision, type: core.string.v1}
+    - primitive: metric
+      props: {label: Budget (USD)}
+      bindings:
+        value: {read: summary, pointer: /mandate/budget_usd_max, type: core.number.v1}
+    - primitive: text
+      props: {label: Mandate expires}
+      bindings:
+        value: {read: summary, pointer: /mandate/expires_at, type: core.string.v1}
+    - primitive: list
+      props: {label: Allowed tools, empty: No tools granted}
+      bindings:
+        items: {read: summary, pointer: /mandate/allowed_tools, type: core.array.v1}
+    - primitive: table
+      props: {label: Gates, columns: [domain, status, label, detail]}
+      bindings:
+        rows: {read: summary, pointer: /gates, type: core.array.v1}
+    - primitive: text
+      props: {label: Dispatched by}
+      bindings:
+        value: {read: summary, pointer: /run_continuity/authority/dispatched_by, type: core.string.v1}
+    - primitive: text
+      props: {label: Run executor}
+      bindings:
+        value: {read: summary, pointer: /run_continuity/current_run/engine, type: core.string.v1}
+    - primitive: key-value
+      bindings:
+        value: {read: summary, pointer: /mandate, type: core.object.v1}
+    - primitive: key-value
+      bindings:
+        value: {read: summary, pointer: /run_continuity, type: core.object.v1}
+actions: []
+capabilities: [read:workstream-summary]

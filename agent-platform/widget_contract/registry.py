@@ -263,6 +263,56 @@ USAGE_COST_SCHEMA = {
 SESSION_AGENTS_TASK_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["id", "title", "state", "progress"], "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "state": {"type": "string"}, "progress": {"type": "integer", "minimum": 0, "maximum": 100}}}
 SESSION_AGENTS_AGENT_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["id", "name", "runtime", "status", "current_task", "tasks"], "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "runtime": {"type": "string"}, "status": {"type": "string", "enum": ["running", "blocked", "done", "queued"]}, "current_task": {"type": ["string", "null"]}, "tasks": {"type": "array", "items": SESSION_AGENTS_TASK_SCHEMA}}}
 SESSION_AGENTS_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["schema_version", "agents"], "properties": {"schema_version": {"const": 1}, "agents": {"type": "array", "items": SESSION_AGENTS_AGENT_SCHEMA}}}
+MANDATE_SUMMARY_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["mandate_id", "granted_by", "allowed_tools", "data_class_max", "budget_usd_max", "max_runtime_seconds", "expires_at"], "properties": {"mandate_id": {"type": "string"}, "granted_by": {"type": "string"}, "allowed_tools": {"type": "array", "items": {"type": "string"}}, "data_class_max": {"type": "string"}, "budget_usd_max": {"type": "number", "minimum": 0}, "max_runtime_seconds": {"type": "integer", "minimum": 0}, "expires_at": {"type": "string"}}}
+GATE_SCHEMA = {"type": "object", "additionalProperties": False,
+               "required": ["domain", "status", "label", "detail"],
+               "properties": {
+                   "domain": {"type": "string", "enum": ["provider_data", "mandate", "evidence",
+                                                          "human_decision", "execution", "budget"]},
+                   "status": {"type": "string", "enum": ["good", "warn", "crit"]},
+                   "label": {"type": "string"}, "detail": {"type": "string"}}}
+AUTHORITY_SCHEMA = {"type": "object", "additionalProperties": False,
+                     "required": ["mandate_id", "granted_by", "replacement_policy", "dispatched_by"],
+                     "properties": {"mandate_id": {"type": "string"}, "granted_by": {"type": "string"},
+                                    "replacement_policy": {"type": "string"}, "dispatched_by": {"type": "string"}}}
+RUN_REF_SCHEMA = {"type": "object", "additionalProperties": False,
+                   "required": ["run_id", "engine"],
+                   "properties": {"run_id": {"type": "string"}, "engine": {"type": "string"},
+                                  "status": {"type": "string"}}}
+RUN_CONTINUITY_SCHEMA = {"type": "object", "additionalProperties": False,
+                          "required": ["authority", "current_run", "previous_run"],
+                          "properties": {"authority": AUTHORITY_SCHEMA, "current_run": RUN_REF_SCHEMA,
+                                         "previous_run": {"anyOf": [RUN_REF_SCHEMA, {"type": "null"}]}}}
+WORKSTREAM_SUMMARY_SCHEMA = {"type": "object", "additionalProperties": False,
+                             "required": ["issue_id", "title", "outcome", "workflow",
+                                          "pending_decision", "mandate", "gates", "run_continuity"],
+                             "properties": {"issue_id": {"type": "string"}, "title": {"type": "string"},
+                                            "outcome": {"type": "string"}, "workflow": {"type": "string"},
+                                            "pending_decision": {"type": "boolean"},
+                                            "mandate": MANDATE_SUMMARY_SCHEMA,
+                                            "gates": {"type": "array", "items": GATE_SCHEMA, "minItems": 6, "maxItems": 6},
+                                            "run_continuity": RUN_CONTINUITY_SCHEMA}}
+EVIDENCE_RUN_SCHEMA = {"type": "object", "additionalProperties": False,
+                       "required": ["run_id", "engine", "status", "evidence", "artifacts",
+                                    "artifacts_present", "artifacts_missing", "independently_reviewed", "accepted"],
+                       "properties": {"run_id": {"type": "string"}, "engine": {"type": "string"}, "status": {"type": "string"},
+                                      "evidence": {"type": "array", "items": {"type": "string"}},
+                                      "artifacts": {"type": "array", "items": {"type": "string"}},
+                                      "artifacts_present": {"type": "boolean"},
+                                      "artifacts_missing": {"type": "array", "items": {"type": "string"}},
+                                      "independently_reviewed": {"type": "boolean"},
+                                      "accepted": {"type": "boolean"}}}
+EVIDENCE_COMPARISON_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["issue_id", "runs"], "properties": {"issue_id": {"type": "string"}, "runs": {"type": "array", "items": EVIDENCE_RUN_SCHEMA}}}
+DECISION_PENDING_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["issue_id", "workflow", "summary", "actionable"], "properties": {"issue_id": {"type": "string"}, "workflow": {"type": "string"}, "summary": {"type": "string"}, "actionable": {"type": "boolean"}}}
+ATTENTION_ITEM_SCHEMA = {"type": "object", "additionalProperties": False,
+                          "required": ["workstream_id", "kind", "summary", "issue_id"],
+                          "properties": {"workstream_id": {"type": "string"},
+                                         "kind": {"type": "string", "enum": ["decision", "mandate", "evidence", "execution"]},
+                                         "summary": {"type": "string"},
+                                         "issue_id": {"type": "string"}}}
+ATTENTION_QUEUE_SCHEMA = {"type": "object", "additionalProperties": False,
+                          "required": ["items"],
+                          "properties": {"items": {"type": "array", "items": ATTENTION_ITEM_SCHEMA}}}
 
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
@@ -278,6 +328,10 @@ TYPES = {
     "visual-tokens.v2": TypeEntry(VISUAL_TOKENS_PRESETS_SCHEMA, "public-metadata"),
     "usage-cost.v1": TypeEntry(USAGE_COST_SCHEMA, "operational"),
     "session-agents.v1": TypeEntry(SESSION_AGENTS_SCHEMA, "operational"),
+    "workstream.summary.v1": TypeEntry(WORKSTREAM_SUMMARY_SCHEMA, "operational"),
+    "evidence.comparison.v1": TypeEntry(EVIDENCE_COMPARISON_SCHEMA, "operational"),
+    "decision.pending.v1": TypeEntry(DECISION_PENDING_SCHEMA, "operational"),
+    "attention.queue.v1": TypeEntry(ATTENTION_QUEUE_SCHEMA, "operational"),
     "issue.workflow.v1": TypeEntry({"type": "object"}, "public-metadata"),
     "core.string.v1": TypeEntry({"type": "string"}, "public-metadata"),
     "core.number.v1": TypeEntry({"type": "number"}, "public-metadata"),
@@ -299,6 +353,10 @@ READ_OPERATIONS = {
     "pages.deploys.v1": ReadOperation("store", JSON_OBJECT, "pages.deploys.v1", "operational", 500, 60, 2, "read:pages"),
     "usage-cost.v1": ReadOperation("store", JSON_OBJECT, "usage-cost.v1", "operational", 500, 60, 2, "read:usage-cost"),
     "session-agents.v1": ReadOperation("store", JSON_OBJECT, "session-agents.v1", "operational", 500, 60, 2, "read:session-agents"),
+    "workstream.summary.v1": ReadOperation("store", JSON_OBJECT, "workstream.summary.v1", "operational", 500, 60, 2, "read:workstream-summary"),
+    "evidence.comparison.v1": ReadOperation("store", JSON_OBJECT, "evidence.comparison.v1", "operational", 500, 60, 2, "read:evidence-comparison"),
+    "decision.pending.v1": ReadOperation("store", JSON_OBJECT, "decision.pending.v1", "operational", 500, 60, 2, "read:decision-pending"),
+    "attention.queue.v1": ReadOperation("store", JSON_OBJECT, "attention.queue.v1", "operational", 500, 60, 2, "read:attention-queue"),
     "issue.workflow.get.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["issue_number"], "properties": {"issue_number": {"type": "integer", "minimum": 1}}}, "issue.workflow.v1", "public-metadata", 2000, 30, 30, "read:issue-workflow", True),
 }
 
@@ -309,6 +367,8 @@ ACTIONS: dict[str, ActionEntry] = {
                                           "workflow-transition", frozenset({"operator"}), "act:mark-ready", True),
     "workflow.claim-run.v1": ActionEntry("cli", ISSUE_ID_SCHEMA, "action.status.v1",
                                          "run-dispatch", frozenset({"operator"}), "act:claim-run", True),
+    "workflow.record-decision.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",
+                                                "workflow-transition", frozenset({"operator"}), "act:record-decision", True),
 }
 
 _LAYOUT = ("stack", "row", "grid", "tabs", "panel")

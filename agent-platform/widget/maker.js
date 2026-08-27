@@ -1508,6 +1508,15 @@
     '<section class="view-section hidden" data-mk-section="studio">' +
       '<div class="studio-container">' +
         '<div class="editor-pane">' +
+          '<div class="editor-toolbar" style="flex-direction:column;align-items:stretch;gap:6px;">' +
+            '<span class="eyebrow">Describe</span>' +
+            '<textarea class="code-input" data-mk-studio-prompt spellcheck="false" style="min-height:48px;" placeholder="Describe the widget you want, e.g. a table of open evidence gaps"></textarea>' +
+            '<div style="display:flex;gap:6px;align-items:center;">' +
+              '<button type="button" class="candidate-copy" data-mk-action="studio-generate">Generate</button>' +
+              '<button type="button" class="candidate-copy hidden" data-mk-action="studio-confirm-install" data-mk-studio-confirm-btn disabled>Confirm &amp; install</button>' +
+              '<span data-mk-studio-generate-status class="pulse-status"></span>' +
+            '</div>' +
+          '</div>' +
           '<div class="editor-toolbar">' +
             '<span class="eyebrow">Spec Template</span>' +
             '<select class="editor-select" data-mk-preset-select>' +
@@ -1617,6 +1626,9 @@
     var tokensDebounce = null;
     var studioDebounce = null;
     var lastImportFileName = "widget.cw";
+    var studioGenState = "draft"; // draft | generated | validation_failed | needs_scaffold | valid | confirmed | installed
+    var studioGenOutcome = null; // raw generate_widget_spec-shaped response from api/widget-generate
+    var studioGenScaffoldUsed = false; // sticky across a needs_scaffold -> valid transition, until the next prompt
 
     function escapeHtml(str) {
       return (str || "").toString()
@@ -2029,6 +2041,80 @@
       }
     }
 
+    function renderStudioGenerateStatus() {
+      var statusEl = q("[data-mk-studio-generate-status]");
+      var confirmBtn = q("[data-mk-studio-confirm-btn]");
+      if (!statusEl || !confirmBtn) return;
+      var labels = {
+        draft: "", generated: "Generating…",
+        validation_failed: "Not valid: " + ((studioGenOutcome && studioGenOutcome.error_message) || "generation failed"),
+        needs_scaffold: "Missing read operation(s): " + ((studioGenOutcome && studioGenOutcome.missing_operations || []).join(", ")) +
+          " — scaffold written to " + ((studioGenOutcome && studioGenOutcome.scaffold_paths || []).join(", ")),
+        valid: "Valid — " + (studioGenOutcome ? studioGenOutcome.widget_id + " v" + studioGenOutcome.widget_version : ""),
+        installed: "Installed" + (studioGenScaffoldUsed ? " — representative data, scaffolded read" : ""),
+      };
+      statusEl.textContent = labels[studioGenState] || "";
+      confirmBtn.classList.toggle("hidden", !(studioGenState === "valid" || studioGenState === "installed"));
+      confirmBtn.disabled = studioGenState !== "valid";
+      confirmBtn.textContent = studioGenState === "installed" ? "Installed" : "Confirm & install";
+    }
+
+    function studioGenerate() {
+      var promptEl = q("[data-mk-studio-prompt]");
+      var prompt = promptEl ? promptEl.value.trim() : "";
+      if (!prompt) return;
+      studioGenState = "generated";
+      studioGenOutcome = null;
+      studioGenScaffoldUsed = false;
+      renderStudioGenerateStatus();
+      fetch("api/widget-generate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: prompt, confirm: false }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          studioGenOutcome = data;
+          studioGenState = { ok: "valid", missing_operation: "needs_scaffold", invalid: "validation_failed" }[data.status] || "validation_failed";
+          if (studioGenState === "needs_scaffold") studioGenScaffoldUsed = true;
+          renderStudioGenerateStatus();
+          if (studioGenState === "valid" && data.spec_text) {
+            q("[data-mk-studio-spec]").value = data.spec_text;
+            reRenderStudio();
+          }
+        })
+        .catch(function (err) {
+          studioGenOutcome = { error_message: err.message || "request failed" };
+          studioGenState = "validation_failed";
+          renderStudioGenerateStatus();
+        });
+    }
+
+    function studioConfirmInstall() {
+      if (studioGenState !== "valid") return; // defense in depth; the button is also disabled
+      var promptEl = q("[data-mk-studio-prompt]");
+      var prompt = promptEl ? promptEl.value.trim() : "";
+      fetch("api/widget-generate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: prompt, confirm: true }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.status !== "succeeded") {
+            studioGenState = "validation_failed";
+            studioGenOutcome = data.error || data;
+            renderStudioGenerateStatus();
+            return;
+          }
+          studioGenState = "installed";
+          renderStudioGenerateStatus();
+        })
+        .catch(function (err) {
+          studioGenOutcome = { error_message: err.message || "request failed" };
+          studioGenState = "validation_failed";
+          renderStudioGenerateStatus();
+        });
+    }
+
     var SECRET_PATTERNS = [
       /sk-[a-zA-Z0-9_-]{10,}/,
       /cfat_[a-zA-Z0-9_-]{10,}/,
@@ -2318,6 +2404,8 @@
       var action = el.dataset.mkAction;
       if (action === "export-studio") exportStudioWidget();
       else if (action === "rerender-studio") reRenderStudio();
+      else if (action === "studio-generate") studioGenerate();
+      else if (action === "studio-confirm-install") studioConfirmInstall();
       else if (action === "copy-studio-cmd") copyText(studioCliCmd, el);
       else if (action === "copy-studio-json") copyText(q("[data-mk-studio-json-text]").textContent, el);
       else if (action === "apply-tokens") applyEditedTokens();

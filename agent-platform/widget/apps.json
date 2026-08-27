@@ -1,0 +1,10 @@
+{
+  "apps": [
+    {"id": "work-console", "title": "Work Console", "icon": "work", "route": "/work", "widgets": ["work-console", "attention-queue"]},
+    {"id": "decisions", "title": "Decisions", "icon": "decisions", "route": "/work/decisions", "widgets": ["decisions"]},
+    {"id": "evidence", "title": "Evidence", "icon": "evidence", "route": "/work/evidence", "widgets": ["evidence"]},
+    {"id": "execution", "title": "Execution Inspector", "icon": "execution", "route": "/work/execution", "widgets": ["pulse", "agents"]},
+    {"id": "studio", "title": "Studio", "icon": "studio", "route": "/studio", "widgets": null},
+    {"id": "all", "title": "All widgets", "widgets": null}
+  ]
+}

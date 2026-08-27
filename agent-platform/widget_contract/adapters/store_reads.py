@@ -372,3 +372,162 @@ def read_session_agents_v1(projection_or_store: Any) -> dict[str, Any]:
         raise ReadAdapterError(str(exc)) from exc
     return result
 
+
+def read_workstream_summary_v1(store: Mapping[str, Any]) -> dict[str, Any]:
+    """Produce the safe Workstream summary projection and validate it."""
+    if not isinstance(store, Mapping):
+        raise ReadAdapterError("workstream-summary store must be an object")
+    required = ("issue_id", "title", "outcome", "workflow", "pending_decision",
+                "mandate", "gates", "run_continuity")
+    for key in required:
+        if key not in store:
+            raise ReadAdapterError(f"workstream-summary store missing required field: {key}")
+    mandate_raw = store["mandate"]
+    if not isinstance(mandate_raw, Mapping):
+        raise ReadAdapterError("workstream-summary mandate must be an object")
+    mandate_allowed = ("mandate_id", "granted_by", "allowed_tools", "data_class_max",
+                       "budget_usd_max", "max_runtime_seconds", "expires_at")
+    for key in mandate_allowed:
+        if key not in mandate_raw:
+            raise ReadAdapterError(f"workstream-summary mandate missing required field: {key}")
+    gates_raw = store["gates"]
+    if not isinstance(gates_raw, list):
+        raise ReadAdapterError("workstream-summary gates must be an array")
+    gates = []
+    for g in gates_raw:
+        for key in ("domain", "status", "label", "detail"):
+            if key not in g:
+                raise ReadAdapterError(f"workstream-summary gate missing required field: {key}")
+        gates.append({"domain": str(g["domain"]), "status": str(g["status"]),
+                      "label": str(g["label"]), "detail": str(g["detail"])})
+    continuity_raw = store["run_continuity"]
+    if not isinstance(continuity_raw, Mapping) or "authority" not in continuity_raw or "current_run" not in continuity_raw:
+        raise ReadAdapterError("workstream-summary run_continuity must have authority and current_run")
+    authority_raw = continuity_raw["authority"]
+    for key in ("mandate_id", "granted_by", "replacement_policy", "dispatched_by"):
+        if key not in authority_raw:
+            raise ReadAdapterError(f"workstream-summary run_continuity authority missing field: {key}")
+    current_raw = continuity_raw["current_run"]
+    previous_raw = continuity_raw.get("previous_run")
+    result = {
+        "issue_id": str(store["issue_id"]),
+        "title": str(store["title"]),
+        "outcome": str(store["outcome"]),
+        "workflow": str(store["workflow"]),
+        "pending_decision": bool(store["pending_decision"]),
+        "mandate": {
+            "mandate_id": str(mandate_raw["mandate_id"]),
+            "granted_by": str(mandate_raw["granted_by"]),
+            "allowed_tools": [str(t) for t in mandate_raw["allowed_tools"]],
+            "data_class_max": str(mandate_raw["data_class_max"]),
+            "budget_usd_max": float(mandate_raw["budget_usd_max"]),
+            "max_runtime_seconds": int(mandate_raw["max_runtime_seconds"]),
+            "expires_at": str(mandate_raw["expires_at"]),
+        },
+        "gates": gates,
+        "run_continuity": {
+            "authority": {
+                "mandate_id": str(authority_raw["mandate_id"]),
+                "granted_by": str(authority_raw["granted_by"]),
+                "replacement_policy": str(authority_raw["replacement_policy"]),
+                "dispatched_by": str(authority_raw["dispatched_by"]),
+            },
+            "current_run": {"run_id": str(current_raw["run_id"]), "engine": str(current_raw["engine"])},
+            "previous_run": None if previous_raw is None else {
+                "run_id": str(previous_raw["run_id"]), "engine": str(previous_raw["engine"]),
+                "status": str(previous_raw.get("status", "")),
+            },
+        },
+    }
+    try:
+        validate(result, TYPES["workstream.summary.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_attention_queue_v1(store: Mapping[str, Any]) -> dict[str, Any]:
+    """Produce the safe attention-queue projection and validate it."""
+    if not isinstance(store, Mapping):
+        raise ReadAdapterError("attention-queue store must be an object")
+    if "items" not in store or not isinstance(store["items"], list):
+        raise ReadAdapterError("attention-queue store missing items array")
+    items = []
+    for raw in store["items"]:
+        if not isinstance(raw, Mapping):
+            raise ReadAdapterError("attention-queue item must be an object")
+        required = ("workstream_id", "kind", "summary", "issue_id")
+        for key in required:
+            if key not in raw:
+                raise ReadAdapterError(f"attention-queue item missing required field: {key}")
+        items.append({
+            "workstream_id": str(raw["workstream_id"]),
+            "kind": str(raw["kind"]),
+            "summary": str(raw["summary"]),
+            "issue_id": str(raw["issue_id"]),
+        })
+    result = {"items": items}
+    try:
+        validate(result, TYPES["attention.queue.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_evidence_comparison_v1(store: Mapping[str, Any]) -> dict[str, Any]:
+    """Produce the safe two-runs evidence-comparison projection and validate it."""
+    if not isinstance(store, Mapping):
+        raise ReadAdapterError("evidence-comparison store must be an object")
+    if "issue_id" not in store:
+        raise ReadAdapterError("evidence-comparison store missing required field: issue_id")
+    runs_raw = store.get("runs")
+    if not isinstance(runs_raw, list):
+        raise ReadAdapterError("evidence-comparison store must contain a runs array")
+    required_run_keys = ("run_id", "engine", "status", "evidence", "artifacts",
+                         "artifacts_present", "artifacts_missing", "independently_reviewed", "accepted")
+    safe_runs = []
+    for run in runs_raw:
+        if not isinstance(run, Mapping):
+            raise ReadAdapterError("evidence run must be an object")
+        for key in required_run_keys:
+            if key not in run:
+                raise ReadAdapterError(f"evidence run missing required field: {key}")
+        safe_runs.append({
+            "run_id": str(run["run_id"]),
+            "engine": str(run["engine"]),
+            "status": str(run["status"]),
+            "evidence": [str(e) for e in run["evidence"]],
+            "artifacts": [str(a) for a in run["artifacts"]],
+            "artifacts_present": bool(run["artifacts_present"]),
+            "artifacts_missing": [str(a) for a in run["artifacts_missing"]],
+            "independently_reviewed": bool(run["independently_reviewed"]),
+            "accepted": bool(run["accepted"]),
+        })
+    result = {"issue_id": str(store["issue_id"]), "runs": safe_runs}
+    try:
+        validate(result, TYPES["evidence.comparison.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_decision_pending_v1(store: Mapping[str, Any]) -> dict[str, Any]:
+    """Produce the safe pending-decision projection and validate it."""
+    if not isinstance(store, Mapping):
+        raise ReadAdapterError("decision-pending store must be an object")
+    required = ("issue_id", "workflow", "summary", "actionable")
+    for key in required:
+        if key not in store:
+            raise ReadAdapterError(f"decision-pending store missing required field: {key}")
+    result = {
+        "issue_id": str(store["issue_id"]),
+        "workflow": str(store["workflow"]),
+        "summary": str(store["summary"]),
+        "actionable": bool(store["actionable"]),
+    }
+    try:
+        validate(result, TYPES["decision.pending.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+

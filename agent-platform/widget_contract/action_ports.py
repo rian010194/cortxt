@@ -15,7 +15,7 @@ from typing import Any, Callable, Mapping
 
 from .action_executor import ActionContext, ActionExecutor
 from .adapters.cli_ports import claim_run_via_launcher
-from .adapters.github_ports import mark_ready_transition
+from .adapters.github_ports import mark_ready_transition, record_decision_transition
 from .models import Action, Widget
 
 
@@ -50,20 +50,33 @@ def operator_authorize(confirm: bool) -> Callable[[Action, ActionContext], bool]
 
 
 def github_transition_adapter(labels_reader: Callable[[str], list[str]],
-                              transition_writer: Callable[[str], Mapping[str, Any]]) -> Callable[[str, Mapping[str, Any]], Any]:
-    """github-transition port adapter performing exactly the inbox -> ready swap.
+                              transition_writer: Callable[[str], Mapping[str, Any]],
+                              *, review_transition_writer: Callable[[str], Mapping[str, Any]] | None = None
+                              ) -> Callable[[str, Mapping[str, Any]], Any]:
+    """github-transition port adapter, routed by operation.
 
-    `labels_reader(issue_id)` and `transition_writer(issue_id)` are the
-    platform gh-backed ports (injectable for tests); the writer is adapted to
-    the `mark_ready_transition` (operation, request) contract.
+    `workflow.mark-ready.v1` performs the inbox -> ready swap;
+    `workflow.record-decision.v1` performs the review -> done swap. Each is a
+    separate fixed-effect transition function -- this adapter only dispatches
+    on the declared action's operation, it never becomes a general label editor.
     """
+    def reader(issue_id: str) -> Mapping[str, Any]:
+        return {"issue_id": issue_id, "labels": [{"name": x} for x in labels_reader(issue_id)]}
+
+    def writer(operation: str, request: Mapping[str, Any]) -> Any:
+        return transition_writer(request["issue_id"])
+
+    def review_writer(operation: str, request: Mapping[str, Any]) -> Any:
+        if review_transition_writer is None:
+            raise ValueError(
+                "github_transition_adapter: workflow.record-decision.v1 requires "
+                "review_transition_writer; refusing to fall back to the inbox->ready "
+                "transition_writer and mis-edit the issue's labels")
+        return review_transition_writer(request["issue_id"])
+
     def adapter(operation: str, request: Mapping[str, Any]) -> Any:
-        def reader(issue_id: str) -> Mapping[str, Any]:
-            return {"issue_id": issue_id, "labels": [{"name": x} for x in labels_reader(issue_id)]}
-
-        def writer(operation: str, request: Mapping[str, Any]) -> Any:
-            return transition_writer(request["issue_id"])
-
+        if operation == "workflow.record-decision.v1":
+            return record_decision_transition(operation, request, issue_reader=reader, transition=review_writer)
         return mark_ready_transition(operation, request, issue_reader=reader, transition=writer)
     return adapter
 
@@ -78,16 +91,24 @@ def cli_claim_adapter(resume: Callable[[str], Any]) -> Callable[[str, Mapping[st
 def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm: bool,
                    labels_reader: Callable[[str], list[str]],
                    transition_writer: Callable[[str], Mapping[str, Any]],
-                   resume: Callable[[str], Any]) -> tuple[ActionExecutor, ActionContext]:
+                   resume: Callable[[str], Any],
+                   review_transition_writer: Callable[[str], Mapping[str, Any]] | None = None
+                   ) -> tuple[ActionExecutor, ActionContext]:
     """Assemble the shared executor + per-action context for one execution.
 
     The approve/confirm semantics and the adapter set are identical to what
     `cortxt widget action` uses; callers only differ in where the injected
     GitHub/launcher ports come from (CLI defaults vs. the host's defaults).
+
+    `review_transition_writer` must be passed by every caller wiring a
+    `workflow.record-decision.v1` action: without it, `github_transition_adapter`
+    falls back to `transition_writer` (the inbox -> ready writer) for the
+    review -> done transition too, silently performing the wrong label edit.
     """
     declared = declared_action(widget, action_id)
     executor = ActionExecutor(
-        {"github-transition": github_transition_adapter(labels_reader, transition_writer),
+        {"github-transition": github_transition_adapter(
+            labels_reader, transition_writer, review_transition_writer=review_transition_writer),
          "cli": cli_claim_adapter(resume)},
         operator_authorize(confirm),
     )

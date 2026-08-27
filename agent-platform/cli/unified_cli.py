@@ -1657,7 +1657,10 @@ def _default_session_agents_reader() -> dict[str, Any]:
     }
 
 
-def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reader: Any = None, agents_reader: Any = None) -> ResultEnvelope:
+def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reader: Any = None,
+                agents_reader: Any = None, workstream_reader: Any = None,
+                evidence_reader: Any = None, decision_reader: Any = None,
+                attention_queue_reader: Any = None) -> ResultEnvelope:
     """Serve the sessions widget or execute a registered widget action.
 
     `cortxt widget` without a subcommand serves the sessions widget
@@ -1992,6 +1995,174 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
                 print(json.dumps(stdout_tree, indent=2))
             return ResultEnvelope(status="succeeded", artifacts=[f"session-agents:{output_path}"],
                                   evidence=[{"session_agents": tree}])
+        if view == "attention-queue":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_attention_queue_v1
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "attention-queue-0.1.yaml")
+            reader = attention_queue_reader or getattr(args, "attention_queue_reader", None)
+            if reader is None:
+                return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                              "message": "attention-queue view requires an attention_queue_reader"})
+            try:
+                raw_data = reader() if callable(reader) else reader
+                projection = read_attention_queue_v1(raw_data)
+                source_status = "fresh"
+                error = None
+            except (OSError, ValueError) as exc:
+                projection = {}
+                source_status = "error"
+                error = {"kind": "attention_queue_read", "message": str(exc)}
+            if error is None:
+                tree = render(widget, {"queue": projection}, {"queue": source_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {"contract_version": widget.contract_version,
+                        "widget": {"id": widget.id, "version": widget.version},
+                        "render": render_primitive("error-state",
+                                                   {"message": f"Attention queue read failed: {error['message']}"},
+                                                   [], "error")}
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "attention-queue.json")
+            artifact = {**tree, "repo": None, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("heading", "text", "badge", "metric", "key-value", "list", "table")]}
+                print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"attention-queue:{output_path}"],
+                                  evidence=[{"attention_queue": tree}])
+        if view == "work-console":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_workstream_summary_v1
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "work-console-0.1.yaml")
+            reader = workstream_reader or getattr(args, "workstream_reader", None)
+            if reader is None:
+                return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                              "message": "work-console view requires a workstream_reader"})
+            try:
+                raw_data = reader() if callable(reader) else reader
+                projection = read_workstream_summary_v1(raw_data)
+                source_status = "fresh"
+                error = None
+            except (OSError, ValueError) as exc:
+                projection = {}
+                source_status = "error"
+                error = {"kind": "workstream_summary_read", "message": str(exc)}
+            if error is None:
+                tree = render(widget, {"summary": projection}, {"summary": source_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {"contract_version": widget.contract_version,
+                        "widget": {"id": widget.id, "version": widget.version},
+                        "render": render_primitive("error-state",
+                                                   {"message": f"Workstream summary read failed: {error['message']}"},
+                                                   [], "error")}
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "work-console.json")
+            artifact = {**tree, "repo": None, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("heading", "text", "badge", "metric", "key-value", "list", "table")]}
+                print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"work-console:{output_path}"],
+                                  evidence=[{"work_console": tree}])
+        if view == "evidence":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_evidence_comparison_v1
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "evidence-0.1.yaml")
+            reader = evidence_reader or getattr(args, "evidence_reader", None)
+            if reader is None:
+                return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                              "message": "evidence view requires an evidence_reader"})
+            try:
+                raw_data = reader() if callable(reader) else reader
+                projection = read_evidence_comparison_v1(raw_data)
+                source_status = "fresh"
+                error = None
+            except (OSError, ValueError) as exc:
+                projection = {}
+                source_status = "error"
+                error = {"kind": "evidence_comparison_read", "message": str(exc)}
+            if error is None:
+                tree = render(widget, {"comparison": projection}, {"comparison": source_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {"contract_version": widget.contract_version,
+                        "widget": {"id": widget.id, "version": widget.version},
+                        "render": render_primitive("error-state",
+                                                   {"message": f"Evidence comparison read failed: {error['message']}"},
+                                                   [], "error")}
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "evidence.json")
+            artifact = {**tree, "repo": None, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("table", "text", "badge", "key-value")]}
+                print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"evidence:{output_path}"],
+                                  evidence=[{"evidence": tree}])
+        if view == "decisions":
+            ap_path = _get_agent_platform_path()
+            if str(ap_path) not in sys.path:
+                sys.path.insert(0, str(ap_path))
+            from widget_contract.adapters.store_reads import read_decision_pending_v1
+            from widget_contract.loader import load_widget_file
+            from widget_contract.renderer import render
+            widget = load_widget_file(ap_path / "widget_contract" / "specs" / "decisions-0.1.yaml")
+            reader = decision_reader or getattr(args, "decision_reader", None)
+            if reader is None:
+                return ResultEnvelope(status="failed", error={"category": "input_error",
+                                                              "message": "decisions view requires a decision_reader"})
+            try:
+                raw_data = reader() if callable(reader) else reader
+                projection = read_decision_pending_v1(raw_data)
+                source_status = "fresh"
+                error = None
+            except (OSError, ValueError) as exc:
+                projection = {}
+                source_status = "error"
+                error = {"kind": "decision_pending_read", "message": str(exc)}
+            if error is None:
+                tree = render(widget, {"pending": projection}, {"pending": source_status})
+            else:
+                from widget_contract.primitives import render_primitive
+                tree = {"contract_version": widget.contract_version,
+                        "widget": {"id": widget.id, "version": widget.version},
+                        "render": render_primitive("error-state",
+                                                   {"message": f"Decision pending read failed: {error['message']}"},
+                                                   [], "error")}
+            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "decisions.json")
+            artifact = {**tree, "repo": None, "error": error}
+            _write_widget_artifact(artifact, output_path)
+            if is_tui:
+                from widget_contract.tui import render_tui
+                print(render_tui(tree, force_ansi=force_ansi, truecolor=truecolor))
+            else:
+                stdout_tree = {**tree["render"], "children": [node for node in tree["render"].get("children", [])
+                                                               if node["primitive"] in ("text", "badge")]}
+                print(json.dumps(stdout_tree, indent=2))
+            return ResultEnvelope(status="succeeded", artifacts=[f"decisions:{output_path}"],
+                                  evidence=[{"decisions": tree}])
         candidate_mode = getattr(args, "widget_command", None) == "candidates" or view == "candidates"
         if candidate_mode:
             ap_path = _get_agent_platform_path()
@@ -2074,6 +2245,12 @@ def _gh_inbox_to_ready(issue_id: str) -> dict:
     """Perform exactly the inbox -> ready label swap via gh (shared default, injectable for tests)."""
     from widget_contract.adapters.github_ports import gh_inbox_to_ready
     return gh_inbox_to_ready(issue_id)
+
+
+def _gh_review_to_done(issue_id: str) -> dict:
+    """Perform exactly the review -> done label swap via gh (shared default, injectable for tests)."""
+    from widget_contract.adapters.github_ports import gh_review_to_done
+    return gh_review_to_done(issue_id)
 
 
 def _claim_run_resume(issue_id: str, *, registry: Path) -> dict:
@@ -2202,6 +2379,7 @@ def _run_widget_action(args: argparse.Namespace) -> ResultEnvelope:
         executor, context = build_executor(
             widget, action_id=args.action_id, approval_ref=args.approval_ref, confirm=args.confirm,
             labels_reader=_gh_issue_workflow_labels, transition_writer=_gh_inbox_to_ready,
+            review_transition_writer=_gh_review_to_done,
             resume=lambda issue_id: _claim_run_resume(issue_id, registry=registry))
         result = executor.execute(action, context)
         print(json.dumps(result, indent=2))
@@ -3028,7 +3206,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # widget subcommand
     widget_parser = sub.add_parser("widget", help="Serve the sessions widget (loopback-only, blocks until Ctrl+C)")
-    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map", "docker-status", "webhooks", "pages-deploys", "usage-cost", "session-agents"], help="Render a named read-only widget view")
+    widget_parser.add_argument("--view", choices=["candidates", "session-pulse", "execution-map", "docker-status", "webhooks", "pages-deploys", "usage-cost", "session-agents", "work-console", "evidence", "decisions", "attention-queue"], help="Render a named read-only widget view")
     widget_parser.add_argument("--repo", help="GitHub owner/repo for a named view")
     widget_parser.add_argument("--snapshot", type=Path, help="Widget render output path")
     widget_parser.add_argument("--snapshot-input", type=Path, help="Snapshot input path for the session-pulse view")
