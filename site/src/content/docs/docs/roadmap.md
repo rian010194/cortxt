@@ -5,7 +5,31 @@ description: Current product status and the live-derived Atlas roadmap page.
 
 ## Current status
 
-Cortxt is CLI-primary, with durable work scope and evidence in GitHub Issues, provider-neutral runtime adapters, a verified dispatcher path, and an MCP external integration surface. Human approval remains the final gate.
+Cortxt is work- and mandate-first (ADR-042): durable Workstream scope and
+evidence live in GitHub Issues, workflow state is carried by `workflow:*`
+labels, and execution across provider-neutral runtime adapters is
+replaceable behind Cortxt-owned contracts. Human approval remains the final
+gate. See [current product vs. direction](/docs/product-status/) for what is
+verified today versus accepted direction versus experimental.
+
+### Verified baseline
+
+GitHub-backed workflow authority, mandate issuance and verification,
+provider-policy gate, dispatch and Run identity, evidence and review
+mechanisms, the `cortxt` CLI, `cortxt mcp serve`, engine adapters,
+declarative widget contracts, a continuity proof, and accepted ADR-042.
+
+### In active development
+
+Cortxt OS shell, Work Console, Decisions, Evidence, Execution Inspector
+integration, Studio and prompt-generated views/apps, and a real dogfood
+vertical slice.
+
+### Future or conditional
+
+Hosted synchronization and managed services, broader adapter support,
+OpenShell-backed secure execution, and team/private capabilities. None of
+these are implemented or foundational today.
 
 ## Atlas roadmap
 

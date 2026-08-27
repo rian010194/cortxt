@@ -1,15 +1,34 @@
 ---
 import '../styles/landing.css';
-const adaptCards = [
-  ['Any agent engine', 'Hermes and DSH run today behind Cortxt-owned dispatch adapters; Codex, Buzz, and a future runtime are on the same path, never as the product itself.', 'In progress'],
-  ['Any model', 'Inference stays provider-neutral behind Cortxt-owned adapters, so a model swap does not touch scope, evidence, or state.', 'Available now'],
-  ['Any workflow shape', 'Widget views are generated from the actual spec for a run, not hand-built for one fixed dashboard.', 'Available now'],
+
+// TEMP hero primary CTA: label + destination are both interim.
+// Today: "See what works today" -> /docs/product-status/ (a status
+// table, not a walkthrough -- doesn't yet earn "See how Cortxt works").
+// Step 1, once docs/proofs/replaceable-execution-continuity.md (PR A)
+// ships: swap href to /docs/proofs/replaceable-execution-continuity/,
+// label can stay or change to "See how Cortxt works".
+// Step 2, once the Work Console walkthrough (separate workstream) has a
+// public route: swap href again and use "Explore the continuity demo"
+// or "Open the Cortxt OS demo" per the landing-page rebuild brief
+// (lab/landing-page-rebuild-20260827/copy.md).
+const heroPrimaryCtaLabel = 'See what works today';
+const heroPrimaryCtaHref = '/docs/product-status/';
+
+const usecases = [
+  ['Compliance', 'A review that survives a model swap', "A workstream's scope, evidence, and approval history stay attached to the GitHub issue that authorized it — regardless of which engine ran which step."],
+  ['Research', 'Long-running work that spans engines', 'Start on one adapter, continue on another after a provider change, without losing the mandate or the decision trail.'],
+  ['Incident response', 'An audit trail by default', 'Every action is evidence-backed and mandate-scoped from the first step, not bolted on after the fact for a postmortem.'],
 ];
-const controlPrinciples = [
-  ['Mandate first', 'Work runs only inside explicit scope, limits, and authority.'],
-  ['Provider neutral', 'Models and agent engines remain replaceable behind Cortxt-owned contracts.'],
-  ['Evidence before approval', 'Every run returns inspectable evidence before a human makes the final call.'],
-  ['Your stack, rendered', 'The operator view is generated from the workflow, never imposed on it.'],
+
+const statusRows = [
+  ['Mandate issuance & verification, fail-closed policy gate', 'available', 'Available now'],
+  ['GitHub Issues as workflow / evidence authority', 'available', 'Available now'],
+  ['cortxt CLI, incl. cortxt mcp serve', 'available', 'Available now'],
+  ['Engine adapters (Hermes, Codex, and more behind the same contract)', 'available', 'Available now'],
+  ['Single-widget generation by prompt', 'available', 'Available now'],
+  ['One bounded continuity scenario across two runs', 'demo', 'Demonstrated proof'],
+  ['Cortxt OS / Work Console, Evidence, Decisions', 'progress', 'In development'],
+  ['Prompt-generated multi-widget composition ("Studio")', 'direction', 'Direction'],
 ];
 ---
 <!doctype html>
@@ -17,8 +36,8 @@ const controlPrinciples = [
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
-    <meta name="description" content="Cortxt is the provider-neutral control plane for long-running AI work under verifiable human mandate. Bring your agents, models, and workflows -- keep the state, control, and evidence." />
-    <title>Cortxt | AI work under human mandate</title>
+    <meta name="description" content="Cortxt is an operating layer for durable AI work. Agents, models, and providers change; the mandate, state, decisions, and evidence stay attached to the work itself." />
+    <title>Cortxt | An operating layer for durable AI work</title>
     <!--
       Issue #377: the public landing page renders a fixed default preset
       (quiet-slate) for every visitor, independent of whatever preset an
@@ -35,7 +54,7 @@ const controlPrinciples = [
     <header class="nav shell">
       <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
       <nav aria-label="Primary navigation">
-        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/widgets/">Widgets</a><a href="/docs/widgets/">Widget docs</a><a href="/widgets/">Examples</a>
+        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/docs/product-status/">Product status</a>
         <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Preview color theme (this browser only)">
           <button type="button" data-preset="quiet-slate" class="active" title="Quiet Slate">&nbsp;</button>
           <button type="button" data-preset="graphite-ink" title="Graphite Ink">&nbsp;</button>
@@ -47,213 +66,168 @@ const controlPrinciples = [
     <main>
       <section class="hero shell">
         <div class="hero-copy">
-          <p class="eyebrow"><i></i> Provider-neutral control plane</p>
-          <h1>Your AI stack.<br /><em>Under your control.</em></h1>
-          <p class="lede">Keep the state, control, and evidence. Cortxt is not a chat interface, a fixed dashboard, or a single-runtime wrapper &mdash; it is the durable layer underneath whichever agents and models already fit the work, with human mandate and inspectable evidence built into every run.</p>
+          <p class="eyebrow"><i></i> An operating layer for durable AI work</p>
+          <h1>AI execution changes.<br /><em>Your work shouldn&rsquo;t have to start over.</em></h1>
+          <p class="lede">Agents get swapped. Models get upgraded. Providers change terms. Cortxt keeps the mandate, state, decisions, and evidence attached to the work itself &mdash; so none of that turns into a reset.</p>
           <div class="actions">
-            <a class="primary" href="/docs/quick-start/">Start with the CLI</a>
+            <a class="primary" href={heroPrimaryCtaHref}>{heroPrimaryCtaLabel}</a>
+            <a class="secondary-cta" href="/docs/quick-start/">Get started with the CLI</a>
           </div>
           <p class="hero-secondary-links">
-            <a class="secondary" href="#one-contract">Explore the OS direction <span aria-hidden="true">-&gt;</span></a>
-            <a class="secondary" href="/widgets/">See real examples <span aria-hidden="true">-&gt;</span></a>
-            <a class="secondary" href="/docs/architecture/">Read the architecture <span aria-hidden="true">-&gt;</span></a>
+            <a class="secondary" href="https://github.com/rian010194/cortxt">View on GitHub <span aria-hidden="true">-&gt;</span></a>
           </p>
-          <div class="command"><span>$</span> cortxt widget load --spec compliance.yaml</div>
-        </div>
-        <div class="control-map" aria-label="Cortxt connects human mandate to replaceable runtimes through one durable control plane">
-          <div class="map-topline"><span>ACTIVE WORKSTREAM</span><b><i></i> evidence current</b></div>
-          <div class="map-flow">
-            <article class="map-node mandate-node"><small>01 / AUTHORITY</small><strong>Human mandate</strong><span>scope &middot; limits &middot; approval</span></article>
-            <span class="map-connector"><i></i></span>
-            <article class="map-node core-node"><small>02 / CORTXT</small><strong>Durable control plane</strong><span>state &middot; routing &middot; evidence</span></article>
-            <span class="map-connector"><i></i></span>
-            <div class="runtime-stack">
-              <small>03 / REPLACEABLE</small>
-              <span><b>Codex</b><i>active</i></span>
-              <span><b>Hermes</b><i>ready</i></span>
-              <span><b>Any model</b><i>adapter</i></span>
+          <div class="proof-strip" aria-label="Continuity proof summary">
+            <div class="proof-strip-text">
+              <strong>One workstream. Two runs. Same mandate.</strong>
+              <p>Run 1 executed on Hermes and stopped on a fail-closed policy block. Run 2, after a real fix, executed on claude-direct &mdash; same GitHub-issue workstream (#402), same mandate, same evidence trail.</p>
             </div>
-          </div>
-          <div class="map-ledger">
-            <span><small>RUN</small><b>compliance-042</b></span>
-            <span><small>STATE</small><b class="running-state">running</b></span>
-            <span><small>EVIDENCE</small><b>12 records</b></span>
-            <span><small>APPROVAL</small><b>human</b></span>
+            <div class="run-track">
+              <span class="run-node blocked">Run 1 &middot; Hermes &middot; blocked</span>
+              <span class="run-arrow">&rarr;</span>
+              <span class="run-node ok">Run 2 &middot; claude-direct &middot; done</span>
+            </div>
+            <!-- Continuity proof write-up not yet committed (PR A,
+                 docs/proofs/replaceable-execution-continuity.md) -- omit the
+                 link entirely until that lands; do not point at "#". -->
+            <span class="proof-strip-pending">Continuity proof write-up &mdash; coming soon</span>
           </div>
         </div>
       </section>
 
-      <section class="signal shell" aria-label="Cortxt execution flow"><span>Human mandate</span><b>-&gt;</b><span>Controlled run</span><b>-&gt;</b><span>Evidence</span><b>-&gt;</b><span>Independent review</span><b>-&gt;</b><span>Human approval</span></section>
-
-      <section class="section-band shell" aria-labelledby="adapt-title">
-        <p class="eyebrow">Adapt to the work</p>
-        <h2 id="adapt-title">The work sets the shape. Not the other way around.</h2>
-        <p class="section-lede">Every project already has agents, models, and a workflow shape that fits it. Cortxt sits underneath that choice instead of replacing it.</p>
-        <div class="grid feature-grid">
-          {adaptCards.map(([title, body, status]) => (
-            <article>
-              <span class={`status-tag ${status === 'Available now' ? 'available' : status === 'In progress' ? 'progress' : 'direction'}`}>{status}</span>
-              <h3>{title}</h3>
-              <p>{body}</p>
-            </article>
-          ))}
-        </div>
+      <section class="section-band shell" aria-labelledby="problem-title">
+        <p class="eyebrow">The problem</p>
+        <h2 id="problem-title">Every agent session ends. The work it did shouldn&rsquo;t disappear with it.</h2>
+        <p class="section-lede">Switch models and you lose the thread. Swap an agent runtime and you lose the history. Most tools tie your scope, your approvals, and your evidence to whichever session happened to produce them. When that session ends &mdash; intentionally or not &mdash; you&rsquo;re rebuilding context from scratch.</p>
+        <ul class="problem-list">
+          <li>Context lives in a chat window, not a record.</li>
+          <li>Approval lives in someone&rsquo;s memory, not a mandate.</li>
+          <li>Evidence lives in a transcript, not something you can hand to a reviewer.</li>
+        </ul>
       </section>
 
-      <section class="section-band shell alt" aria-labelledby="replace-title">
+      <section class="section-band shell alt" aria-labelledby="durable-title">
         <div class="replace-grid">
           <div>
-            <p class="eyebrow">Replace anything but the work</p>
-            <h2 id="replace-title">Swap the runtime. Keep the run.</h2>
-            <p class="section-lede">Scope, state, and evidence live in Cortxt-owned contracts -- GitHub Issues, dispatch records, and widget artifacts -- not inside any one engine's memory. Retire a runtime or move to a new model mid-workflow and the run's history, limits, and approvals carry over unchanged.</p>
+            <p class="eyebrow">Durable authority. Replaceable execution.</p>
+            <h2 id="durable-title">What must survive shouldn&rsquo;t depend on which engine you&rsquo;re on.</h2>
+            <p class="section-lede" style="margin-bottom:0">Cortxt separates what must survive from what shouldn&rsquo;t matter which one you&rsquo;re on. The mandate, the workstream state, the decisions made, and the evidence collected are Cortxt-owned and durable. The engine that executes a given run &mdash; Hermes, Codex, or another adapter behind the same contract &mdash; is a replaceable resource underneath that record, not the record itself.</p>
           </div>
-          <div class="replace-diagram" role="img" aria-label="Runtimes, models, and interfaces are replaceable behind the Cortxt contract; scope, state, and evidence are not">
+          <div class="replace-diagram" role="img" aria-label="Hermes and Codex adapters are replaceable behind the Cortxt contract; mandate, state, decisions, and evidence are not">
             <div class="replace-col">
               <span class="replace-col-label">Replaceable</span>
-              <span class="replace-chip">codex</span><span class="replace-chip">hermes</span><span class="replace-chip">buzz</span><span class="replace-chip">dsh</span>
+              <span class="replace-chip">hermes</span><span class="replace-chip">codex</span><span class="replace-chip">+ more adapters</span>
             </div>
             <div class="replace-arrow">-&gt;</div>
             <div class="replace-col fixed">
               <span class="replace-col-label">Cortxt contract</span>
-              <span class="replace-chip solid">scope</span><span class="replace-chip solid">state</span><span class="replace-chip solid">evidence</span>
+              <span class="replace-chip solid">mandate</span><span class="replace-chip solid">state</span><span class="replace-chip solid">decisions</span><span class="replace-chip solid">evidence</span>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="one-contract" class="section-band shell" aria-labelledby="one-contract-title">
-        <p class="eyebrow">One contract, many surfaces</p>
-        <h2 id="one-contract-title">CLI, widget, and MCP read the same state.</h2>
-        <p class="section-lede">The CLI is the source of truth. The widget host and MCP server render and expose that same state through docking, split, and grid compositions -- reconfigured by the operator, not baked into one screenshot.</p>
-        <div class="composition-two" aria-label="Warroom grid composition, an alternate workspace layout to the split view above">
-          <p class="composition-tag">Warroom grid &bull; concept, built from real widget-contract primitives <span class="status-tag available">Available now</span></p>
-          <div class="grid-mock">
-            <div class="grid-tile"><b>compliance</b><i></i><span class="dim">running</span></div>
-            <div class="grid-tile"><b>usage</b><i class="fill-70"></i><span class="dim">idle</span></div>
-            <div class="grid-tile"><b>agents</b><i class="fill-40"></i><span class="dim">running</span></div>
-            <div class="grid-tile"><b>pipeline</b><i class="fill-90"></i><span class="dim">done</span></div>
+      <section class="section-band shell" aria-labelledby="mandate-title">
+        <p class="eyebrow">Mandates, made concrete</p>
+        <h2 id="mandate-title">Give AI work a mandate &mdash; not a blank check.</h2>
+        <p class="section-lede">A mandate is scope, limits, and explicit authority, issued before a run starts. It&rsquo;s not a system prompt and it&rsquo;s not a permissions checkbox &mdash; per ADR-032, every mutating (Tier-1+) MCP tool call requires a signed, nonce-bound mandate envelope, verified before that call executes, and fails closed when the call steps outside it.</p>
+        <div class="mandate-example"><p><b>In the proof run above</b>, a policy gate rejected an out-of-scope action automatically, before any human had to notice or intervene. That&rsquo;s what &ldquo;mandate&rdquo; means in practice.</p></div>
+      </section>
+
+      <section class="section-band shell alt" aria-labelledby="os-title">
+        <div class="status-banner"><b>In development.</b> The Work Console, Evidence, and Decisions views below exist as tested, working code on an active branch. None of it is merged to <code>main</code> or live on this site yet.</div>
+        <p class="eyebrow">Cortxt OS</p>
+        <h2 id="os-title">Workstreams, not agent fleets.</h2>
+        <p class="section-lede">Cortxt OS is the human-facing workspace for operating durable work &mdash; not a terminal, not a raw agent cockpit. It&rsquo;s organized around workstreams you have a mandate over, the decisions waiting on your attention, and the evidence a run produced.</p>
+        <div class="wc-mock" aria-label="Illustrative Work Console and Decisions mock, in development">
+          <div class="wc-mock-badge">Early preview &middot; In development</div>
+          <div class="wc-panel">
+            <div class="wc-panel-head"><span>Work Console</span><span>3 need attention</span></div>
+            <div class="wc-row">
+              <div><div class="wc-row-title">Example workstream A</div><div class="wc-row-meta">Hermes &rarr; claude-direct &middot; 12 evidence records</div></div>
+              <span class="chip attn">Attention</span>
+            </div>
+            <div class="wc-row">
+              <div><div class="wc-row-title">Example workstream B</div><div class="wc-row-meta">Codex &middot; running</div></div>
+              <span class="chip wait">Running</span>
+            </div>
+            <div class="wc-row">
+              <div><div class="wc-row-title">Example workstream C</div><div class="wc-row-meta">Hermes &middot; evidence complete</div></div>
+              <span class="chip ok">Ready to review</span>
+            </div>
           </div>
+          <div class="wc-panel">
+            <div class="wc-panel-head"><span>Decisions</span><span>Waiting on you</span></div>
+            <div class="wc-row">
+              <div><div class="wc-row-title">Approve mandate renewal</div><div class="wc-row-meta">Example workstream A &middot; evidence attached</div></div>
+              <span class="chip attn">Attention</span>
+            </div>
+            <div class="wc-row">
+              <div><div class="wc-row-title">Review policy exception</div><div class="wc-row-meta">Example workstream B</div></div>
+              <span class="chip wait">Pending</span>
+            </div>
+          </div>
+        </div>
+        <p class="wc-mock-caption">Illustrative mock with placeholder workstreams &mdash; not real customer data, not a completed case study.</p>
+        <p class="section-lede" style="margin-top:1rem;margin-bottom:0">Individual widget views can already be generated from a prompt today (<code>cortxt widget generate</code>). Composing several into one adaptive workspace view &mdash; a &ldquo;Studio&rdquo; &mdash; is direction, not yet built.</p>
+      </section>
+
+      <section class="section-band shell" aria-labelledby="usecase-title">
+        <p class="eyebrow">Illustrative</p>
+        <h2 id="usecase-title">Built for work that outlives any one session.</h2>
+        <div class="grid usecase-grid">
+          {usecases.map(([tag, title, body]) => (
+            <article><span class="tag">{tag}</span><h3>{title}</h3><p>{body}</p></article>
+          ))}
         </div>
       </section>
 
-      <section class="section-band shell" aria-labelledby="control-title">
-        <p class="eyebrow">How it stays under control</p>
-        <h2 id="control-title">Control that survives a model change.</h2>
-        <div class="grid control-grid">{controlPrinciples.map(([title, body], index) => <article><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>)}</div>
+      <section class="section-band shell alt" aria-labelledby="status-title">
+        <p class="eyebrow">Where things stand</p>
+        <h2 id="status-title">What&rsquo;s real today, what&rsquo;s direction, and how to work with us.</h2>
+        <div class="status-table-wrap">
+          <table class="status-table">
+            <thead><tr><th scope="col">Layer</th><th scope="col">Status</th></tr></thead>
+            <tbody>
+              {statusRows.map(([label, cls, text]) => (
+                <tr><td>{label}</td><td><span class={`status-tag ${cls}`}>{text}</span></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="category-note">Cortxt is a mandate/work-first operating layer: it&rsquo;s built around what must persist across a run, not around any one agent framework or execution sandbox. That&rsquo;s a different concern from an agent/workspace tool like OpenHands, or a runtime/security/sandbox layer like OpenShell/NemoClaw &mdash; Cortxt is designed to sit above changing execution systems, not to replace them.</p>
+        <div class="partner-band">
+          <!-- No dedicated GitHub Discussion, design-partner issue form, or
+               contact page exists yet (Discussions is disabled repo-wide,
+               .github/ISSUE_TEMPLATE/config.yml has contact_links: []).
+               Temporary route: open a new GitHub issue on the repo, labeled
+               as temporary in the link text itself. Tracked follow-up:
+               lab/landing-page-rebuild-20260827/claims-ledger.md item 13 --
+               add a real contact_links entry / design-partner issue
+               template before this is a durable destination. -->
+          <p>We&rsquo;re working directly with a small number of teams shaping the Work Console and Evidence surfaces before wider release. If durable, mandate-scoped AI work is a problem you have today, <a href="https://github.com/rian010194/cortxt/issues/new">get in touch (temporary &mdash; opens a GitHub issue) -&gt;</a></p>
+          <p style="margin:0"><a href="https://github.com/rian010194/cortxt">Cortxt is open source on GitHub -&gt;</a></p>
+        </div>
       </section>
 
-      <section class="proof shell"><div><p class="eyebrow">Built for inspectability</p><h2>Your workflow is the product. The runtime is replaceable.</h2></div><div><p>GitHub Issues hold durable scope and evidence. The Cortxt CLI drives execution. External runtimes sit behind adapters, and every terminal result follows a shared contract.</p><a href="/docs/operating-model/">Read the operating model -&gt;</a></div></section>
-
       <section class="cta-band shell" aria-labelledby="start-title">
-        <p class="eyebrow">Start small</p>
-        <h2 id="start-title">One command, real state from the first run.</h2>
-        <p class="section-lede">No account, no dashboard to configure first. Install the CLI, load a widget spec, and every run from here on is inspectable evidence.</p>
-        <div class="command cta-command"><span>$</span> pip install -e agent-platform/ &amp;&amp; cortxt widget load --spec compliance.yaml</div>
-        <div class="actions"><a class="primary" href="/docs/quick-start/">Start with the CLI</a><a class="secondary" href="/docs/">Read the docs <span aria-hidden="true">-&gt;</span></a></div>
+        <p class="eyebrow">Start with what&rsquo;s real today</p>
+        <h2 id="start-title">No account, no hosted service to sign up for.</h2>
+        <p class="section-lede">Clone the repository and install the CLI&mdash;the interface used today for mandate issuance, dispatch, and evidence collection.</p>
+        <p class="command-platform-label">macOS / Linux</p>
+        <pre class="command cta-command" aria-label="Install command, from a cloned repository, macOS or Linux"><span># From a cloned repository</span>
+git clone https://github.com/rian010194/cortxt.git
+cd cortxt
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ./agent-platform
+cortxt --help</pre>
+        <p class="section-lede" style="margin-top:.5rem">Windows PowerShell activates with <code>.venv\Scripts\Activate.ps1</code> instead of the <code>source</code> line above &mdash; see the <a href="/docs/quick-start/">quick start</a> for the full, verified sequence on both platforms.</p>
+        <p class="section-lede">This installs and verifies the CLI. Mandate issuance, dispatch, and evidence collection are real today but run through a configured GitHub repository, not a single global demo &mdash; the <a href="/docs/quick-start/">quick start</a> walks through that full path.</p>
+        <div class="actions"><a class="primary" href="/docs/quick-start/">Get started with the CLI</a><a class="secondary" href="/docs/">Read the docs <span aria-hidden="true">-&gt;</span></a></div>
       </section>
 
       <section class="docs-band"><div class="shell"><p class="eyebrow">Reference</p><h2>Decisions, contracts, and what comes next.</h2><div class="links"><a href="/docs/adrs/"><strong>Accepted ADRs</strong><span>Normative architecture decisions -&gt;</span></a><a href="/docs/architecture/"><strong>Architecture</strong><span>Boundaries and execution contracts -&gt;</span></a><a href="/docs/roadmap/"><strong>Roadmap</strong><span>Current status and direction -&gt;</span></a></div></div></section>
     </main>
     <footer class="shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><a href="/docs/">Documentation -&gt;</a></footer>
-
-    <script src="/widgets/maker.js" is:inline></script>
-    <script is:inline>
-      // maker.js's auto-init stamps its bundled default v1 colors onto
-      // <html> as a side effect of loading -- undo that immediately so the
-      // landing page's fixed quiet-slate default (or the visitor's saved
-      // toggle choice) isn't clobbered. See landing-theme.js and issue #387.
-      if (typeof window.__cortxtReapplyLandingTheme === "function") {
-        window.__cortxtReapplyLandingTheme();
-      }
-    </script>
-    <script is:inline>
-      document.addEventListener("DOMContentLoaded", async function () {
-        if (typeof WidgetMaker === "undefined") return;
-
-        // Issue #377: the landing page renders a fixed quiet-slate default
-        // (or the visitor's local toggle choice, see /landing-theme.js) --
-        // it deliberately does NOT fetch /widgets/tokens.json here, because
-        // that document reflects whatever preset an operator most recently
-        // resolved server-side via `cortxt theme use` and would silently
-        // override the landing page's own --token-* variables out from
-        // under the toggle. The proof-band mini-widgets below inherit the
-        // landing page's already-resolved --token-*/--accent/--text
-        // variables from :root via landing.css's var(--token-*, fallback)
-        // cascade, so they stay in sync with the toggle for free.
-
-        // Load multi-state demo data
-        let agentsData = null;
-        let usageData = null;
-        try {
-          const aRes = await fetch("/widgets/fixtures/agents_data.json");
-          if (aRes.ok) agentsData = await aRes.json();
-        } catch (e) {}
-        try {
-          const uRes = await fetch("/widgets/fixtures/usage_data.json");
-          if (uRes.ok) usageData = await uRes.json();
-        } catch (e) {}
-
-        // Hydrate each widget mount
-        const mounts = document.querySelectorAll(".proof-widget-mount");
-        for (const mount of mounts) {
-          const artifactPath = mount.getAttribute("data-artifact");
-          if (!artifactPath) continue;
-
-          try {
-            const res = await fetch("/widgets/" + artifactPath);
-            if (!res.ok) continue;
-            const artifact = await res.json();
-            const tree = artifact.render || artifact;
-
-            mount.replaceChildren();
-            WidgetMaker.renderNodeToDom(tree, mount);
-
-            const card = mount.closest(".proof-pair-card");
-            const widgetId = card ? card.getAttribute("data-widget-id") : null;
-
-            if (widgetId === "session-agents" && agentsData && agentsData.states) {
-              // WidgetMaker.startLivingDemo() expects (spec, fixtureData, container,
-              // options) and has no external step-callback -- createSequenceStepper()
-              // is the helper whose (state, index) callback contract actually matches
-              // this per-step tree-mutation body. See issue #387.
-              WidgetMaker.createSequenceStepper(agentsData.states, function (state) {
-                const stepTree = JSON.parse(JSON.stringify(tree));
-                if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) {
-                  stepTree.children[1].props.items = state.agents;
-                }
-                if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) {
-                  stepTree.children[0].props.value = state.active_count;
-                }
-                mount.replaceChildren();
-                WidgetMaker.renderNodeToDom(stepTree, mount);
-              }, 2800);
-            } else if (widgetId === "usage-cost" && usageData && usageData.states) {
-              WidgetMaker.createSequenceStepper(usageData.states, function (state) {
-                const u = state.usage;
-                const stepTree = JSON.parse(JSON.stringify(tree));
-                if (stepTree.children && stepTree.children[0] && stepTree.children[0].props) stepTree.children[0].props.value = u.total_cost_usd;
-                if (stepTree.children && stepTree.children[1] && stepTree.children[1].props) stepTree.children[1].props.value = u.total_tokens;
-                if (stepTree.children && stepTree.children[2] && stepTree.children[2].props) {
-                  stepTree.children[2].props.categories = u.runtime_names;
-                  stepTree.children[2].props.values = u.runtime_tokens;
-                }
-                if (stepTree.children && stepTree.children[3] && stepTree.children[3].props) {
-                  stepTree.children[3].props.categories = u.model_names;
-                  stepTree.children[3].props.values = u.model_costs;
-                }
-                if (stepTree.children && stepTree.children[4] && stepTree.children[4].props) {
-                  stepTree.children[4].props.points = u.history_points;
-                  stepTree.children[4].props.series = u.history_tokens;
-                }
-                mount.replaceChildren();
-                WidgetMaker.renderNodeToDom(stepTree, mount);
-              }, 3000);
-            }
-          } catch (err) {
-            console.error("Failed to render widget:", artifactPath, err);
-          }
-        }
-      });
-    </script>
   </body>
 </html>

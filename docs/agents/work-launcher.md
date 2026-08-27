@@ -1,8 +1,10 @@
 # Parallel work launcher
 
-`cortxt work` is the CLI-primary surface for creating and observing multiple
-contract-backed worker runs. GitHub Issues remain the scope and workflow source
-of truth; the local run registry is only an execution ledger.
+`cortxt work` is the local, automation, bootstrap, diagnostic, and
+power-user surface for creating and observing multiple contract-backed
+worker runs (ADR-015/021, ADR-042). GitHub Issues remain the scope and
+workflow source of truth; the local run registry is only an execution
+ledger.
 
 Use `cortxt work new scope.md --repo owner/repo --approve --max-cost-usd N`.
 The approval flag is an explicit operator gate. The command creates an inbox

@@ -1,7 +1,7 @@
 # Current operating model
 
 Status: active operational baseline  
-Last reconciled: 2026-08-21
+Last reconciled: 2026-08-27 (ADR-042 product-surface reconciliation)
 
 ## Why this file exists
 
@@ -37,20 +37,38 @@ for the external integration surface per ADR-024).
 
 ## Product surface
 
-The product surface is **CLI-primary** (ADR-015, as confirmed by the operator
-decision in issue #186). The `cortxt` CLI is the source of truth for
-interacting with the platform. The legacy web prototype was removed from the
-repository before the first public release (issue #225); it is not the product
-surface. A thin `cortxt widget` mirrors CLI state (ADR-021). The external
-integration surface is an **MCP server** (`cortxt mcp serve`) per ADR-024.
+Per **ADR-042** (accepted 2026-08-26), Cortxt is **work- and mandate-first**:
+the durable Workstream and its authorized outcome are the primary product
+object, not any one interface. The governing principle is durable authority,
+replaceable execution. Three interfaces expose that authority today, each
+with a distinct role:
+
+- **Cortxt OS / Work Console** is the accepted default product app (ADR-042).
+  Its current implementation is a shell in active development, not a
+  finished product — do not describe it as shipped.
+- The **`cortxt` CLI** remains an important local, automation, bootstrap,
+  diagnostic, and power-user surface (ADR-015/021), and today is the most
+  complete verified interface.
+- **`cortxt mcp serve`** remains the external, mandate-protected programmable
+  integration surface (ADR-024, ADR-032).
+
+The legacy web prototype removed before the first public release (issue
+#225) is unrelated history and still not the product surface; Work Console
+is a distinct, newly accepted direction, not a revival of that prototype. A
+thin `cortxt widget` surface (ADR-021/038) provides declarative views and
+apps consumed by the CLI/TUI, the Widget Host, and Work Console; it is a UI
+substrate, not a top-level interface in its own right. Cockpit/runtime detail
+(sessions, pipelines, execution maps) continues as an Execution Inspector
+view inside a Workstream, not the default product home (ADR-042, amendment D).
 
 ## Component responsibilities today
 
 | Component | Responsibility | Current constraint |
 |---|---|---|
 | GitHub Issues | Canonical scope, acceptance criteria, evidence, review, approval, and workflow state via `workflow:*` labels (ADR-018) | Project 4 is frozen legacy. An issue must be approved and authoritatively `workflow:ready` before dispatch. |
-| `cortxt` CLI | Primary product surface: runtimes, credentials, addons, sessions, dispatcher, MCP server, widget snapshot | CLI-primary per ADR-015/021 and issue #186. |
-| `cortxt mcp serve` | External integration surface exposing platform capabilities as MCP tools | ADR-024; read-only slice shipped, SDK integration deferred (see ADR-024 follow-ups). |
+| Cortxt OS / Work Console | Accepted default product app for Workstreams, mandates, evidence, and decisions (ADR-042) | Direction accepted; implementation is an in-progress shell, not a finished product. |
+| `cortxt` CLI | Local, automation, bootstrap, diagnostic, and power-user interface: runtimes, credentials, addons, sessions, dispatcher, MCP server, widget snapshot | Most complete verified interface today (ADR-015/021), no longer the sole product surface after ADR-042. |
+| `cortxt mcp serve` | External, mandate-protected programmable integration surface exposing platform capabilities as MCP tools | ADR-024/032; read-only slice shipped, SDK integration deferred (see ADR-024 follow-ups). |
 | Dispatcher (`scripts/dispatcher.py`) | Claim/run identity per dispatch contract, workflow label transitions | Single-process; concurrency model documented in ADR-018. |
 | Worker adapters (`scripts/worker_adapters.py`) | Invoke external agent runtimes (Hermes, Pi, Codex, DSH, ...) behind Cortxt-owned ports | Each adapter must satisfy the dispatch contract's result envelope. |
 | Hermes / Pi / Codex / DSH | External agent runtimes used as replaceable execution resources | Replaceable resources behind Cortxt-owned adapters; not the product itself. |
@@ -117,8 +135,11 @@ Do not:
 
 - treat Hermes, Pi, Codex, Buzz, or any external runtime as the product — they
   are replaceable resources behind Cortxt-owned ports (ADR-014/016);
-- treat the removed legacy web prototype as a product surface — the CLI is
-  primary (ADR-015/021, issues #186 and #225);
+- treat the removed legacy web prototype as a product surface — Work Console
+  (ADR-042) is a distinct, newly accepted direction, unrelated to that
+  removed prototype (issues #186 and #225);
+- describe the Cortxt OS / Work Console shell as fully shipped — it is
+  accepted direction (ADR-042) under active development;
 - invent a second backlog or independent Kanban outside GitHub;
 - describe a successful smoke test as a finished production workflow;
 - add a new `buzz-run` or similar entry point before checking whether it

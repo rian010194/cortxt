@@ -45,9 +45,13 @@ docs can never silently drift behind the repository authority.
 
 Deployment is handled by Cloudflare Pages from the `main` branch with the
 project root set to `site` (build command `npm run build`, output `dist`).
-`cortxt.io` serves the landing page; `docs.cortxt.io` serves the Starlight
-docs, with the docs root redirected to `/docs/` by host-level routing
-configured on the Pages project. GitHub Actions CI verifies the build but
+`cortxt.io` serves both the landing page and the Starlight docs under
+`/docs/`; that is the canonical docs URL
+([cortxt.io/docs](https://cortxt.io/docs/)). The legacy `docs.cortxt.io`
+host is not reliably routed to the current docs build — verified
+2026-08-27, its root path serves the landing page rather than Starlight
+content — and must not be linked from documentation until its routing is
+reconciled or the host is retired. GitHub Actions CI verifies the build but
 does not deploy. See
 [`docs/cf-pages-webhook.md`](../docs/cf-pages-webhook.md) for the
 auto-deploy webhook runbook.

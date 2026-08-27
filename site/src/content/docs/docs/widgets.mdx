@@ -3,10 +3,34 @@ title: Widgets
 description: Render Cortxt CLI state as declarative widgets - gallery, warroom compose, and CLI parity.
 ---
 
-Every Cortxt widget is a **declarative mirror of CLI state** (ADR-021): a YAML
-spec declares reads and a render tree; the same render tree drives a browser
-widget, the Widget Maker, and a colorized terminal (TUI) view. Nothing in a
-widget spec can supply HTML, CSS, or JS - only data bindings (ADR-038).
+Widgets are declarative, validated UI primitives over authorized read and
+action ports (ADR-038), not the top-level product category (ADR-042). A YAML
+spec declares typed reads, bindings, and registered action ports; the same
+render tree can be consumed by the CLI/TUI, the Widget Host, and (as it
+matures) Cortxt OS apps. Nothing in a widget spec can supply arbitrary HTML,
+CSS, or JS, no widget can expand its own authority or run raw commands, and
+mutations require explicit confirmation (ADR-038).
+
+The product hierarchy is:
+
+```text
+Widget primitive
+→ focused View
+→ coherent App
+→ optional saved app composition
+```
+
+**Widget Maker** (below) is the current development surface for building and
+testing individual widget specs. **Studio** — a coherent product surface for composing prompt-generated views
+and apps — is the accepted product direction under ADR-042/ADR-041, not yet
+shipped as a named product; do not expect Studio commands or files before
+that work lands. The underlying single-widget building blocks are merged to
+`main`: `cortxt widget generate/edit/remove/reset` create, revise, and
+remove one installed widget spec at a time from a prompt (verified,
+available today). Declarative, mechanical multi-widget composition also
+ships today via `cortxt widget compose` (see below) given a hand-written or
+scripted `composition.yaml`. What is not yet built is Studio's
+prompt-generated composition of views and apps.
 
 ## Try it live
 

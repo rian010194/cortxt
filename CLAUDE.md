@@ -65,12 +65,17 @@ normative record of decisions.
 
 ## Product surface and status
 
-- The product surface is **CLI-primary** (ADR-015, operator decision in issue
-  #186): the `cortxt` CLI is the source of truth for interacting with the
-  platform. The external integration surface is an **MCP server**
-  (`cortxt mcp serve`) per ADR-024. A thin `cortxt widget` mirrors CLI state
-  (ADR-021). The legacy web prototype was removed before the first public
-  release (issue #225); it is not the product surface.
+- Per **ADR-042** (accepted 2026-08-26), Cortxt is **work- and
+  mandate-first**: durable authority, replaceable execution. Cortxt OS / Work
+  Console is the accepted default product app, currently an in-progress
+  shell, not a finished product. The `cortxt` CLI remains the local,
+  automation, bootstrap, diagnostic, and power-user interface (ADR-015/021,
+  issue #186) and today is the most complete verified interface. The
+  external, mandate-protected integration surface is an **MCP server**
+  (`cortxt mcp serve`) per ADR-024/032. A thin `cortxt widget` surface
+  provides declarative views/apps (ADR-021/038), not a top-level product
+  category. The legacy web prototype removed before the first public release
+  (issue #225) is unrelated history, not a revival of Work Console.
 - GitHub Issues are the durable records for approved scope, evidence, review,
   and decisions (ADR-018).
 - Worker dispatch's workflow-state carrier is the GitHub Issue `workflow:*`
@@ -212,8 +217,11 @@ Do not:
 
 - treat any external runtime (Hermes, Pi, Codex, DSH, Buzz) as the product —
   they are replaceable resources behind Cortxt-owned ports (ADR-014/016);
-- treat the removed legacy web prototype as a product surface — the CLI is
-  primary (ADR-015/021, issues #186 and #225);
+- treat the removed legacy web prototype as a product surface — Work Console
+  (ADR-042) is a distinct, newly accepted direction, unrelated to that
+  removed prototype (issues #186 and #225);
+- describe Work Console/Cortxt OS as fully shipped — it is accepted
+  direction under active development;
 - invent a second backlog or independent Kanban outside GitHub;
 - describe a successful smoke test as a finished production workflow;
 - add a new entry point before checking whether it preserves the dispatch
