@@ -16,6 +16,7 @@ untouched and remains the default `cortxt widget` surface.
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import time
 from collections import deque
@@ -26,7 +27,10 @@ from typing import Any, Callable, Deque, Mapping
 from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
 from widget_contract.adapters.cli_ports import ClaimRunDenied, gh_claim_run_resume
-from widget_contract.adapters.github_ports import TransitionDenied, gh_inbox_to_ready, gh_issue_workflow_labels
+from widget_contract.adapters.github_ports import (
+    TransitionDenied, gh_inbox_to_ready, gh_issue_workflow_labels, gh_review_to_done,
+)
+from widget_contract.generation import generate_widget_spec
 from widget_contract.loader import load_widget_file
 from widget_contract.validation import ValidationError, validate
 
@@ -49,6 +53,20 @@ ACTION_REQUEST_SCHEMA = {
         "confirm": {"type": "boolean"},
     },
 }
+
+WIDGET_GENERATE_REQUEST_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["prompt", "confirm"],
+    "properties": {
+        "prompt": {"type": "string"},
+        "confirm": {"type": "boolean"},
+    },
+}
+
+# Mirrors cli/unified_cli.py's _WIDGET_VERSION_ID: deliberately conservative,
+# stands between LLM-derived widget.version text and a filesystem path.
+_WIDGET_VERSION_ID = re.compile(r"^[a-z0-9][a-z0-9.-]{0,31}$")
 
 
 class ActionHostError(RuntimeError):
@@ -96,6 +114,7 @@ class ActionHost:
     def __init__(self, *, spec_path: Path = SPEC_PATH,
                  labels_reader: Callable[[str], list[str]] = gh_issue_workflow_labels,
                  transition_writer: Callable[[str], Mapping[str, Any]] = gh_inbox_to_ready,
+                 review_transition_writer: Callable[[str], Mapping[str, Any]] = gh_review_to_done,
                  resume: Callable[[str], Any] | None = None,
                  registry: Path | None = None, scripts_dir: Path | None = None,
                  token: str | None = None, clock: Callable[[], float] = time.monotonic,
@@ -103,6 +122,7 @@ class ActionHost:
         self._spec_path = Path(spec_path)
         self._labels_reader = labels_reader
         self._transition_writer = transition_writer
+        self._review_transition_writer = review_transition_writer
         self._scripts_dir = Path(scripts_dir) if scripts_dir else (AGENT_PLATFORM_DIR / "scripts")
         self._registry = Path(registry) if registry else (AGENT_PLATFORM_DIR / ".dispatch" / "runs.json")
         self._resume = resume or (lambda issue_id: gh_claim_run_resume(
@@ -159,7 +179,7 @@ class ActionHost:
         executor, context = build_executor(
             self.widget, action_id=action_id, approval_ref=approval_ref, confirm=confirm,
             labels_reader=self._labels_reader, transition_writer=self._transition_writer,
-            resume=self._resume)
+            resume=self._resume, review_transition_writer=self._review_transition_writer)
         try:
             result = executor.execute(action, context)
         except AuthorizationDenied as exc:
@@ -173,6 +193,45 @@ class ActionHost:
                 raise GateDenied(exc.code) from exc
             raise
         return {"status": "ok", "operation": action.operation, "result": result}
+
+    def generate_widget(self, *, prompt: str, confirm: bool) -> dict:
+        """Studio's describe/proposal/validate flow (issue #339, ADR-038 SS5/SS6).
+
+        `confirm=False` is a dry run: returns `generate_widget_spec`'s raw
+        outcome fields (status "ok"|"missing_operation"|"invalid") so the
+        browser can render the proposal/validation screen without writing
+        anything. `confirm=True` re-runs generation and, only if the result
+        is "ok", writes the spec to disk -- mirroring
+        `cli.unified_cli._run_widget_generate`'s own confirm gate exactly,
+        so this endpoint adds no new authorization surface.
+        """
+        specs_dir = AGENT_PLATFORM_DIR / "widget_contract" / "specs"
+        scaffold_dir = specs_dir.parent / "scaffolds"
+        outcome = generate_widget_spec(prompt, scaffold_dir=scaffold_dir)
+        if not confirm:
+            return {
+                "status": outcome.status,
+                "spec_text": outcome.spec_text,
+                "widget_id": outcome.widget_id,
+                "widget_version": outcome.widget_version,
+                "capabilities": list(outcome.capabilities),
+                "missing_operations": list(outcome.missing_operations),
+                "scaffold_paths": list(outcome.scaffold_paths),
+                "error_message": outcome.error_message,
+            }
+        if outcome.status != "ok":
+            return {"status": "failed", "error": {"category": "generation_error",
+                    "message": outcome.error_message or "generation did not produce a valid spec"}}
+        if not _WIDGET_VERSION_ID.fullmatch(outcome.widget_version or ""):
+            return {"status": "failed", "error": {"category": "generation_error",
+                    "message": f"Generated widget_version {outcome.widget_version!r} is not filename-safe"}}
+        target_path = specs_dir / f"{outcome.widget_id}-{outcome.widget_version}.yaml"
+        if target_path.exists():
+            return {"status": "failed", "error": {"category": "input_error",
+                    "message": f"A spec already exists at {target_path}; use 'edit' to modify it, or remove it first."}}
+        target_path.write_text(outcome.spec_text or "", encoding="utf-8")
+        return {"status": "succeeded", "widget_id": outcome.widget_id,
+                "widget_version": outcome.widget_version, "capabilities": list(outcome.capabilities)}
 
 
 class ActionHandler(SimpleHTTPRequestHandler):
@@ -207,7 +266,8 @@ class ActionHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
-        if self.path.split("?", 1)[0] != "/api/action":
+        route = self.path.split("?", 1)[0]
+        if route not in ("/api/action", "/api/widget-generate"):
             self.send_error(404, "not found")
             return
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -228,6 +288,19 @@ class ActionHandler(SimpleHTTPRequestHandler):
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             self._json(400, {"status": "error",
                              "error": {"kind": "validation_error", "message": "body is not valid JSON"}})
+            return
+        if route == "/api/widget-generate":
+            try:
+                validate(payload, WIDGET_GENERATE_REQUEST_SCHEMA)
+            except ValidationError as exc:
+                self._json(400, {"status": "error", "error": {"kind": "validation_error", "message": str(exc)}})
+                return
+            try:
+                result = self.host.generate_widget(prompt=payload["prompt"], confirm=payload["confirm"])
+            except Exception as exc:  # fail closed, never surface internals as success
+                self._json(500, {"status": "failed", "error": {"category": "generation_error", "message": str(exc)}})
+                return
+            self._json(200, result)
             return
         try:
             validate(payload, ACTION_REQUEST_SCHEMA)
@@ -273,11 +346,11 @@ class _ReusableThreadingHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
-def main(*, port: int = PORT) -> int:
-    host = ActionHost()
+def main(*, port: int = PORT, spec_path: Path | None = None) -> int:
+    host = ActionHost(spec_path=spec_path) if spec_path else ActionHost()
     with _ReusableThreadingHTTPServer((HOST, port), _make_handler(host)) as httpd:
         print(f"Cortxt widget action host: http://{HOST}:{port}/index.html "
-              f"(operator-gated mutations enabled via POST /api/action)")
+              f"(operator-gated mutations enabled via POST /api/action, spec={host._spec_path.name})")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
@@ -286,4 +359,10 @@ def main(*, port: int = PORT) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--port", type=int, default=PORT)
+    parser.add_argument("--spec", type=Path, default=None,
+                        help="Widget spec to serve actions for (default: candidates-0.1.yaml)")
+    args = parser.parse_args()
+    raise SystemExit(main(port=args.port, spec_path=args.spec))

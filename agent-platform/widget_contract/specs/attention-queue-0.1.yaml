@@ -1,0 +1,28 @@
+contract_version: "0.1"
+widget:
+  id: attention-queue
+  version: "0.1"
+  title: Attention Queue
+data:
+  reads:
+    - id: queue
+      source: store
+      operation: attention.queue.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: attention.queue.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Attention Queue}
+  children:
+    - primitive: table
+      props:
+        label: Waiting for you
+        columns: [workstream_id, kind, summary, issue_id]
+      bindings:
+        rows: {read: queue, pointer: /items, type: core.array.v1}
+actions: []
+capabilities: [read:attention-queue]

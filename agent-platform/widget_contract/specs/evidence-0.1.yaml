@@ -1,0 +1,34 @@
+contract_version: "0.1"
+widget:
+  id: evidence
+  version: "0.1"
+  title: Evidence
+data:
+  reads:
+    - id: comparison
+      source: store
+      operation: evidence.comparison.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: evidence.comparison.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Evidence}
+  children:
+    - primitive: text
+      props: {label: Issue}
+      bindings:
+        value: {read: comparison, pointer: /issue_id, type: core.string.v1}
+    - primitive: table
+      props: {label: Runs, columns: [run_id, engine, status, evidence, artifacts]}
+      bindings:
+        rows: {read: comparison, pointer: /runs, type: core.array.v1}
+    - primitive: table
+      props: {label: Evidence checklist, columns: [run_id, artifacts_present, artifacts_missing, independently_reviewed, accepted]}
+      bindings:
+        rows: {read: comparison, pointer: /runs, type: core.array.v1}
+actions: []
+capabilities: [read:evidence-comparison]

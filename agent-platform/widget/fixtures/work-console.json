@@ -1,0 +1,42 @@
+{
+  "contract_version": "0.1",
+  "widget": {"id": "work-console", "version": "0.1"},
+  "render": {
+    "primitive": "stack",
+    "props": {"label": "Work Console"},
+    "state": "ok",
+    "children": [
+      {"primitive": "heading", "props": {"label": "Workstream", "value": "Municipal AI Act gap analysis"}},
+      {"primitive": "text", "props": {"label": "Outcome", "value": "A reviewed evidence package for the gap analysis"}},
+      {"primitive": "text", "props": {"label": "Workflow", "value": "review"}},
+      {"primitive": "badge", "props": {"label": "Pending decision", "value": true}},
+      {"primitive": "metric", "props": {"label": "Budget (USD)", "value": 25.0}},
+      {"primitive": "text", "props": {"label": "Mandate expires", "value": "2026-09-01T00:00:00Z"}},
+      {"primitive": "list", "props": {"label": "Allowed tools", "items": ["dispatch.claim", "dispatch.run"]}},
+      {"primitive": "table", "props": {"label": "Gates", "columns": ["domain", "status", "label", "detail"],
+        "rows": [
+          {"domain": "human_decision", "status": "warn", "label": "pending", "detail": "Approval needed for the evidence package"},
+          {"domain": "evidence", "status": "warn", "label": "gap", "detail": "Run 1 changelog artifact missing"},
+          {"domain": "mandate", "status": "good", "label": "active", "detail": "expires 2026-09-01"},
+          {"domain": "budget", "status": "warn", "label": "89% used", "detail": "$22.40 of $25.00"},
+          {"domain": "execution", "status": "good", "label": "running", "detail": "Run 2 active"},
+          {"domain": "provider_data", "status": "good", "label": "eligible", "detail": "data class: operational"}
+        ]}},
+      {"primitive": "text", "props": {"label": "Dispatched by", "value": "cortxt-daemon"}},
+      {"primitive": "text", "props": {"label": "Run executor", "value": "Hermes / DeepSeek V4 Flash"}},
+      {"primitive": "key-value", "props": {"value": {
+        "mandate_id": "m-123", "granted_by": "operator",
+        "allowed_tools": ["dispatch.claim", "dispatch.run"], "data_class_max": "operational",
+        "budget_usd_max": 25.0, "max_runtime_seconds": 3600, "expires_at": "2026-09-01T00:00:00Z"
+      }}},
+      {"primitive": "key-value", "props": {"value": {
+        "authority": {"mandate_id": "m-123", "granted_by": "operator",
+          "replacement_policy": "rate-limit fallback policy p-17", "dispatched_by": "cortxt-daemon"},
+        "current_run": {"run_id": "run-2", "engine": "Hermes / DeepSeek V4 Flash"},
+        "previous_run": {"run_id": "run-1", "engine": "Codex CLI", "status": "interrupted"}
+      }}}
+    ]
+  },
+  "repo": "rian010194/cortxt",
+  "error": null
+}

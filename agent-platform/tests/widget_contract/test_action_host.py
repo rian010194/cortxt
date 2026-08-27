@@ -19,6 +19,7 @@ from widget.action_host import (
 )
 
 SPEC_PATH = Path(__file__).resolve().parents[2] / "widget_contract" / "specs" / "candidates-0.1.yaml"
+DECISIONS_SPEC_PATH = Path(__file__).resolve().parents[2] / "widget_contract" / "specs" / "decisions-0.1.yaml"
 
 
 def _host(**overrides):
@@ -26,6 +27,7 @@ def _host(**overrides):
         "spec_path": SPEC_PATH,
         "labels_reader": lambda issue_id: ["workflow:inbox"],
         "transition_writer": lambda issue_id: {"issue_id": issue_id, "status": "ok"},
+        "review_transition_writer": lambda issue_id: {"issue_id": issue_id, "status": "ok"},
         "resume": lambda issue_id: {"run_id": "run-1", "issue_id": issue_id},
         "token": "test-token",
     }
@@ -64,6 +66,66 @@ def test_host_mark_ready_succeeds_with_operator_gate():
     assert result["status"] == "ok"
     assert calls == [("read", "owner/repo#1"), ("write", "owner/repo#1")]
     assert len([c for c in calls if c[0] == "write"]) == 1
+
+
+def test_host_record_decision_succeeds_when_spec_is_decisions():
+    calls = []
+
+    def reader(issue_id):
+        calls.append(("read", issue_id))
+        return ["workflow:review"]
+
+    def writer(issue_id):
+        calls.append(("write", issue_id))
+        return {"issue_id": issue_id, "status": "ok"}
+
+    host = _host(spec_path=DECISIONS_SPEC_PATH, labels_reader=reader,
+                review_transition_writer=writer)
+    result = host.execute(action_id="record-decision", issue_id="owner/repo#402",
+                          approval_ref="approval-1", confirm=True, token="test-token")
+    assert result["status"] == "ok"
+    assert calls == [("read", "owner/repo#402"), ("write", "owner/repo#402")]
+
+
+def test_host_record_decision_uses_review_writer_not_inbox_writer():
+    """Regression guard: record-decision must never fall through to the
+    inbox -> ready writer, even when both are injected (Task 6 finding)."""
+    calls = []
+
+    def mark_ready_writer(issue_id):
+        calls.append(("mark-ready-write", issue_id))
+        return {"issue_id": issue_id, "status": "ok"}
+
+    def review_writer(issue_id):
+        calls.append(("review-write", issue_id))
+        return {"issue_id": issue_id, "status": "ok"}
+
+    host = _host(spec_path=DECISIONS_SPEC_PATH,
+                labels_reader=lambda issue_id: ["workflow:review"],
+                transition_writer=mark_ready_writer,
+                review_transition_writer=review_writer)
+    host.execute(action_id="record-decision", issue_id="owner/repo#402",
+                approval_ref="approval-1", confirm=True, token="test-token")
+    assert calls == [("review-write", "owner/repo#402")]
+
+
+def test_host_record_decision_fails_closed_without_review_writer():
+    """review_transition_writer=None must raise, never silently fall back to
+    transition_writer (code-review finding on action_ports.py:69)."""
+    calls = []
+
+    def mark_ready_writer(issue_id):
+        calls.append(("mark-ready-write", issue_id))
+        return {"issue_id": issue_id, "status": "ok"}
+
+    host = _host(spec_path=DECISIONS_SPEC_PATH,
+                labels_reader=lambda issue_id: ["workflow:review"],
+                transition_writer=mark_ready_writer,
+                review_transition_writer=None)
+    with pytest.raises(ValueError):
+        host.execute(action_id="record-decision", issue_id="owner/repo#402",
+                    approval_ref="approval-1", confirm=True, token="test-token")
+    assert calls == []
 
 
 def test_host_claim_run_succeeds_through_injected_launcher():

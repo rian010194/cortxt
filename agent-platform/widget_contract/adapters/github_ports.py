@@ -49,6 +49,17 @@ def gh_inbox_to_ready(issue_id: str) -> dict:
     return {"issue_id": issue_id, "status": "ok"}
 
 
+def gh_review_to_done(issue_id: str) -> dict:
+    """Perform exactly the review -> done label swap via gh (injectable for tests)."""
+    repo, number = issue_id.rsplit("#", 1)
+    proc = subprocess.run(["gh", "issue", "edit", number, "-R", repo,
+                           "--remove-label", "workflow:review", "--add-label", "workflow:done"],
+                          capture_output=True, text=True, timeout=20)
+    if proc.returncode:
+        raise RuntimeError(proc.stderr.strip())
+    return {"issue_id": issue_id, "status": "ok"}
+
+
 def mark_ready_transition(operation: str, request: Mapping[str, Any], *,
                           issue_reader: Callable[[str], Mapping[str, Any]],
                           transition: Callable[[str, Mapping[str, Any]], Any]) -> dict[str, Any]:
@@ -64,6 +75,27 @@ def mark_ready_transition(operation: str, request: Mapping[str, Any], *,
     workflow = [x for x in labels if str(x).lower().startswith("workflow:")]
     if workflow != ["workflow:inbox"]:
         raise TransitionDenied(f"issue is not exactly workflow:inbox: {workflow}")
+    result = transition(operation, {"issue_id": request["issue_id"]})
+    if not isinstance(result, dict):
+        raise TransitionDenied("transition result must be an object")
+    return result
+
+
+def record_decision_transition(operation: str, request: Mapping[str, Any], *,
+                               issue_reader: Callable[[str], Mapping[str, Any]],
+                               transition: Callable[[str, Mapping[str, Any]], Any]) -> dict[str, Any]:
+    """Exactly one authorized label transition: workflow:review -> workflow:done.
+
+    Mirrors `mark_ready_transition`: re-reads the issue immediately before the
+    write, refuses any target that is not currently `workflow:review` (fail
+    closed, no write). This is the one authorized "approve" decision action
+    scoped for this plan -- Reject/Return is explicitly out of scope.
+    """
+    issue = issue_reader(request["issue_id"])
+    labels = [x.get("name", "") if isinstance(x, dict) else str(x) for x in issue.get("labels") or []]
+    workflow = [x for x in labels if str(x).lower().startswith("workflow:")]
+    if workflow != ["workflow:review"]:
+        raise TransitionDenied(f"issue is not exactly workflow:review: {workflow}")
     result = transition(operation, {"issue_id": request["issue_id"]})
     if not isinstance(result, dict):
         raise TransitionDenied("transition result must be an object")

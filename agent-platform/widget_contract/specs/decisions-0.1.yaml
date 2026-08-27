@@ -1,0 +1,48 @@
+contract_version: "0.1"
+widget:
+  id: decisions
+  version: "0.1"
+  title: Decisions
+data:
+  reads:
+    - id: pending
+      source: store
+      operation: decision.pending.v1
+      input: {}
+      select: []
+      refresh:
+        mode: manual
+      output_type: decision.pending.v1
+      on_error: stale
+render:
+  primitive: stack
+  props: {label: Decisions}
+  children:
+    - primitive: text
+      props: {label: Workflow}
+      bindings:
+        value: {read: pending, pointer: /workflow, type: core.string.v1}
+    - primitive: text
+      props: {label: Summary}
+      bindings:
+        value: {read: pending, pointer: /summary, type: core.string.v1}
+    - primitive: badge
+      props: {label: Actionable}
+      bindings:
+        value: {read: pending, pointer: /actionable, type: core.string.v1}
+actions:
+  - id: record-decision
+    port: github-transition
+    operation: workflow.record-decision.v1
+    input:
+      issue_id: "owner/repo#0"
+    authorization:
+      mode: operator
+      reference: "operator-approval"
+    confirm:
+      summary: "Move the issue from workflow:review to workflow:done (approve)"
+      effect_class: workflow-transition
+      required: true
+    result_type: action.status.v1
+    idempotency_key: "record-decision"
+capabilities: [read:decision-pending, act:record-decision]

@@ -50,6 +50,34 @@
       "hint": "cortxt widget --view session-agents"
     },
     {
+      "id": "work-console",
+      "title": "Work Console",
+      "spec": "widget_contract/specs/work-console-0.1.yaml",
+      "artifact": "fixtures/work-console.json",
+      "hint": "cortxt widget --view work-console"
+    },
+    {
+      "id": "evidence",
+      "title": "Evidence",
+      "spec": "widget_contract/specs/evidence-0.1.yaml",
+      "artifact": "fixtures/evidence.json",
+      "hint": "cortxt widget --view evidence"
+    },
+    {
+      "id": "decisions",
+      "title": "Decisions",
+      "spec": "widget_contract/specs/decisions-0.1.yaml",
+      "artifact": "fixtures/decisions.json",
+      "hint": "cortxt widget --view decisions"
+    },
+    {
+      "id": "attention-queue",
+      "title": "Attention Queue",
+      "spec": "widget_contract/specs/attention-queue-0.1.yaml",
+      "artifact": "fixtures/attention-queue.json",
+      "hint": "cortxt widget --view attention-queue"
+    },
+    {
       "id": "loaded",
       "title": "Loaded",
       "spec": null,
