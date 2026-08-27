@@ -1481,12 +1481,17 @@
 
   var MAKER_HTML =
     '<div class="maker-pane-header">' +
-      '<span class="maker-pane-title">Widget Maker</span>' +
-      '<a href="/widgets/" class="candidate-copy" target="_blank" rel="noopener" style="text-decoration:none;">Docs &rarr;</a>' +
+      '<div><span class="maker-pane-title">Widget Studio</span><div class="card-meta" style="margin-top:4px">Build a governed view from a typed specification.</div></div>' +
+      '<a href="/docs/widgets/" class="candidate-copy" style="text-decoration:none;">Documentation &rarr;</a>' +
+    '</div>' +
+    '<div class="studio-guide" aria-label="Widget creation steps">' +
+      '<div><i>01</i><b>Choose</b><span>Start from a working widget or template.</span></div>' +
+      '<div><i>02</i><b>Shape</b><span>Describe the view or edit its typed spec.</span></div>' +
+      '<div><i>03</i><b>Export</b><span>Validate, preview, then install with the CLI.</span></div>' +
     '</div>' +
     '<nav class="main-nav">' +
-      '<button type="button" class="tab-btn active" data-mk-tab="gallery">Gallery</button>' +
-      '<button type="button" class="tab-btn" data-mk-tab="studio">Studio</button>' +
+      '<button type="button" class="tab-btn active" data-mk-tab="gallery">Templates</button>' +
+      '<button type="button" class="tab-btn" data-mk-tab="studio">Build</button>' +
       '<button type="button" class="tab-btn" data-mk-tab="tokens">Tokens</button>' +
       '<button type="button" class="tab-btn" data-mk-tab="import">Import</button>' +
     '</nav>' +
