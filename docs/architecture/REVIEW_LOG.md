@@ -56,3 +56,4 @@ that modifies an Accepted ADR must add a row here.
 | 2026-08-21 | ADR-020 | Added — proof-environment naming redaction | #151 |
 | 2026-08-16 | ADR-014 | Amended — proof-environment naming per ADR-020 | #151 |
 | 2026-08-16 | ADR-015 | Amended — proof-environment naming per ADR-020 | #151 |
+| 2026-08-27 | ADR-043 | Added and accepted — global design-system source, generated artifact ownership, consumer boundaries, and conformance gate | Operator approval |

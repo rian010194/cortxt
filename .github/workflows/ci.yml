@@ -70,6 +70,8 @@ jobs:
           agent-platform/tests/widget_contract/test_tokens.py
           -v
       - run: python scripts/test_widget_tokens.py
+      - name: Check global design-system conformance
+        run: python scripts/design_system_conformance.py
 
   dco-signoff:
     if: github.event_name == 'pull_request'

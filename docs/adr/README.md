@@ -4,7 +4,7 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-08-26 (ADR-042 accepted by operator approval, including the pre-acceptance amendment retaining the Cortxt OS canvas/window/app-shell model and naming the cockpit's role Execution Inspector). Previously updated 2026-08-22 (ADR-033 accepted, ADR-035 added and accepted, ADR-036 accepted after issue #247 dogfood evidence, ADR-037 added and accepted after issue #252 live proof, ADR-038/039 added as Proposed from the widget-platform design and accepted by operator approval 2026-08-22, ADR-040 added as Proposed).
+Updated: 2026-08-27 (ADR-043 accepted by operator approval: one global design-system source and explicit consumer contract). Previously updated 2026-08-26 (ADR-042 accepted by operator approval, including the pre-acceptance amendment retaining the Cortxt OS canvas/window/app-shell model and naming the cockpit's role Execution Inspector).
 
 | # | Title | Status | Notes |
 | --- | --- | --- | --- |
@@ -40,6 +40,7 @@ Updated: 2026-08-26 (ADR-042 accepted by operator approval, including the pre-ac
 | 040 | Delivery execution paths and workflow-label invariant | **Accepted** (2026-08-22) | Three sanctioned paths (dispatched runtime build / coordinator-direct fast fix / docs-ADR materialization) + hard label invariant: a merged delivery PR never leaves its issue at workflow:inbox; Atlas Work kind records kind for rendering only (issues #259-#262; operator question 2026-08-22) |
 | 041 | Backend Service Surface Reopens ADR-015 (Surface Dimension Only) | **Accepted** | Permits opt-in remote state behind the existing MCP external surface while preserving CLI-primary interaction and the loopback widget boundary. |
 | 042 | Work- and Mandate-First Product Surface with Replaceable Secure Execution | **Accepted** (2026-08-26) | Product hierarchy: durable Workstream authority above replaceable engines/providers/runtimes, expressed inside the existing Cortxt OS canvas/window/app-shell model; Work Console is the default app; Decisions/Evidence/Policies/Atlas/Connections/Execution Inspector are related apps over shared Workstream state; cockpit reframed as Execution Inspector (not "Run Inspector"); retain CLI/MCP/widgets; evaluate OpenShell as optional execution backend; require a continuity proof before broad UI change. |
+| 043 | Global design-system source and consumer contract | **Accepted** (2026-08-27) | Platform-owned preset source, generated web artifact, consumer adapters, shared authority/execution grammar, compatibility, and CI conformance. |
 
 ## Decisions and Authority
 
