@@ -1,0 +1,28 @@
+{
+  "contract_version": "0.1",
+  "widget": {"id": "evidence", "version": "0.1"},
+  "render": {
+    "primitive": "stack",
+    "props": {"label": "Evidence"},
+    "state": "ok",
+    "children": [
+      {"primitive": "text", "props": {"label": "Issue", "value": "rian010194/cortxt#402"}},
+      {"primitive": "table", "props": {"label": "Runs", "columns": ["run_id", "engine", "status", "evidence", "artifacts"],
+        "rows": [
+          {"run_id": "run-1", "engine": "hermes", "status": "blocked", "evidence": ["policy gate: data-class mismatch"], "artifacts": [],
+           "artifacts_present": false, "artifacts_missing": ["changelog"], "independently_reviewed": false, "accepted": false},
+          {"run_id": "run-2", "engine": "claude-direct", "status": "succeeded", "evidence": ["result envelope: task completed"], "artifacts": ["report.md"],
+           "artifacts_present": true, "artifacts_missing": [], "independently_reviewed": true, "accepted": true}
+        ]}
+      },
+      {"primitive": "table", "props": {"label": "Evidence checklist", "columns": ["run_id", "artifacts_present", "artifacts_missing", "independently_reviewed", "accepted"],
+        "rows": [
+          {"run_id": "run-1", "artifacts_present": false, "artifacts_missing": ["changelog"], "independently_reviewed": false, "accepted": false},
+          {"run_id": "run-2", "artifacts_present": true, "artifacts_missing": [], "independently_reviewed": true, "accepted": true}
+        ]}
+      }
+    ]
+  },
+  "repo": "rian010194/cortxt",
+  "error": null
+}

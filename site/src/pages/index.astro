@@ -1,18 +1,8 @@
 ---
 import '../styles/landing.css';
 
-// TEMP hero primary CTA: label + destination are both interim.
-// Today: "See what works today" -> /docs/product-status/ (a status
-// table, not a walkthrough -- doesn't yet earn "See how Cortxt works").
-// Step 1, once docs/proofs/replaceable-execution-continuity.md (PR A)
-// ships: swap href to /docs/proofs/replaceable-execution-continuity/,
-// label can stay or change to "See how Cortxt works".
-// Step 2, once the Work Console walkthrough (separate workstream) has a
-// public route: swap href again and use "Explore the continuity demo"
-// or "Open the Cortxt OS demo" per the landing-page rebuild brief
-// (lab/landing-page-rebuild-20260827/copy.md).
-const heroPrimaryCtaLabel = 'See what works today';
-const heroPrimaryCtaHref = '/docs/product-status/';
+const heroPrimaryCtaLabel = 'Open workspace preview';
+const heroPrimaryCtaHref = '/widgets/';
 
 const usecases = [
   ['Compliance', 'A review that survives a model swap', "A workstream's scope, evidence, and approval history stay attached to the GitHub issue that authorized it — regardless of which engine ran which step."],
@@ -54,7 +44,7 @@ const statusRows = [
     <header class="nav shell">
       <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
       <nav aria-label="Primary navigation">
-        <a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/privacy/">Privacy</a>
+        <a href="/widgets/">Workspace</a><a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/docs/roadmap/">Roadmap</a><a href="/privacy/">Privacy</a>
         <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Preview color theme (this browser only)">
           <button type="button" data-preset="quiet-slate" class="active" title="Quiet Slate">&nbsp;</button>
           <button type="button" data-preset="graphite-ink" title="Graphite Ink">&nbsp;</button>
@@ -152,10 +142,11 @@ const statusRows = [
       </section>
 
       <section class="section-band shell alt" aria-labelledby="os-title">
-        <div class="status-banner"><b>In development.</b> The first Work Console, Evidence, Decisions, and Attention Queue slice is merged to <code>main</code> with contract tests. It remains an evolving product surface, not a finished hosted application.</div>
+        <div class="status-banner"><b>Interactive preview.</b> The first Work Console, Evidence, Decisions, and Attention Queue slice is merged to <code>main</code> with contract tests. The public preview uses demonstration data and does not create a hosted account or mutate your repositories.</div>
         <p class="eyebrow">Cortxt OS</p>
         <h2 id="os-title">Workstreams, not agent fleets.</h2>
         <p class="section-lede">Cortxt OS is the human-facing workspace for operating durable work &mdash; not a terminal, not a raw agent cockpit. It&rsquo;s organized around workstreams you have a mandate over, the decisions waiting on your attention, and the evidence a run produced.</p>
+        <div class="actions workspace-actions"><a class="primary" href="/widgets/">Enter the workspace</a><a class="secondary-cta" href="/docs/product-status/">Check product status</a></div>
         <div class="wc-mock" aria-label="Illustrative Work Console and Decisions view based on the merged first slice">
           <div class="wc-mock-badge">Early preview &middot; In development</div>
           <div class="wc-panel">

@@ -1,0 +1,21 @@
+{
+  "contract_version": "0.1",
+  "widget": {"id": "attention-queue", "version": "0.1"},
+  "render": {
+    "primitive": "stack",
+    "props": {"label": "Attention Queue"},
+    "state": "ok",
+    "children": [
+      {"primitive": "table", "props": {"label": "Waiting for you",
+        "columns": ["workstream_id", "kind", "summary", "issue_id"],
+        "rows": [
+          {"workstream_id": "ws-builder-339", "kind": "evidence",
+           "summary": "Evidence package blocked, awaiting review", "issue_id": "owner/repo#402"},
+          {"workstream_id": "ws-atlas-118", "kind": "decision",
+           "summary": "Record decision on milestone rollover", "issue_id": "owner/repo#118"}
+        ]}}
+    ]
+  },
+  "repo": null,
+  "error": null
+}
