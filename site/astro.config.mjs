@@ -26,7 +26,7 @@ export default defineConfig({
         { tag: 'script', attrs: { src: '/theme-tokens.js' } },
       ],
       sidebar: [
-        { label: 'Overview', items: [{ label: 'Documentation', link: '/docs/' }, { label: 'Quick start', link: '/docs/quick-start/' }, { label: 'Widgets', link: '/docs/widgets/' }] },
+        { label: 'Overview', items: [{ label: 'Documentation', link: '/docs/' }, { label: 'Current product vs. direction', link: '/docs/product-status/' }, { label: 'Quick start', link: '/docs/quick-start/' }, { label: 'Widgets', link: '/docs/widgets/' }] },
         { label: 'Architecture', items: [{ autogenerate: { directory: 'docs/architecture' } }] },
         { label: 'Operating model', items: [
             { label: 'Current operating model', link: '/docs/operating-model/' },

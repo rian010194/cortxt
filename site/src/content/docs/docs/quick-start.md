@@ -3,11 +3,16 @@ title: CLI and MCP quick start
 description: Run the repository-native Cortxt CLI and its MCP server.
 ---
 
-The `cortxt` CLI is Cortxt's primary product surface. The MCP server is the external integration surface selected by ADR-024.
+The `cortxt` CLI is Cortxt's local, automation, bootstrap, diagnostic, and
+power-user interface, and today the most complete verified way to exercise
+the platform (see [current product vs. direction](/docs/product-status/) for
+what Cortxt OS / Work Console adds under ADR-042). The MCP server is the
+external integration surface selected by ADR-024. This quick start proves
+these current local interfaces; it does not launch a finished Cortxt OS.
 
 ## Install from the repository
 
-Use Python 3.12 or later from a repository checkout:
+Use Python 3.11 or later from a repository checkout:
 
 ```bash
 python -m venv .venv

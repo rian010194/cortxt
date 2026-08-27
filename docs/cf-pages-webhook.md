@@ -61,7 +61,9 @@ python scripts/pages_webhook.py --register \
 2. Push (or merge) to `main`; within a minute Cloudflare Pages should start
    a production deployment of the `cortxt` project automatically. Watch
    https://dash.cloudflare.com -> Pages -> cortxt -> Deployments, or verify
-   the site after deploy: `curl -s -o /dev/null -w "%{http_code}" https://docs.cortxt.io/atlas/`.
+   the site after deploy: `curl -s -o /dev/null -w "%{http_code}" https://cortxt.io/atlas/`
+   (the legacy `docs.cortxt.io` host is not reliably routed to the current
+   build — see `site/README.md`).
 
 ## Secret rotation
 

@@ -146,6 +146,8 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/docs_currency.py --check
+      - name: Semantic currency checks for public documentation
+        run: python scripts/docs_semantic_currency.py
 
   label-invariant:
     runs-on: ubuntu-latest

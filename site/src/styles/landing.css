@@ -174,4 +174,77 @@ body{background:var(--canvas)}
 .docs-band{background:color-mix(in srgb,var(--surface) 78%,var(--canvas))}
 @keyframes map-travel{from{left:0;opacity:0}10%,90%{opacity:1}to{left:calc(100% - 5px);opacity:0}}
 @media(max-width:1000px){.hero{grid-template-columns:1fr;min-height:auto}.hero h1{max-width:9ch}.control-map{min-height:500px}.map-flow{grid-template-columns:1fr 24px 1.1fr 24px .9fr}}
-@media(max-width:700px){.hero{padding:4.5rem 0}.hero h1{font-size:clamp(3.5rem,16vw,5.2rem)}.control-map{min-height:auto}.map-flow{grid-template-columns:1fr;gap:.75rem;margin:2rem 0}.map-connector{width:1px;height:24px;justify-self:center}.map-connector i{display:none}.map-node,.core-node,.runtime-stack{min-height:130px}.map-ledger{grid-template-columns:repeat(2,1fr);gap:0}.map-ledger>span:nth-child(3){border-left:0}.map-ledger>span:nth-child(n+3){border-top:1px solid var(--stroke)}.signal{justify-content:flex-start}.signal b{display:none}.hero-secondary-links{flex-direction:column;gap:.7rem}}
+
+/* 2026-08-27 landing rebuild: durable-authority/replaceable-execution
+   positioning (lab/landing-page-rebuild-20260827/). Hero drops the second
+   control-map column for a single-column layout with an inline proof strip;
+   later sections add a status table, an in-development Work Console mock,
+   and use-case cards. No new tokens -- everything below is built from the
+   preset tokens already resolved by /landing-theme.js. */
+.hero{grid-template-columns:1fr;max-width:900px;min-height:auto;padding-bottom:3rem}
+/* Fix: .section-band's border-bottom (base rule) renders short and
+   centered when the section-band and .shell classes sit on the same
+   element, because .shell caps width -- the border was never full-bleed.
+   Same fix pattern as .alt's existing ::before full-bleed background. */
+.section-band{border-bottom:none;position:relative}
+.section-band::after{content:"";position:absolute;left:50%;bottom:0;width:100vw;transform:translateX(-50%);border-bottom:1px solid var(--stroke)}
+.secondary-cta{padding:.78rem 1.05rem;border-radius:7px;text-decoration:none;font-weight:700;font-size:.88rem;color:var(--text);border:1px solid var(--stroke)}
+.secondary-cta:hover{border-color:color-mix(in srgb,var(--text) 25%,var(--stroke))}
+.proof-strip{margin-top:2rem;padding:1.2rem 1.4rem;border:1px solid var(--stroke);background:color-mix(in srgb,var(--raised) 60%,transparent);display:flex;gap:1.3rem;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.proof-strip-text strong{display:block;font-size:1rem;margin-bottom:.3rem}
+.proof-strip-text p{margin:0;color:var(--muted);font-size:.88rem;line-height:1.55;max-width:480px}
+.proof-strip-pending{white-space:nowrap;font:11px var(--mono);color:var(--dim)}
+.run-track{display:flex;align-items:center;gap:.5rem;font:11px var(--mono);color:var(--muted);flex:none;flex-wrap:wrap}
+.run-node{padding:.35rem .6rem;border:1px solid var(--stroke);border-radius:4px;background:var(--surface)}
+.run-node.blocked{color:var(--bad)}
+.run-node.ok{color:var(--ok)}
+.run-arrow{color:var(--dim)}
+
+.problem-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.problem-list li{padding:1rem 1.1rem;border:1px solid var(--stroke);font-size:.9rem;color:var(--muted);line-height:1.55}
+
+.mandate-example{padding:1.1rem 1.3rem;border:1px solid var(--stroke);background:var(--raised)}
+.mandate-example p{margin:0;font-size:.9rem;color:var(--muted);line-height:1.6}
+.mandate-example b{color:var(--warn)}
+
+.status-banner{display:flex;gap:.5rem;padding:.7rem .95rem;border:1px solid color-mix(in srgb,var(--warn) 35%,var(--stroke));background:color-mix(in srgb,var(--warn) 8%,transparent);color:var(--warn);font-size:.84rem;margin-bottom:1.6rem;max-width:fit-content;line-height:1.5}
+.status-banner b{color:var(--warn)}
+
+.wc-mock{position:relative;display:grid;grid-template-columns:1.1fr 1fr;gap:1rem;margin-top:2.2rem}
+.wc-mock-badge{position:absolute;top:-1.6rem;left:0;padding:.25rem .6rem;border-radius:999px;border:1px solid color-mix(in srgb,var(--warn) 40%,var(--stroke));background:color-mix(in srgb,var(--warn) 12%,transparent);color:var(--warn);font:700 .62rem var(--mono);letter-spacing:.04em;text-transform:uppercase}
+.wc-mock-caption{margin:.7rem 0 0;font-size:.76rem;color:var(--dim);font-style:italic}
+.command-platform-label{margin:1.4rem 0 .4rem;font:700 .66rem var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--dim)}
+.wc-panel{border:1px solid var(--stroke);background:color-mix(in srgb,var(--surface) 91%,transparent)}
+.wc-panel-head{padding:.65rem .95rem;border-bottom:1px solid var(--stroke);display:flex;justify-content:space-between;align-items:center;font:700 .66rem var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--dim)}
+.wc-row{display:flex;justify-content:space-between;align-items:center;gap:.7rem;padding:.8rem .95rem;border-bottom:1px solid var(--stroke)}
+.wc-row:last-child{border-bottom:none}
+.wc-row-title{font-size:.87rem;font-weight:600}
+.wc-row-meta{font-size:.74rem;color:var(--muted);margin-top:.1rem}
+.chip{padding:.18rem .5rem;border-radius:999px;font:700 .6rem var(--mono);letter-spacing:.03em;text-transform:uppercase;flex:none}
+.chip.attn{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.chip.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.chip.wait{color:var(--info);background:color-mix(in srgb,var(--info) 14%,transparent)}
+
+.usecase-grid{grid-template-columns:repeat(3,1fr)}
+.usecase-grid article{min-height:auto;display:flex;flex-direction:column;gap:.5rem;border-top:2px solid var(--accent);background:transparent}
+.usecase-grid .tag{font:700 .6rem var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--dim)}
+.usecase-grid h3{margin:.3rem 0 0;font-size:1.05rem}
+.usecase-grid p{margin:0}
+
+.status-table-wrap{overflow-x:auto;border:1px solid var(--stroke)}
+table.status-table{width:100%;border-collapse:collapse;font-size:.86rem}
+.status-table th,.status-table td{padding:.7rem .95rem;text-align:left;border-bottom:1px solid var(--stroke)}
+.status-table th{color:var(--dim);font:700 .66rem var(--mono);text-transform:uppercase;letter-spacing:.04em;background:var(--surface)}
+.status-table tr:last-child td{border-bottom:none}
+
+.category-note{padding:1.2rem 1.4rem;border:1px solid var(--stroke);color:var(--muted);font-size:.9rem;line-height:1.7;margin-top:2rem}
+
+.partner-band{margin-top:1.8rem;padding:1.4rem;border:1px solid var(--stroke);background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.partner-band p{margin:0 0 .9rem;color:var(--muted);font-size:.9rem;line-height:1.65}
+.partner-band a{color:var(--bright);font-weight:700;text-decoration:none}
+
+pre.command{display:block;white-space:pre;overflow-x:auto;font:12px var(--mono);line-height:1.7}
+pre.command span{color:var(--info)}
+
+@media(max-width:900px){.problem-list,.usecase-grid,.wc-mock{grid-template-columns:1fr}}
+@media(max-width:700px){.hero{padding:4.5rem 0}.hero h1{font-size:clamp(3.5rem,16vw,5.2rem)}.control-map{min-height:auto}.map-flow{grid-template-columns:1fr;gap:.75rem;margin:2rem 0}.map-connector{width:1px;height:24px;justify-self:center}.map-connector i{display:none}.map-node,.core-node,.runtime-stack{min-height:130px}.map-ledger{grid-template-columns:repeat(2,1fr);gap:0}.map-ledger>span:nth-child(3){border-left:0}.map-ledger>span:nth-child(n+3){border-top:1px solid var(--stroke)}.signal{justify-content:flex-start}.signal b{display:none}.hero-secondary-links{flex-direction:column;gap:.7rem}.run-track{width:100%;flex-direction:column;align-items:stretch}.run-node{white-space:normal}.run-arrow{align-self:center;transform:rotate(90deg)}}

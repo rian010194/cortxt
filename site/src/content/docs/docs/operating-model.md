@@ -23,11 +23,25 @@ GitHub Issues are the durable source of truth for scope, evidence, review, and a
 
 ## Product boundaries
 
-- The `cortxt` CLI is the primary product surface.
-- `cortxt mcp serve` is the external integration surface.
-- Hermes, Pi, Codex, DSH, and other runtimes are replaceable execution resources behind Cortxt-owned adapters.
-- The legacy web prototype was removed from the repository before the first public release (issue #225); the CLI remains the product surface.
-- Only the human operator approves scope, irreversible effects, merge, publication, deploy, and final completion.
+Per ADR-042 (accepted 2026-08-26), Cortxt is work- and mandate-first: the
+durable Workstream and its authorized outcome are the product, not any one
+interface. Three interfaces expose that authority:
+
+- **Cortxt OS / Work Console** is the accepted default product app. Its
+  current implementation is a shell in active development — not yet a
+  finished product.
+- The **`cortxt` CLI** remains the local, automation, bootstrap, diagnostic,
+  and power-user interface, and today is the most complete verified one.
+- **`cortxt mcp serve`** remains the external, mandate-protected integration
+  surface.
+
+Hermes, Pi, Codex, DSH, and other runtimes are replaceable execution
+resources behind Cortxt-owned adapters — keep the Workstream, replace the
+Run. The legacy web prototype was removed from the repository before the
+first public release (issue #225); Work Console is a distinct, newly
+accepted direction, not a revival of that prototype. Only the human operator
+approves scope, irreversible effects, merge, publication, deploy, and final
+completion.
 
 ## Verified capabilities
 
