@@ -295,6 +295,21 @@ body>*{position:relative;z-index:1}
 .maker-pane .token-swatch{width:14px;height:14px;border-radius:4px;border:1px solid var(--stroke);flex:none}
 .maker-pane .token-label{font-size:9px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .maker-pane .import-file-label{cursor:pointer;padding:5px 10px;display:inline-flex;align-items:center;gap:6px}
+/* Studio is a product surface, not a floating debug window. */
+body{padding:0;place-items:stretch;background:var(--background,#101216)}
+.window,.window.maximized{position:relative!important;inset:auto!important;width:100vw!important;max-width:none!important;height:100vh!important;max-height:none!important;border:0;border-radius:0;box-shadow:none}
+.window-resize,.win-controls,.gbar-mode-toggle{display:none!important}
+.global-bar{height:54px;padding:0 20px;cursor:default;background:color-mix(in srgb,var(--surface,#181b20) 88%,#000);border-color:var(--stroke)}
+.global-bar .appname{font-size:14px;font-weight:700;color:var(--text)}
+.global-bar .gbar-context{border:0;background:transparent;color:var(--muted);font:12px var(--sans)}
+.content{padding:0}.app-rail{width:190px;padding:18px 12px}.maker-pane{width:min(620px,44vw);min-width:420px;padding:24px;gap:18px;background:color-mix(in srgb,var(--surface,#181b20) 94%,#000)}
+.maker-pane-title{font-size:18px!important}.maker-pane-header{align-items:flex-start!important}.maker-pane .main-nav{padding-bottom:14px;border-bottom:1px solid var(--stroke)}
+.maker-pane .tab-btn{padding:7px 12px;font-size:12px}.maker-pane .view-mode-toggle{display:none}.maker-pane .code-input{font-size:12px;line-height:1.55}.maker-pane .editor-body{padding:14px;gap:10px}.maker-pane .editor-toolbar{padding:12px 14px}.canvas-view{background:radial-gradient(circle at 45% 5%,color-mix(in srgb,var(--accent) 8%,transparent),transparent 36%),var(--background,#101216)}
+.studio-guide{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:2px}.studio-guide div{padding:10px;border:1px solid var(--stroke);border-radius:8px;background:var(--layer)}.studio-guide b{display:block;margin-bottom:3px;color:var(--text);font-size:11px}.studio-guide span{color:var(--dim);font-size:9.5px;line-height:1.35}.studio-guide i{color:var(--accent);font:700 9px var(--mono);font-style:normal}
+.studio-active .maker-pane{width:auto!important;min-width:0;flex:1}.studio-active .content-divider,.studio-active .canvas-view{display:none}.studio-active .maker-pane .gallery-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.studio-active .maker-pane .studio-container{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);align-items:start}
+@media(max-width:900px){.app-rail{display:none}.maker-pane{width:50vw;min-width:340px;padding:16px}.global-bar{display:flex}.bottom-nav{display:none}}
+@media(max-width:900px){.studio-active .maker-pane .gallery-grid,.studio-active .maker-pane .studio-container{grid-template-columns:1fr}}
+@media(max-width:680px){.global-bar{display:none}.top-bar-narrow{display:flex}.maker-pane{width:100%;min-width:0;padding:14px}.content-divider,.canvas-view{display:none}.content{padding:0}.studio-guide{grid-template-columns:1fr}.maker-pane .code-input{min-height:150px}}
 </style></head><body><div class="window" id="window">
 <div class="global-bar" id="global-bar">
   <div class="identity"><div class="icon">C</div><div class="appname">Cortxt</div></div>
@@ -584,7 +599,7 @@ function setMakerPaneCollapsed(collapsed){const pane=$("maker-pane"),divider=$("
 function initMakerPaneCollapse(){const toggle=$("maker-collapse-toggle");let collapsed=false;try{collapsed=localStorage.getItem(MAKER_PANE_COLLAPSED_KEY)==="1"}catch(e){}setMakerPaneCollapsed(collapsed);if(toggle)toggle.onclick=ev=>{ev.stopPropagation();setMakerPaneCollapsed(!$("maker-pane").classList.contains("collapsed"))}}
 function initMakerPaneResize(){const pane=$("maker-pane"),divider=$("maker-divider"),content=$("content");if(!pane||!divider||!content)return;let drag=null;divider.addEventListener("pointerdown",ev=>{if(ev.target.closest("#maker-collapse-toggle"))return;if(pane.classList.contains("collapsed"))return;drag={startX:ev.clientX,startW:pane.getBoundingClientRect().width};divider.classList.add("dragging");divider.setPointerCapture(ev.pointerId);ev.preventDefault()});divider.addEventListener("pointermove",ev=>{if(!drag)return;const contentW=content.getBoundingClientRect().width;const maxW=Math.max(MAKER_PANE_MIN,contentW-DOCK_MIN-12);let w=drag.startW+(ev.clientX-drag.startX);w=Math.min(maxW,Math.max(MAKER_PANE_MIN,w));pane.style.width=w+"px"});function end(){if(!drag)return;drag=null;divider.classList.remove("dragging");try{localStorage.setItem(MAKER_PANE_WIDTH_KEY,String(pane.getBoundingClientRect().width))}catch(e){}}divider.addEventListener("pointerup",end);divider.addEventListener("pointercancel",end)}
 async function loadManifest(){try{const r=await fetch("widgets.json",{cache:"no-store"});if(!r.ok)throw Error(r.status);const m=await r.json();manifest=(m.widgets||[]).filter(w=>w.id&&w.artifact);if(!manifest.length)throw Error("empty manifest");renderCanvasView();pollAll(true)}catch(e){empty($("dock-root"),"No widgets manifest. Run `cortxt widget` to serve widgets (widgets.json).")}}
-var appState = {apps: [], activeId: "work-console"};
+var appState = {apps: [], activeId: "studio"};
 let currentWorkstreamId = null;
 const RAIL_ICONS = {
   work: '<path d="M4 7h16M4 12h16M4 17h10"/>',
@@ -601,6 +616,7 @@ function applyApp(appId){
   if(!app) return;
   appState.activeId = appId;
   var studioOpen = appId === "studio";
+  document.body.classList.toggle("studio-active", studioOpen);
   $("maker-pane")?.classList.toggle("app-hidden", !studioOpen);
   $("maker-divider")?.classList.toggle("app-hidden", !studioOpen);
   if(studioOpen) setMakerPaneCollapsed(false);
