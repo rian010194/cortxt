@@ -15,6 +15,7 @@ const workstreams = [
     <meta name="description" content="Explore the Cortxt Workspace with demonstration data." />
     <title>Workspace preview | Cortxt</title>
     <script src="/landing-theme.js" is:inline></script>
+    <style>[hidden]{display:none!important}.detail-drawer{gap:.75rem!important;border-top:1px solid var(--stroke)!important;border-radius:0 0 12px 12px;background:var(--surface)!important}.detail-drawer>div{border:1px solid var(--stroke);border-radius:8px}</style>
   </head>
   <body>
     <div class="workspace-shell">
@@ -51,21 +52,24 @@ const workstreams = [
           </ol>
 
           <div class="attention-card">
-            <div class="attention-copy"><span class="section-label">Next decision</span><h2>Approve the reviewed evidence package</h2><p>Municipal AI Act gap analysis · 12 records attached · mandate expires Sep 1</p></div>
-            <div class="attention-actions"><button type="button" data-detail-toggle>Review evidence</button><span>Human approval required</span></div>
+            <div class="attention-copy"><span class="section-label">Current human decision · WS-042</span><h2>Accept the reviewed gap-analysis package?</h2><p>Cortxt stopped because accepting evidence is outside the run's authority. The mandate reserves this decision for you.</p></div>
+            <div class="attention-actions"><button type="button" data-detail-toggle aria-expanded="false" aria-controls="evidence-detail">Inspect 12 evidence records</button><span>Guided demo · no external changes</span></div>
           </div>
 
-          <div class="detail-drawer" data-detail hidden>
-            <div><span>Evidence coverage</span><strong>12 / 12</strong></div><div><span>Independent review</span><strong>Passed</strong></div><div><span>Policy exceptions</span><strong>None</strong></div>
-            <p>This preview is read-only. Connect Cortxt to a repository to record a decision.</p>
+          <div class="detail-drawer" id="evidence-detail" data-detail hidden>
+            <div><span>Evidence coverage</span><strong>12 / 12</strong><small>47 applicable controls have cited sources.</small></div><div><span>Independent review</span><strong>Passed</strong><small>Checked by a separate policy-review role.</small></div><div><span>Policy exceptions</span><strong>None</strong><small>No unresolved scope or provider exceptions.</small></div>
+            <details><summary>Inspect provenance and execution context</summary><p>Produced by Run 02 (Codex), replacing Run 01 (Hermes) after a provider-policy block. Both runs remain attributable to mandate M-042.</p></details>
+            <section class="decision-consequences"><div><b>If you approve</b><span>The package becomes the accepted record and the Workstream advances to Complete.</span></div><div><b>If you return it</b><span>The Workstream stays paused and a new bounded Run addresses your note.</span></div></section>
+            <div class="demo-actions"><button type="button" data-decision="returned">Return with note</button><button type="button" data-decision="approved">Approve package</button><small>This changes local demo state only.</small></div>
           </div>
+          <div class="decision-result" data-result hidden role="status"></div>
 
           <div class="workspace-grid">
             <section class="workstreams-panel">
-              <div class="panel-heading"><div><span class="section-label">Active work</span><h2>Workstreams</h2></div><button type="button" class="filter-button">All workstreams</button></div>
+              <div class="panel-heading"><div><span class="section-label">Workstream context</span><h2>Durable work</h2></div><span class="filter-button">Runs are execution details</span></div>
               <div class="workstream-list">
                 {workstreams.map((item, index) => (
-                  <button class:list={['workstream-row', { selected: index === 0 }]} type="button">
+                  <button class:list={['workstream-row', { selected: index === 0 }]} type="button" data-workstream={item.id} aria-pressed={index === 0 ? 'true' : 'false'}>
                     <span class="workstream-id">{item.id}</span><span class="workstream-name"><strong>{item.title}</strong><small>{item.meta}</small></span><span class={`state ${item.tone}`}>{item.state}</span><span class="row-arrow">→</span>
                   </button>
                 ))}
@@ -76,39 +80,47 @@ const workstreams = [
               <div class="panel-heading"><div><span class="section-label">Selected workstream</span><h2>Authority</h2></div><span class="verified">● Verified</span></div>
               <dl><div><dt>Mandate</dt><dd>Signed</dd></div><div><dt>Owner</dt><dd>Human operated</dd></div><div><dt>Budget</dt><dd>$22.40 / $25</dd></div><div><dt>Execution</dt><dd>Run 02 · active</dd></div></dl>
               <div class="continuity"><span>Run 01<br /><b>Hermes · blocked</b></span><i></i><span>Run 02<br /><b>Codex · active</b></span></div>
-              <p>Execution changed. The mandate and evidence trail persisted.</p>
+              <p>Execution changed. The mandate and evidence trail persisted.</p><a class="studio-next" href="/widgets/">Build a governed view in Studio →</a>
             </aside>
           </div>
         </section>
 
         <section class="workspace-content view" data-panel="decisions" hidden>
           <div class="page-heading"><div><p>Reserved for people</p><h1>Decisions.</h1></div><span class="data-label">2 waiting</span></div>
-          <div class="simple-list"><article><span>Approval</span><h2>Approve reviewed evidence package</h2><p>WS-042 · Evidence complete · requested 4 minutes ago</p><button type="button">Review</button></article><article><span>Policy</span><h2>Accept provider exception</h2><p>WS-039 · One exception · requested 28 minutes ago</p><button type="button">Review</button></article></div>
+          <div class="simple-list"><article><span>Approval</span><h2>Approve reviewed evidence package</h2><p>WS-042 · Evidence complete · requested 4 minutes ago</p><button type="button" data-open-primary>Review</button></article><article><span>Policy</span><h2>Accept provider exception</h2><p>WS-039 · Evidence is still incomplete</p><button type="button" disabled>Waiting for evidence</button></article></div>
         </section>
 
         <section class="workspace-content view" data-panel="evidence" hidden>
           <div class="page-heading"><div><p>Attributable by default</p><h1>Evidence.</h1></div><span class="data-label">24 records</span></div>
-          <div class="simple-list"><article><span>WS-042 · Run 02</span><h2>Gap analysis evidence package</h2><p>12 records · Independently reviewed · Complete</p><button type="button">Inspect</button></article><article><span>WS-031 · Run 04</span><h2>Retention policy verification</h2><p>8 records · Accepted yesterday</p><button type="button">Inspect</button></article></div>
+          <div class="simple-list"><article><span>WS-042 · Run 02</span><h2>Gap analysis evidence package</h2><p>12 records · Independently reviewed · Complete</p><button type="button" data-open-primary>Inspect</button></article><article><span>WS-031 · Run 04</span><h2>Retention policy verification</h2><p>8 records · Accepted yesterday</p><button type="button" disabled>Accepted record</button></article></div>
         </section>
       </main>
     </div>
     <script is:inline>
       const navItems = document.querySelectorAll('[data-view]');
       const panels = document.querySelectorAll('[data-panel]');
-      navItems.forEach((item) => item.addEventListener('click', () => {
-        navItems.forEach((entry) => entry.classList.toggle('active', entry === item));
+      const showView = (name) => {
         panels.forEach((panel) => {
-          const active = panel.dataset.panel === item.dataset.view;
+          const active = panel.dataset.panel === name;
           panel.classList.toggle('active', active);
           panel.hidden = !active;
         });
+      };
+      navItems.forEach((item) => item.addEventListener('click', () => {
+        navItems.forEach((entry) => entry.classList.toggle('active', entry === item));
+        showView(item.dataset.view);
       }));
       const detailButton = document.querySelector('[data-detail-toggle]');
       const detail = document.querySelector('[data-detail]');
       detailButton?.addEventListener('click', () => {
         detail.hidden = !detail.hidden;
-        detailButton.textContent = detail.hidden ? 'Review evidence' : 'Close evidence';
+        detailButton.textContent = detail.hidden ? 'Inspect 12 evidence records' : 'Close evidence';
+        detailButton.setAttribute('aria-expanded', String(!detail.hidden));
       });
+      const openPrimary = () => { const workButton = document.querySelector('[data-view="work"]'); navItems.forEach((entry) => entry.classList.toggle('active', entry === workButton)); showView('work'); detail.hidden = false; detailButton.textContent = 'Close evidence'; detailButton.setAttribute('aria-expanded', 'true'); detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
+      document.querySelectorAll('[data-open-primary]').forEach((button) => button.addEventListener('click', openPrimary));
+      document.querySelectorAll('[data-decision]').forEach((button) => button.addEventListener('click', () => { const approved = button.dataset.decision === 'approved'; const result = document.querySelector('[data-result]'); result.hidden = false; result.className = `decision-result ${approved ? 'accepted' : 'returned'}`; result.innerHTML = approved ? '<b>Package accepted in this demo.</b><span>The Workstream would advance to Complete and preserve this package as its accepted record.</span>' : '<b>Package returned in this demo.</b><span>The Workstream would stay paused while a new bounded Run addresses your note.</span>'; document.querySelector('.demo-actions').hidden = true; }));
+      document.querySelectorAll('[data-workstream]').forEach((row) => row.addEventListener('click', () => { document.querySelectorAll('[data-workstream]').forEach((entry) => { const selected = entry === row; entry.classList.toggle('selected', selected); entry.setAttribute('aria-pressed', String(selected)); }); }));
     </script>
   </body>
 </html>
