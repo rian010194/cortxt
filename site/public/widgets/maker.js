@@ -1481,19 +1481,15 @@
 
   var MAKER_HTML =
     '<div class="maker-pane-header">' +
-      '<div><span class="maker-pane-title">Widget Studio</span><div class="card-meta" style="margin-top:4px">Build a governed view from a typed specification.</div></div>' +
-      '<div class="studio-links"><a href="/workspace/">Workspace</a><a href="/docs/widgets/">Documentation</a><a href="/privacy/">Trust</a></div>' +
+      '<div><a class="studio-back" href="/workspace/">← Work Console</a><span class="maker-pane-title">Customize Workstream view</span><div class="card-meta" style="margin-top:6px">WS-042 · Municipal AI Act gap analysis</div></div>' +
+      '<div class="studio-links"><a href="/docs/widgets/">Widget documentation</a></div>' +
     '</div>' +
-    '<div class="studio-guide" aria-label="Widget creation steps">' +
-      '<div class="done"><i>01</i><b>Choose</b><span>Candidates is selected with useful demo data.</span></div>' +
-      '<div class="current"><i>02</i><b>Configure</b><span>Describe the view and see the preview update.</span></div>' +
-      '<div><i>03</i><b>Export</b><span>Download a package and copy its install command.</span></div>' +
-    '</div>' +
+    '<div class="studio-context"><span>Placement</span><strong>Workstream overview</strong><span>Data</span><strong>Decisions + evidence</strong></div>' +
     '<nav class="main-nav">' +
-      '<button type="button" class="tab-btn" data-mk-tab="gallery">1. Choose template</button>' +
-      '<button type="button" class="tab-btn active" data-mk-tab="studio">2. Configure &amp; preview</button>' +
-      '<button type="button" class="tab-btn" data-mk-tab="import">3. Import</button>' +
-      '<button type="button" class="tab-btn" data-mk-tab="tokens">Advanced tokens</button>' +
+      '<button type="button" class="tab-btn" data-mk-tab="gallery">Starting points</button>' +
+      '<button type="button" class="tab-btn active" data-mk-tab="studio">Design</button>' +
+      '<button type="button" class="tab-btn" data-mk-tab="import">Import</button>' +
+      '<button type="button" class="tab-btn" data-mk-tab="tokens">Developer</button>' +
     '</nav>' +
     '<div class="view-mode-toggle" role="group" aria-label="CLI display mode">' +
       '<button type="button" class="toggle-btn active" data-mk-cli="split">Split</button>' +
@@ -1514,16 +1510,17 @@
       '<div class="studio-container">' +
         '<div class="editor-pane">' +
           '<div class="editor-toolbar" style="flex-direction:column;align-items:stretch;gap:6px;">' +
-            '<span class="eyebrow">Describe your governed view</span><span class="field-help">Start with plain language. Generation is a local demo unless a loopback host provides the generation API.</span>' +
-            '<textarea class="code-input" data-mk-studio-prompt spellcheck="false" style="min-height:48px;" placeholder="Describe the widget you want, e.g. a table of open evidence gaps"></textarea>' +
+            '<span class="eyebrow">What should this view help you notice?</span><span class="field-help">Describe an operator need. Cortxt keeps the view scoped to WS-042 and its authorized data.</span>' +
+            '<textarea class="code-input studio-prompt" data-mk-studio-prompt spellcheck="false" placeholder="Show unresolved evidence gaps first, then the controls ready for acceptance."></textarea>' +
+            '<div class="prompt-examples"><button type="button" data-prompt-example="Show unresolved evidence gaps first.">Evidence gaps</button><button type="button" data-prompt-example="Summarize decisions waiting for a person.">Pending decisions</button><button type="button" data-prompt-example="Show progress toward the accepted outcome.">Outcome progress</button></div>' +
             '<div style="display:flex;gap:6px;align-items:center;">' +
-              '<button type="button" class="candidate-copy primary-action" data-mk-action="studio-generate">Generate preview</button>' +
+              '<button type="button" class="candidate-copy primary-action" data-mk-action="studio-generate">Create first draft</button>' +
               '<button type="button" class="candidate-copy hidden" data-mk-action="studio-confirm-install" data-mk-studio-confirm-btn disabled>Confirm &amp; install</button>' +
               '<span data-mk-studio-generate-status class="pulse-status"></span>' +
             '</div>' +
           '</div>' +
           '<div class="editor-toolbar">' +
-            '<span class="eyebrow">Selected template</span>' +
+            '<span class="eyebrow">View structure</span>' +
             '<select class="editor-select" data-mk-preset-select>' +
               '<option value="candidates">Candidates (GitHub)</option>' +
               '<option value="pulse">Session Pulse (Store)</option>' +
@@ -1536,7 +1533,7 @@
               '<option value="custom">Blank Spec</option>' +
             '</select>' +
           '</div>' +
-          '<details class="advanced-editor"><summary>Advanced: edit typed specification and fixture data</summary><div class="editor-body">' +
+          '<details class="advanced-editor"><summary>Developer details · specification and fixture data</summary><div class="editor-body">' +
             '<span class="eyebrow">Widget Spec (YAML)</span>' +
             '<textarea class="code-input" data-mk-studio-spec spellcheck="false"></textarea>' +
             '<span class="eyebrow" style="margin-top:4px;">Fixture Data (JSON)</span>' +
@@ -1556,15 +1553,15 @@
             '<div class="pane pane-render" data-mk-studio-render-pane></div>' +
             '<div class="pane pane-cli">' +
               '<div class="pane-title">' +
-                '<span>Install this widget</span>' +
-                '<button type="button" class="candidate-copy" data-mk-action="copy-studio-cmd">Copy command</button>' +
+                '<span>Add to Work Console</span>' +
+                '<button type="button" class="candidate-copy developer-only" data-mk-action="copy-studio-cmd">Copy command</button>' +
               '</div>' +
-              '<p class="install-help">The static Studio exports a real package locally. Install it with the CLI in your own Cortxt environment; this public preview does not change a repository.</p><div class="cli-cmd-box"><div class="cli-cmd" data-mk-studio-cmd-text>cortxt widget load --spec custom.yaml --view loaded</div></div>' +
-              '<div class="pane-title" style="margin-top:4px;">' +
+              '<p class="install-help">This preview shows where the view will live. Adding it is disabled because the public demo cannot change a workspace.</p><button type="button" class="studio-add" disabled>Add to Workstream overview</button><details class="developer-output"><summary>CLI installation</summary><div class="cli-cmd-box"><div class="cli-cmd" data-mk-studio-cmd-text>cortxt widget load --spec custom.yaml --view loaded</div></div></details>' +
+              '<div class="pane-title developer-only" style="margin-top:4px;">' +
                 '<span>CLI Render JSON</span>' +
                 '<button type="button" class="candidate-copy" data-mk-action="copy-studio-json">Copy JSON</button>' +
               '</div>' +
-              '<pre class="cli-json" data-mk-studio-json-text>{}</pre>' +
+              '<pre class="cli-json developer-only" data-mk-studio-json-text>{}</pre>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -1989,6 +1986,7 @@
 
     function loadPreset(key) {
       var p = PRESETS[key] || PRESETS.custom;
+      q("[data-mk-preset-select]").value = key;
       q("[data-mk-studio-spec]").value = p.spec;
       q("[data-mk-studio-data]").value = JSON.stringify(p.data || {}, null, 2);
       studioCliCmd = p.hint || ("cortxt widget load --spec " + key + ".yaml --view loaded");
@@ -2399,6 +2397,11 @@
     q("[data-mk-preset-select]").addEventListener("change", function (ev) { loadPreset(ev.target.value); });
     q("[data-mk-studio-spec]").addEventListener("input", handleStudioInput);
     q("[data-mk-studio-data]").addEventListener("input", handleStudioInput);
+    qa("[data-prompt-example]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        q("[data-mk-studio-prompt]").value = btn.dataset.promptExample;
+      });
+    });
     q("[data-mk-tokens-input]").addEventListener("input", handleTokensInput);
     q("[data-mk-import-file]").addEventListener("change", handleImportFile);
     q("[data-mk-import-textarea]").addEventListener("input", handleImportTextChange);
@@ -2422,9 +2425,12 @@
 
     initTokens();
     loadManifestAndRender();
-    loadPreset("candidates");
+    loadPreset("compliance");
     setCliMode(cliMode);
     switchMode("studio");
+    var workstreamParam = new URLSearchParams(window.location.search).get("workstream");
+    var globalContext = document.getElementById("gbar-context");
+    if (workstreamParam && globalContext) globalContext.textContent = workstreamParam + " · Workstream overview";
   }
 
   return {

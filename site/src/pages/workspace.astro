@@ -1,126 +1,66 @@
 ---
 import '../styles/workspace.css';
-
 const workstreams = [
-  { id: 'WS-042', title: 'Municipal AI Act gap analysis', meta: 'Review · updated 4m ago', state: 'Needs decision', tone: 'attention' },
-  { id: 'WS-039', title: 'Provider portability review', meta: 'Running · updated 12m ago', state: 'Running', tone: 'running' },
-  { id: 'WS-031', title: 'Evidence retention policy', meta: 'Complete · updated yesterday', state: 'Ready', tone: 'ready' },
+  { id: 'WS-042', title: 'Municipal AI Act gap analysis', outcome: 'Deliver a reviewed gap analysis for the procurement board', state: 'Decision required', tone: 'attention', updated: '4 min ago' },
+  { id: 'WS-039', title: 'Provider portability review', outcome: 'Verify that the work can continue on an approved provider', state: 'In progress', tone: 'running', updated: '12 min ago' },
+  { id: 'WS-031', title: 'Evidence retention policy', outcome: 'Establish an attributable retention policy', state: 'Complete', tone: 'ready', updated: 'Yesterday' },
 ];
 ---
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width" />
-    <meta name="description" content="Explore the Cortxt Workspace with demonstration data." />
-    <title>Workspace preview | Cortxt</title>
-    <script src="/landing-theme.js" is:inline></script>
-    <style>[hidden]{display:none!important}.detail-drawer{gap:.75rem!important;border-top:1px solid var(--stroke)!important;border-radius:0 0 12px 12px;background:var(--surface)!important}.detail-drawer>div{border:1px solid var(--stroke);border-radius:8px}</style>
-  </head>
-  <body>
-    <div class="workspace-shell">
-      <aside class="workspace-sidebar">
-        <a class="workspace-brand" href="/" aria-label="Back to Cortxt home"><span>C</span><strong>Cortxt</strong></a>
-        <nav aria-label="Workspace navigation">
-          <button class="nav-item active" type="button" data-view="work"><span aria-hidden="true">◫</span>Work</button>
-          <button class="nav-item" type="button" data-view="decisions"><span aria-hidden="true">✓</span>Decisions <b>2</b></button>
-          <button class="nav-item" type="button" data-view="evidence"><span aria-hidden="true">◇</span>Evidence</button>
-        </nav>
-        <div class="sidebar-bottom">
-          <a href="/docs/">Documentation <span>↗</span></a>
-          <a href="/widgets/">Widget Studio <span>↗</span></a>
-          <div class="preview-note"><i></i><span><b>Preview workspace</b>Demonstration data only</span></div>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width"/><meta name="description" content="Explore the Cortxt Work Console with deterministic demonstration data."/><title>Work Console preview | Cortxt</title><script src="/landing-theme.js" is:inline></script></head>
+<body>
+  <div class="demo-banner"><span>Interactive preview</span><span>Synthetic data · actions stay in this browser</span><a href="/">About Cortxt</a></div>
+  <div class="workspace-shell">
+    <aside class="workspace-sidebar">
+      <a class="workspace-brand" href="/" aria-label="Back to Cortxt home"><span>C</span><strong>Cortxt</strong></a>
+      <nav aria-label="Workspace navigation">
+        <button class="nav-item active" type="button" data-view="attention"><span aria-hidden="true">◆</span><span>Attention</span><b>2</b></button>
+        <button class="nav-item" type="button" data-view="work"><span aria-hidden="true">▤</span><span>Workstreams</span></button>
+        <button class="nav-item" type="button" data-view="records"><span aria-hidden="true">✓</span><span>Accepted records</span></button>
+      </nav>
+      <div class="sidebar-bottom"><a href="/docs/">Documentation <span>↗</span></a><div class="preview-note"><i></i><span><b>Work Console</b>Operator preview</span></div></div>
+    </aside>
+    <main class="workspace-main">
+      <header class="workspace-header"><div><span class="mobile-mark">C</span><strong>Work Console</strong><span class="header-context">Municipal policy programme</span></div><div class="header-actions"><button type="button" disabled aria-label="Search unavailable in preview">⌘ K</button><span class="operator">RA</span></div></header>
+      <section class="workspace-content" data-panel="attention">
+        <div class="page-heading"><div><p>Your attention</p><h1>Two decisions are waiting.</h1><p class="page-intro">Work continues on its own until it reaches a boundary reserved for you.</p></div><button class="quiet-action" type="button" data-view-jump="work">View all workstreams</button></div>
+        <article class="decision-card">
+          <div class="decision-state"><span>Decision required</span><time>4 min ago</time></div>
+          <div class="decision-copy"><span class="workstream-ref">WS-042 · Municipal AI Act gap analysis</span><h2>Is this evidence complete enough to become the accepted record?</h2><p>The independent review found no unresolved policy exceptions. Cortxt paused because only you can accept the final package.</p></div>
+          <dl class="decision-summary"><div><dt>Coverage</dt><dd>47 of 47 controls</dd></div><div><dt>Independent review</dt><dd>Passed</dd></div><div><dt>Open exceptions</dt><dd>None</dd></div></dl>
+          <button class="primary-action" type="button" data-open-review>Review and decide <span>→</span></button>
+        </article>
+        <section class="secondary-section"><div class="section-heading"><div><span>Also waiting</span><h2>Provider exception</h2></div><span class="status waiting">Evidence incomplete</span></div><p>WS-039 needs one more provider-policy check before it can be sent to you.</p></section>
+      </section>
+      <section class="workspace-content" data-panel="work" hidden>
+        <div class="page-heading"><div><p>Workstreams</p><h1>Durable work, in one place.</h1><p class="page-intro">Outcomes and authority persist even when execution changes.</p></div></div>
+        <div class="workstream-list">{workstreams.map((item, index) => (<button class="workstream-row" type="button" data-open-review={index === 0 ? '' : undefined} disabled={index !== 0}><span class="workstream-id">{item.id}</span><span class="workstream-name"><strong>{item.title}</strong><small>{item.outcome}</small></span><span class={`status ${item.tone}`}>{item.state}</span><time>{item.updated}</time><span class="row-arrow">→</span></button>))}</div>
+      </section>
+      <section class="workspace-content" data-panel="records" hidden>
+        <div class="page-heading"><div><p>Accepted records</p><h1>Evidence that survived the run.</h1><p class="page-intro">Accepted evidence remains attached to the Workstream and its mandate.</p></div></div>
+        <article class="record-card"><span class="record-icon">✓</span><div><span>WS-031 · Accepted yesterday</span><h2>Evidence retention policy verification</h2><p>8 attributable records · Independent review passed</p></div><button type="button" disabled>Open record</button></article>
+      </section>
+      <section class="review-view" data-review hidden>
+        <header class="review-header"><button type="button" data-close-review>← Back to attention</button><div><span>WS-042</span><strong>Municipal AI Act gap analysis</strong></div><span class="status attention">Decision required</span></header>
+        <div class="review-layout">
+          <main class="review-main"><p class="eyebrow">Human decision</p><h1>Accept the reviewed gap-analysis package?</h1><p class="review-lede">Your decision will set this package as the Workstream’s accepted record. It will not authorize new scope or increase the budget.</p>
+            <section class="finding"><div><span class="finding-icon">✓</span><div><h2>Ready for your decision</h2><p>All applicable controls have cited sources, the review was performed by a separate role, and no exception remains unresolved.</p></div></div><button type="button" data-evidence-toggle aria-expanded="false">Show supporting evidence</button></section>
+            <section class="evidence-list" data-evidence hidden><article><span>01</span><div><h3>Coverage report</h3><p>47 applicable controls mapped to 12 attributable source records.</p></div><b>Complete</b></article><article><span>02</span><div><h3>Independent review</h3><p>Separate policy-review role checked citations and scope.</p></div><b>Passed</b></article><article><span>03</span><div><h3>Mandate check</h3><p>Package stayed within M-042 scope, provider policy, and budget.</p></div><b>Verified</b></article></section>
+            <details class="provenance"><summary>Execution and provenance</summary><p>Run 01 used Hermes and stopped at a provider-policy boundary. Run 02 continued with Codex under the same mandate. Earlier evidence was preserved rather than overwritten.</p></details>
+          </main>
+          <aside class="review-aside"><section><p class="eyebrow">What happens next</p><div class="consequence"><b>If accepted</b><p>The package becomes the accepted record and WS-042 advances to Complete.</p></div><div class="consequence"><b>If returned</b><p>The Workstream remains paused and a bounded new Run addresses your note.</p></div></section><section><p class="eyebrow">Authority</p><dl><div><dt>Mandate</dt><dd>M-042 · verified</dd></div><div><dt>Owner</dt><dd>You</dd></div><div><dt>Budget</dt><dd>$22.40 of $25</dd></div></dl></section><div class="review-actions"><button type="button" data-decision="returned">Return with note</button><button type="button" class="primary-action" data-decision="approved">Accept record</button><small>Preview only · no external changes</small></div></aside>
         </div>
-      </aside>
-
-      <main class="workspace-main">
-        <header class="workspace-header">
-          <div><span class="mobile-mark">C</span><strong>Workspace</strong><span class="header-context">Operator view</span></div>
-          <div class="header-actions"><button type="button" aria-label="Search workspace">⌘ K</button><a href="/">Exit preview</a></div>
-        </header>
-
-        <section class="workspace-content view active" data-panel="work">
-          <div class="page-heading">
-            <div><p>Good afternoon</p><h1>Review work. Keep control.</h1><p class="page-intro">Cortxt runs the work, preserves the proof, and stops when a human decision is required.</p></div>
-            <span class="data-label">Demo data · read only</span>
-          </div>
-
-          <ol class="workspace-flow" aria-label="How the workspace works">
-            <li><span>1</span><div><strong>Work runs</strong><small>Agents execute within a signed mandate.</small></div></li>
-            <li><span>2</span><div><strong>Evidence collects</strong><small>Every result stays attributable and reviewable.</small></div></li>
-            <li class="current"><span>3</span><div><strong>You decide</strong><small>Cortxt pauses at consequential boundaries.</small></div></li>
-          </ol>
-
-          <div class="attention-card">
-            <div class="attention-copy"><span class="section-label">Current human decision · WS-042</span><h2>Accept the reviewed gap-analysis package?</h2><p>Cortxt stopped because accepting evidence is outside the run's authority. The mandate reserves this decision for you.</p></div>
-            <div class="attention-actions"><button type="button" data-detail-toggle aria-expanded="false" aria-controls="evidence-detail">Inspect 12 evidence records</button><span>Guided demo · no external changes</span></div>
-          </div>
-
-          <div class="detail-drawer" id="evidence-detail" data-detail hidden>
-            <div><span>Evidence coverage</span><strong>12 / 12</strong><small>47 applicable controls have cited sources.</small></div><div><span>Independent review</span><strong>Passed</strong><small>Checked by a separate policy-review role.</small></div><div><span>Policy exceptions</span><strong>None</strong><small>No unresolved scope or provider exceptions.</small></div>
-            <details><summary>Inspect provenance and execution context</summary><p>Produced by Run 02 (Codex), replacing Run 01 (Hermes) after a provider-policy block. Both runs remain attributable to mandate M-042.</p></details>
-            <section class="decision-consequences"><div><b>If you approve</b><span>The package becomes the accepted record and the Workstream advances to Complete.</span></div><div><b>If you return it</b><span>The Workstream stays paused and a new bounded Run addresses your note.</span></div></section>
-            <div class="demo-actions"><button type="button" data-decision="returned">Return with note</button><button type="button" data-decision="approved">Approve package</button><small>This changes local demo state only.</small></div>
-          </div>
-          <div class="decision-result" data-result hidden role="status"></div>
-
-          <div class="workspace-grid">
-            <section class="workstreams-panel">
-              <div class="panel-heading"><div><span class="section-label">Workstream context</span><h2>Durable work</h2></div><span class="filter-button">Runs are execution details</span></div>
-              <div class="workstream-list">
-                {workstreams.map((item, index) => (
-                  <button class:list={['workstream-row', { selected: index === 0 }]} type="button" data-workstream={item.id} aria-pressed={index === 0 ? 'true' : 'false'}>
-                    <span class="workstream-id">{item.id}</span><span class="workstream-name"><strong>{item.title}</strong><small>{item.meta}</small></span><span class={`state ${item.tone}`}>{item.state}</span><span class="row-arrow">→</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <aside class="authority-panel">
-              <div class="panel-heading"><div><span class="section-label">Selected workstream</span><h2>Authority</h2></div><span class="verified">● Verified</span></div>
-              <dl><div><dt>Mandate</dt><dd>Signed</dd></div><div><dt>Owner</dt><dd>Human operated</dd></div><div><dt>Budget</dt><dd>$22.40 / $25</dd></div><div><dt>Execution</dt><dd>Run 02 · active</dd></div></dl>
-              <div class="continuity"><span>Run 01<br /><b>Hermes · blocked</b></span><i></i><span>Run 02<br /><b>Codex · active</b></span></div>
-              <p>Execution changed. The mandate and evidence trail persisted.</p><a class="studio-next" href="/widgets/">Build a governed view in Studio →</a>
-            </aside>
-          </div>
-        </section>
-
-        <section class="workspace-content view" data-panel="decisions" hidden>
-          <div class="page-heading"><div><p>Reserved for people</p><h1>Decisions.</h1></div><span class="data-label">2 waiting</span></div>
-          <div class="simple-list"><article><span>Approval</span><h2>Approve reviewed evidence package</h2><p>WS-042 · Evidence complete · requested 4 minutes ago</p><button type="button" data-open-primary>Review</button></article><article><span>Policy</span><h2>Accept provider exception</h2><p>WS-039 · Evidence is still incomplete</p><button type="button" disabled>Waiting for evidence</button></article></div>
-        </section>
-
-        <section class="workspace-content view" data-panel="evidence" hidden>
-          <div class="page-heading"><div><p>Attributable by default</p><h1>Evidence.</h1></div><span class="data-label">24 records</span></div>
-          <div class="simple-list"><article><span>WS-042 · Run 02</span><h2>Gap analysis evidence package</h2><p>12 records · Independently reviewed · Complete</p><button type="button" data-open-primary>Inspect</button></article><article><span>WS-031 · Run 04</span><h2>Retention policy verification</h2><p>8 records · Accepted yesterday</p><button type="button" disabled>Accepted record</button></article></div>
-        </section>
-      </main>
-    </div>
-    <script is:inline>
-      const navItems = document.querySelectorAll('[data-view]');
-      const panels = document.querySelectorAll('[data-panel]');
-      const showView = (name) => {
-        panels.forEach((panel) => {
-          const active = panel.dataset.panel === name;
-          panel.classList.toggle('active', active);
-          panel.hidden = !active;
-        });
-      };
-      navItems.forEach((item) => item.addEventListener('click', () => {
-        navItems.forEach((entry) => entry.classList.toggle('active', entry === item));
-        showView(item.dataset.view);
-      }));
-      const detailButton = document.querySelector('[data-detail-toggle]');
-      const detail = document.querySelector('[data-detail]');
-      detailButton?.addEventListener('click', () => {
-        detail.hidden = !detail.hidden;
-        detailButton.textContent = detail.hidden ? 'Inspect 12 evidence records' : 'Close evidence';
-        detailButton.setAttribute('aria-expanded', String(!detail.hidden));
-      });
-      const openPrimary = () => { const workButton = document.querySelector('[data-view="work"]'); navItems.forEach((entry) => entry.classList.toggle('active', entry === workButton)); showView('work'); detail.hidden = false; detailButton.textContent = 'Close evidence'; detailButton.setAttribute('aria-expanded', 'true'); detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
-      document.querySelectorAll('[data-open-primary]').forEach((button) => button.addEventListener('click', openPrimary));
-      document.querySelectorAll('[data-decision]').forEach((button) => button.addEventListener('click', () => { const approved = button.dataset.decision === 'approved'; const result = document.querySelector('[data-result]'); result.hidden = false; result.className = `decision-result ${approved ? 'accepted' : 'returned'}`; result.innerHTML = approved ? '<b>Package accepted in this demo.</b><span>The Workstream would advance to Complete and preserve this package as its accepted record.</span>' : '<b>Package returned in this demo.</b><span>The Workstream would stay paused while a new bounded Run addresses your note.</span>'; document.querySelector('.demo-actions').hidden = true; }));
-      document.querySelectorAll('[data-workstream]').forEach((row) => row.addEventListener('click', () => { document.querySelectorAll('[data-workstream]').forEach((entry) => { const selected = entry === row; entry.classList.toggle('selected', selected); entry.setAttribute('aria-pressed', String(selected)); }); }));
-    </script>
-  </body>
-</html>
+      </section>
+      <section class="outcome-view" data-outcome hidden><div class="outcome-mark">✓</div><p class="eyebrow">Decision recorded in this preview</p><h1 data-outcome-title>Record accepted.</h1><p data-outcome-copy>The package is now the accepted record for WS-042. Its evidence remains attached to the Workstream.</p><div><button type="button" class="primary-action" data-return-console>Return to Work Console</button><a href="/widgets/?workstream=WS-042">Customize this Workstream view</a></div></section>
+    </main>
+  </div>
+  <script is:inline>
+    const views=document.querySelectorAll('[data-panel]');const nav=document.querySelectorAll('[data-view]');
+    const showPanel=(name)=>{document.querySelector('[data-review]').hidden=true;document.querySelector('[data-outcome]').hidden=true;views.forEach((panel)=>panel.hidden=panel.dataset.panel!==name);nav.forEach((item)=>item.classList.toggle('active',item.dataset.view===name));};
+    nav.forEach((item)=>item.addEventListener('click',()=>showPanel(item.dataset.view)));document.querySelectorAll('[data-view-jump]').forEach((item)=>item.addEventListener('click',()=>showPanel(item.dataset.viewJump)));
+    const openReview=()=>{views.forEach((panel)=>panel.hidden=true);document.querySelector('[data-review]').hidden=false;window.scrollTo({top:0,behavior:'smooth'});};document.querySelectorAll('[data-open-review]').forEach((item)=>item.addEventListener('click',openReview));document.querySelector('[data-close-review]')?.addEventListener('click',()=>showPanel('attention'));
+    document.querySelector('[data-evidence-toggle]')?.addEventListener('click',(event)=>{const evidence=document.querySelector('[data-evidence]');evidence.hidden=!evidence.hidden;event.currentTarget.textContent=evidence.hidden?'Show supporting evidence':'Hide supporting evidence';event.currentTarget.setAttribute('aria-expanded',String(!evidence.hidden));});
+    document.querySelectorAll('[data-decision]').forEach((button)=>button.addEventListener('click',()=>{const accepted=button.dataset.decision==='approved';document.querySelector('[data-review]').hidden=true;const outcome=document.querySelector('[data-outcome]');outcome.hidden=false;document.querySelector('[data-outcome-title]').textContent=accepted?'Record accepted.':'Work returned.';document.querySelector('[data-outcome-copy]').textContent=accepted?'The package is now the accepted record for WS-042. Its evidence remains attached to the Workstream.':'WS-042 remains paused. A bounded new Run would address your review note.';}));document.querySelector('[data-return-console]')?.addEventListener('click',()=>showPanel('attention'));
+  </script>
+</body></html>
