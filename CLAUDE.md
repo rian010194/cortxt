@@ -120,6 +120,10 @@ kept out of the repository and archived locally.
   `docs(...)`, `docs(review-log): ...`). Reference the issue in the commit and
   the pull request.
 - All documentation is written in **English**.
+- UI changes follow ADR-043 and `docs/design/global-design-system.md`. Run
+  `python scripts/design_system_conformance.py`, keep generated token artifacts
+  synchronized, and include relevant desktop/narrow, focus, preset, and
+  reduced-motion evidence.
 
 ## Delivery execution paths (ADR-040)
 

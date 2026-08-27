@@ -21,6 +21,17 @@ not mean that Hermes routing is unverified or should be bypassed.
 
 ## Agent skills
 
+### UI and design-system work
+
+Before changing landing, documentation, Cortxt OS, Work Console, Widget Host,
+embedded widgets, Atlas, Execution Inspector, or another product UI, read
+`docs/adr/043-global-design-system-source-and-consumer-contract.md` and
+`docs/design/global-design-system.md`. Identify the consumer adapter, use the
+canonical semantic roles, and update the platform-owned source/generator rather
+than creating a local theme. Run `python scripts/design_system_conformance.py`,
+the relevant tests/build, and provide desktop/narrow visual evidence. Record
+intentional deviations and their migration owner.
+
 ### Issue tracker
 
 Durable work for this repository is tracked in GitHub Issues (remote
