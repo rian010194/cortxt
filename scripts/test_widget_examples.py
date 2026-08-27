@@ -103,7 +103,7 @@ def main() -> int:
     landing_css = (REPO / "site" / "src" / "styles" / "landing.css").read_text(encoding="utf-8")
 
     check("index.astro links to Widget OS", 'href="/widgets/"' in landing_astro)
-    check("index.astro contains control-plane hero", "control-map" in landing_astro)
+    check("index.astro contains product authority hero", "hero-system" in landing_astro)
     check("landing.css styles control-plane hero", ".control-map" in landing_css)
 
     # 5. Integrated Maker module contains the examples band.
