@@ -276,3 +276,16 @@ body{background:
 .policy-page{padding-block:8rem}.policy-page h1{max-width:12ch}.policy-intro{max-width:720px;margin:2rem 0 4rem;color:var(--muted);font-size:1.05rem;line-height:1.75}.policy-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:5rem}.policy-summary article{padding:1.35rem;border:1px solid var(--stroke);border-radius:14px;background:color-mix(in srgb,var(--surface) 74%,transparent)}.policy-summary span{display:block;color:var(--accent);font:600 .6rem var(--mono);letter-spacing:.08em;text-transform:uppercase}.policy-summary strong{display:block;margin:2rem 0 .65rem;font-size:1rem}.policy-summary p,.policy-copy p{color:var(--muted);line-height:1.7}.policy-copy{max-width:760px}.policy-copy h2{margin:3.5rem 0 1rem;font-size:1.5rem}.policy-copy a{color:var(--bright)}.policy-updated{margin-top:5rem;padding-top:1rem;border-top:1px solid var(--stroke);color:var(--dim);font:11px var(--mono)}
 @media(max-width:1000px){.hero{grid-template-columns:1fr}.hero-system{max-width:680px}.trust-rail{grid-template-columns:1fr 1fr}.trust-rail>*{border-bottom:1px solid var(--stroke)}.trust-section{grid-template-columns:1fr}.policy-summary{grid-template-columns:1fr}}
 @media(max-width:650px){.nav{margin-top:.6rem}.hero{width:min(100% - 1.5rem,1240px);padding-top:4.5rem}.hero h1{font-size:clamp(3.4rem,16vw,5rem)}.hero-system{padding:.7rem;border-radius:14px}.system-grid{grid-template-columns:1fr}.trust-rail{grid-template-columns:1fr}.trust-rail>span,.trust-rail>a{border-right:0}.section-band{padding-block:6rem}.policy-page{padding-block:5rem}.policy-page h1{font-size:clamp(3.2rem,15vw,4.8rem)}}
+
+/* Landing composition refinement: keep the value, action, and complete product
+   proof visible together on a standard laptop viewport. */
+.hero{min-height:calc(100vh - 88px);padding-top:clamp(3.5rem,6vh,5.5rem);padding-bottom:clamp(3rem,6vh,5rem);gap:clamp(2.5rem,5vw,5rem)}
+.hero h1{font-size:clamp(3.7rem,5.5vw,5.7rem);line-height:.92;max-width:11.5ch;letter-spacing:-.065em}
+.hero .lede{margin-top:1.5rem;max-width:52ch;color:color-mix(in srgb,var(--text) 68%,var(--muted))}
+.hero .actions{margin-top:1.7rem}
+.hero-system{transform:translateY(.6rem)}
+.proof-strip{margin-top:1.5rem;padding:1rem 1.1rem}
+.proof-strip-text p{display:none}
+.proof-strip-pending{display:none}
+nav a{color:color-mix(in srgb,var(--text) 70%,var(--muted))}
+@media(max-width:1000px){.hero{min-height:auto}.hero-system{transform:none}.proof-strip-text p{display:block}.proof-strip-pending{display:inline}}
