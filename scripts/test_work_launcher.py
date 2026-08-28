@@ -36,6 +36,20 @@ class FakeGitHub:
     def comment(self, repo, number, body):
         pass
 
+def real_worktree_add(seen_cwd=None):
+    """Acts like `git worktree add` (success) and actually creates the
+    worktree directory so the launcher can bind the worker to it."""
+    def _run(args, *a, **kwargs):
+        if seen_cwd is not None:
+            seen_cwd.append(kwargs.get("cwd"))
+        # args: ["git", "worktree", "add", "-b", branch, <path>, "HEAD"]
+        path = Path(args[5]) if len(args) > 5 else None
+        if path:
+            path.mkdir(parents=True, exist_ok=True)
+        return SimpleNamespace(returncode=0)
+    return _run
+
+
 def main():
     root = Path(tempfile.mkdtemp(prefix="launcher-test-"))
     gh = FakeGitHub()
@@ -59,6 +73,28 @@ def main():
         check("diacritics rejected", False)
     except ValueError:
         check("diacritics rejected", True)
+
+    print("== #419 worktree binding: create() builds the worktree from repo_path and binds the worker to it ==")
+    root2 = Path(tempfile.mkdtemp(prefix="launcher-wt-"))
+    gh2 = FakeGitHub()
+    disp2 = d.Dispatcher(d.RunRegistry(root2 / "runs.json"), gh2)
+    repo2 = root2 / "repo"
+    dispatched, seen_cwd = [], []
+    launcher2 = w.WorkLauncher(
+        disp2, gh2, dispatch=lambda dispatcher, run, prompt, worktree=None: dispatched.append(
+            (run.run_id, worktree)),
+        worktree_root=root2 / "trees",
+        run_worktree=real_worktree_add(seen_cwd),
+        repo_path=repo2,
+    )
+    res2 = launcher2.create("o/r", "Task", "Bound worker", ["Tests pass"],
+                            runtime="fake", worker_role="builder", workflow="v1",
+                            max_runtime_seconds=60, max_cost_usd=1.0, approved=True)
+    check("worktree created from repo_path, not the process cwd",
+          seen_cwd and seen_cwd[0] == str(repo2))
+    bound = dispatched and dispatched[0]
+    check("worker dispatched with the created worktree", bound and bound[1] == Path(res2["worktree"]))
+    check("worktree path reported by create() exists", Path(res2["worktree"]).is_dir())
 
     print(f"\n{'PASS' if not fail else 'FAIL'}: {len(fail)} failure(s)")
     raise SystemExit(1 if fail else 0)
