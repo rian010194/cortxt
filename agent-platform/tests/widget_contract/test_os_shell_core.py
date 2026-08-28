@@ -289,6 +289,70 @@ def test_mobile_back_navigation_preserves_context():
     assert 'openApp("work-console")' in JS
 
 
+# --- dock/taskbar + maximize/restore (#432) ----------------------------
+
+def _widget_read(name):
+    """Read a widget file directly from THIS checkout's widget dir.
+
+    The editable cortxt_agent_platform install (an earlier pip install -e from
+    the main checkout) installs a MetaPathFinder that can make the module-level
+    WIDGET/HTML/JS/CSS globals resolve against the MAIN checkout instead of the
+    worktree under test. Deriving the path from __file__ (not the module global)
+    pins these assertions to the checkout that actually contains this file
+    (#432).
+    """
+    base = Path(__file__).resolve().parents[2]
+    return (base / "widget" / name).read_text(encoding="utf-8")
+
+
+def test_dock_renders_from_registry():
+    # The shell chrome renders a dock from the authoritative app registry.
+    html = _widget_read("index.html")
+    assert 'data-os-dock' in html
+    js = _widget_read("work-console.js")
+    assert 'dock=q("[data-os-dock]")' in js
+    assert 'data-dock-app' in js
+
+
+def test_dock_entries_launch_or_are_disabled():
+    # Non-deferred dock entries open/focus apps; deferred entries stay disabled.
+    js = _widget_read("work-console.js")
+    assert 'dk.addEventListener("click",function(){openApp(a.id)})' in js
+    assert 'dk.disabled=true' in js
+
+
+def test_dock_active_app_consistent_with_focus():
+    # The dock highlights the active window, consistent with the focused
+    # window (one source of truth via activeWindowId).
+    js = _widget_read("work-console.js")
+    css = _widget_read("os.css")
+    assert 'data-dock-app' in js and "activeWindowId()" in js
+    assert '.os-dock button.active' in css
+
+
+def test_maximize_restore_state_and_persistence():
+    # Maximize/restore toggles a persisted max flag; maximized class applied
+    # in applyView; pinned console cannot be maximized.
+    js = _widget_read("work-console.js")
+    css = _widget_read("os.css")
+    html = _widget_read("index.html")
+    assert 'function setMax(id,on)' in js and 'function toggleMax(id)' in js
+    assert 'state.ui.max' in js
+    assert 'x.classList.toggle("maximized"' in js
+    assert '.app-window.maximized' in css
+    assert 'if(isDeferred(id)||isPinned(id))return' in js  # pinned excluded
+    assert 'data-window-max' in html
+
+
+def test_maximize_buttons_wired_and_console_excluded():
+    # Maximize buttons exist for decisions/evidence/studio but not console.
+    html = _widget_read("index.html")
+    js = _widget_read("work-console.js")
+    assert html.count('data-window-max="') >= 3
+    assert 'data-window-max="work-console"' not in html
+    assert 'toggleMax(x.dataset.windowMax)' in js
+
+
 # --- Work Console as a registered operator app (#426) ------------------
 
 def test_work_console_registered_in_shared_renderer():
