@@ -308,7 +308,7 @@ def _widget_read(name):
 def test_dock_renders_from_registry():
     # The shell chrome renders a dock from the authoritative app registry.
     html = _widget_read("index.html")
-    assert '[data-os-dock]' in html
+    assert 'data-os-dock' in html
     js = _widget_read("work-console.js")
     assert 'dock=q("[data-os-dock]")' in js
     assert 'data-dock-app' in js
