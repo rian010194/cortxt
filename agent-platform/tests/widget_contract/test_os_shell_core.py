@@ -326,7 +326,7 @@ def test_work_console_panels_render_from_shared_context():
 
 def test_renderer_module_loaded_before_shell_and_exposed():
     # The module must be present, load before the shell, and expose the API.
-    assert "function register(appId, renderFn)" in RENDERER
+    assert "function register(appId, renderFn, opts)" in RENDERER
     assert "function render(appId, winEl, ctx)" in RENDERER
     assert "function has(appId)" in RENDERER
     assert 'global.OSRenderer = api' in RENDERER
@@ -360,6 +360,60 @@ def test_renderer_registry_dispatch_and_fallback_behavior():
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
+
+
+# --- app runtime stabilization (#431) ---------------------------------
+
+def test_renderer_exposes_lifecycle_events_and_capabilities():
+    # OSRenderer now carries mount/unmount lifecycle, an event channel, and
+    # capability lookup.
+    assert "function mount(appId, winEl, ctx)" in RENDERER
+    assert "function unmount(appId)" in RENDERER
+    assert "function on(event, fn)" in RENDERER
+    assert "function emit(event, payload)" in RENDERER
+    assert "capabilities: appCapabilities" in RENDERER
+
+
+def test_renderer_lifecycle_events_capabilities_behavior():
+    # Behavioral check: mount/unmount, emit/on, and capability lookup work in a
+    # DOM-less runtime.
+    import subprocess
+    script = (
+        "const m=require(%s);"
+        "let mounted=0, unmounted=0, got=null;"
+        "m.register('a',function(el,ctx){mounted++},{capabilities:['read:x']});"
+        "if(m.mount('a','EL',{})!==true)process.exit(2);"
+        "if(m.unmount('a')!==true)process.exit(3);"
+        "if(m.capabilities('a').join(',')!=='read:x')process.exit(4);"
+        "if(m.capabilities('nope').length!==0)process.exit(5);"
+        "m.on('ev',function(p){got=p});"
+        "if(m.emit('ev',{n:7})!==true)process.exit(6);"
+        "if(!got||got.n!==7)process.exit(7);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "os-renderer.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_app_manifest_declares_capabilities_mode_and_mobile():
+    # apps.json declares capabilities, public/operator-only mode, and
+    # mobile-activation for every app entry (except the synthetic "all").
+    by_id = {a["id"]: a for a in APPS["apps"] if a["id"] != "all"}
+    assert len(by_id) == 8
+    for app in by_id.values():
+        assert isinstance(app.get("capabilities"), list), app["id"]
+        assert app.get("mode") in {"operator", "public"}, app["id"]
+        assert isinstance(app.get("mobile"), bool), app["id"]
+    assert by_id["atlas"]["mode"] == "public"
+    assert by_id["atlas"]["mobile"] is True
+    assert by_id["execution"]["mode"] == "operator"
+    assert by_id["execution"]["mobile"] is False
+
+
+def test_shell_emits_context_event_through_renderer():
+    # propagateContext emits a named "context" event with the shared context.
+    assert 'OSRenderer.emit("context",ctx)' in JS
 
 
 # --- Decisions and Evidence authority journey (#427) -------------------

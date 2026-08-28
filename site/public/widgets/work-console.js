@@ -251,9 +251,10 @@ function propagateContext(){
   var x=currentItem();
   q("[data-active-context]").textContent=x?(x.id+" · "+x.title):"No Workstream selected";
   var ctx={workstream:x,state:state};
-  /* Delegate to the shared app renderer registry first; fall back to the
-     shell's own inline projections when an app has no registered renderer
-     (behavior-preserving; issue #425). */
+  /* Render window content through the shared registry as the single path
+     (#431). The inline projections remain only as a guarded fallback when an
+     app has no registered renderer, so behavior is preserved and no app is
+     forced to register before the shell works. */
   var d=q("[data-decisions-body]");
   if(d&&!OSRenderer.render("decisions",d,ctx))d.innerHTML=x?'<span class="eyebrow">'+esc(x.id)+'</span><h3>'+esc(x.title)+'</h3><p>'+(x.decision?esc(x.decision.summary):"No authoritative decision is pending for this Workstream.")+'</p>':empty("Select a Workstream to project its decision.");
   var e=q("[data-evidence-body]");
@@ -262,6 +263,7 @@ function propagateContext(){
     var src="maker.html"+(x?"?workstream="+encodeURIComponent(x.id):"");
     frame.dataset.src=src;if(frame.getAttribute("src"))frame.src=src;
   });
+  OSRenderer.emit("context",ctx);
 }
 
 /* ---- data + authority boundary (unchanged) -------------------- */
