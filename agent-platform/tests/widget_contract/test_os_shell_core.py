@@ -784,3 +784,57 @@ def test_router_behavior_in_domless_runtime():
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
+
+
+# --- S3: unpinned session model (issue #441) ---------------------------
+# No mandatory pinned Work Console: no window is forced open, sessions
+# restore as saved, empty desktop shows a launcher, first-run shows the
+# Cortxt Home placeholder, and Work Console is closable.
+
+S3_HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+
+
+def test_no_mandatory_pinned_window_in_initial_state():
+    # Initial state opens NO window; restore() and applyView() never force
+    # work-console open.
+    assert 'ui:{open:{}' in JS
+    assert 'state.ui.open=Object.assign({},saved.ui.open);' in JS  # no forced open
+    assert 'state.ui.open["work-console"]=true' not in JS
+    assert 'state.ui.open["work-console"]=true;' not in JS
+
+
+def test_close_work_console_works():
+    # Work Console is closable like any other window: closeApp only guards
+    # deferred apps.
+    assert 'if(isDeferred(id))return;\n  delete state.ui.open[id]' in JS or 'if(isDeferred(id))return;' in JS
+    assert 'if(isPinned(id)||isDeferred(id))return' not in JS  # pinned guard removed from closeApp
+
+
+def test_active_window_can_be_null():
+    # activeWindowId returns null when no window is open (no work-console
+    # default).
+    assert 'var best=null,bz=-1' in JS
+    assert 'return best;' in JS
+
+
+def test_empty_desktop_and_first_run_home_surfaces():
+    # The shell chrome carries an empty-desktop affordance and a first-run
+    # Cortxt Home placeholder; applyView toggles them.
+    assert 'data-empty-desktop' in S3_HTML and 'data-home-surface' in S3_HTML
+    assert 'emptyDesktop.hidden=!!anyOpen' in JS
+    assert 'homeSurface.hidden=!!anyOpen||state.hadSavedSession' in JS
+
+
+def test_session_restore_tracks_had_saved_session():
+    # restore() records whether a saved session existed so first-run (no
+    # saved session) can show Home.
+    assert 'state.hadSavedSession=!!(saved&&typeof saved==="object"&&(saved.ui||saved.windows))' in JS
+    assert 'hadSavedSession:false' in JS
+
+
+def test_pinned_semantics_favorite_only():
+    # "Pinned" no longer implies an unclosable window: the manifest may keep
+    # kind:pinned for the dock favorite, but the shell never force-opens it.
+    by_id = {a["id"]: a for a in APPS["apps"]}
+    assert by_id["work-console"]["kind"] == "pinned"  # favorite icon retained
+    assert 'isPinned(id)' in JS  # helper retained for favorite semantics

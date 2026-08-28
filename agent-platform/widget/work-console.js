@@ -20,13 +20,14 @@
 var SHELL_KEY="cortxt-os-shell",NARROW=720;
 var state={
   model:null,token:null,capabilities:[],registry:[],
-  ui:{open:{"work-console":true},min:{},max:{},z:{},geom:{},zTop:10,arranging:false,mobileApp:"work-console",drawer:false},
+  ui:{open:{},min:{},max:{},z:{},geom:{},zTop:10,arranging:false,mobileApp:"work-console",drawer:false},
   context:{workstreamId:null,activeWorkstreamId:null},
   apps:{"work-console":{panel:"attention"}},
   windows:[],
   dockFavorites:[],
   desktopLayout:{},
-  schemaVersion:2
+  schemaVersion:2,
+  hadSavedSession:false
 };
 var q=function(s,r){return(r||document).querySelector(s)},qa=function(s,r){return Array.from((r||document).querySelectorAll(s))};
 var esc=function(v){return String(v==null?"":v).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})};
@@ -125,10 +126,11 @@ function persist(){
 }
 function restore(){
   var saved;try{saved=JSON.parse(localStorage.getItem(SHELL_KEY)||"null")}catch(_e){saved=null}
+  state.hadSavedSession=!!(saved&&typeof saved==="object"&&(saved.ui||saved.windows));
   if(!saved||typeof saved!=="object")return;
   if(saved.ui&&typeof saved.ui==="object"){
     state.ui=Object.assign(state.ui,saved.ui);
-    state.ui.open=Object.assign({},saved.ui.open);state.ui.open["work-console"]=true;
+    state.ui.open=Object.assign({},saved.ui.open);
     state.ui.min=Object.assign({},saved.ui.min);state.ui.z=Object.assign({},saved.ui.z);
     state.ui.max=(saved.ui.max&&typeof saved.ui.max==="object")?Object.assign({},saved.ui.max):{};
     state.ui.geom=(saved.ui.geom&&typeof saved.ui.geom==="object")?Object.assign({},saved.ui.geom):{};
@@ -210,8 +212,9 @@ function isPinned(id){var a=appById(id);return!!a&&a.kind==="pinned"}
 function activeWindowId(){
   /* One source of truth for the active window: the open, non-minimized app
      with the highest z-order. Focus, active app, and visual stacking all
-     derive from state.ui.z. */
-  var best="work-console",bz=-1;
+     derive from state.ui.z. Null when no window is open (S3: no mandatory
+     pinned window). */
+  var best=null,bz=-1;
   Object.keys(state.ui.open).forEach(function(id){
     if(!state.ui.open[id]||state.ui.min[id]||isDeferred(id))return;
     var z=state.ui.z[id]||0;
@@ -289,7 +292,6 @@ function applyView(){
     qa("[data-window]").forEach(function(x){x.hidden=x.dataset.window!==w;x.classList.remove("minimized");x.style.left=x.style.top=x.style.width=x.style.height=x.style.zIndex=""});
     ensureStudio(state.ui.mobileApp);
   }else{
-    state.ui.open["work-console"]=true;
     qa("[data-window]").forEach(function(x){
       var id=appIdForWindow(x.dataset.window),open=!!state.ui.open[id];
       x.hidden=!open;
@@ -303,6 +305,14 @@ function applyView(){
     var arrange=q("[data-arrange]");if(arrange)arrange.setAttribute("aria-pressed",String(!!state.ui.arranging));
     applyGeom();
   }
+  /* S3: empty desktop — when no window is open (desktop), show the launcher
+     affordance instead of forcing Work Console open. First-run (no saved
+     session) shows the Cortxt Home placeholder instead. */
+  var anyOpen=Object.keys(state.ui.open).some(function(id){return !!state.ui.open[id]&&!state.ui.min[id]});
+  var emptyDesktop=q("[data-empty-desktop]");
+  var homeSurface=q("[data-home-surface]");
+  if(emptyDesktop)emptyDesktop.hidden=!!anyOpen;
+  if(homeSurface)homeSurface.hidden=!!anyOpen||state.hadSavedSession;
   /* S2: quiet workstream-binding indicator per window. */
   qa("[data-binding-indicator]").forEach(function(el){
     var id=appIdForWindow((el.closest("[data-window]")||{}).dataset? (el.closest("[data-window]")||{}).dataset.window:"");
@@ -334,7 +344,9 @@ function focusApp(id){
   persist();applyView();pushShellState(id);
 }
 function closeApp(id){
-  if(isPinned(id)||isDeferred(id))return;
+  /* S3: Work Console is closable like any other window — no app window is
+     permanently open. Deferred apps still cannot be opened/closed. */
+  if(isDeferred(id))return;
   delete state.ui.open[id];delete state.ui.min[id];delete state.ui.z[id];
   persist();applyView();
 }
@@ -578,7 +590,7 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
       }
     });
   }
-  q("[data-reveal-apps]").onclick=function(){var drawer=q("[data-app-drawer]");state.ui.drawer=drawer.hidden;drawer.hidden=!drawer.hidden;this.setAttribute("aria-expanded",String(state.ui.drawer));persist()};
+  qa("[data-reveal-apps]").forEach(function(btn){btn.onclick=function(){var drawer=q("[data-app-drawer]");state.ui.drawer=drawer.hidden;drawer.hidden=!drawer.hidden;btn.setAttribute("aria-expanded",String(state.ui.drawer));persist()}});
   var wsToggle=q("[data-ws-toggle]"),wsPanel=q("[data-workstream-switcher]");
   if(wsToggle&&wsPanel){wsToggle.onclick=function(){var open=wsPanel.hidden;wsPanel.hidden=!open;this.setAttribute("aria-expanded",String(open));if(open)renderSwitcher()}}
   var arrangeButton=q("[data-arrange]");if(arrangeButton)arrangeButton.onclick=toggleArrange;
