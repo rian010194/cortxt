@@ -288,6 +288,39 @@ def test_mobile_back_navigation_preserves_context():
     assert 'openApp("work-console")' in JS
 
 
+# --- Work Console as a registered operator app (#426) ------------------
+
+def test_work_console_registered_in_shared_renderer():
+    # Work Console is a first-class registered app, like Decisions/Evidence.
+    assert 'OSRenderer.register("work-console",renderWorkConsole)' in JS
+    assert "function renderWorkConsole(" in JS
+
+
+def test_render_delegates_to_work_console_renderer_with_fallback():
+    # render() delegates panel rendering to the registry and falls back to the
+    # same function directly when the registry is unavailable.
+    assert 'var handled=OSRenderer.render("work-console"' in JS
+    assert 'if(!handled)renderWorkConsole(' in JS
+
+
+def test_work_console_row_projects_decision_and_evidence_state():
+    # The operator row shows pending-decision and evidence-count projections
+    # from the Workstream data (no app-local fork).
+    assert "pending-decision" in JS
+    assert "evidence-count" in JS
+    assert ".workstream-row .pending-decision" in CSS
+    assert ".workstream-row .evidence-count" in CSS
+
+
+def test_work_console_panels_render_from_shared_context():
+    # renderWorkConsole reads its data from the passed context/state, the same
+    # shell-owned projection the whole OS uses.
+    assert "var s=(ctx&&ctx.state)||state" in JS
+    assert "s.model&&s.model.workstreams" in JS
+    assert "attention.map(function(x)" in JS
+    assert 'empty("No Workstream currently requires operator attention.")' in JS
+
+
 # --- shared app renderer module (#425) ---------------------------------
 
 def test_renderer_module_loaded_before_shell_and_exposed():
