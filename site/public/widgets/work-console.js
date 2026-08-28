@@ -250,10 +250,14 @@ function selectWorkstream(id){state.context.workstreamId=id;persist();propagateC
 function propagateContext(){
   var x=currentItem();
   q("[data-active-context]").textContent=x?(x.id+" · "+x.title):"No Workstream selected";
+  var ctx={workstream:x,state:state};
+  /* Delegate to the shared app renderer registry first; fall back to the
+     shell's own inline projections when an app has no registered renderer
+     (behavior-preserving; issue #425). */
   var d=q("[data-decisions-body]");
-  if(d)d.innerHTML=x?'<span class="eyebrow">'+esc(x.id)+'</span><h3>'+esc(x.title)+'</h3><p>'+(x.decision?esc(x.decision.summary):"No authoritative decision is pending for this Workstream.")+'</p>':empty("Select a Workstream to project its decision.");
+  if(d&&!OSRenderer.render("decisions",d,ctx))d.innerHTML=x?'<span class="eyebrow">'+esc(x.id)+'</span><h3>'+esc(x.title)+'</h3><p>'+(x.decision?esc(x.decision.summary):"No authoritative decision is pending for this Workstream.")+'</p>':empty("Select a Workstream to project its decision.");
   var e=q("[data-evidence-body]");
-  if(e)e.innerHTML=x?'<span class="eyebrow">'+esc(x.id)+'</span><h3>Evidence</h3><div class="projection-list">'+(x.evidence.length?x.evidence.map(function(ev){return'<article><strong>'+esc(ev.title)+'</strong><p>'+esc(ev.detail)+'</p></article>'}).join(""):empty("No authoritative evidence is attached."))+'</div>':empty("Select a Workstream to project its evidence.");
+  if(e&&!OSRenderer.render("evidence",e,ctx))e.innerHTML=x?'<span class="eyebrow">'+esc(x.id)+'</span><h3>Evidence</h3><div class="projection-list">'+(x.evidence.length?x.evidence.map(function(ev){return'<article><strong>'+esc(ev.title)+'</strong><p>'+esc(ev.detail)+'</p></article>'}).join(""):empty("No authoritative evidence is attached."))+'</div>':empty("Select a Workstream to project its evidence.");
   qa("[data-studio-frame]").forEach(function(frame){
     var src="maker.html"+(x?"?workstream="+encodeURIComponent(x.id):"");
     frame.dataset.src=src;if(frame.getAttribute("src"))frame.src=src;

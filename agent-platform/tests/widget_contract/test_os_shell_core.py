@@ -23,6 +23,7 @@ APPS = json.loads((WIDGET / "apps.json").read_text(encoding="utf-8"))
 HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
 CSS = (WIDGET / "os.css").read_text(encoding="utf-8")
 JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+RENDERER = (WIDGET / "os-renderer.js").read_text(encoding="utf-8")
 
 PORTED = {"work-console", "decisions", "evidence"}
 DEFERRED = {"execution", "policies", "atlas", "connections"}
@@ -285,6 +286,46 @@ def test_mobile_back_navigation_preserves_context():
     # app; openApp only changes the active mobile app, never the context.
     assert 'data-mobile-back' in JS or "mobileBack" in JS
     assert 'openApp("work-console")' in JS
+
+
+# --- shared app renderer module (#425) ---------------------------------
+
+def test_renderer_module_loaded_before_shell_and_exposed():
+    # The module must be present, load before the shell, and expose the API.
+    assert "function register(appId, renderFn)" in RENDERER
+    assert "function render(appId, winEl, ctx)" in RENDERER
+    assert "function has(appId)" in RENDERER
+    assert 'global.OSRenderer = api' in RENDERER
+    assert HTML.index('src="os-renderer.js"') < HTML.index('src="work-console.js"')
+
+
+def test_shell_delegates_to_renderer_with_fallback():
+    # propagateContext calls OSRenderer.render for decisions/evidence first and
+    # falls back to inline projections when nothing is registered.
+    assert "OSRenderer.render" in JS
+    assert 'OSRenderer.render("decisions"' in JS
+    assert 'OSRenderer.render("evidence"' in JS
+    assert "OSRenderer" in JS  # referenced by the shell
+
+
+def test_renderer_registry_dispatch_and_fallback_behavior():
+    # Behavioral check: execute the module in a DOM-less runtime and prove
+    # registration, dispatch, and fallback.
+    import subprocess
+    script = (
+        "const m=require(%s);"
+        "let calls=[];"
+        "m.register('a',function(el,ctx){calls.push(['a',el,ctx])});"
+        "if(m.has('a')!==true)process.exit(2);"
+        "if(m.render('a','EL',{x:1})!==true)process.exit(3);"
+        "if(m.render('nope','EL',{})!==false)process.exit(4);"
+        "if(m.has('nope')!==false)process.exit(5);"
+        "if(calls.length!==1||calls[0][1]!=='EL'||calls[0][2].x!==1)process.exit(6);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "os-renderer.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
 
 
 # --- site mirror parity ------------------------------------------
