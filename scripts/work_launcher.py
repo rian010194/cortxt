@@ -106,7 +106,8 @@ class WorkLauncher:
                  clock: Callable[[], float] = time.time,
                  id_generator: Callable[[], str] | None = None,
                  driver_id: str = "cortxt-work", store_session_id: str | None = None,
-                 engine_session_id: str | None = None):
+                 engine_session_id: str | None = None,
+                 repo_path: Path | None = None):
         self.dispatcher, self.github, self.dispatch = dispatcher, github, dispatch
         self.worktree_root = worktree_root or Path(".worktrees")
         self.run_worktree, self.claim_store = run_worktree, claim_store
@@ -117,6 +118,10 @@ class WorkLauncher:
         self.id_generator = id_generator or (lambda: f"run-{uuid.uuid4().hex}")
         self.driver_id, self.store_session_id = driver_id, store_session_id
         self.engine_session_id = engine_session_id
+        # The repository the launcher operates on. Worktrees are created from
+        # this directory (never the CLI's cwd) and each worker subprocess runs
+        # inside its own created worktree (#419).
+        self.repo_path = repo_path or Path.cwd()
         self._claims_by_run: dict[str, ClaimRecord] = {}
 
     @staticmethod
@@ -199,6 +204,19 @@ class WorkLauncher:
             raise ExecutionGateError("dispatcher_run_id_mismatch")
         return run
 
+    def _dispatch(self, run, prompt: str, worktree: Path) -> None:
+        """Start the worker, bound to its isolated worktree when one exists.
+
+        The worktree is passed to the adapter (dispatch_async -> invoke) so the
+        worker subprocess runs with that directory as cwd. A worktree path that
+        was never created (the resume path) is not forwarded -- there is no
+        directory to bind to, and inventing one would break the worker.
+        """
+        if worktree.is_dir():
+            self.dispatch(self.dispatcher, run, prompt, worktree=worktree)
+        else:
+            self.dispatch(self.dispatcher, run, prompt)
+
     def _launch(self, issue_id: str, prompt: str, *, runtime: str, worker_role: str,
                 workflow: str, max_runtime_seconds: int, create_worktree: bool) -> dict:
         if self.claim_store is None:
@@ -211,12 +229,13 @@ class WorkLauncher:
                 branch = f"work/{run_id}"
                 self.worktree_root.mkdir(parents=True, exist_ok=True)
                 proc = self.run_worktree(["git", "worktree", "add", "-b", branch,
-                                          str(worktree), "HEAD"], capture_output=True, text=True)
+                                          str(worktree), "HEAD"], capture_output=True, text=True,
+                                         cwd=str(self.repo_path))
                 if getattr(proc, "returncode", 0):
                     self.dispatcher.complete(run_id, "blocked",
                                              {"error": "isolated worktree creation failed"})
                     raise RuntimeError("isolated worktree creation failed")
-            self.dispatch(self.dispatcher, run, prompt)
+            self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id, "worktree": str(worktree),
                     "branch": f"work/{run_id}"}
 
@@ -230,13 +249,14 @@ class WorkLauncher:
                 branch = f"work/{run_id}"
                 self.worktree_root.mkdir(parents=True, exist_ok=True)
                 proc = self.run_worktree(["git", "worktree", "add", "-b", branch,
-                                          str(worktree), "HEAD"], capture_output=True, text=True)
+                                          str(worktree), "HEAD"], capture_output=True, text=True,
+                                         cwd=str(self.repo_path))
                 if getattr(proc, "returncode", 0):
                     self.dispatcher.complete(run_id, "blocked", {"error": "isolated worktree creation failed"})
                     self._release(claim, "terminal:blocked")
                     raise RuntimeError("isolated worktree creation failed")
             self._claims_by_run[run_id] = claim
-            self.dispatch(self.dispatcher, run, prompt)
+            self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id, "worktree": str(worktree),
                     "branch": f"work/{run_id}", "claim_id": claim.claim_id,
                     "claim_generation": claim.claim_generation,
@@ -303,7 +323,8 @@ class WorkLauncher:
 
 
 def default_launcher(registry_path: Path, *, daemon_state_dir: Path | None = None,
-                     lifecycle_store: Path | None = None) -> WorkLauncher:
+                     lifecycle_store: Path | None = None,
+                     repo_path: Path | None = None) -> WorkLauncher:
     store = SqliteClaimStore(registry_path.with_suffix(".claims.sqlite3"))
     dispatcher = Dispatcher(RunRegistry(registry_path))
     github = LauncherGitHub()
@@ -318,4 +339,5 @@ def default_launcher(registry_path: Path, *, daemon_state_dir: Path | None = Non
             "lifecycle_sessions": lifecycle_sessions_reader(lifecycle_store),
         },
         writer_reader=writer_domain_reader(),
+        repo_path=repo_path,
     )

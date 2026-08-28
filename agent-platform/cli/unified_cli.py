@@ -2991,7 +2991,10 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
 
         registry = args.registry or (_get_agent_platform_path() / ".dispatch" / "runs.json")
         registry.parent.mkdir(parents=True, exist_ok=True)
-        launcher = default_launcher(registry)
+        # Worktrees are created from and workers are bound to the repository
+        # containing this CLI, never the process cwd (#419).
+        repo_path = _get_agent_platform_path().parent
+        launcher = default_launcher(registry, repo_path=repo_path)
         if args.work_command == "list":
             rows = launcher.list_active()
             print(json.dumps(rows, indent=2))
