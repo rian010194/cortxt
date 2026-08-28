@@ -224,42 +224,46 @@ function activeWindowId(){
 }
 
 /* ---- chrome built from the one registry ----------------------------- */
+/* S4: the dock shows favorites + running apps with compact icons and a quiet
+   running indicator; the launcher lists ALL apps (deferred as catalog
+   entries). The combined "Apps & canvas" drawer is removed. */
 function renderChrome(){
-  var drawer=q("[data-app-list]"),mnav=q("[data-mobile-nav]"),dock=q("[data-os-dock]");
-  if(drawer)drawer.innerHTML="";if(mnav)mnav.innerHTML="";if(dock)dock.innerHTML="";
+  var mnav=q("[data-mobile-nav]"),dock=q("[data-os-dock]"),launcher=q("[data-launcher-list]");
+  if(mnav)mnav.innerHTML="";if(dock)dock.innerHTML="";if(launcher)launcher.innerHTML="";
+  var favorites=state.dockFavorites&&state.dockFavorites.length?state.dockFavorites.slice():
+    ["work-console","decisions","evidence","studio"];
+  var running=Object.keys(state.ui.open).filter(function(id){return !!state.ui.open[id]});
+  var dockIds=[];
+  favorites.forEach(function(id){if(dockIds.indexOf(id)===-1)dockIds.push(id)});
+  running.forEach(function(id){if(dockIds.indexOf(id)===-1)dockIds.push(id)});
+  dockIds.forEach(function(id){
+    var a=appById(id);if(!a||a.kind==="deferred")return;
+    var dk=document.createElement("button");
+    dk.type="button";dk.dataset.dockApp=a.id;dk.dataset.dockKind=a.kind||"window";
+    dk.setAttribute("aria-label",a.title);
+    dk.innerHTML=(a.icon?'<span class="dock-icon">'+esc(a.icon)+'</span>':'<span class="dock-icon">'+esc((a.short||a.title||a.id).slice(0,2))+'</span>');
+    dk.addEventListener("click",function(){openApp(a.id)});
+    dock.appendChild(dk);
+  });
+  /* Launcher: every registry app (deferred as catalog entries). */
   state.registry.forEach(function(a){
+    if(!launcher)return;
     var deferred=a.kind==="deferred";
-    if(drawer){
-      var b=document.createElement("button");
-      b.type="button";b.dataset.app=a.id;b.dataset.appKind=a.kind||"window";
-      b.textContent=a.title+(deferred?" · soon":"");
-      if(deferred){b.disabled=true;b.setAttribute("aria-disabled","true")}
-      else b.addEventListener("click",function(){openApp(a.id);state.ui.drawer=false;q("[data-app-drawer]").hidden=true;persist()});
-      drawer.appendChild(b);
-    }
-    if(mnav&&!deferred){
+    var b=document.createElement("button");
+    b.type="button";b.dataset.launchApp=a.id;b.dataset.launchKind=a.kind||"window";
+    b.innerHTML='<span class="launcher-icon">'+(a.icon?esc(a.icon):esc((a.short||a.title||a.id).slice(0,2)))+'</span><span class="launcher-label"><strong>'+esc(a.title)+'</strong><small>'+(deferred?"Soon · planned":esc(a.id))+'</small></span>';
+    if(deferred){b.disabled=true;b.setAttribute("aria-disabled","true")}
+    else b.addEventListener("click",function(){openApp(a.id);var panel=q("[data-launcher]");if(panel)panel.hidden=true;persist()});
+    launcher.appendChild(b);
+  });
+  if(mnav){
+    state.registry.forEach(function(a){
+      if(a.kind==="deferred")return;
       var m=document.createElement("button");
       m.type="button";m.dataset.app=a.id;m.textContent=a.short||a.title;
       m.addEventListener("click",function(){openApp(a.id)});
       mnav.appendChild(m);
-    }
-    if(dock){
-      /* Desktop taskbar/dock: one entry per app from the authoritative
-         registry. Non-deferred apps launch/focus on click; deferred apps stay
-         disabled "soon" entries (issue #432). */
-      var dk=document.createElement("button");
-      dk.type="button";dk.dataset.dockApp=a.id;dk.dataset.dockKind=a.kind||"window";
-      dk.setAttribute("aria-label",a.title+(deferred?" (soon)":""));
-      dk.innerHTML=(a.icon?'<span class="dock-icon">'+esc(a.icon)+'</span>':'')+'<span class="dock-label">'+esc(a.short||a.title)+'</span>';
-      if(deferred){dk.disabled=true;dk.setAttribute("aria-disabled","true")}
-      else dk.addEventListener("click",function(){openApp(a.id)});
-      dock.appendChild(dk);
-    }
-  });
-  if(mnav){
-    /* Explicit back navigation on mobile: returns to the default app (Work
-       Console) and preserves the selected Workstream context (openApp only
-       changes the active mobile app, never the context). */
+    });
     var back=document.createElement("button");
     back.type="button";back.dataset.mobileBack="1";back.setAttribute("aria-label","Back to Work Console");back.textContent="\u2190";
     back.addEventListener("click",function(){openApp("work-console")});
@@ -273,10 +277,12 @@ function syncNavActive(){
     var on=narrow?x.dataset.app===state.ui.mobileApp:!!state.ui.open[x.dataset.app];
     x.classList.toggle("active",on);
   });
-  /* Dock active-app affordance: the dock entry of the active window is
-     highlighted, consistent with the focused window (one source of truth). */
+  /* Dock active-app affordance + quiet running indicator: the dock entry of
+     the active window is highlighted; a running dot marks any open app. */
   qa("[data-dock-app]").forEach(function(x){
-    x.classList.toggle("active",narrow?x.dataset.dockApp===state.ui.mobileApp:x.dataset.dockApp===activeWindowId());
+    var id=x.dataset.dockApp,open=!!state.ui.open[id];
+    x.classList.toggle("active",narrow?id===state.ui.mobileApp:id===activeWindowId());
+    x.classList.toggle("running",open);
   });
 }
 
@@ -590,7 +596,12 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
       }
     });
   }
-  qa("[data-reveal-apps]").forEach(function(btn){btn.onclick=function(){var drawer=q("[data-app-drawer]");state.ui.drawer=drawer.hidden;drawer.hidden=!drawer.hidden;btn.setAttribute("aria-expanded",String(state.ui.drawer));persist()}});
+  /* S4: launcher trigger/close replace the removed "Apps & canvas" drawer. */
+  var launcherToggle=q("[data-launcher-toggle]"),launcherPanel=q("[data-launcher]");
+  function openLauncher(){if(launcherPanel){launcherPanel.hidden=false;renderChrome()}}
+  if(launcherToggle){launcherToggle.onclick=function(){var open=launcherPanel&&!launcherPanel.hidden;if(launcherPanel)launcherPanel.hidden=open;this.setAttribute("aria-expanded",String(!open));if(!open)openLauncher()}}
+  var launcherClose=q("[data-launcher-close]");
+  if(launcherClose)launcherClose.onclick=function(){if(launcherPanel)launcherPanel.hidden=true};
   var wsToggle=q("[data-ws-toggle]"),wsPanel=q("[data-workstream-switcher]");
   if(wsToggle&&wsPanel){wsToggle.onclick=function(){var open=wsPanel.hidden;wsPanel.hidden=!open;this.setAttribute("aria-expanded",String(open));if(open)renderSwitcher()}}
   var arrangeButton=q("[data-arrange]");if(arrangeButton)arrangeButton.onclick=toggleArrange;
