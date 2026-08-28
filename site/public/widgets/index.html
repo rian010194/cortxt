@@ -4,14 +4,14 @@
 <body>
 <div class="mode-banner" data-mode-banner><strong>Loading Work Console</strong><span>Checking the Cortxt-owned data boundary…</span></div>
 <div class="os-shell">
-  <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-ws-toggle aria-expanded="false" aria-controls="workstream-switcher">Workstreams</button><button class="chrome-button" data-reveal-apps aria-expanded="false">Apps &amp; canvas</button><button class="avatar" aria-label="Operator profile">RA</button></header>
+  <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-ws-toggle aria-expanded="false" aria-controls="workstream-switcher">Workstreams</button><button class="chrome-button" data-launcher-toggle aria-expanded="false" aria-controls="app-launcher">Launcher</button><button class="avatar" aria-label="Operator profile">RA</button></header>
   <aside class="ws-switcher" id="workstream-switcher" data-workstream-switcher aria-label="Workstream switcher" hidden>
     <div class="ws-head"><p>Workstreams</p><button type="button" class="ws-create" data-ws-create>New workstream</button></div>
     <div class="ws-list" data-ws-list></div>
   </aside>
-  <aside class="app-drawer" data-app-drawer aria-label="Applications" hidden>
-    <div><p>Applications</p><div class="app-list" data-app-list></div></div>
-    <div class="canvas-controls"><p>Composition</p><button data-arrange aria-pressed="false">Arrange windows</button><small>Window controls stay quiet until you choose to compose the canvas.</small></div>
+  <aside class="app-launcher" id="app-launcher" data-launcher aria-label="App launcher" hidden>
+    <div class="launcher-head"><p>Applications</p><button type="button" class="launcher-close" data-launcher-close aria-label="Close launcher">×</button></div>
+    <div class="launcher-list" data-launcher-list></div>
   </aside>
   <nav class="os-dock" data-os-dock aria-label="Application dock"></nav>
   <main class="canvas" data-canvas>
@@ -35,7 +35,7 @@
     <div class="empty-desktop-inner">
       <h2>No windows open</h2>
       <p>Open an app from the dock or launcher to get started.</p>
-      <button type="button" class="chrome-button" data-reveal-apps>Apps &amp; canvas</button>
+      <button type="button" class="chrome-button" data-launcher-toggle>Open launcher</button>
     </div>
   </section>
   <section class="home-surface" data-home-surface aria-label="Cortxt Home" hidden>

@@ -53,11 +53,14 @@ def test_registry_is_the_single_source_for_ported_and_deferred_apps():
 
 
 def test_shell_markup_has_no_hardcoded_per_app_button_list():
-    # The drawer and mobile nav are rendered from the registry, not hard-coded.
-    assert 'data-app-list' in HTML and 'data-mobile-nav' in HTML
+    # The launcher and mobile nav are rendered from the registry, not
+    # hard-coded (S4: the "Apps & canvas" drawer is removed).
+    assert 'data-launcher-list' in HTML and 'data-mobile-nav' in HTML
     assert HTML.count('data-app="') == 0
     assert 'apps.json' in JS
-    assert 'renderChrome' in JS and '[data-app-list]' in JS and '[data-mobile-nav]' in JS
+    assert 'renderChrome' in JS and '[data-launcher-list]' in JS and '[data-mobile-nav]' in JS
+    assert 'data-app-list' not in HTML  # drawer hybrid removed
+    assert 'data-app-drawer' not in HTML
 
 
 def test_maker_studio_host_excludes_deferred_apps_from_its_rail():
@@ -142,7 +145,7 @@ def test_mobile_renders_exactly_one_app_without_window_chrome():
 
 def test_mobile_nav_switches_among_the_three_implemented_apps():
     # mobile nav buttons come from the registry, deferred apps excluded.
-    assert 'if(mnav&&!deferred)' in JS
+    assert 'a.kind==="deferred")return' in JS
     assert 'm.addEventListener("click",function(){openApp(a.id)})' in JS
 
 
@@ -321,10 +324,17 @@ def test_dock_renders_from_registry():
 
 
 def test_dock_entries_launch_or_are_disabled():
-    # Non-deferred dock entries open/focus apps; deferred entries stay disabled.
+    # S4: the dock shows favorites + running apps; deferred apps do NOT appear
+    # in the dock (they live only in the launcher catalog). Dock entries
+    # launch/focus on click.
     js = _widget_read("work-console.js")
     assert 'dk.addEventListener("click",function(){openApp(a.id)})' in js
-    assert 'dk.disabled=true' in js
+    # Deferred apps are excluded from the dock.
+    assert 'if(!a||a.kind==="deferred")return' in js
+    # The launcher catalog marks deferred apps as disabled.
+    launcher_js = js
+    assert 'b.disabled=true;b.setAttribute("aria-disabled","true")' in launcher_js
+    assert 'dataset.launchApp' in launcher_js
 
 
 def test_dock_active_app_consistent_with_focus():
@@ -838,3 +848,49 @@ def test_pinned_semantics_favorite_only():
     by_id = {a["id"]: a for a in APPS["apps"]}
     assert by_id["work-console"]["kind"] == "pinned"  # favorite icon retained
     assert 'isPinned(id)' in JS  # helper retained for favorite semantics
+
+
+# --- S4: dock/launcher separation (issue #443) --------------------------
+# The dock shows favorites + running apps with a quiet running indicator; the
+# launcher lists ALL apps (deferred as catalog); the "Apps & canvas" drawer is
+# removed.
+
+S4_HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+S4_CSS = (WIDGET / "os.css").read_text(encoding="utf-8")
+
+
+def test_dock_is_favorites_plus_running():
+    # The dock renders favorites (default set) plus currently running apps,
+    # with a quiet running indicator; deferred apps never appear in the dock.
+    assert 'var favorites=state.dockFavorites' in JS
+    assert 'var running=Object.keys(state.ui.open)' in JS
+    assert 'if(!a||a.kind==="deferred")return' in JS  # deferred excluded from dock
+    assert 'x.classList.toggle("running",open)' in JS  # quiet running indicator
+    assert '.os-dock button.running::after' in S4_CSS
+
+
+def test_launcher_lists_all_apps_including_deferred_catalog():
+    # The launcher lists every registry app; deferred entries are disabled
+    # catalog items ("Soon · planned").
+    assert 'data-launcher-list' in S4_HTML and 'data-launcher-toggle' in S4_HTML
+    assert 'data-launcher-close' in S4_HTML
+    assert 'state.registry.forEach(function(a)' in JS
+    assert '"Soon · planned"' in JS
+    assert 'b.disabled=true;b.setAttribute("aria-disabled","true")' in JS
+
+
+def test_drawer_hybrid_removed():
+    # The combined "Apps & canvas" drawer is gone; the launcher replaces it.
+    assert 'data-app-list' not in S4_HTML
+    assert 'data-app-drawer' not in S4_HTML
+    assert 'data-reveal-apps' not in S4_HTML
+    assert '.app-launcher{' in S4_CSS
+
+
+def test_launcher_wiring_present():
+    # The launcher opens/closes from chrome; launching a non-deferred app
+    # opens it and closes the launcher.
+    assert 'function openLauncher()' in JS
+    assert 'launcherPanel.hidden=false' in JS
+    assert 'data-launcher-close' in JS
+    assert 'var panel=q("[data-launcher]");if(panel)panel.hidden=true' in JS
