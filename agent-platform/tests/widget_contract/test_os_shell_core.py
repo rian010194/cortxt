@@ -1,0 +1,243 @@
+"""Deterministic checks for the Cortxt OS shell core (issue #418).
+
+The shell is plain HTML/CSS/JS with no JS test runner in this repo, so these
+tests inspect the shell source the same way the sibling widget-host tests do
+(string / JSON assertions). They cover the acceptance criteria: one
+authoritative app registry, separated shell state, Workstream-context
+propagation and persistence, desktop window lifecycle, mobile single-app
+routing, responsive transition, and synthetic/authority parity with the site
+mirror.
+"""
+import json
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+WIDGET = Path(__file__).resolve().parents[2] / "widget"
+MIRROR = Path(__file__).resolve().parents[3] / "site" / "public" / "widgets"
+
+APPS = json.loads((WIDGET / "apps.json").read_text(encoding="utf-8"))
+HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+CSS = (WIDGET / "os.css").read_text(encoding="utf-8")
+JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+
+PORTED = {"work-console", "decisions", "evidence"}
+DEFERRED = {"execution", "policies", "atlas", "connections"}
+
+
+# --- one authoritative app registry ----------------------------------------
+
+def test_registry_ids_are_unique():
+    ids = [app["id"] for app in APPS["apps"]]
+    assert len(ids) == len(set(ids)), f"duplicate app id in apps.json: {ids}"
+
+
+def test_registry_is_the_single_source_for_ported_and_deferred_apps():
+    by_id = {app["id"]: app for app in APPS["apps"]}
+    for app_id in PORTED:
+        assert by_id[app_id]["kind"] in {"pinned", "window"}
+        assert "window" in by_id[app_id]
+    assert by_id["work-console"]["kind"] == "pinned"
+    for app_id in DEFERRED:
+        assert by_id[app_id]["kind"] == "deferred", app_id
+    # every non-"all" entry keeps icon + route (guards apps-manifest test too)
+    for app in APPS["apps"]:
+        if app["id"] == "all":
+            continue
+        assert "icon" in app and "route" in app
+
+
+def test_shell_markup_has_no_hardcoded_per_app_button_list():
+    # The drawer and mobile nav are rendered from the registry, not hard-coded.
+    assert 'data-app-list' in HTML and 'data-mobile-nav' in HTML
+    assert HTML.count('data-app="') == 0
+    assert 'apps.json' in JS
+    assert 'renderChrome' in JS and '[data-app-list]' in JS and '[data-mobile-nav]' in JS
+
+
+def test_maker_studio_host_excludes_deferred_apps_from_its_rail():
+    maker = (WIDGET / "maker.html").read_text(encoding="utf-8")
+    assert 'filter(function(a){ return a.kind !== "deferred"; })' in maker
+
+
+# --- shell state separation ----------------------------------------------
+
+def test_state_separates_ui_context_and_app_local_view():
+    assert 'ui:{open:' in JS and 'zTop:' in JS and 'mobileApp:' in JS
+    assert 'context:{workstreamId:null}' in JS
+    assert 'apps:{"work-console":{panel:' in JS
+
+
+# --- context propagation + persistence ---------------------------------
+
+def test_single_persistence_key_carries_ui_context_and_app_state():
+    assert 'SHELL_KEY="cortxt-os-shell"' in JS
+    assert 'localStorage.setItem(SHELL_KEY,JSON.stringify({ui:state.ui,context:state.context,apps:state.apps}))' in JS
+    assert 'function restore()' in JS and 'localStorage.getItem(SHELL_KEY)' in JS
+
+
+def test_selecting_a_workstream_propagates_to_every_mounted_app():
+    assert 'function propagateContext()' in JS
+    for selector in ('[data-active-context]', '[data-decisions-body]',
+                     '[data-evidence-body]', '[data-studio-frame]'):
+        assert selector in JS
+    assert 'function selectWorkstream(id){state.context.workstreamId=id;persist();propagateContext()}' in JS
+    assert 'selectWorkstream(item.id)' in JS
+
+
+def test_reload_restores_selected_workstream_by_id_not_by_position():
+    # currentItem() only falls back to the first item when nothing was stored.
+    assert 'list.find(function(x){return x.id===wanted})' in JS
+    assert 'if(!wanted&&list.length)return list[0]' in JS
+    # render() no longer force-selects the first item.
+    assert 'select(items[0])' not in JS
+
+
+# --- desktop window lifecycle ------------------------------------------
+
+def test_desktop_lifecycle_controls_exist_for_decisions_and_evidence():
+    for app_id in ("decisions", "evidence"):
+        assert f'data-window-focus="{app_id}"' in HTML
+        assert f'data-window-min="{app_id}"' in HTML
+        assert f'data-close-window="{app_id}"' in HTML
+    # Work Console is pinned: focus + minimise but never close.
+    assert 'data-window="console"' in HTML
+    assert 'data-close-window="console"' not in HTML
+    for fn in ('function openApp', 'function focusApp', 'function closeApp',
+               'function setMin', 'function toggleArrange'):
+        assert fn in JS
+    assert 'isPinned(id)' in JS  # pinned app cannot be closed
+    assert 'state.ui.z[id]=++state.ui.zTop' in JS  # focus raises z-order
+
+
+def test_desktop_layout_survives_reload():
+    # open / minimised / z-order all live in the persisted ui blob.
+    assert 'state.ui.open' in JS and 'state.ui.min' in JS and 'state.ui.z' in JS
+    assert 'x.classList.toggle("minimized"' in JS
+    assert '.app-window.minimized' in CSS
+
+
+# --- mobile single-app routing --------------------------------------
+
+def test_mobile_renders_exactly_one_app_without_window_chrome():
+    assert 'function isNarrow(){return window.innerWidth<=NARROW}' in JS
+    # narrow branch hides every window except the active one.
+    assert 'x.hidden=x.dataset.window!==w' in JS
+    assert 'state.ui.mobileApp' in JS
+    assert '@media(max-width:720px)' in CSS
+    assert '.window-actions{display:none}' in CSS  # no desktop title-bar controls
+    assert '.mobile-nav{position:fixed' in CSS and 'display:flex' in CSS
+
+
+def test_mobile_nav_switches_among_the_three_implemented_apps():
+    # mobile nav buttons come from the registry, deferred apps excluded.
+    assert 'if(mnav&&!deferred)' in JS
+    assert 'm.addEventListener("click",function(){openApp(a.id)})' in JS
+
+
+# --- live responsive transition -----------------------------------
+
+def test_resize_reapplies_view_from_persisted_state_without_reload():
+    assert 'window.addEventListener("resize"' in JS
+    assert 'setTimeout(applyView,120)' in JS
+    # applyView derives from state.ui / state.ui.mobileApp, it does not re-init.
+    assert 'function applyView()' in JS
+    assert 'location.reload' not in JS
+
+
+# --- synthetic determinism / authority boundary preserved -----------
+
+def test_authority_boundary_and_synthetic_mode_are_unchanged():
+    assert 'fetch("api/workstreams"' in JS
+    assert 'fetch("fixtures/workstreams.json"' in JS
+    assert 'The app failed closed. No evidence or decision action is exposed.' in JS
+    assert '"X-Cortxt-Token":state.token' in JS
+    assert 'state.model.synthetic' in JS
+
+
+# --- canonical design system, no private palette -------------------
+
+ROLE_VARS = ("--bg", "--surface", "--layer", "--hover", "--stroke", "--strong",
+             "--text", "--muted", "--dim", "--accent", "--warn", "--bad")
+
+
+def test_shell_css_has_no_private_palette_and_consumes_canonical_tokens():
+    # ADR-043: the OS consumer loads canonical tokens rather than defining a
+    # private palette. Every colour role in :root now resolves from a
+    # --token-* custom property (offline hex only as the var() fallback), and
+    # os.css never *defines* a --token-* property of its own.
+    root = CSS[CSS.index(":root{") + len(":root{"):CSS.index("}", CSS.index(":root{"))]
+    for role in ROLE_VARS:
+        decl = root.split(role + ":", 1)[1].split(";", 1)[0]
+        assert decl.startswith("var(--token-") or decl.startswith("color-mix("), (role, decl)
+    assert "var(--token-" in CSS
+    assert not re.search(r"--token-[\w-]+\s*:(?!,)", CSS), "os.css must not define --token-* properties"
+
+
+def test_os_shell_loads_canonical_tokens_via_widget_host_adapter():
+    # Reuse the existing Widget Host adapter (maker.js -> WidgetMaker.applyTokens),
+    # loaded before the shell script, then fetch the canonical tokens.json.
+    assert '<script src="maker.js"></script>' in HTML
+    assert HTML.index('src="maker.js"') < HTML.index('src="work-console.js"')
+    assert "function loadTokens()" in JS
+    assert 'fetch("tokens.json"' in JS
+    assert "window.WidgetMaker" in JS and "applyTokens" in JS
+    assert "wm.defaultTokens" in JS  # offline fallback to the adapter's own tokens
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node unavailable")
+def test_window_tiling_yields_distinct_non_overlapping_rectangles():
+    # Behavioural check: execute the shell's own deterministic layout function
+    # and prove real geometry -- distinct, in-bounds, pairwise non-overlapping
+    # rectangles -- for 1, 2 and 3 open secondary windows.
+    script = (
+        "const m=require(%s);"
+        "const eps=1e-9;"
+        "function ov(a,b){return a.x<b.x+b.w-eps&&b.x<a.x+a.w-eps&&a.y<b.y+b.h-eps&&b.y<a.y+a.h-eps;}"
+        "for(const ids of [['decisions'],['decisions','evidence'],['decisions','evidence','studio']]){"
+        "  const r=m.tileRects(ids);const keys=['work-console',...ids];"
+        "  for(const k of keys){const g=r[k];"
+        "    if(!g){console.error('missing',k);process.exit(2);}"
+        "    if(g.x<-eps||g.y<-eps||g.x+g.w>1+eps||g.y+g.h>1+eps){console.error('oob',k,JSON.stringify(g));process.exit(3);}}"
+        "  for(let i=0;i<keys.length;i++)for(let j=i+1;j<keys.length;j++){"
+        "    const A=r[keys[i]],B=r[keys[j]];"
+        "    if(JSON.stringify(A)===JSON.stringify(B)){console.error('identical',keys[i],keys[j]);process.exit(4);}"
+        "    if(ov(A,B)){console.error('overlap',keys[i],keys[j],JSON.stringify(A),JSON.stringify(B));process.exit(5);}}"
+        "}"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "work-console.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_shell_markup_and_css_carry_real_movable_resizable_geometry():
+    # No more shared centred rectangle: the placebo "arrange" CSS is gone and
+    # each window has a drag surface (window-bar) plus a resize handle.
+    assert "left:50%;top:50%" not in CSS
+    assert ".canvas.arranging" not in CSS
+    assert "data-window-resize" in HTML and HTML.count("data-window-resize") >= 3
+    assert ".canvas.compose .window-resize{display:block}" in CSS
+    assert "function applyGeom()" in JS and "function beginWindowDrag(" in JS
+    assert "state.ui.geom" in JS  # persisted per-window rects
+
+
+def test_mobile_shows_one_fullscreen_app_with_no_window_chrome():
+    mq = CSS[CSS.index("@media(max-width:720px){"):]
+    mq = mq[:mq.index("@media", 1)]
+    assert ".window-bar{display:none}" in mq         # no desktop window bar on mobile
+    assert ".window-resize{display:none!important}" in mq
+    assert ".mobile-nav{position:fixed" in mq and "bottom:0" in mq  # switcher stays in viewport
+    assert "overflow-x:hidden" in CSS               # shell never wider than the viewport
+    assert "100dvh" in CSS                          # dynamic viewport height, nav not clipped
+    assert "position:static!important" in mq        # absolute geometry is dropped on mobile
+
+
+# --- site mirror parity ------------------------------------------
+
+@pytest.mark.parametrize("name", ["index.html", "os.css", "work-console.js", "apps.json"])
+def test_site_mirror_is_identical(name):
+    assert (WIDGET / name).read_text(encoding="utf-8") == (MIRROR / name).read_text(encoding="utf-8")

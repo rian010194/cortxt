@@ -1,10 +1,13 @@
 {
   "apps": [
-    {"id": "work-console", "title": "Work Console", "icon": "work", "route": "/work", "widgets": ["work-console", "attention-queue"]},
-    {"id": "decisions", "title": "Decisions", "icon": "decisions", "route": "/work/decisions", "widgets": ["decisions"]},
-    {"id": "evidence", "title": "Evidence", "icon": "evidence", "route": "/work/evidence", "widgets": ["evidence"]},
-    {"id": "execution", "title": "Execution Inspector", "icon": "execution", "route": "/work/execution", "widgets": ["pulse", "agents"]},
-    {"id": "studio", "title": "Studio", "icon": "studio", "route": "/studio", "widgets": null},
+    {"id": "work-console", "title": "Work Console", "short": "Work", "icon": "work", "route": "/work", "kind": "pinned", "window": "console", "widgets": ["work-console", "attention-queue"]},
+    {"id": "decisions", "title": "Decisions", "short": "Decisions", "icon": "decisions", "route": "/work/decisions", "kind": "window", "window": "decisions", "widgets": ["decisions"]},
+    {"id": "evidence", "title": "Evidence", "short": "Evidence", "icon": "evidence", "route": "/work/evidence", "kind": "window", "window": "evidence", "widgets": ["evidence"]},
+    {"id": "studio", "title": "Studio", "short": "Studio", "icon": "studio", "route": "/studio", "kind": "window", "window": "studio", "widgets": null},
+    {"id": "execution", "title": "Execution Inspector", "short": "Execution", "icon": "execution", "route": "/work/execution", "kind": "deferred", "widgets": ["pulse", "agents"]},
+    {"id": "policies", "title": "Policies", "short": "Policies", "icon": "policies", "route": "/work/policies", "kind": "deferred", "widgets": null},
+    {"id": "atlas", "title": "Atlas", "short": "Atlas", "icon": "atlas", "route": "/atlas", "kind": "deferred", "widgets": null},
+    {"id": "connections", "title": "Connections", "short": "Connections", "icon": "connections", "route": "/work/connections", "kind": "deferred", "widgets": null},
     {"id": "all", "title": "All widgets", "widgets": null}
   ]
 }

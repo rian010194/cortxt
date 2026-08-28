@@ -664,7 +664,7 @@ async function loadApps(){
     var r = await fetch("apps.json", {cache: "no-store"});
     if(!r.ok) throw Error(r.status);
     var data = await r.json();
-    appState.apps = data.apps || [];
+    appState.apps = (data.apps || []).filter(function(a){ return a.kind !== "deferred"; });
     renderAppRail();
     applyApp(appState.activeId);
     updateNarrowTopBar();

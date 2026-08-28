@@ -4,14 +4,15 @@
 <body>
 <div class="mode-banner" data-mode-banner><strong>Loading Work Console</strong><span>Checking the Cortxt-owned data boundary…</span></div>
 <div class="os-shell">
-  <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-reveal-apps aria-expanded="false">Apps & canvas</button><button class="avatar" aria-label="Operator profile">RA</button></header>
+  <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-reveal-apps aria-expanded="false">Apps &amp; canvas</button><button class="avatar" aria-label="Operator profile">RA</button></header>
   <aside class="app-drawer" data-app-drawer aria-label="Applications" hidden>
-    <div><p>Applications</p><button data-app="console" class="active">Work Console</button><button data-app="decisions">Decisions</button><button data-app="evidence">Evidence</button><button data-app="execution">Execution Inspector</button><button data-app="studio">Studio</button></div>
+    <div><p>Applications</p><div class="app-list" data-app-list></div></div>
     <div class="canvas-controls"><p>Composition</p><button data-arrange aria-pressed="false">Arrange windows</button><small>Window controls stay quiet until you choose to compose the canvas.</small></div>
   </aside>
   <main class="canvas" data-canvas>
-    <section class="app-window primary" data-window="console" aria-labelledby="console-title">
-      <header class="window-bar"><div><span>Default app</span><h1 id="console-title">Work Console</h1></div><div class="window-actions"><button data-window-focus="console" aria-label="Focus Work Console">Focus</button></div></header>
+    <section class="app-window primary" data-window="console" data-app-kind="pinned" aria-labelledby="console-title">
+      <header class="window-bar"><div><span>Default app · pinned</span><h1 id="console-title">Work Console</h1></div><div class="window-actions"><button data-window-min="work-console" aria-label="Minimize Work Console">Minimize</button><button data-window-focus="work-console" aria-label="Focus Work Console">Focus</button></div></header>
+      <span class="window-resize" data-window-resize aria-hidden="true"></span>
       <div class="console-layout">
         <nav class="console-nav" aria-label="Work Console"><button class="active" data-console-view="attention">Attention <b data-attention-count>0</b></button><button data-console-view="workstreams">Workstreams</button><button data-console-view="records">Accepted records</button></nav>
         <div class="console-content">
@@ -22,12 +23,12 @@
         </div>
       </div>
     </section>
-    <section class="app-window related" data-window="decisions" hidden><header class="window-bar"><div><span>Related app</span><h2>Decisions</h2></div><button data-close-window="decisions" aria-label="Close Decisions">×</button></header><div class="app-body" data-decisions-body></div></section>
-    <section class="app-window related" data-window="evidence" hidden><header class="window-bar"><div><span>Related app</span><h2>Evidence</h2></div><button data-close-window="evidence" aria-label="Close Evidence">×</button></header><div class="app-body" data-evidence-body></div></section>
-    <section class="app-window related" data-window="execution" hidden><header class="window-bar"><div><span>Related app · subordinate</span><h2>Execution Inspector</h2></div><button data-close-window="execution" aria-label="Close Execution Inspector">×</button></header><div class="app-body" data-execution-body></div></section>
-    <section class="app-window related studio-window" data-window="studio" hidden><header class="window-bar"><div><span>Active Workstream</span><h2>Studio</h2></div><button data-close-window="studio" aria-label="Close Studio">×</button></header><iframe title="Studio" data-studio-frame data-src="maker.html"></iframe></section>
+    <section class="app-window related" data-window="decisions" data-app-kind="window" hidden><header class="window-bar"><div><span>Related app</span><h2>Decisions</h2></div><div class="window-actions"><button data-window-min="decisions" aria-label="Minimize Decisions">Minimize</button><button data-window-focus="decisions" aria-label="Focus Decisions">Focus</button><button data-close-window="decisions" aria-label="Close Decisions">×</button></div></header><div class="app-body" data-decisions-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="app-window related" data-window="evidence" data-app-kind="window" hidden><header class="window-bar"><div><span>Related app</span><h2>Evidence</h2></div><div class="window-actions"><button data-window-min="evidence" aria-label="Minimize Evidence">Minimize</button><button data-window-focus="evidence" aria-label="Focus Evidence">Focus</button><button data-close-window="evidence" aria-label="Close Evidence">×</button></div></header><div class="app-body" data-evidence-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="app-window related studio-window" data-window="studio" hidden><header class="window-bar"><div><span>Active Workstream</span><h2>Studio</h2></div><div class="window-actions"><button data-window-min="studio" aria-label="Minimize Studio">Minimize</button><button data-window-focus="studio" aria-label="Focus Studio">Focus</button><button data-close-window="studio" aria-label="Close Studio">×</button></div></header><iframe title="Studio" data-studio-frame data-src="maker.html"></iframe><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
   </main>
-  <nav class="mobile-nav" aria-label="Applications"><button data-app="console" class="active">Work</button><button data-app="decisions">Decisions</button><button data-app="evidence">Evidence</button><button data-app="execution">Execution</button><button data-app="studio">Studio</button></nav>
+  <nav class="mobile-nav" data-mobile-nav aria-label="Applications"></nav>
 </div>
 <dialog data-confirm-dialog><form method="dialog"><p class="eyebrow">Reviewed action boundary</p><h2>Confirm durable decision</h2><p>This moves the authoritative GitHub Issue from <b>workflow:review</b> to <b>workflow:done</b>. It does not authorize new scope.</p><label>Approval reference<input data-approval-ref required autocomplete="off" placeholder="Operator approval record"></label><div data-dialog-error role="alert"></div><footer><button value="cancel">Cancel</button><button value="confirm" class="primary-action">Confirm and accept</button></footer></form></dialog>
+<script src="maker.js"></script>
 <script src="work-console.js"></script></body></html>

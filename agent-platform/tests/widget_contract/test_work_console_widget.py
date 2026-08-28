@@ -147,5 +147,10 @@ def test_cli_work_console_view_failing_reader_produces_error_state(tmp_path):
 def test_work_console_default_hides_studio_until_studio_is_opened():
     host = HOST.read_text(encoding="utf-8")
     assert 'data-window="console"' in host
+    # Studio ships as a registered app whose window starts hidden and whose
+    # iframe is not loaded until the app is opened (issue #418).
     assert 'data-window="studio" hidden' in host
-    assert 'data-app="studio"' in host
+    assert 'data-studio-frame data-src="maker.html"' in host
+    assert 'src="maker.html"' not in host.replace('data-src="maker.html"', "")
+    apps = json.loads((HOST.parent / "apps.json").read_text(encoding="utf-8"))
+    assert any(app["id"] == "studio" for app in apps["apps"])
