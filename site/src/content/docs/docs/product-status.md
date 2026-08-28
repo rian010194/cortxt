@@ -26,14 +26,16 @@ Demonstrably present on `main` today:
 - Declarative widget contracts and single-widget generation
   (`cortxt widget generate/edit/remove/reset`, ADR-038).
 - A bounded continuity proof.
-- ADR-042 itself, accepted 2026-08-26.
+- ADR-042 (accepted 2026-08-26) and ADR-044 (accepted 2026-08-28).
 
 ## Accepted direction
 
 Normative direction established by an accepted ADR, not yet fully delivered:
 
-- Cortxt OS as the application shell and Work Console as the accepted
-  default product app (ADR-042).
+- Cortxt OS as the general shell and first-party app runtime, with Work as
+  its first principal app (ADR-042, ADR-044). Work Console is retired by
+  ADR-044 through a bounded compatibility migration to Work; Workspace keeps
+  its execution-resource meaning.
 - Studio: composing multiple generated widgets into coherent views/apps
   (ADR-042, ADR-041) — the single-widget building blocks exist; the
   composition surface does not yet.
@@ -46,7 +48,7 @@ Normative direction established by an accepted ADR, not yet fully delivered:
 Living on branches, worktrees, PRs, or bounded proofs — not on `main` as a
 shipped product surface, or on `main` but incomplete:
 
-- Work Console / app-shell implementation (phase-5 work).
+- Cortxt OS / Work app-shell implementation (phase-5 work).
 - Broader prompt-generated, multi-widget app composition beyond the merged
   single-widget commands above.
 

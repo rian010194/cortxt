@@ -23,12 +23,14 @@ GitHub Issues are the durable source of truth for scope, evidence, review, and a
 
 ## Product boundaries
 
-Per ADR-042 (accepted 2026-08-26), Cortxt is work- and mandate-first: the
-durable Workstream and its authorized outcome are the product, not any one
-interface. Three interfaces expose that authority:
+Per ADR-042 (accepted 2026-08-26) and ADR-044 (accepted 2026-08-28), Cortxt
+is work- and mandate-first: the durable Workstream and its authorized outcome
+are the product, not any one interface. Three interfaces expose that
+authority:
 
-- **Cortxt OS / Work Console** is the accepted default product app. Its
-  current implementation is a shell in active development — not yet a
+- **Cortxt OS** is the accepted general shell and first-party app runtime.
+  **Work** is its first principal app (app ID `work`, route `/work`), not
+  the identity of the OS. Both are in active development — not yet a
   finished product.
 - The **`cortxt` CLI** remains the local, automation, bootstrap, diagnostic,
   and power-user interface, and today is the most complete verified one.
@@ -38,10 +40,11 @@ interface. Three interfaces expose that authority:
 Hermes, Pi, Codex, DSH, and other runtimes are replaceable execution
 resources behind Cortxt-owned adapters — keep the Workstream, replace the
 Run. The legacy web prototype was removed from the repository before the
-first public release (issue #225); Work Console is a distinct, newly
-accepted direction, not a revival of that prototype. Only the human operator
-approves scope, irreversible effects, merge, publication, deploy, and final
-completion.
+first public release (issue #225); Work Console is retired by ADR-044 with a
+bounded compatibility migration to Work, and Workspace keeps its
+execution-resource meaning (the optional Git branch/worktree attached to a
+Workstream). Only the human operator approves scope, irreversible effects,
+merge, publication, deploy, and final completion.
 
 ## Verified capabilities
 
