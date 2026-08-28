@@ -1,21 +1,32 @@
 (function(){"use strict";
 /* Cortxt OS shell core.
    One authoritative app registry (apps.json) drives the app drawer, the mobile
-   navigation bar and window resolution. Shell state is split into three parts:
-     state.ui       global UI state (open/minimised windows, z-order, arrange
-                    mode, drawer, the single active mobile app)
-     state.context  the selected Workstream, propagated to every mounted app
-     state.apps     app-local view state (e.g. the Work Console sub-view)
-   state.ui + state.context + state.apps persist to one localStorage key so a
-   reload restores the layout and the selected Workstream without defaulting
-   back to the first item. The authority boundary (load/loadBoundary/
-   confirmDecision) is unchanged and still fails closed. */
+   navigation bar and window resolution. Shell state is split into:
+     state.ui        global UI state (open/minimised windows, z-order, arrange
+                     mode, drawer, the single active mobile app)
+     state.context   the selected Workstream, propagated to every mounted app
+     state.apps      app-local view state (e.g. the Work Console sub-view)
+     state.windows   WindowInstance model (S2): one running instance of an app,
+                     optionally bound to a workstream (follow-active | locked |
+                     global). The desktop (layout/restoration) is separate from
+                     any app. state.ui is the rendering projection of this
+                     model; windows are the durable domain model.
+     state.dockFavorites / state.desktopLayout
+                     foundations for the later dock/launcher separation (S4).
+   state.ui + state.context + state.apps + state.windows persist to one
+   localStorage key (schema v2) so a reload restores the layout, the selected
+   Workstream, and window workstream bindings. The authority boundary
+   (load/loadBoundary/confirmDecision) is unchanged and still fails closed. */
 var SHELL_KEY="cortxt-os-shell",NARROW=720;
 var state={
   model:null,token:null,capabilities:[],registry:[],
   ui:{open:{"work-console":true},min:{},max:{},z:{},geom:{},zTop:10,arranging:false,mobileApp:"work-console",drawer:false},
-  context:{workstreamId:null},
-  apps:{"work-console":{panel:"attention"}}
+  context:{workstreamId:null,activeWorkstreamId:null},
+  apps:{"work-console":{panel:"attention"}},
+  windows:[],
+  dockFavorites:[],
+  desktopLayout:{},
+  schemaVersion:2
 };
 var q=function(s,r){return(r||document).querySelector(s)},qa=function(s,r){return Array.from((r||document).querySelectorAll(s))};
 var esc=function(v){return String(v==null?"":v).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})};
@@ -104,8 +115,14 @@ function initCompose(){
   });
 }
 
-/* ---- persistence -------------------------------------------------------- */
-function persist(){try{localStorage.setItem(SHELL_KEY,JSON.stringify({ui:state.ui,context:state.context,apps:state.apps}))}catch(_e){}}
+/* ---- persistence (schema v2) ------------------------------------------ */
+/* One localStorage key. Schema v2 adds the WindowInstance model, dock
+   favorites, and desktop layout; v1 blobs (ui/context/apps only) migrate on
+   read so old sessions restore their windows with follow-active bindings. */
+function persist(){
+  syncWindowsFromUi();
+  try{localStorage.setItem(SHELL_KEY,JSON.stringify({v:2,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout}))}catch(_e){}
+}
 function restore(){
   var saved;try{saved=JSON.parse(localStorage.getItem(SHELL_KEY)||"null")}catch(_e){saved=null}
   if(!saved||typeof saved!=="object")return;
@@ -117,8 +134,67 @@ function restore(){
     state.ui.geom=(saved.ui.geom&&typeof saved.ui.geom==="object")?Object.assign({},saved.ui.geom):{};
   }
   if(saved.context&&typeof saved.context.workstreamId==="string")state.context.workstreamId=saved.context.workstreamId;
+  if(saved.context&&typeof saved.context.activeWorkstreamId==="string")state.context.activeWorkstreamId=saved.context.activeWorkstreamId;
   if(saved.apps&&typeof saved.apps==="object")state.apps=Object.assign(state.apps,saved.apps);
   if(!state.apps["work-console"])state.apps["work-console"]={panel:"attention"};
+  if(saved.v===2&&Array.isArray(saved.windows)){
+    state.windows=saved.windows.slice();
+    state.dockFavorites=Array.isArray(saved.dockFavorites)?saved.dockFavorites.slice():[];
+    state.desktopLayout=(saved.desktopLayout&&typeof saved.desktopLayout==="object")?saved.desktopLayout:{};
+  }else{
+    /* v1 migration: derive WindowInstance entries from the ui blob. */
+    syncWindowsFromUi();
+    state.dockFavorites=[];
+    state.desktopLayout={};
+  }
+}
+
+/* ---- WindowInstance model (S2) ---------------------------------------- */
+/* A window is one running instance of an app, optionally bound to a
+   workstream. state.ui remains the rendering projection; windows are the
+   durable domain model. */
+function windowForApp(id){
+  return state.windows.find(function(w){return w.appId===id})||null;
+}
+function syncWindowsFromUi(){
+  var byApp={};
+  state.windows.forEach(function(w){byApp[w.appId]=w});
+  var next=[];
+  state.registry.forEach(function(a){
+    if(a.kind==="deferred")return;
+    var existing=byApp[a.id];
+    next.push(existing?Object.assign({},existing,{displayState:state.ui.min[a.id]?"minimized":(state.ui.max[a.id]?"maximized":"normal"),zIndex:state.ui.z[a.id]||0}):{
+      id:"win-"+a.id,appId:a.id,
+      contextBinding:{mode:"follow-active",workstreamId:null},
+      bounds:(state.ui.geom[a.id]&&typeof state.ui.geom[a.id].x==="number")?state.ui.geom[a.id]:null,
+      displayState:state.ui.min[a.id]?"minimized":(state.ui.max[a.id]?"maximized":"normal"),
+      zIndex:state.ui.z[a.id]||0,
+      appStateRef:null
+    });
+  });
+  state.windows=next;
+}
+function setWindowBinding(id,mode,workstreamId){
+  var w=windowForApp(id);
+  if(!w)return;
+  w.contextBinding={mode:mode==="locked"?"locked":(mode==="global"?"global":"follow-active"),workstreamId:(mode==="locked"&&workstreamId)?workstreamId:null};
+  persist();applyView();
+}
+function effectiveWorkstreamId(id){
+  /* The workstream a window projects: locked -> its own; global -> "all"
+     (no single workstream); follow-active -> the active context. */
+  var w=windowForApp(id);
+  if(!w)return state.context.activeWorkstreamId||state.context.workstreamId||null;
+  if(w.contextBinding.mode==="locked")return w.contextBinding.workstreamId||null;
+  if(w.contextBinding.mode==="global")return "all";
+  return state.context.activeWorkstreamId||state.context.workstreamId||null;
+}
+function bindingLabel(id){
+  var w=windowForApp(id);
+  if(!w||!w.contextBinding)return "follows active";
+  if(w.contextBinding.mode==="locked")return "locked: "+(w.contextBinding.workstreamId||"?");
+  if(w.contextBinding.mode==="global")return "All Work";
+  return "follows active";
 }
 
 /* ---- authoritative app registry -------------------------------------- */
@@ -227,6 +303,11 @@ function applyView(){
     var arrange=q("[data-arrange]");if(arrange)arrange.setAttribute("aria-pressed",String(!!state.ui.arranging));
     applyGeom();
   }
+  /* S2: quiet workstream-binding indicator per window. */
+  qa("[data-binding-indicator]").forEach(function(el){
+    var id=appIdForWindow((el.closest("[data-window]")||{}).dataset? (el.closest("[data-window]")||{}).dataset.window:"");
+    el.textContent=id?bindingLabel(id):"";
+  });
   syncNavActive();
 }
 
@@ -274,6 +355,70 @@ function currentItem(){
   return null;
 }
 function selectWorkstream(id){state.context.workstreamId=id;persist();propagateContext()}
+/* S2: the workstream switcher supports "all" as a distinct global context and
+   routes through a before-switch guard when a mutation is pending. */
+function activeContextId(){
+  return state.context.activeWorkstreamId||state.context.workstreamId||null;
+}
+function hasPendingMutation(){
+  /* A mutation is pending when the confirm dialog is open or an approval
+     reference has been entered but not yet submitted. */
+  var dialog=q("[data-confirm-dialog]");
+  if(dialog&&dialog.open)return true;
+  var ref=q("[data-approval-ref]");
+  if(ref&&ref.value&&ref.value.trim())return true;
+  return false;
+}
+function switchWorkstream(id){
+  /* id: a workstream id, "all", or null (no selection). */
+  if(id!==activeContextId()&&hasPendingMutation()&&!window.confirm("Switch Workstream? Any unsaved approval reference will be discarded."))return;
+  state.context.activeWorkstreamId=(id==="all")?"all":id;
+  if(id==="all"){state.context.workstreamId=null}
+  else{state.context.workstreamId=id}
+  persist();propagateContext();renderSwitcher();
+}
+function recentWorkstreams(){
+  /* Most-recently-used first; attention items float up. */
+  var list=items().slice();
+  list.sort(function(a,b){
+    var aw=a.attention?1:0,bw=b.attention?1:0;
+    if(aw!==bw)return bw-aw;
+    return (b.number||0)-(a.number||0);
+  });
+  return list;
+}
+function renderSwitcher(){
+  var root=q("[data-ws-list]");
+  if(!root)return;
+  var list=items(),active=activeContextId(),recent=recentWorkstreams();
+  var html='';
+  /* All Work is a distinct global context. */
+  html+='<button type="button" class="ws-item'+(active==="all"?" active":"")+'" data-ws-id="all"><span class="ws-icon">\u229e</span><span><strong>All Work</strong><small>every workstream</small></span></button>';
+  /* Recent + attention. */
+  recent.forEach(function(x){
+    var on=active===x.id;
+    html+='<button type="button" class="ws-item'+(on?" active":"")+'" data-ws-id="'+esc(x.id)+'"><span class="ws-icon">'+(x.attention?'<em class="ws-attention">'+esc(x.attention==="decision"?"D":"B")+'</em>':esc(x.id.slice(0,2)))+'</span><span><strong>'+esc(x.title)+'</strong><small>'+esc(x.id)+(x.attention?' · '+esc(x.attention):'')+'</small></span></button>';
+  });
+  /* Archived = accepted records (workflow done). */
+  var done=list.filter(function(x){return x.workflow==="done"});
+  if(done.length){
+    html+='<div class="ws-group">Archived</div>';
+    done.forEach(function(x){
+      var on=active===x.id;
+      html+='<button type="button" class="ws-item'+(on?" active":"")+'" data-ws-id="'+esc(x.id)+'"><span class="ws-icon">\u2713</span><span><strong>'+esc(x.title)+'</strong><small>'+esc(x.id)+' · accepted</small></span></button>';
+    });
+  }
+  root.innerHTML=html;
+  qa("[data-ws-id]",root).forEach(function(b){
+    b.addEventListener("click",function(){switchWorkstream(b.dataset.wsId)});
+  });
+  var count=q("[data-ws-create]");
+  if(count)count.addEventListener("click",function(){
+    /* Creating a workstream is a platform action behind the authorized port;
+       in this slice we surface the command affordance only. */
+    OSRenderer.emit("command",{command:"create-workstream"});
+  });
+}
 function propagateContext(){
   var x=currentItem();
   q("[data-active-context]").textContent=x?(x.id+" · "+x.title):"No Workstream selected";
@@ -309,6 +454,7 @@ function render(){
   if(!handled)renderWorkConsole(q("[data-window=console]"),{workstream:currentItem(),state:state});
   qa("[data-open-review]").forEach(function(button){button.addEventListener("click",function(){openReview(Number(button.dataset.openReview))})});
   showConsole((state.apps["work-console"]&&state.apps["work-console"].panel)||"attention",true);
+  renderSwitcher();
   propagateContext();
 }
 function renderWorkConsole(winEl,ctx){
@@ -401,6 +547,8 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
     });
   }
   q("[data-reveal-apps]").onclick=function(){var drawer=q("[data-app-drawer]");state.ui.drawer=drawer.hidden;drawer.hidden=!drawer.hidden;this.setAttribute("aria-expanded",String(state.ui.drawer));persist()};
+  var wsToggle=q("[data-ws-toggle]"),wsPanel=q("[data-workstream-switcher]");
+  if(wsToggle&&wsPanel){wsToggle.onclick=function(){var open=wsPanel.hidden;wsPanel.hidden=!open;this.setAttribute("aria-expanded",String(open));if(open)renderSwitcher()}}
   var arrangeButton=q("[data-arrange]");if(arrangeButton)arrangeButton.onclick=toggleArrange;
   qa("[data-window-focus]").forEach(function(x){x.onclick=function(){focusApp(x.dataset.windowFocus)}});
   qa("[data-window-min]").forEach(function(x){x.onclick=function(){var id=x.dataset.windowMin;setMin(id,!state.ui.min[id])}});
@@ -427,7 +575,7 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
     renderChrome();applyView();
     return Promise.all([load(),loadBoundary()]);
   }).then(function(values){
-    state.model=values[0];setMode();render();applyView();
+    state.model=values[0];setMode();render();applyView();renderSwitcher();
   }).catch(function(error){
     q("[data-mode-banner]").innerHTML="<strong>Data unavailable</strong><span>"+esc(error.message)+"</span>";
     q("[data-attention-title]").textContent="Work Console could not establish authoritative state.";

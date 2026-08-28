@@ -69,16 +69,22 @@ def test_maker_studio_host_excludes_deferred_apps_from_its_rail():
 
 def test_state_separates_ui_context_and_app_local_view():
     assert 'ui:{open:' in JS and 'zTop:' in JS and 'mobileApp:' in JS
-    assert 'context:{workstreamId:null}' in JS
+    # S2: context carries both the legacy workstreamId and the activeWorkstreamId
+    # ("all" is a distinct global context).
+    assert 'context:{workstreamId:null,activeWorkstreamId:null}' in JS
     assert 'apps:{"work-console":{panel:' in JS
 
 
 # --- context propagation + persistence ---------------------------------
 
-def test_single_persistence_key_carries_ui_context_and_app_state():
+def test_single_persistence_key_carries_ui_context_app_and_windows():
+    # Schema v2 (S2) persists ui/context/apps plus the WindowInstance model,
+    # dock favorites, and desktop layout under one key; v1 blobs migrate.
     assert 'SHELL_KEY="cortxt-os-shell"' in JS
-    assert 'localStorage.setItem(SHELL_KEY,JSON.stringify({ui:state.ui,context:state.context,apps:state.apps}))' in JS
+    assert 'localStorage.setItem(SHELL_KEY,JSON.stringify({v:2,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout}))' in JS
     assert 'function restore()' in JS and 'localStorage.getItem(SHELL_KEY)' in JS
+    assert 'saved.v===2' in JS  # schema-version gate
+    assert 'syncWindowsFromUi()' in JS  # migration path for v1 blobs
 
 
 def test_selecting_a_workstream_propagates_to_every_mounted_app():
@@ -618,3 +624,74 @@ def test_docs_link_points_to_real_docs():
     # And the mislabeled "Docs"-style link to /widgets/ must not be the
     # primary docs affordance in the studio pane header.
     assert 'studio-links"><a href="/docs/widgets/"' in SITE_MAKER
+
+
+# --- S2: workstreams, windows, and hybrid binding (issue #437) ---------
+# The WindowInstance model, workstream switcher, hybrid binding, and schema
+# v2 persistence live in the authoritative work-console.js (agent) and its
+# mirrored site copy (parity asserts byte-identity for the affected files).
+
+S2_HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+S2_CSS = (WIDGET / "os.css").read_text(encoding="utf-8")
+
+
+def test_window_instance_model_present():
+    # state.windows is the durable WindowInstance model; state.ui remains the
+    # rendering projection. A WindowInstance carries id/appId/contextBinding/
+    # bounds/displayState/zIndex (multi-window per app is representable).
+    assert 'windows:[]' in JS
+    assert 'function windowForApp(id)' in JS
+    assert 'function syncWindowsFromUi()' in JS
+    assert 'contextBinding:{mode:"follow-active",workstreamId:null}' in JS
+    assert 'displayState:state.ui.min[a.id]?"minimized":' in JS
+    assert 'zIndex:state.ui.z[a.id]||0' in JS
+
+
+def test_hybrid_binding_modes_and_effective_workstream():
+    # Windows bind follow-active | locked | global; effectiveWorkstreamId
+    # resolves the projected workstream; bindingLabel is the quiet indicator.
+    assert 'function setWindowBinding(id,mode,workstreamId)' in JS
+    assert 'mode==="locked"' in JS and '"global"' in JS and '"follow-active"' in JS
+    assert 'function effectiveWorkstreamId(id)' in JS
+    assert 'return "all"' in JS
+    assert 'function bindingLabel(id)' in JS
+    assert '"follows active"' in JS and '"locked: "' in JS and '"All Work"' in JS
+
+
+def test_workstream_switcher_surfaces():
+    # The switcher exposes recent, attention, All Work, create, and archived;
+    # selection is a shell action; switchWorkstream supports "all".
+    assert 'function renderSwitcher()' in JS
+    assert 'function switchWorkstream(id)' in JS
+    assert 'function activeContextId()' in JS
+    assert '"all"' in JS and 'data-ws-id="all"' in JS
+    assert 'data-ws-list' in JS and 'data-ws-toggle' in JS
+    assert 'function recentWorkstreams()' in JS
+    assert 'data-ws-create' in JS
+    assert 'data-ws-list' in S2_HTML and 'data-ws-toggle' in S2_HTML and 'data-ws-create' in S2_HTML
+    assert '.ws-item' in S2_CSS and '.ws-switcher' in S2_CSS
+
+
+def test_active_context_supports_all():
+    # activeWorkstreamId is the S2 context carrier; "all" is a distinct global
+    # context; switching to "all" clears the single-workstream selection.
+    assert 'activeWorkstreamId' in JS
+    assert 'state.context.activeWorkstreamId=(id==="all")?"all":id' in JS
+    assert 'state.context.workstreamId=null' in JS
+
+
+def test_before_switch_guard_blocks_pending_mutation():
+    # hasPendingMutation detects an open confirm dialog or an entered approval
+    # reference; switchWorkstream routes through the guard.
+    assert 'function hasPendingMutation()' in JS
+    assert 'dialog.open' in JS
+    assert 'data-approval-ref' in JS
+    assert 'window.confirm("Switch Workstream?' in JS
+
+
+def test_binding_indicator_rendered_in_chrome():
+    # Each window bar carries a quiet binding indicator populated by applyView.
+    assert S2_HTML.count('data-binding-indicator') >= 4
+    assert 'function bindingLabel(id)' in JS
+    assert 'el.textContent=id?bindingLabel(id):""' in JS
+    assert '.binding-indicator' in S2_CSS
