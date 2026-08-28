@@ -24,6 +24,7 @@ HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
 CSS = (WIDGET / "os.css").read_text(encoding="utf-8")
 JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
 RENDERER = (WIDGET / "os-renderer.js").read_text(encoding="utf-8")
+D_RENDERER = (WIDGET / "app-renderer-decisions-evidence.js").read_text(encoding="utf-8")
 
 PORTED = {"work-console", "decisions", "evidence"}
 DEFERRED = {"execution", "policies", "atlas", "connections"}
@@ -323,6 +324,64 @@ def test_renderer_registry_dispatch_and_fallback_behavior():
         "if(calls.length!==1||calls[0][1]!=='EL'||calls[0][2].x!==1)process.exit(6);"
         "console.log('ok');"
     ) % json.dumps(str(WIDGET / "os-renderer.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+# --- Decisions and Evidence authority journey (#427) -------------------
+
+def test_decisions_evidence_renderer_loaded_and_registered():
+    # The app renderer file loads after os-renderer.js and before the shell,
+    # and registers both apps with the shared registry.
+    assert HTML.index('src="os-renderer.js"') < HTML.index('src="app-renderer-decisions-evidence.js"')
+    assert HTML.index('src="app-renderer-decisions-evidence.js"') < HTML.index('src="work-console.js"')
+    assert 'OSRenderer.register("decisions", renderDecisions)' in D_RENDERER
+    assert 'OSRenderer.register("evidence", renderEvidence)' in D_RENDERER
+
+
+def test_decisions_is_an_authority_aware_app():
+    # Decisions shows the pending decision plus evidence context and exposes a
+    # fail-closed accept path (approval reference + explicit confirmation).
+    assert "function renderDecisions(winEl, ctx)" in D_RENDERER
+    assert "No authoritative decision is pending" in D_RENDERER
+    assert 'data-d-accept' in D_RENDERER
+    assert "Preview acceptance" in D_RENDERER  # synthetic never mutates
+    assert "Approval reference is required." in D_RENDERER  # fail closed
+    assert '"X-Cortxt-Token": s.token' in D_RENDERER
+
+
+def test_evidence_is_attributable_and_read_only():
+    # Evidence projects attributable evidence for the selected Workstream and
+    # never exposes an action.
+    assert "function renderEvidence(winEl, ctx)" in D_RENDERER
+    assert "No authoritative evidence is attached." in D_RENDERER
+    assert "ev.status" in D_RENDERER
+    assert "review-actions" not in D_RENDERER.split("function renderEvidence")[1]
+
+
+def test_shell_delegates_decisions_evidence_to_shared_renderer():
+    # The shell's propagateContext delegates to OSRenderer for decisions and
+    # evidence with inline fallback (issue #425 behavior preserved).
+    assert 'OSRenderer.render("decisions"' in JS
+    assert 'OSRenderer.render("evidence"' in JS
+    assert "OSRenderer" in JS
+
+
+def test_decisions_evidence_renderer_registration_behavior():
+    # Behavioral check: load os-renderer.js then the app renderer in a DOM-less
+    # runtime and prove both apps are registered and dispatch.
+    import subprocess
+    script = (
+        "const m=require(%s);"
+        "const d=require(%s);"
+        "if(!m.has('decisions')||!m.has('evidence'))process.exit(2);"
+        "const el={innerHTML:''};"
+        "if(m.render('decisions',el,{workstream:null,state:{}})!==true)process.exit(3);"
+        "if(el.innerHTML.indexOf('Select a Workstream')===-1)process.exit(4);"
+        "if(m.render('evidence',el,{workstream:null,state:{}})!==true)process.exit(5);"
+        "console.log('ok');"
+    ) % (json.dumps(str(WIDGET / "os-renderer.js")), json.dumps(str(WIDGET / "app-renderer-decisions-evidence.js")))
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
