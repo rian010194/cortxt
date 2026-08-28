@@ -603,7 +603,7 @@ def test_decisions_evidence_renderer_registration_behavior():
 # track, not S1a.
 @pytest.mark.parametrize("name", [
     "index.html", "os.css", "work-console.js", "apps.json",
-    "os-renderer.js", "app-renderer-decisions-evidence.js",
+    "shell-commands.js", "os-renderer.js", "app-renderer-decisions-evidence.js",
 ])
 def test_site_mirror_is_identical(name):
     assert (WIDGET / name).read_text(encoding="utf-8") == (MIRROR / name).read_text(encoding="utf-8")
