@@ -236,6 +236,57 @@ def test_mobile_shows_one_fullscreen_app_with_no_window_chrome():
     assert "position:static!important" in mq        # absolute geometry is dropped on mobile
 
 
+# --- slice A: focus, z-order, direct window interaction (#421) ---------
+
+def test_pointer_down_on_window_surface_gives_focus():
+    # The shell listens for pointerdown on any [data-window] surface (except
+    # interactive controls, which keep their own behavior) and focuses it.
+    assert 'document.addEventListener("pointerdown"' in JS
+    assert 'ev.target.closest("[data-window]")' in JS
+    assert 'focusApp(appIdForWindow(win.dataset.window))' in JS
+    assert 'if(ev.target.closest("button,a,input"))return' in JS
+
+
+def test_move_resize_do_not_require_arrange_mode():
+    # Basic window functions must not be gated behind Arrange: the drag gate
+    # only rejects narrow (mobile) viewports and interactive controls.
+    assert 'if(!state.ui.arranging||isNarrow())return;' not in JS
+    assert 'function beginWindowDrag(' in JS
+    assert 'initCompose();' in JS  # bar + resize handles always wired
+
+
+def test_focus_and_z_order_are_consistent():
+    # One source of truth: the active window is the open, non-minimized app
+    # with the highest z-order; the focused class is derived from it.
+    assert 'function activeWindowId()' in JS
+    assert 'state.ui.z[id]=++state.ui.zTop' in JS
+    assert 'id===activeWindowId()' in JS
+    assert '.app-window.focused' in CSS
+
+
+def test_arrange_is_explicit_layout_only():
+    # Arrange stays an explicit layout action (compose class + aria-pressed),
+    # and is no longer a prerequisite for move/resize or focus.
+    assert 'function toggleArrange()' in JS
+    assert '.canvas.compose' in CSS
+    assert 'classList.toggle("compose",!!state.ui.arranging)' in JS
+
+
+def test_direct_resize_handle_visible_without_arrange():
+    # The resize handle renders on desktop without Arrange enabled; mobile
+    # still hides it (covered by the mobile media query test above).
+    rule = CSS[CSS.index(".window-resize{"):]
+    rule = rule[:rule.index("}")]
+    assert "display:block" in rule
+
+
+def test_mobile_back_navigation_preserves_context():
+    # Mobile nav gains an explicit back control that returns to the default
+    # app; openApp only changes the active mobile app, never the context.
+    assert 'data-mobile-back' in JS or "mobileBack" in JS
+    assert 'openApp("work-console")' in JS
+
+
 # --- site mirror parity ------------------------------------------
 
 @pytest.mark.parametrize("name", ["index.html", "os.css", "work-console.js", "apps.json"])
