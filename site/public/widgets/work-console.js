@@ -276,15 +276,28 @@ function setMode(){var banner=q("[data-mode-banner]"),demo=state.model.synthetic
 
 /* ---- Work Console app ---------------------------------------- */
 function render(){
-  var list=items(),attention=list.filter(function(x){return x.attention}),done=list.filter(function(x){return x.workflow==="done"});
-  q("[data-attention-count]").textContent=attention.length;q("[data-attention-title]").textContent=attention.length?(attention.length+(attention.length===1?" boundary is":" boundaries are")+" waiting."):"Nothing needs your decision.";
-  q("[data-attention-list]").innerHTML=attention.length?attention.map(function(x){return '<article class="attention-card"><div><span class="state">'+esc(x.attention==="decision"?"Decision required":"Blocked")+'</span><h3>'+esc(x.title)+'</h3><p>'+esc(x.outcome)+'</p></div><button data-open-review="'+x.number+'">'+(x.decision?"Review and decide":"View Workstream")+' →</button></article>'}).join(""):empty("No Workstream currently requires operator attention.");
-  q("[data-workstream-list]").innerHTML=list.length?list.map(row).join(""):empty("No authoritative Workstreams are available.");q("[data-record-list]").innerHTML=done.length?done.map(row).join(""):empty("No accepted records are available in this projection.");
+  var handled=OSRenderer.render("work-console",q("[data-window=console]"),{workstream:currentItem(),state:state});
+  if(!handled)renderWorkConsole(q("[data-window=console]"),{workstream:currentItem(),state:state});
   qa("[data-open-review]").forEach(function(button){button.addEventListener("click",function(){openReview(Number(button.dataset.openReview))})});
   showConsole((state.apps["work-console"]&&state.apps["work-console"].panel)||"attention",true);
   propagateContext();
 }
-function row(x){return '<button class="workstream-row" data-open-review="'+x.number+'"><span>'+esc(x.id)+'</span><span><strong>'+esc(x.title)+'</strong><small>'+esc(x.outcome)+'</small></span><span class="workflow">'+esc(x.workflow.replace("-"," "))+'</span></button>'}
+function renderWorkConsole(winEl,ctx){
+  /* Registered OSRenderer for work-console (issue #426): renders the operator
+     panels (Attention, Workstreams, Accepted records) from the shared shell
+     context. When the registry is unavailable the shell calls this directly as
+     its fallback, so behavior is preserved either way. */
+  var s=(ctx&&ctx.state)||state,list=s.model&&s.model.workstreams? s.model.workstreams:[];
+  var attention=list.filter(function(x){return x.attention}),done=list.filter(function(x){return x.workflow==="done"});
+  q("[data-attention-count]").textContent=attention.length;q("[data-attention-title]").textContent=attention.length?(attention.length+(attention.length===1?" boundary is":" boundaries are")+" waiting."):"Nothing needs your decision.";
+  q("[data-attention-list]").innerHTML=attention.length?attention.map(function(x){return '<article class="attention-card"><div><span class="state">'+esc(x.attention==="decision"?"Decision required":"Blocked")+'</span><h3>'+esc(x.title)+'</h3><p>'+esc(x.outcome)+'</p></div><button data-open-review="'+x.number+'">'+(x.decision?"Review and decide":"View Workstream")+' →</button></article>'}).join(""):empty("No Workstream currently requires operator attention.");
+  q("[data-workstream-list]").innerHTML=list.length?list.map(row).join(""):empty("No authoritative Workstreams are available.");q("[data-record-list]").innerHTML=done.length?done.map(row).join(""):empty("No accepted records are available in this projection.");
+}
+function row(x){return '<button class="workstream-row" data-open-review="'+x.number+'"><span>'+esc(x.id)+'</span><span><strong>'+esc(x.title)+'</strong><small>'+esc(x.outcome)+'</small>'+(x.decision?'<em class="pending-decision">Decision pending</em>':'')+(x.evidence&&x.evidence.length?'<em class="evidence-count">'+x.evidence.length+' evidence</em>':'')+'</span><span class="workflow">'+esc(x.workflow.replace("-"," "))+'</span></button>'}
+/* Register the Work Console app renderer with the shared registry so it is a
+   first-class app like Decisions/Evidence (issue #426). Guarded for the
+   DOM-less Node test runtime where OSRenderer is absent. */
+if(typeof OSRenderer!=="undefined"){OSRenderer.register("work-console",renderWorkConsole)}
 function openReview(number){
   var item=items().find(function(x){return x.number===number});if(!item)return;
   selectWorkstream(item.id);
