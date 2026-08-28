@@ -13,6 +13,11 @@
      open-home{}                open Cortxt Home (typed; no-ops until S5)
      exit-workspace{}           return to the public landing experience
      open-external{url}         explicit external navigation (new tab)
+
+   Deep links (#app=<id>[&ws=<id>]) resolve the legacy `work-console` app id
+   to the first principal app `work` through a one-release compatibility
+   alias (ADR-044). Unknown commands, apps, and workstreams fail closed: the
+   router ignores them and never navigates.
 */
 (function (global) {
   "use strict";
@@ -26,14 +31,24 @@
     "open-external": true,
   };
 
+  /* ADR-044: Work Console is retired. For one release cycle its app id
+     resolves to the first principal app `work`; removing the alias is a
+     separate operator decision. */
+  var LEGACY_APP_ALIASES = { "work-console": "work" };
+
+  function normalizeAppId(id) {
+    return LEGACY_APP_ALIASES[id] || id;
+  }
+
   function isPlainObject(x) {
     return !!x && typeof x === "object" && !Array.isArray(x);
   }
 
   /* ---- deep links ---------------------------------------------------- */
   function parseDeepLink(hash) {
-    /* Accepts "#app=studio&ws=WS-042", "#app=work-console", "#ws=all", or
-       empty. Returns {appId, workstreamId} (either may be null). */
+    /* Accepts "#app=studio&ws=WS-042", "#app=work-console" (-> "#app=work"),
+       "#ws=all", or empty. Returns {appId, workstreamId} (either may be
+       null); the legacy work-console app id normalizes to `work`. */
     var out = { appId: null, workstreamId: null };
     if (!hash || hash === "#" || hash === "#/") return out;
     var h = hash.charAt(0) === "#" ? hash.slice(1) : hash;
@@ -43,7 +58,7 @@
       var kv = pairs[i].split("=", 2);
       var k = decodeURIComponent(kv[0] || "").trim();
       var v = kv.length > 1 ? decodeURIComponent(kv[1] || "").trim() : "";
-      if (k === "app" && v) out.appId = v;
+      if (k === "app" && v) out.appId = normalizeAppId(v);
       else if (k === "ws" && v) out.workstreamId = v;
     }
     return out;
@@ -56,6 +71,8 @@
 
   var API = {
     APP_COMMANDS: APP_COMMANDS,
+    LEGACY_APP_ALIASES: LEGACY_APP_ALIASES,
+    normalizeAppId: normalizeAppId,
     parseDeepLink: parseDeepLink,
 
     /** Dispatch a typed command to the provided handlers. handlers is an

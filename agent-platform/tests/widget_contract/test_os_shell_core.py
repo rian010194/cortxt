@@ -26,7 +26,7 @@ JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
 RENDERER = (WIDGET / "os-renderer.js").read_text(encoding="utf-8")
 D_RENDERER = (WIDGET / "app-renderer-decisions-evidence.js").read_text(encoding="utf-8")
 
-PORTED = {"work-console", "decisions", "evidence"}
+PORTED = {"work", "decisions", "evidence"}
 DEFERRED = {"execution", "policies", "atlas", "connections"}
 
 
@@ -42,7 +42,14 @@ def test_registry_is_the_single_source_for_ported_and_deferred_apps():
     for app_id in PORTED:
         assert by_id[app_id]["kind"] in {"pinned", "window"}
         assert "window" in by_id[app_id]
-    assert by_id["work-console"]["kind"] == "pinned"
+    # S5.5a/ADR-044: Work is the first principal app (id `work`, route `/work`);
+    # Work Console is retired and no `workspace` app identity exists.
+    assert by_id["work"]["kind"] == "pinned"
+    assert by_id["work"]["route"] == "/work"
+    assert by_id["work"]["window"] == "work"
+    assert by_id["work"]["mode"] == "operator"
+    assert "work-console" not in by_id
+    assert "workspace" not in by_id
     for app_id in DEFERRED:
         assert by_id[app_id]["kind"] == "deferred", app_id
     # every non-"all" entry keeps icon + route (guards apps-manifest test too)
@@ -75,19 +82,22 @@ def test_state_separates_ui_context_and_app_local_view():
     # S2: context carries both the legacy workstreamId and the activeWorkstreamId
     # ("all" is a distinct global context).
     assert 'context:{workstreamId:null,activeWorkstreamId:null}' in JS
-    assert 'apps:{"work-console":{panel:' in JS
+    # ADR-044: app-local state is separate and empty by default (the Work
+    # Console sub-view state is retired with the app).
+    assert 'apps:{}' in JS
 
 
 # --- context propagation + persistence ---------------------------------
 
 def test_single_persistence_key_carries_ui_context_app_and_windows():
-    # Schema v2 (S2) persists ui/context/apps plus the WindowInstance model,
-    # dock favorites, and desktop layout under one key; v1 blobs migrate.
+    # Schema v3 (S5.5a) persists ui/context/apps plus the WindowInstance model,
+    # dock favorites, and desktop layout under one key; v1/v2 blobs migrate.
     assert 'SHELL_KEY="cortxt-os-shell"' in JS
-    assert 'localStorage.setItem(SHELL_KEY,JSON.stringify({v:2,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout}))' in JS
+    assert 'localStorage.setItem(SHELL_KEY,JSON.stringify({v:3,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout,schemaVersion:3}))' in JS
     assert 'function restore()' in JS and 'localStorage.getItem(SHELL_KEY)' in JS
-    assert 'saved.v===2' in JS  # schema-version gate
+    assert 'saved.v===2||saved.v===3' in JS  # schema-version gate
     assert 'syncWindowsFromUi()' in JS  # migration path for v1 blobs
+    assert 'function migrateSavedState(saved)' in JS  # v2 -> v3 work-console -> work
 
 
 def test_selecting_a_workstream_propagates_to_every_mounted_app():
@@ -96,7 +106,10 @@ def test_selecting_a_workstream_propagates_to_every_mounted_app():
                      '[data-evidence-body]', '[data-studio-frame]'):
         assert selector in JS
     assert 'function selectWorkstream(id){state.context.workstreamId=id;persist();propagateContext()}' in JS
-    assert 'selectWorkstream(item.id)' in JS
+    # The switcher routes selection through propagateContext (S2), and the
+    # Work renderer reads the same shell-owned context projection.
+    assert 'persist();propagateContext();renderSwitcher();' in JS
+    assert 'var workEl=q("[data-work-body]")' in JS
 
 
 def test_reload_restores_selected_workstream_by_id_not_by_position():
@@ -114,9 +127,10 @@ def test_desktop_lifecycle_controls_exist_for_decisions_and_evidence():
         assert f'data-window-focus="{app_id}"' in HTML
         assert f'data-window-min="{app_id}"' in HTML
         assert f'data-close-window="{app_id}"' in HTML
-    # Work Console is pinned: focus + minimise but never close.
-    assert 'data-window="console"' in HTML
-    assert 'data-close-window="console"' not in HTML
+    # Work is the first principal app: focus + minimise but never close
+    # (ADR-044; kind pinned = favorite semantics, not an unclosable window).
+    assert 'data-window="work"' in HTML
+    assert 'data-close-window="work"' not in HTML
     for fn in ('function openApp', 'function focusApp', 'function closeApp',
                'function setMin', 'function toggleArrange'):
         assert fn in JS
@@ -164,8 +178,10 @@ def test_resize_reapplies_view_from_persisted_state_without_reload():
 def test_authority_boundary_and_synthetic_mode_are_unchanged():
     assert 'fetch("api/workstreams"' in JS
     assert 'fetch("fixtures/workstreams.json"' in JS
-    assert 'The app failed closed. No evidence or decision action is exposed.' in JS
-    assert '"X-Cortxt-Token":state.token' in JS
+    assert 'The shell failed closed: no evidence or decision action is exposed.' in JS
+    # The mandate-protected action port (X-Cortxt-Token) now lives in the
+    # Decisions renderer, which owns the record-decision mutation (ADR-044).
+    assert '"X-Cortxt-Token": s.token' in D_RENDERER
     assert 'state.model.synthetic' in JS
 
 
@@ -209,7 +225,7 @@ def test_window_tiling_yields_distinct_non_overlapping_rectangles():
         "const eps=1e-9;"
         "function ov(a,b){return a.x<b.x+b.w-eps&&b.x<a.x+a.w-eps&&a.y<b.y+b.h-eps&&b.y<a.y+a.h-eps;}"
         "for(const ids of [['decisions'],['decisions','evidence'],['decisions','evidence','studio']]){"
-        "  const r=m.tileRects(ids);const keys=['work-console',...ids];"
+        "  const r=m.tileRects(ids);const keys=['work',...ids];"
         "  for(const k of keys){const g=r[k];"
         "    if(!g){console.error('missing',k);process.exit(2);}"
         "    if(g.x<-eps||g.y<-eps||g.x+g.w>1+eps||g.y+g.h>1+eps){console.error('oob',k,JSON.stringify(g));process.exit(3);}}"
@@ -295,7 +311,7 @@ def test_mobile_back_navigation_preserves_context():
     # Mobile nav gains an explicit back control that returns to the default
     # app; openApp only changes the active mobile app, never the context.
     assert 'data-mobile-back' in JS or "mobileBack" in JS
-    assert 'openApp("work-console")' in JS
+    assert 'openApp("work")' in JS
 
 
 # --- dock/taskbar + maximize/restore (#432) ----------------------------
@@ -361,45 +377,68 @@ def test_maximize_restore_state_and_persistence():
 
 
 def test_maximize_buttons_wired_and_console_excluded():
-    # Maximize buttons exist for decisions/evidence/studio but not console.
+    # Maximize buttons exist for decisions/evidence/studio but not Work.
     html = _widget_read("index.html")
     js = _widget_read("work-console.js")
     assert html.count('data-window-max="') >= 3
-    assert 'data-window-max="work-console"' not in html
+    assert 'data-window-max="work"' not in html
     assert 'toggleMax(x.dataset.windowMax)' in js
 
 
-# --- Work Console as a registered operator app (#426) ------------------
+# --- Work as the first principal app (ADR-044/S5.5a) -------------------
 
-def test_work_console_registered_in_shared_renderer():
-    # Work Console is a first-class registered app, like Decisions/Evidence.
-    assert 'OSRenderer.register("work-console",renderWorkConsole)' in JS
-    assert "function renderWorkConsole(" in JS
+def test_work_app_registered_in_shared_renderer():
+    # Work is a first-class registered app, like Decisions/Evidence; the
+    # retired work-console renderer is gone (ADR-044).
+    assert 'OSRenderer.register("work",renderWork)' in JS
+    assert "function renderWork(" in JS
+    assert 'OSRenderer.register("work-console"' not in JS
+    assert "function renderWorkConsole(" not in JS
 
 
-def test_render_delegates_to_work_console_renderer_with_fallback():
-    # render() delegates panel rendering to the registry and falls back to the
+def test_render_delegates_to_work_renderer_with_fallback():
+    # render() delegates the Work body to the registry and falls back to the
     # same function directly when the registry is unavailable.
-    assert 'var handled=OSRenderer.render("work-console"' in JS
-    assert 'if(!handled)renderWorkConsole(' in JS
+    assert 'var workEl=q("[data-work-body]")' in JS
+    assert 'OSRenderer.render("work",workEl' in JS
+    assert 'if(workEl&&!OSRenderer.render("work"' in JS
 
 
-def test_work_console_row_projects_decision_and_evidence_state():
-    # The operator row shows pending-decision and evidence-count projections
-    # from the Workstream data (no app-local fork).
-    assert "pending-decision" in JS
-    assert "evidence-count" in JS
-    assert ".workstream-row .pending-decision" in CSS
-    assert ".workstream-row .evidence-count" in CSS
+def test_work_summary_projects_workstream_state_without_forking():
+    # The Work surface is a read-only summary of the shell-owned Workstream:
+    # title/outcome/workflow/decision/evidence, with validated deep links into
+    # Decisions and Evidence. No app-local fork, no review flow, no mutation.
+    assert "work-objective" in JS
+    assert "work-facts" in JS
+    assert 'data-work-open="decisions"' in JS
+    assert 'data-work-open="evidence"' in JS
+    assert 'dispatchCommand("open-app",{appId:b.dataset.workOpen})' in JS
+    assert "openReview(" not in JS
+    assert "showConsole(" not in JS
+    assert "confirmDecision(" not in JS
 
 
-def test_work_console_panels_render_from_shared_context():
-    # renderWorkConsole reads its data from the passed context/state, the same
-    # shell-owned projection the whole OS uses.
-    assert "var s=(ctx&&ctx.state)||state" in JS
-    assert "s.model&&s.model.workstreams" in JS
-    assert "attention.map(function(x)" in JS
-    assert 'empty("No Workstream currently requires operator attention.")' in JS
+def test_work_surface_never_duplicates_full_app_workflows():
+    # ADR-044: Work never duplicates a full app workflow; the console review
+    # panels (attention/workstreams/records) are retired with Work Console.
+    assert "data-console-panel" not in HTML
+    assert "data-console-view" not in HTML
+    assert "data-attention-count" not in HTML
+    assert "data-review" not in HTML
+    assert "console-nav" not in HTML
+    # The record-decision authority flow lives in Decisions (its own dialog),
+    # not in the shell console (verified ownership).
+    assert 'action_id: "record-decision"' in D_RENDERER
+    assert "data-d-approval" in D_RENDERER
+
+
+def test_confirm_dialog_ownership_moved_to_decisions():
+    # The shell's console confirm dialog is removed; the before-switch guard
+    # now watches Decisions' own dialog + approval reference.
+    assert "data-confirm-dialog" not in HTML
+    assert "data-approval-ref" not in HTML
+    assert 'document.querySelector("dialog[open]")' in JS
+    assert "[data-d-approval]" in JS
 
 
 # --- shared app renderer module (#425) ---------------------------------
@@ -564,7 +603,7 @@ def test_decisions_evidence_renderer_registration_behavior():
 # track, not S1a.
 @pytest.mark.parametrize("name", [
     "index.html", "os.css", "work-console.js", "apps.json",
-    "os-renderer.js", "app-renderer-decisions-evidence.js",
+    "shell-commands.js", "os-renderer.js", "app-renderer-decisions-evidence.js",
 ])
 def test_site_mirror_is_identical(name):
     assert (WIDGET / name).read_text(encoding="utf-8") == (MIRROR / name).read_text(encoding="utf-8")
@@ -691,11 +730,12 @@ def test_active_context_supports_all():
 
 
 def test_before_switch_guard_blocks_pending_mutation():
-    # hasPendingMutation detects an open confirm dialog or an entered approval
+    # hasPendingMutation detects an open authority dialog (Decisions owns the
+    # record-decision dialog since ADR-044/S5.5a) or an entered approval
     # reference; switchWorkstream routes through the guard.
     assert 'function hasPendingMutation()' in JS
-    assert 'dialog.open' in JS
-    assert 'data-approval-ref' in JS
+    assert 'dialog[open]' in JS
+    assert '[data-d-approval]' in JS
     assert 'window.confirm("Switch Workstream?' in JS
 
 
@@ -728,9 +768,10 @@ def test_command_router_defines_typed_commands():
 
 def test_deep_link_parser_supports_app_and_ws():
     # #app=<id>[&ws=<id>] parses into {appId, workstreamId}; empty hash yields
-    # nulls; "all" is a valid workstream value.
+    # nulls; "all" is a valid workstream value; the legacy work-console app id
+    # normalizes to work (ADR-044).
     assert 'function parseDeepLink(hash)' in SHELL_COMMANDS
-    assert 'out.appId = v' in SHELL_COMMANDS
+    assert 'out.appId = normalizeAppId(v)' in SHELL_COMMANDS
     assert 'out.workstreamId = v' in SHELL_COMMANDS
     assert 'applyDeepLink' in SHELL_COMMANDS
 
@@ -738,12 +779,14 @@ def test_deep_link_parser_supports_app_and_ws():
 def test_shell_wires_command_handlers():
     # The shell exposes commandHandlers and dispatches to lifecycle functions;
     # open-home no-ops gracefully; exit-workspace returns to landing;
-    # open-external opens a new tab.
+    # open-external opens a new tab. S5.5a: open-app and switch-workstream
+    # validate their references (unknown ids fail closed) and open-app
+    # resolves the legacy work-console id through the ADR-044 alias.
     assert 'window.ShellCommandHandlers = commandHandlers' in JS
-    assert '"open-app": function(p){ if(p&&p.appId)openApp(p.appId); }' in JS
+    assert '"open-app": function(p){ if(p&&p.appId){var a=appById(migrateWorkConsole(p.appId));if(a&&!isDeferred(a.id))openApp(a.id);} }' in JS
     assert '"close-app": function(p){ if(p&&p.appId)closeApp(p.appId); }' in JS
     assert '"focus-app": function(p){ if(p&&p.appId)focusApp(p.appId); }' in JS
-    assert '"switch-workstream": function(p){ if(p&&p.workstreamId)switchWorkstream(p.workstreamId); }' in JS
+    assert '"switch-workstream": function(p){ if(p&&p.workstreamId){var known=p.workstreamId==="all"||items().some(function(x){return x.id===p.workstreamId});if(known)switchWorkstream(p.workstreamId);} }' in JS
     assert '"open-home": function(){ openHome(); }' in JS
     assert 'window.location.href="/"' in JS  # exit-workspace
     assert 'window.open(p.url,"_blank","noopener")' in JS  # open-external
@@ -774,8 +817,8 @@ def test_history_push_integration():
 
 def test_router_behavior_in_domless_runtime():
     # Behavioral check: execute shell-commands.js in a DOM-less runtime and
-    # prove command dispatch, deep-link parsing, and fail-closed unknown
-    # commands.
+    # prove command dispatch, deep-link parsing, the ADR-044 work-console ->
+    # work alias, and fail-closed unknown commands.
     import subprocess
     script = (
         "const m=require(%s);"
@@ -795,6 +838,12 @@ def test_router_behavior_in_domless_runtime():
         "if(d3.workstreamId!=='all')process.exit(7);"
         "if(m.applyDeepLink('#app=evidence&ws=all',h)!==true)process.exit(8);"
         "if(got.length!==3||got[0][0]!=='open'||got[1][1]!=='all'||got[2][0]!=='open')process.exit(9);"
+        "const d4=m.parseDeepLink('#app=work-console&ws=WS-042');"
+        "if(d4.appId!=='work'||d4.workstreamId!=='WS-042')process.exit(10);"
+        "if(m.normalizeAppId('work-console')!=='work')process.exit(11);"
+        "if(m.normalizeAppId('decisions')!=='decisions')process.exit(12);"
+        "if(m.applyDeepLink('#app=work-console&ws=WS-042',h)!==true)process.exit(13);"
+        "if(got.length!==5||got[3][0]!=='ws'||got[3][1]!=='WS-042'||got[4][0]!=='open'||got[4][1]!=='work')process.exit(14);"
         "console.log('ok');"
     ) % json.dumps(str(WIDGET / "shell-commands.js"))
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
@@ -812,16 +861,16 @@ S3_HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
 
 def test_no_mandatory_pinned_window_in_initial_state():
     # Initial state opens NO window; restore() and applyView() never force
-    # work-console open.
+    # Work open (ADR-044: no app is a shell invariant).
     assert 'ui:{open:{}' in JS
     assert 'state.ui.open=Object.assign({},saved.ui.open);' in JS  # no forced open
-    assert 'state.ui.open["work-console"]=true' not in JS
-    assert 'state.ui.open["work-console"]=true;' not in JS
+    assert 'state.ui.open["work"]=true' not in JS
+    assert 'state.ui.open["work"]=true;' not in JS
 
 
-def test_close_work_console_works():
-    # Work Console is closable like any other window: closeApp only guards
-    # deferred apps.
+def test_close_work_app_works():
+    # Work is closable like any other window: closeApp only guards deferred
+    # apps (ADR-044 item 9: no app is permanently pinned open).
     assert 'if(isDeferred(id))return;\n  delete state.ui.open[id]' in JS or 'if(isDeferred(id))return;' in JS
     assert 'if(isPinned(id)||isDeferred(id))return' not in JS  # pinned guard removed from closeApp
 
@@ -854,7 +903,7 @@ def test_pinned_semantics_favorite_only():
     # "Pinned" no longer implies an unclosable window: the manifest may keep
     # kind:pinned for the dock favorite, but the shell never force-opens it.
     by_id = {a["id"]: a for a in APPS["apps"]}
-    assert by_id["work-console"]["kind"] == "pinned"  # favorite icon retained
+    assert by_id["work"]["kind"] == "pinned"  # favorite icon retained
     assert 'isPinned(id)' in JS  # helper retained for favorite semantics
 
 
@@ -973,3 +1022,132 @@ def test_landing_nav_corrects_the_studio_mislabel():
     assert 'href="/workspace/">Workspace</a>' in text
     assert 'href="/widgets/">Cortxt OS</a>' in text
     assert '>Studio</a>' not in text
+
+
+# --- S5.5a: ADR-044 app boundary + migration seam (issue #449) ----------
+# Work is the first principal app (id `work`, route `/work`); Work Console is
+# retired with a one-release compatibility alias; schema v3 migrates saved
+# sessions; global context is optional; Activity Center has no mutation port.
+
+S55A_HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+S55A_JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node unavailable")
+def test_v2_to_v3_migration_renames_work_console_to_work():
+    # Behavioral check: the pure migration helper renames every work-console
+    # reference (ui open/z/mobileApp, windows, apps, dockFavorites) to `work`
+    # while preserving the selected Workstream and every other open app.
+    script = (
+        "const m=require(%s);"
+        "const saved={v:2,ui:{open:{'work-console':true,'decisions':true},mobileApp:'work-console',z:{'work-console':5},min:{},max:{},geom:{}},context:{workstreamId:'WS-042'},apps:{'work-console':{panel:'attention'},'decisions':{}},windows:[{id:'win-work-console',appId:'work-console',contextBinding:{mode:'locked',workstreamId:'WS-042'}},{id:'win-decisions',appId:'decisions'}],dockFavorites:['work-console','decisions','evidence'],desktopLayout:{}};"
+        "m.migrateSavedState(saved);"
+        "if(saved.ui.open['work']!==true||saved.ui.open['work-console']!==undefined)process.exit(2);"
+        "if(saved.ui.open['decisions']!==true)process.exit(3);"
+        "if(saved.ui.mobileApp!=='work')process.exit(4);"
+        "if(saved.ui.z['work']!==5)process.exit(5);"
+        "if(saved.context.workstreamId!=='WS-042')process.exit(6);"
+        "if(saved.apps['work']===undefined||saved.apps['work-console']!==undefined)process.exit(7);"
+        "if(saved.windows[0].appId!=='work'||saved.windows[1].appId!=='decisions')process.exit(8);"
+        "if(saved.dockFavorites[0]!=='work')process.exit(9);"
+        "if(saved.dockFavorites.indexOf('decisions')===-1)process.exit(10);"
+        "if(saved.schemaVersion!==3)process.exit(11);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "work-console.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_v3_writer_keeps_v2_fields_and_rollback_safe():
+    # The v3 writer keeps the v2 field set intact (additive schema), persists
+    # schemaVersion 3, and migrates saved blobs on read; an older v2 reader
+    # ignores the unknown v3 fields.
+    assert 'JSON.stringify({v:3,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout,schemaVersion:3})' in JS
+    assert 'saved.schemaVersion=3' in JS
+    assert 'function migrateSavedState(saved)' in JS
+    assert 'saved.v===2||saved.v===3' in JS
+    assert 'function migrateWorkConsole(ref)' in JS
+
+
+def test_deep_link_legacy_alias_work_console_to_work():
+    # The router resolves #app=work-console to the work app through the
+    # one-release alias and normalizes app ids (behavioral coverage in the
+    # DOM-less router test).
+    assert 'LEGACY_APP_ALIASES' in SHELL_COMMANDS
+    assert 'work-console' in SHELL_COMMANDS and '"work"' in SHELL_COMMANDS
+    assert 'normalizeAppId' in SHELL_COMMANDS
+    assert 'out.appId = normalizeAppId(v)' in SHELL_COMMANDS
+    assert 'migrateWorkConsole' in S55A_JS  # shell-side alias on activation
+
+
+def test_shell_core_has_no_work_specific_branch():
+    # ADR-044 conformance: registering Work adds no Work-specific branch to
+    # shell core. The renderer/router/window logic operates on generic app ids
+    # from the registry; `work` appears only as a registry entry, a migration
+    # target, and the primary-column layout key.
+    core = RENDERER + SHELL_COMMANDS
+    assert 'if(id==="work")' not in core
+    assert 'appId==="work"' not in core
+    assert 'workstreamId==="work"' not in core
+    # The shell opens apps generically (registry-driven), never by app id.
+    assert 'openApp(a.id)' in JS
+    assert 'focusApp(appIdForWindow(win.dataset.window))' in JS
+    # Work registers through the generic registry path like any other app.
+    assert 'OSRenderer.register("work",renderWork)' in JS
+
+
+def test_app_without_workstream_context_can_register_and_open():
+    # ADR-044 item 8: global context is optional. The registry declares no
+    # mandatory workstream requirement for any app, and the shell opens apps
+    # with no selected Workstream (empty desktop -> launcher -> app).
+    by_id = {a["id"]: a for a in APPS["apps"]}
+    assert "work" in by_id and "home" in by_id
+    for a in APPS["apps"]:
+        assert "requiresWorkstream" not in a, a["id"]
+    # The shell never blocks opening on a missing Workstream selection.
+    assert 'function openApp(id){' in JS
+    assert 'if(!state.context.workstreamId)return' not in JS
+    # Empty desktop affordance exists: the shell is usable with no app open.
+    assert 'data-empty-desktop' in S55A_HTML
+    assert 'emptyDesktop.hidden=!!anyOpen' in JS
+    # Home (S5) is the first-run entry and opens with no Workstream bound.
+    assert 'function openHome()' in JS and 'openApp("home")' in JS
+
+
+def test_activity_center_has_no_mutation_port():
+    # ADR-044 items 5-6: Activity Center consumes typed attention projections
+    # and may not approve, mutate workflow state, own decision requests, or
+    # become a backlog. In S5.5a the projection contract is typed and
+    # read-only; the record-decision mutation port lives only in Decisions.
+    assert 'action_id: "record-decision"' in D_RENDERER
+    assert 'record-decision' not in JS  # shell core exposes no decision mutation
+    assert 'AttentionItemProjection' in JS
+    assert 'function isValidAttentionItem(item)' in JS
+    # The projection contract carries presentation + validated navigation
+    # only: no decision/workflow/mutation fields.
+    contract = JS[JS.index('AttentionItemProjection={'):JS.index('};', JS.index('AttentionItemProjection={'))]
+    for banned in ('mutat', 'approve', 'workflow'):
+        assert banned not in contract, banned
+    # No console attention panel markup remains (retired with Work Console).
+    assert 'data-attention-count' not in S55A_HTML
+    assert 'data-console-panel' not in S55A_HTML
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node unavailable")
+def test_attention_item_validation_behavioral():
+    # isValidAttentionItem accepts a well-formed projection and rejects
+    # malformed items (wrong types, missing fields, missing targetCommand).
+    script = (
+        "const m=require(%s);"
+        "const ok={id:'a1',sourceCapability:'read:decision-pending',sourceRecordRef:'#445',sourceVersion:'v1',workstreamId:'WS-042',occurredAt:'2026-08-28T00:00:00Z',severity:'high',requiresAttention:true,title:'Decision',summary:'pending',targetCommand:'open-app',dedupeKey:'d1',expiresAt:null};"
+        "if(!m.isValidAttentionItem(ok))process.exit(2);"
+        "if(m.isValidAttentionItem(null))process.exit(3);"
+        "if(m.isValidAttentionItem({id:'x'}))process.exit(4);"
+        "if(m.isValidAttentionItem(Object.assign({},ok,{severity:7})))process.exit(5);"
+        "if(m.isValidAttentionItem(Object.assign({},ok,{targetCommand:''})))process.exit(6);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "work-console.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout

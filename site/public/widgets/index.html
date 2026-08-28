@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Cortxt OS Work Console"><title>Cortxt OS</title><link rel="stylesheet" href="os.css"></head>
+<meta name="description" content="Cortxt OS"><title>Cortxt OS</title><link rel="stylesheet" href="os.css"></head>
 <body>
-<div class="mode-banner" data-mode-banner><strong>Loading Work Console</strong><span>Checking the Cortxt-owned data boundary…</span></div>
+<div class="mode-banner" data-mode-banner><strong>Loading Cortxt OS</strong><span>Checking the Cortxt-owned data boundary…</span></div>
 <div class="os-shell">
   <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-ws-toggle aria-expanded="false" aria-controls="workstream-switcher">Workstreams</button><button class="chrome-button" data-launcher-toggle aria-expanded="false" aria-controls="app-launcher">Launcher</button><button class="chrome-button" data-exit-workspace aria-label="Exit Workspace to the public landing">Exit</button><button class="avatar" aria-label="Operator profile">RA</button></header>
   <aside class="ws-switcher" id="workstream-switcher" data-workstream-switcher aria-label="Workstream switcher" hidden>
@@ -15,17 +15,9 @@
   </aside>
   <nav class="os-dock" data-os-dock aria-label="Application dock"></nav>
   <main class="canvas" data-canvas>
-    <section class="app-window primary" data-window="console" data-app-kind="pinned" aria-labelledby="console-title">      <header class="window-bar"><div><span>Default app · pinned</span><h1 id="console-title">Work Console</h1></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="work-console" aria-label="Minimize Work Console">Minimize</button><button data-window-focus="work-console" aria-label="Focus Work Console">Focus</button></div></header>
+    <section class="app-window primary" data-window="work" data-app-kind="pinned" aria-labelledby="work-title">      <header class="window-bar"><div><span>First principal app</span><h1 id="work-title">Work</h1></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="work" aria-label="Minimize Work">Minimize</button><button data-window-focus="work" aria-label="Focus Work">Focus</button></div></header>
       <span class="window-resize" data-window-resize aria-hidden="true"></span>
-      <div class="console-layout">
-        <nav class="console-nav" aria-label="Work Console"><button class="active" data-console-view="attention">Attention <b data-attention-count>0</b></button><button data-console-view="workstreams">Workstreams</button><button data-console-view="records">Accepted records</button></nav>
-        <div class="console-content">
-          <section data-console-panel="attention"><div class="page-heading"><p>Your attention</p><h2 data-attention-title>Loading durable work…</h2><span>Work continues until it reaches a boundary reserved for you.</span></div><div data-attention-list class="attention-list"></div></section>
-          <section data-console-panel="workstreams" hidden><div class="page-heading"><p>Workstreams</p><h2>Durable work, in one place.</h2><span>Outcomes and authority persist even when execution changes.</span></div><div data-workstream-list class="workstream-list"></div></section>
-          <section data-console-panel="records" hidden><div class="page-heading"><p>Accepted records</p><h2>Evidence that survived the run.</h2><span>Accepted records remain attributable to their Workstream.</span></div><div data-record-list class="workstream-list"></div></section>
-          <section data-review hidden></section>
-        </div>
-      </div>
+      <div class="app-body work-app" data-work-body></div>
     </section>
     <section class="app-window related" data-window="decisions" data-app-kind="window" hidden><header class="window-bar"><div><span>Related app</span><h2>Decisions</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="decisions" aria-label="Minimize Decisions">Minimize</button><button data-window-max="decisions" aria-label="Maximize Decisions">Maximize</button><button data-window-focus="decisions" aria-label="Focus Decisions">Focus</button><button data-close-window="decisions" aria-label="Close Decisions">×</button></div></header><div class="app-body" data-decisions-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
     <section class="app-window related" data-window="evidence" data-app-kind="window" hidden><header class="window-bar"><div><span>Related app</span><h2>Evidence</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="evidence" aria-label="Minimize Evidence">Minimize</button><button data-window-max="evidence" aria-label="Maximize Evidence">Maximize</button><button data-window-focus="evidence" aria-label="Focus Evidence">Focus</button><button data-close-window="evidence" aria-label="Close Evidence">×</button></div></header><div class="app-body" data-evidence-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
@@ -41,7 +33,6 @@
   </section>
   <nav class="mobile-nav" data-mobile-nav aria-label="Applications"></nav>
 </div>
-<dialog data-confirm-dialog><form method="dialog"><p class="eyebrow">Reviewed action boundary</p><h2>Confirm durable decision</h2><p>This moves the authoritative GitHub Issue from <b>workflow:review</b> to <b>workflow:done</b>. It does not authorize new scope.</p><label>Approval reference<input data-approval-ref required autocomplete="off" placeholder="Operator approval record"></label><div data-dialog-error role="alert"></div><footer><button value="cancel">Cancel</button><button value="confirm" class="primary-action">Confirm and accept</button></footer></form></dialog>
 <script src="maker.js"></script>
 <script src="os-renderer.js"></script>
 <script src="shell-iframe-bridge.js"></script>

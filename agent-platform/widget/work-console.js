@@ -1,11 +1,11 @@
 (function(){"use strict";
-/* Cortxt OS shell core.
+/* Cortxt OS shell core (ADR-044: general shell and first-party app runtime).
    One authoritative app registry (apps.json) drives the app drawer, the mobile
    navigation bar and window resolution. Shell state is split into:
      state.ui        global UI state (open/minimised windows, z-order, arrange
                      mode, drawer, the single active mobile app)
      state.context   the selected Workstream, propagated to every mounted app
-     state.apps      app-local view state (e.g. the Work Console sub-view)
+     state.apps      app-local view state (never authoritative)
      state.windows   WindowInstance model (S2): one running instance of an app,
                      optionally bound to a workstream (follow-active | locked |
                      global). The desktop (layout/restoration) is separate from
@@ -14,19 +14,24 @@
      state.dockFavorites / state.desktopLayout
                      foundations for the later dock/launcher separation (S4).
    state.ui + state.context + state.apps + state.windows persist to one
-   localStorage key (schema v2) so a reload restores the layout, the selected
-   Workstream, and window workstream bindings. The authority boundary
-   (load/loadBoundary/confirmDecision) is unchanged and still fails closed. */
+   localStorage key (schema v3). v3 (S5.5a/ADR-044) retires the Work Console
+   app: `work-console` references in saved sessions, favorites, and deep links
+   migrate to the first principal app `work` (app ID `work`, route `/work`)
+   with a one-release compatibility alias; the workspace execution-resource
+   term is untouched. The authority boundary (load/loadBoundary) is unchanged
+   and still fails closed. Work is the first principal app, not the identity
+   of the OS; Home and Activity Center are system surfaces (Activity Center
+   ships in S5.5c). */
 var SHELL_KEY="cortxt-os-shell",NARROW=720;
 var state={
   model:null,token:null,capabilities:[],registry:[],
-  ui:{open:{},min:{},max:{},z:{},geom:{},zTop:10,arranging:false,mobileApp:"work-console",drawer:false},
+  ui:{open:{},min:{},max:{},z:{},geom:{},zTop:10,arranging:false,mobileApp:"work",drawer:false},
   context:{workstreamId:null,activeWorkstreamId:null},
-  apps:{"work-console":{panel:"attention"}},
+  apps:{},
   windows:[],
   dockFavorites:[],
   desktopLayout:{},
-  schemaVersion:2,
+  schemaVersion:3,
   hadSavedSession:false
 };
 var q=function(s,r){return(r||document).querySelector(s)},qa=function(s,r){return Array.from((r||document).querySelectorAll(s))};
@@ -53,14 +58,14 @@ async function loadTokens(){
 }
 
 /* ---- deterministic, non-overlapping window geometry ------------------
-   The pinned console holds a fixed left column; every other open window
+   The primary Work window holds a fixed left column; every other open window
    tiles the right column top-to-bottom in a stable registry order. Values
    are fractions of the canvas box so the layout survives viewport changes.
    A window the operator drags or resizes in compose mode carries an
    explicit rect in state.ui.geom and is then exempt from tiling. */
 var CONSOLE_W=0.58,GUTTER=0.014,MIN_W=0.18,MIN_H=0.16;
 function tileRects(openIds){
-  var rects={"work-console":{x:0,y:0,w:CONSOLE_W,h:1}},n=(openIds||[]).length;
+  var rects={"work":{x:0,y:0,w:CONSOLE_W,h:1}},n=(openIds||[]).length;
   for(var i=0;i<n;i++){
     var h=(1-GUTTER*(n-1))/n;
     rects[openIds[i]]={x:CONSOLE_W+GUTTER,y:i*(h+GUTTER),w:1-CONSOLE_W-GUTTER,h:h};
@@ -116,18 +121,58 @@ function initCompose(){
   });
 }
 
-/* ---- persistence (schema v2) ------------------------------------------ */
-/* One localStorage key. Schema v2 adds the WindowInstance model, dock
+/* ---- persistence (schema v3) ------------------------------------------ */
+/* One localStorage key. Schema v2 added the WindowInstance model, dock
    favorites, and desktop layout; v1 blobs (ui/context/apps only) migrate on
-   read so old sessions restore their windows with follow-active bindings. */
+   read so old sessions restore their windows with follow-active bindings.
+   Schema v3 (S5.5a/ADR-044) is additive and retires Work Console: saved
+   `work-console` ids across ui/windows/apps/dockFavorites migrate to the
+   `work` app, preserving the selected Workstream and every other open app.
+   The v3 writer keeps the v2 fields intact so an older v2 reader ignores the
+   unknown v3 fields and still restores windows. */
+var LEGACY_APP_ALIASES={"work-console":"work"};
+function migrateWorkConsole(ref){
+  /* Rename a single `work-console` reference to `work` (no-op otherwise). */
+  return LEGACY_APP_ALIASES[ref]||ref;
+}
+function migrateSavedState(saved){
+  /* v1 -> v2 -> v3 migration on read. Mutates the parsed saved blob in
+     place: work-console -> work across every carrier, without touching the
+     selected Workstream or other apps. */
+  if(!saved||typeof saved!=="object")return;
+  if(saved.ui&&typeof saved.ui==="object"){
+    var ui=saved.ui;
+    ["open","min","max","z","geom"].forEach(function(k){
+      if(ui[k]&&typeof ui[k]==="object"){
+        if(ui[k]["work-console"]!==undefined){ui[k]["work"]=ui[k]["work-console"];delete ui[k]["work-console"]}
+      }
+    });
+    if(ui.mobileApp==="work-console")ui.mobileApp="work";
+  }
+  if(saved.apps&&typeof saved.apps==="object"){
+    if(saved.apps["work-console"]!==undefined){saved.apps["work"]=saved.apps["work-console"];delete saved.apps["work-console"]}
+  }
+  if(Array.isArray(saved.windows)){
+    saved.windows.forEach(function(w){
+      if(w&&w.appId==="work-console")w.appId="work";
+    });
+  }
+  if(Array.isArray(saved.dockFavorites)){
+    for(var i=0;i<saved.dockFavorites.length;i++){
+      if(saved.dockFavorites[i]==="work-console")saved.dockFavorites[i]="work";
+    }
+  }
+  saved.schemaVersion=3;
+}
 function persist(){
   syncWindowsFromUi();
-  try{localStorage.setItem(SHELL_KEY,JSON.stringify({v:2,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout}))}catch(_e){}
+  try{localStorage.setItem(SHELL_KEY,JSON.stringify({v:3,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout,schemaVersion:3}))}catch(_e){}
 }
 function restore(){
   var saved;try{saved=JSON.parse(localStorage.getItem(SHELL_KEY)||"null")}catch(_e){saved=null}
   state.hadSavedSession=!!(saved&&typeof saved==="object"&&(saved.ui||saved.windows));
   if(!saved||typeof saved!=="object")return;
+  migrateSavedState(saved);
   if(saved.ui&&typeof saved.ui==="object"){
     state.ui=Object.assign(state.ui,saved.ui);
     state.ui.open=Object.assign({},saved.ui.open);
@@ -138,11 +183,12 @@ function restore(){
   if(saved.context&&typeof saved.context.workstreamId==="string")state.context.workstreamId=saved.context.workstreamId;
   if(saved.context&&typeof saved.context.activeWorkstreamId==="string")state.context.activeWorkstreamId=saved.context.activeWorkstreamId;
   if(saved.apps&&typeof saved.apps==="object")state.apps=Object.assign(state.apps,saved.apps);
-  if(!state.apps["work-console"])state.apps["work-console"]={panel:"attention"};
-  if(saved.v===2&&Array.isArray(saved.windows)){
-    state.windows=saved.windows.slice();
-    state.dockFavorites=Array.isArray(saved.dockFavorites)?saved.dockFavorites.slice():[];
-    state.desktopLayout=(saved.desktopLayout&&typeof saved.desktopLayout==="object")?saved.desktopLayout:{};
+  if(saved.v===2||saved.v===3){
+    if(Array.isArray(saved.windows)){
+      state.windows=saved.windows.slice();
+      state.dockFavorites=Array.isArray(saved.dockFavorites)?saved.dockFavorites.slice():[];
+      state.desktopLayout=(saved.desktopLayout&&typeof saved.desktopLayout==="object")?saved.desktopLayout:{};
+    }
   }else{
     /* v1 migration: derive WindowInstance entries from the ui blob. */
     syncWindowsFromUi();
@@ -202,7 +248,7 @@ function bindingLabel(id){
 /* ---- authoritative app registry -------------------------------------- */
 async function loadRegistry(){
   try{var r=await fetch("apps.json",{cache:"no-store"});if(r.ok){var data=await r.json();state.registry=(data.apps||[]).filter(function(a){return a.id&&a.id!=="all"})}}catch(_e){state.registry=[]}
-  if(!state.registry.length)state.registry=[{id:"work-console",title:"Work Console",short:"Work",kind:"pinned",window:"console"}];
+  if(!state.registry.length)state.registry=[{id:"work",title:"Work",short:"Work",kind:"pinned",window:"work"}];
 }
 function appById(id){return state.registry.find(function(a){return a.id===id})||null}
 function windowOf(id){var a=appById(id);return a&&a.window?a.window:id}
@@ -231,7 +277,7 @@ function renderChrome(){
   var mnav=q("[data-mobile-nav]"),dock=q("[data-os-dock]"),launcher=q("[data-launcher-list]");
   if(mnav)mnav.innerHTML="";if(dock)dock.innerHTML="";if(launcher)launcher.innerHTML="";
   var favorites=state.dockFavorites&&state.dockFavorites.length?state.dockFavorites.slice():
-    ["work-console","decisions","evidence","studio"];
+    ["work","decisions","evidence","studio"];
   var running=Object.keys(state.ui.open).filter(function(id){return !!state.ui.open[id]});
   var dockIds=[];
   favorites.forEach(function(id){if(dockIds.indexOf(id)===-1)dockIds.push(id)});
@@ -265,8 +311,8 @@ function renderChrome(){
       mnav.appendChild(m);
     });
     var back=document.createElement("button");
-    back.type="button";back.dataset.mobileBack="1";back.setAttribute("aria-label","Back to Work Console");back.textContent="\u2190";
-    back.addEventListener("click",function(){openApp("work-console")});
+    back.type="button";back.dataset.mobileBack="1";back.setAttribute("aria-label","Back to Work");back.textContent="\u2190";
+    back.addEventListener("click",function(){openApp("work")});
     mnav.appendChild(back);
   }
   syncNavActive();
@@ -293,7 +339,7 @@ function applyView(){
   var narrow=isNarrow();
   document.body.classList.toggle("is-mobile",narrow);
   if(narrow){
-    if(isDeferred(state.ui.mobileApp))state.ui.mobileApp="work-console";
+    if(isDeferred(state.ui.mobileApp))state.ui.mobileApp="work";
     var w=windowOf(state.ui.mobileApp);
     qa("[data-window]").forEach(function(x){x.hidden=x.dataset.window!==w;x.classList.remove("minimized");x.style.left=x.style.top=x.style.width=x.style.height=x.style.zIndex=""});
     ensureStudio(state.ui.mobileApp);
@@ -390,11 +436,13 @@ function activeContextId(){
   return state.context.activeWorkstreamId||state.context.workstreamId||null;
 }
 function hasPendingMutation(){
-  /* A mutation is pending when the confirm dialog is open or an approval
-     reference has been entered but not yet submitted. */
-  var dialog=q("[data-confirm-dialog]");
-  if(dialog&&dialog.open)return true;
-  var ref=q("[data-approval-ref]");
+  /* A mutation is pending when an authority dialog is open or an approval
+     reference has been entered but not yet submitted. Since ADR-044/S5.5a,
+     Decisions owns the decision dialog (its per-window dialog), so the
+     guard watches any open dialog plus the Decisions approval reference. */
+  var openDialog=document.querySelector("dialog[open]");
+  if(openDialog)return true;
+  var ref=q("[data-d-approval]");
   if(ref&&ref.value&&ref.value.trim())return true;
   return false;
 }
@@ -480,35 +528,69 @@ async function load(){
 async function loadBoundary(){try{var cap=await fetch("api/capabilities",{cache:"no-store"});if(cap.ok)state.capabilities=(await cap.json()).actions||[];var tok=await fetch("api/token",{cache:"no-store"});if(tok.ok)state.token=(await tok.json()).token}catch(_e){state.capabilities=[];state.token=null}}
 function setMode(){var banner=q("[data-mode-banner]"),demo=state.model.synthetic;banner.innerHTML=demo?"<strong>Interactive preview</strong><span>Synthetic data · no external mutation</span>":"<strong>Local mode</strong><span>Live projection of "+esc(state.model.repo)+(state.model.status!=="fresh"?" · stale data":"")+"</span>"}
 
-/* ---- Work Console app ---------------------------------------- */
+/* ---- Activity Center projection contract (ADR-044; S5.5c) ------------ */
+/* Activity Center is a shell-owned system surface that consumes typed
+   attention projections. The item contract is a READ-ONLY presentation
+   model: it carries source attribution, presentation data, and a validated
+   navigation target — never a mutation, decision request, or workflow
+   record. The shell exposes no workflow/decision mutation port to Activity
+   (ADR-044 items 5-6); the full Activity Center panel ships in S5.5c. */
+var AttentionItemProjection={
+  id:"string",sourceCapability:"string",sourceRecordRef:"string",
+  sourceVersion:"string",workstreamId:"string|null",occurredAt:"string",
+  severity:"string",requiresAttention:"boolean",title:"string",
+  summary:"string",targetCommand:"string",dedupeKey:"string|null",
+  expiresAt:"string|null"
+};
+function isValidAttentionItem(item){
+  /* Validate an Attention item against the typed contract. Strict: wrong
+     types, missing required fields, or a missing targetCommand fail closed. */
+  if(!item||typeof item!=="object")return false;
+  var fields=Object.keys(AttentionItemProjection);
+  for(var i=0;i<fields.length;i++){
+    var k=fields[i],t=AttentionItemProjection[k],v=item[k];
+    if(t==="string|null"){if(v!=null&&typeof v!=="string")return false}
+    else if(typeof v!==t)return false;
+  }
+  return typeof item.targetCommand==="string"&&item.targetCommand.length>0;
+}
+
+/* ---- Work app (S5.5a/ADR-044) ----------------------------------- */
+/* Work is the first principal work- and mandate-first app (app ID `work`,
+   route `/work`; ADR-044). S5.5a establishes its identity and a minimal
+   read-only surface: the selected Workstream summary with validated deep
+   links into the responsible apps. The full Work primary surface (summaries,
+   milestones, mobile presentation) ships in S5.5b; Activity Center (a
+   shell-owned system surface) ships in S5.5c. Work is not the identity of
+   the OS and adds no Work-specific branch to shell core. */
 function render(){
-  var handled=OSRenderer.render("work-console",q("[data-window=console]"),{workstream:currentItem(),state:state});
-  if(!handled)renderWorkConsole(q("[data-window=console]"),{workstream:currentItem(),state:state});
-  /* S5: render Cortxt Home into its window body (registered renderer with
-     inline fallback, same delegation pattern as Work Console). */
+  var workEl=q("[data-work-body]");
+  if(workEl&&!OSRenderer.render("work",workEl,{workstream:currentItem(),state:state}))renderWork(workEl,{workstream:currentItem(),state:state});
+  /* Cortxt Home is a registered system-surface entry (S5): registered
+     renderer with inline fallback, same delegation pattern. */
   var homeEl=q("[data-home-body]");
   if(homeEl&&!OSRenderer.render("home",homeEl,{state:state}))renderHome(homeEl,{state:state});
-  qa("[data-open-review]").forEach(function(button){button.addEventListener("click",function(){openReview(Number(button.dataset.openReview))})});
-  showConsole((state.apps["work-console"]&&state.apps["work-console"].panel)||"attention",true);
   renderSwitcher();
   propagateContext();
 }
-function renderWorkConsole(winEl,ctx){
-  /* Registered OSRenderer for work-console (issue #426): renders the operator
-     panels (Attention, Workstreams, Accepted records) from the shared shell
-     context. When the registry is unavailable the shell calls this directly as
-     its fallback, so behavior is preserved either way. */
-  var s=(ctx&&ctx.state)||state,list=s.model&&s.model.workstreams? s.model.workstreams:[];
-  var attention=list.filter(function(x){return x.attention}),done=list.filter(function(x){return x.workflow==="done"});
-  q("[data-attention-count]").textContent=attention.length;q("[data-attention-title]").textContent=attention.length?(attention.length+(attention.length===1?" boundary is":" boundaries are")+" waiting."):"Nothing needs your decision.";
-  q("[data-attention-list]").innerHTML=attention.length?attention.map(function(x){return '<article class="attention-card"><div><span class="state">'+esc(x.attention==="decision"?"Decision required":"Blocked")+'</span><h3>'+esc(x.title)+'</h3><p>'+esc(x.outcome)+'</p></div><button data-open-review="'+x.number+'">'+(x.decision?"Review and decide":"View Workstream")+' →</button></article>'}).join(""):empty("No Workstream currently requires operator attention.");
-  q("[data-workstream-list]").innerHTML=list.length?list.map(row).join(""):empty("No authoritative Workstreams are available.");q("[data-record-list]").innerHTML=done.length?done.map(row).join(""):empty("No accepted records are available in this projection.");
+function renderWork(winEl,ctx){
+  var s=(ctx&&ctx.state)||state,x=(ctx&&ctx.workstream)||null;
+  if(!x){winEl.innerHTML=empty("Select a Workstream to project its work.");return}
+  var decision=x.decision||null,evidence=x.evidence||[];
+  winEl.innerHTML=
+    '<span class="eyebrow">'+esc(x.id)+' · Work</span>'+
+    '<h2>'+esc(x.title)+'</h2>'+
+    '<p class="work-objective">'+esc(x.outcome)+'</p>'+
+    '<dl class="work-facts"><div><dt>Workflow</dt><dd>'+esc(x.workflow||"\u2014")+'</dd></div>'+
+    '<div><dt>Decision</dt><dd>'+(decision?esc(decision.summary):"None pending")+'</dd></div>'+
+    '<div><dt>Evidence</dt><dd>'+(evidence.length?evidence.length+" attributable records":"None")+'</dd></div></dl>'+
+    '<div class="work-actions">'+
+    '<button type="button" class="primary-action" data-work-open="decisions">Open Decisions</button>'+
+    '<button type="button" class="chrome-button" data-work-open="evidence">Open Evidence</button>'+
+    '</div><small class="work-note">Summaries are read-only projections. Decisions and evidence open in their responsible apps with the exact Workstream context; Work never duplicates a full app workflow.</small>';
+  qa("[data-work-open]",winEl).forEach(function(b){b.addEventListener("click",function(){dispatchCommand("open-app",{appId:b.dataset.workOpen})})});
 }
-function row(x){return '<button class="workstream-row" data-open-review="'+x.number+'"><span>'+esc(x.id)+'</span><span><strong>'+esc(x.title)+'</strong><small>'+esc(x.outcome)+'</small>'+(x.decision?'<em class="pending-decision">Decision pending</em>':'')+(x.evidence&&x.evidence.length?'<em class="evidence-count">'+x.evidence.length+' evidence</em>':'')+'</span><span class="workflow">'+esc(x.workflow.replace("-"," "))+'</span></button>'}
-/* Register the Work Console app renderer with the shared registry so it is a
-   first-class app like Decisions/Evidence (issue #426). Guarded for the
-   DOM-less Node test runtime where OSRenderer is absent. */
-if(typeof OSRenderer!=="undefined"){OSRenderer.register("work-console",renderWorkConsole)}
+if(typeof OSRenderer!=="undefined"){OSRenderer.register("work",renderWork)}
 
 /* ---- Cortxt Home app (S5) ------------------------------------------- */
 /* Cortxt Home is a registered app (issue #445): the landing-to-workspace
@@ -538,7 +620,7 @@ function renderHome(winEl,ctx){
     '<p class="home-lede">Agents get swapped. Models get upgraded. Providers change terms. Cortxt keeps the mandate, state, decisions, and evidence attached to the work itself — so none of that turns into a reset.</p>'+
     '<div class="home-grid">'+active.map(function(a){return tile(a,false)}).join("")+soon.map(function(a){return tile(a,true)}).join("")+'</div>'+
     '<div class="home-actions">'+
-      '<button type="button" class="primary-action" data-home-open="work-console">Open Work Console</button>'+
+      '<button type="button" class="primary-action" data-home-open="work">Open Work</button>'+
       '<button type="button" class="chrome-button" data-home-docs>Open documentation</button>'+
       '<button type="button" class="chrome-button" data-home-exit>Exit Workspace</button>'+
     '</div></div>';
@@ -555,48 +637,6 @@ function renderHome(winEl,ctx){
   var exit=q("[data-home-exit]",winEl);if(exit)exit.addEventListener("click",function(){dispatchCommand("exit-workspace",{})});
 }
 if(typeof OSRenderer!=="undefined"){OSRenderer.register("home",renderHome)}
-function openReview(number){
-  var item=items().find(function(x){return x.number===number});if(!item)return;
-  selectWorkstream(item.id);
-  qa("[data-console-panel]").forEach(function(x){x.hidden=true});
-  var review=q("[data-review]");review.hidden=false;
-  var evidence=item.evidence.length?item.evidence.map(function(x){return '<article class="evidence-card"><span class="eyebrow">'+esc(x.status)+'</span><h3>'+esc(x.title)+'</h3><p>'+esc(x.detail)+'</p></article>'}).join(""):empty("No authoritative evidence is attached. Decision actions remain unavailable.");
-  var canAct=!state.model.synthetic&&item.decision&&state.token&&state.capabilities.some(function(x){return x.id==="record-decision"});
-  review.innerHTML='<button class="back-button" data-review-back>← Back to Work Console</button><div class="review-grid"><main class="review-main"><span class="eyebrow">'+esc(item.id)+' · human decision</span><h2>'+(item.decision?esc(item.decision.summary):esc(item.title))+'</h2><p>'+esc(item.outcome)+'</p>'+evidence+'</main><aside><section class="authority-card"><span class="eyebrow">Durable authority</span><dl><div><dt>Source</dt><dd>'+esc(item.authority.source)+'</dd></div><div><dt>Workflow</dt><dd>'+esc(item.authority.workflow_label||"ambiguous")+'</dd></div><div><dt>Approval recorded</dt><dd>'+(item.authority.approval_recorded?"Yes":"Not found")+'</dd></div></dl></section><section class="authority-card"><span class="eyebrow">What happens next</span><p><b>If accepted:</b> evidence becomes the durable accepted record and the Issue advances to done.</p><p><b>If returned:</b> the Workstream stays paused for a bounded follow-up Run.</p></section><div class="review-actions"><button data-open-app="evidence">Open Evidence</button><button data-open-app="decisions">Open Decisions</button>'+(item.decision?'<button data-return '+(state.model.synthetic?"":"disabled")+'>Return with note</button><button class="primary-action" data-accept '+(state.model.synthetic||canAct?"":"disabled")+'>'+(state.model.synthetic?"Preview acceptance":canAct?"Accept record":"Action boundary unavailable")+'</button>':"")+'<small>'+(state.model.synthetic?"Preview outcome stays in this browser.":"Mutation requires an approval reference and explicit confirmation. Return is unavailable until a reviewed return transition exists.")+'</small></div></aside></div>';
-  q("[data-review-back]").onclick=function(){showConsole("attention")};
-  qa("[data-open-app]",review).forEach(function(b){b.onclick=function(){openApp(b.dataset.openApp)}});
-  var accept=q("[data-accept]",review),returned=q("[data-return]",review);
-  if(accept)accept.onclick=function(){state.model.synthetic?recordDemo("accepted"):confirmDecision()};
-  if(returned)returned.onclick=function(){recordDemo("returned")};
-}
-function recordDemo(outcome){
-  var it=currentItem();if(!it)return;
-  if(outcome==="accepted"){it.workflow="done";it.attention=null;it.decision=null;render();showConsole("records")}
-  else{it.workflow="in-progress";it.attention=null;it.decision=null;render();showConsole("workstreams")}
-}
-function confirmDecision(){
-  var it=currentItem();if(!it)return;
-  var dialog=q("[data-confirm-dialog]");q("[data-dialog-error]").textContent="";q("[data-approval-ref]").value="";dialog.showModal();
-  dialog.onclose=async function(){
-    if(dialog.returnValue!=="confirm")return;
-    var approval=q("[data-approval-ref]").value.trim();
-    if(!approval){q("[data-dialog-error]").textContent="Approval reference is required.";dialog.showModal();return}
-    try{
-      var response=await fetch("api/action",{method:"POST",headers:{"Content-Type":"application/json","X-Cortxt-Token":state.token},body:JSON.stringify({action_id:"record-decision",issue_id:it.issue_id,approval_ref:approval,confirm:true})});
-      var result=await response.json();
-      if(!response.ok)throw new Error(result.error&&result.error.message||"Decision was denied");
-      state.model=await load();render();showConsole("records");
-    }catch(error){q("[data-dialog-error]").textContent=error.message;dialog.showModal()}
-  };
-}
-function showConsole(name,silent){
-  q("[data-review]").hidden=true;
-  qa("[data-console-panel]").forEach(function(x){x.hidden=x.dataset.consolePanel!==name});
-  qa("[data-console-view]").forEach(function(x){x.classList.toggle("active",x.dataset.consoleView===name)});
-  if(!state.apps["work-console"])state.apps["work-console"]={};
-  state.apps["work-console"].panel=name;
-  if(!silent)persist();
-}
 
 /* ---- static wiring ----------------------------------------- */
 /* Guarded so the pure geometry helpers (tileRects/geomFor) can be required
@@ -625,19 +665,22 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
        requested app. No window.top navigation. */
     ShellIframeBridge.listenFromIframe(function(payload){
       var id = (payload && payload.appId) || null;
+      if (id) id = migrateWorkConsole(id);  /* ADR-044 one-release alias */
       if (id && state && state.registry) focusApp(id);
     });
   }
   /* S1b: typed shell command router — internal navigation goes through
      commands, never ordinary page navigation. open-home opens Cortxt Home
      (S5); exit-workspace returns to the public landing; open-external opens
-     a new tab. */
+     a new tab. S5.5a/ADR-044: open-app and switch-workstream validate their
+     references (unknown apps/workstreams fail closed) and the legacy
+     `work-console` app id resolves to `work` through the deep-link alias. */
   if (typeof ShellCommands !== "undefined") {
     var commandHandlers = {
-      "open-app": function(p){ if(p&&p.appId)openApp(p.appId); },
+      "open-app": function(p){ if(p&&p.appId){var a=appById(migrateWorkConsole(p.appId));if(a&&!isDeferred(a.id))openApp(a.id);} },
       "close-app": function(p){ if(p&&p.appId)closeApp(p.appId); },
       "focus-app": function(p){ if(p&&p.appId)focusApp(p.appId); },
-      "switch-workstream": function(p){ if(p&&p.workstreamId)switchWorkstream(p.workstreamId); },
+      "switch-workstream": function(p){ if(p&&p.workstreamId){var known=p.workstreamId==="all"||items().some(function(x){return x.id===p.workstreamId});if(known)switchWorkstream(p.workstreamId);} },
       "open-home": function(){ openHome(); },
       "exit-workspace": function(){ try{window.location.href="/"}catch(_e){} },
       "open-external": function(p){ if(p&&p.url)try{window.open(p.url,"_blank","noopener")}catch(_e){} },
@@ -666,7 +709,6 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
   qa("[data-window-min]").forEach(function(x){x.onclick=function(){var id=x.dataset.windowMin;setMin(id,!state.ui.min[id])}});
   qa("[data-window-max]").forEach(function(x){x.onclick=function(){toggleMax(x.dataset.windowMax)}});
   qa("[data-close-window]").forEach(function(x){x.onclick=function(){closeApp(x.dataset.closeWindow)}});
-  qa("[data-console-view]").forEach(function(x){x.onclick=function(){showConsole(x.dataset.consoleView)}});
   qa("[data-window] .window-bar").forEach(function(bar){bar.addEventListener("dblclick",function(ev){if(ev.target.closest("button,a,input"))return;var win=bar.closest("[data-window]"),id=appIdForWindow(win.dataset.window);if(state.ui.min[id])setMin(id,false)})});
   initCompose();
   /* Pointer-down on a window surface gives that window focus and raises it
@@ -699,9 +741,9 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
     if(!state.hadSavedSession&&!bootApplied)openHome();
   }).catch(function(error){
     q("[data-mode-banner]").innerHTML="<strong>Data unavailable</strong><span>"+esc(error.message)+"</span>";
-    q("[data-attention-title]").textContent="Work Console could not establish authoritative state.";
-    q("[data-attention-list]").innerHTML=empty("The app failed closed. No evidence or decision action is exposed.");
+    var workEl=q("[data-work-body]");
+    if(workEl)workEl.innerHTML=empty("Cortxt OS could not establish authoritative state. The shell failed closed: no evidence or decision action is exposed.");
   });
 }
-if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,geomFor:geomFor,CONSOLE_W:CONSOLE_W,GUTTER:GUTTER};
+if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,geomFor:geomFor,CONSOLE_W:CONSOLE_W,GUTTER:GUTTER,migrateSavedState:migrateSavedState,migrateWorkConsole:migrateWorkConsole,LEGACY_APP_ALIASES:LEGACY_APP_ALIASES,isValidAttentionItem:isValidAttentionItem,AttentionItemProjection:AttentionItemProjection};
 })();
