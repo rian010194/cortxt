@@ -480,7 +480,7 @@ def test_app_manifest_declares_capabilities_mode_and_mobile():
     # apps.json declares capabilities, public/operator-only mode, and
     # mobile-activation for every app entry (except the synthetic "all").
     by_id = {a["id"]: a for a in APPS["apps"] if a["id"] != "all"}
-    assert len(by_id) == 8
+    assert len(by_id) == 9
     for app in by_id.values():
         assert isinstance(app.get("capabilities"), list), app["id"]
         assert app.get("mode") in {"operator", "public"}, app["id"]
@@ -744,16 +744,22 @@ def test_shell_wires_command_handlers():
     assert '"close-app": function(p){ if(p&&p.appId)closeApp(p.appId); }' in JS
     assert '"focus-app": function(p){ if(p&&p.appId)focusApp(p.appId); }' in JS
     assert '"switch-workstream": function(p){ if(p&&p.workstreamId)switchWorkstream(p.workstreamId); }' in JS
-    assert '"open-home": function(){ /* typed command; Cortxt Home ships in S5 */ }' in JS
-    assert 'global.location.href="/"' in JS  # exit-workspace
-    assert 'global.open(p.url,"_blank","noopener")' in JS  # open-external
+    assert '"open-home": function(){ openHome(); }' in JS
+    assert 'window.location.href="/"' in JS  # exit-workspace
+    assert 'window.open(p.url,"_blank","noopener")' in JS  # open-external
+    # work-console.js's IIFE binds no `global` parameter; navigation must use
+    # the browser `window` (unbound `global` would silently no-op in browsers).
+    assert 'global.location.href' not in JS and 'global.open(' not in JS
 
 
 def test_boot_and_hashchange_apply_deep_links():
-    # The shell reads the initial deep link after the model loads and reacts
-    # to hashchange; no location.reload-based navigation.
-    assert 'ShellCommands.applyDeepLink(location.hash, window.ShellCommandHandlers)' in JS
+    # The shell reads the initial deep link after the model loads (captured
+    # before any first-run Home open mutates the hash) and reacts to
+    # hashchange; no location.reload-based navigation.
+    assert 'var bootHash=(typeof location!=="undefined")?location.hash:""' in JS
+    assert 'ShellCommands.applyDeepLink(bootHash, window.ShellCommandHandlers)' in JS
     assert 'window.addEventListener("hashchange"' in JS
+    assert 'ShellCommands.applyDeepLink(location.hash, commandHandlers)' in JS
     assert 'location.reload' not in JS
 
 
@@ -828,11 +834,13 @@ def test_active_window_can_be_null():
 
 
 def test_empty_desktop_and_first_run_home_surfaces():
-    # The shell chrome carries an empty-desktop affordance and a first-run
-    # Cortxt Home placeholder; applyView toggles them.
-    assert 'data-empty-desktop' in S3_HTML and 'data-home-surface' in S3_HTML
+    # The shell chrome carries an empty-desktop affordance; S5 replaced the
+    # first-run Home placeholder with the real Cortxt Home app, which opens
+    # as a window when no saved session exists.
+    assert 'data-empty-desktop' in S3_HTML
+    assert 'data-home-surface' not in S3_HTML
     assert 'emptyDesktop.hidden=!!anyOpen' in JS
-    assert 'homeSurface.hidden=!!anyOpen||state.hadSavedSession' in JS
+    assert 'openHome()' in JS and 'hadSavedSession' in JS
 
 
 def test_session_restore_tracks_had_saved_session():
@@ -894,3 +902,74 @@ def test_launcher_wiring_present():
     assert 'launcherPanel.hidden=false' in JS
     assert 'data-launcher-close' in JS
     assert 'var panel=q("[data-launcher]");if(panel)panel.hidden=true' in JS
+
+
+# --- S5: Cortxt Home + landing-to-workspace transition (#445) ----------
+# Cortxt Home is a registered app with identity + lifecycle; /workspace/ is a
+# real entry (deep link into Home) instead of a bare redirect; Exit Workspace
+# returns to the public landing; refresh/back/deep-link semantics are defined
+# (session restore + #app=home deep link); mobile Home is full-screen.
+
+S5_HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+S5_JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+
+
+def test_home_is_a_registered_app_with_identity_and_lifecycle():
+    by_id = {a["id"]: a for a in APPS["apps"]}
+    home = by_id["home"]
+    assert home["kind"] == "window"
+    assert home["window"] == "home"
+    assert home["mode"] == "public"
+    assert home["mobile"] is True
+    assert home["route"] == "/"
+    assert 'data-window="home"' in S5_HTML
+    assert 'data-home-body' in S5_HTML
+    assert 'OSRenderer.register("home",renderHome)' in S5_JS
+    assert 'function renderHome(winEl,ctx)' in S5_JS
+
+
+def test_home_opens_apps_via_typed_commands():
+    # Home launch tiles dispatch typed shell commands (open-app / open-external
+    # / exit-workspace), never ordinary page navigation.
+    assert 'data-home-open' in S5_JS
+    assert 'dispatchCommand("open-app",{appId:' in S5_JS
+    assert 'dispatchCommand("open-external",{url:"/docs/"})' in S5_JS
+    assert 'dispatchCommand("exit-workspace",{})' in S5_JS
+    assert 'ShellCommands.dispatch(command,payload,handlers)' in S5_JS
+
+
+def test_open_home_command_and_first_run_open_home():
+    # The typed open-home command opens Cortxt Home; first run (no saved
+    # session) opens Home instead of showing a placeholder.
+    assert '"open-home": function(){ openHome(); }' in S5_JS
+    assert 'function openHome()' in S5_JS and 'openApp("home")' in S5_JS
+    assert 'if(!state.hadSavedSession&&!bootApplied)openHome()' in S5_JS
+    assert 'var bootHash=(typeof location!=="undefined")?location.hash:""' in S5_JS
+
+
+def test_exit_workspace_wired_in_chrome_and_home():
+    # Exit Workspace is an explicit chrome affordance plus a Home action; both
+    # route through the typed command that returns to the public landing.
+    assert 'data-exit-workspace' in S5_HTML
+    assert 'dispatchCommand("exit-workspace",{})' in S5_JS
+    assert 'window.location.href="/"' in S5_JS
+
+
+def test_workspace_page_is_a_real_entry_deep_linking_home():
+    # /workspace/ is a real entry: it deep-links into the OS shell at
+    # #app=home (single shell surface; no second shell) instead of a bare
+    # redirect to /widgets/.
+    ws = Path(__file__).resolve().parents[3] / "site" / "src" / "pages" / "workspace.astro"
+    text = ws.read_text(encoding="utf-8")
+    assert '/widgets/#app=home' in text
+    assert "location.replace('/widgets/#app=home')" in text
+
+
+def test_landing_nav_corrects_the_studio_mislabel():
+    # The nav item pointing at the OS shell (/widgets/) is no longer labelled
+    # "Studio"; "Workspace" remains the landing-to-Home entry.
+    idx = Path(__file__).resolve().parents[3] / "site" / "src" / "pages" / "index.astro"
+    text = idx.read_text(encoding="utf-8")
+    assert 'href="/workspace/">Workspace</a>' in text
+    assert 'href="/widgets/">Cortxt OS</a>' in text
+    assert '>Studio</a>' not in text

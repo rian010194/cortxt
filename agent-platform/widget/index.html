@@ -4,7 +4,7 @@
 <body>
 <div class="mode-banner" data-mode-banner><strong>Loading Work Console</strong><span>Checking the Cortxt-owned data boundary…</span></div>
 <div class="os-shell">
-  <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-ws-toggle aria-expanded="false" aria-controls="workstream-switcher">Workstreams</button><button class="chrome-button" data-launcher-toggle aria-expanded="false" aria-controls="app-launcher">Launcher</button><button class="avatar" aria-label="Operator profile">RA</button></header>
+  <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-ws-toggle aria-expanded="false" aria-controls="workstream-switcher">Workstreams</button><button class="chrome-button" data-launcher-toggle aria-expanded="false" aria-controls="app-launcher">Launcher</button><button class="chrome-button" data-exit-workspace aria-label="Exit Workspace to the public landing">Exit</button><button class="avatar" aria-label="Operator profile">RA</button></header>
   <aside class="ws-switcher" id="workstream-switcher" data-workstream-switcher aria-label="Workstream switcher" hidden>
     <div class="ws-head"><p>Workstreams</p><button type="button" class="ws-create" data-ws-create>New workstream</button></div>
     <div class="ws-list" data-ws-list></div>
@@ -30,19 +30,13 @@
     <section class="app-window related" data-window="decisions" data-app-kind="window" hidden><header class="window-bar"><div><span>Related app</span><h2>Decisions</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="decisions" aria-label="Minimize Decisions">Minimize</button><button data-window-max="decisions" aria-label="Maximize Decisions">Maximize</button><button data-window-focus="decisions" aria-label="Focus Decisions">Focus</button><button data-close-window="decisions" aria-label="Close Decisions">×</button></div></header><div class="app-body" data-decisions-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
     <section class="app-window related" data-window="evidence" data-app-kind="window" hidden><header class="window-bar"><div><span>Related app</span><h2>Evidence</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="evidence" aria-label="Minimize Evidence">Minimize</button><button data-window-max="evidence" aria-label="Maximize Evidence">Maximize</button><button data-window-focus="evidence" aria-label="Focus Evidence">Focus</button><button data-close-window="evidence" aria-label="Close Evidence">×</button></div></header><div class="app-body" data-evidence-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
     <section class="app-window related studio-window" data-window="studio" hidden><header class="window-bar"><div><span>Active Workstream</span><h2>Studio</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="studio" aria-label="Minimize Studio">Minimize</button><button data-window-max="studio" aria-label="Maximize Studio">Maximize</button><button data-window-focus="studio" aria-label="Focus Studio">Focus</button><button data-close-window="studio" aria-label="Close Studio">×</button></div></header><iframe title="Studio" data-studio-frame data-src="maker.html"></iframe><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="app-window related home-window" data-window="home" data-app-kind="window" hidden><header class="window-bar"><div><span>Start here</span><h2>Cortxt Home</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="home" aria-label="Minimize Cortxt Home">Minimize</button><button data-window-max="home" aria-label="Maximize Cortxt Home">Maximize</button><button data-window-focus="home" aria-label="Focus Cortxt Home">Focus</button><button data-close-window="home" aria-label="Close Cortxt Home">×</button></div></header><div class="app-body home-app" data-home-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
   </main>
   <section class="empty-desktop" data-empty-desktop aria-label="Desktop" hidden>
     <div class="empty-desktop-inner">
       <h2>No windows open</h2>
       <p>Open an app from the dock or launcher to get started.</p>
       <button type="button" class="chrome-button" data-launcher-toggle>Open launcher</button>
-    </div>
-  </section>
-  <section class="home-surface" data-home-surface aria-label="Cortxt Home" hidden>
-    <div class="home-surface-inner">
-      <p class="eyebrow">Cortxt Home</p>
-      <h2>Welcome</h2>
-      <p>Open Work Console, Decisions, or Evidence from the dock to begin.</p>
     </div>
   </section>
   <nav class="mobile-nav" data-mobile-nav aria-label="Applications"></nav>
