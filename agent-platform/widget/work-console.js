@@ -312,13 +312,11 @@ function applyView(){
     applyGeom();
   }
   /* S3: empty desktop — when no window is open (desktop), show the launcher
-     affordance instead of forcing Work Console open. First-run (no saved
-     session) shows the Cortxt Home placeholder instead. */
+     affordance instead of forcing Work Console open. S5: first-run (no saved
+     session) opens Cortxt Home as a real window. */
   var anyOpen=Object.keys(state.ui.open).some(function(id){return !!state.ui.open[id]&&!state.ui.min[id]});
   var emptyDesktop=q("[data-empty-desktop]");
-  var homeSurface=q("[data-home-surface]");
   if(emptyDesktop)emptyDesktop.hidden=!!anyOpen;
-  if(homeSurface)homeSurface.hidden=!!anyOpen||state.hadSavedSession;
   /* S2: quiet workstream-binding indicator per window. */
   qa("[data-binding-indicator]").forEach(function(el){
     var id=appIdForWindow((el.closest("[data-window]")||{}).dataset? (el.closest("[data-window]")||{}).dataset.window:"");
@@ -355,6 +353,11 @@ function closeApp(id){
   if(isDeferred(id))return;
   delete state.ui.open[id];delete state.ui.min[id];delete state.ui.z[id];
   persist();applyView();
+}
+function openHome(){
+  /* Cortxt Home is a registered app (apps.json, kind window): open it as a
+     normal window with desktop chrome (S5). */
+  openApp("home");
 }
 function setMin(id,on){
   if(isDeferred(id))return;
@@ -481,6 +484,10 @@ function setMode(){var banner=q("[data-mode-banner]"),demo=state.model.synthetic
 function render(){
   var handled=OSRenderer.render("work-console",q("[data-window=console]"),{workstream:currentItem(),state:state});
   if(!handled)renderWorkConsole(q("[data-window=console]"),{workstream:currentItem(),state:state});
+  /* S5: render Cortxt Home into its window body (registered renderer with
+     inline fallback, same delegation pattern as Work Console). */
+  var homeEl=q("[data-home-body]");
+  if(homeEl&&!OSRenderer.render("home",homeEl,{state:state}))renderHome(homeEl,{state:state});
   qa("[data-open-review]").forEach(function(button){button.addEventListener("click",function(){openReview(Number(button.dataset.openReview))})});
   showConsole((state.apps["work-console"]&&state.apps["work-console"].panel)||"attention",true);
   renderSwitcher();
@@ -502,6 +509,52 @@ function row(x){return '<button class="workstream-row" data-open-review="'+x.num
    first-class app like Decisions/Evidence (issue #426). Guarded for the
    DOM-less Node test runtime where OSRenderer is absent. */
 if(typeof OSRenderer!=="undefined"){OSRenderer.register("work-console",renderWorkConsole)}
+
+/* ---- Cortxt Home app (S5) ------------------------------------------- */
+/* Cortxt Home is a registered app (issue #445): the landing-to-workspace
+   entry and the first-run surface. It projects the shell's app registry as
+   launch tiles and opens apps through typed shell commands only (no ordinary
+   page navigation). It is read-only: no mutations and no authority actions. */
+function dispatchCommand(command,payload){
+  var handlers=(typeof window!=="undefined")?window.ShellCommandHandlers:null;
+  if(typeof ShellCommands!=="undefined"&&ShellCommands.dispatch&&handlers){
+    ShellCommands.dispatch(command,payload,handlers);return;
+  }
+  if(handlers&&typeof handlers[command]==="function")handlers[command](payload||{});
+}
+function renderHome(winEl,ctx){
+  var s=(ctx&&ctx.state)||state;
+  var apps=(s.registry||[]).filter(function(a){return a.id&&a.id!=="all"&&a.id!=="home"});
+  var active=apps.filter(function(a){return a.kind!=="deferred"});
+  var soon=apps.filter(function(a){return a.kind==="deferred"});
+  function tile(a,disabled){
+    return '<button type="button" class="home-tile"'+(disabled?' disabled aria-disabled="true"':' data-home-open="'+esc(a.id)+'"')+'>'+
+      '<span class="home-tile-icon">'+(a.icon?esc(a.icon):esc((a.short||a.title||a.id).slice(0,2)))+'</span>'+
+      '<span class="home-tile-label"><strong>'+esc(a.title)+'</strong><small>'+(disabled?"Soon · planned":esc(a.id))+'</small></span></button>';
+  }
+  winEl.innerHTML='<div class="home-inner">'+
+    '<p class="eyebrow">Cortxt Home</p>'+
+    '<h2>Durable work, in one place.</h2>'+
+    '<p class="home-lede">Agents get swapped. Models get upgraded. Providers change terms. Cortxt keeps the mandate, state, decisions, and evidence attached to the work itself — so none of that turns into a reset.</p>'+
+    '<div class="home-grid">'+active.map(function(a){return tile(a,false)}).join("")+soon.map(function(a){return tile(a,true)}).join("")+'</div>'+
+    '<div class="home-actions">'+
+      '<button type="button" class="primary-action" data-home-open="work-console">Open Work Console</button>'+
+      '<button type="button" class="chrome-button" data-home-docs>Open documentation</button>'+
+      '<button type="button" class="chrome-button" data-home-exit>Exit Workspace</button>'+
+    '</div></div>';
+  if(!winEl.querySelector("style")){
+    /* S5-owned presentation for the Home window, scoped to this surface and
+       built only from canonical tokens (ADR-043); os.css is owned by other
+       slices and is not touched here. */
+    var st=document.createElement("style");
+    st.textContent='.home-window .home-inner{max-width:860px;padding:10px 6px}.home-window .home-lede{color:var(--muted);line-height:1.55;margin:0 0 22px;max-width:640px}.home-window .home-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}.home-window .home-tile{display:flex;align-items:center;gap:11px;text-align:left;border:1px solid var(--stroke);background:var(--layer);border-radius:10px;padding:12px 14px;cursor:pointer;color:var(--muted)}.home-window .home-tile:hover:not([disabled]){color:var(--text);border-color:var(--strong)}.home-window .home-tile[disabled]{opacity:.55;cursor:default}.home-window .home-tile-icon{width:34px;height:34px;flex:0 0 auto;display:grid;place-items:center;border-radius:9px;background:var(--surface);color:var(--muted);font-size:13px;font-weight:700}.home-window .home-tile:hover:not([disabled]) .home-tile-icon{background:var(--accent);color:var(--accent-ink)}.home-window .home-tile-label strong{display:block;font-size:13px;font-weight:600;color:inherit;line-height:1.25}.home-window .home-tile-label small{display:block;color:var(--dim);font-size:10.5px;line-height:1.3}.home-window .home-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.home-window .primary-action{border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600}';
+    winEl.appendChild(st);
+  }
+  qa("[data-home-open]",winEl).forEach(function(b){b.addEventListener("click",function(){dispatchCommand("open-app",{appId:b.dataset.homeOpen})})});
+  var docs=q("[data-home-docs]",winEl);if(docs)docs.addEventListener("click",function(){dispatchCommand("open-external",{url:"/docs/"})});
+  var exit=q("[data-home-exit]",winEl);if(exit)exit.addEventListener("click",function(){dispatchCommand("exit-workspace",{})});
+}
+if(typeof OSRenderer!=="undefined"){OSRenderer.register("home",renderHome)}
 function openReview(number){
   var item=items().find(function(x){return x.number===number});if(!item)return;
   selectWorkstream(item.id);
@@ -576,18 +629,18 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
     });
   }
   /* S1b: typed shell command router — internal navigation goes through
-     commands, never ordinary page navigation. open-home is typed and no-ops
-     gracefully until Cortxt Home ships (S5); exit-workspace returns to the
-     public landing; open-external opens a new tab. */
+     commands, never ordinary page navigation. open-home opens Cortxt Home
+     (S5); exit-workspace returns to the public landing; open-external opens
+     a new tab. */
   if (typeof ShellCommands !== "undefined") {
     var commandHandlers = {
       "open-app": function(p){ if(p&&p.appId)openApp(p.appId); },
       "close-app": function(p){ if(p&&p.appId)closeApp(p.appId); },
       "focus-app": function(p){ if(p&&p.appId)focusApp(p.appId); },
       "switch-workstream": function(p){ if(p&&p.workstreamId)switchWorkstream(p.workstreamId); },
-      "open-home": function(){ /* typed command; Cortxt Home ships in S5 */ },
-      "exit-workspace": function(){ try{global.location.href="/"}catch(_e){} },
-      "open-external": function(p){ if(p&&p.url)try{global.open(p.url,"_blank","noopener")}catch(_e){} },
+      "open-home": function(){ openHome(); },
+      "exit-workspace": function(){ try{window.location.href="/"}catch(_e){} },
+      "open-external": function(p){ if(p&&p.url)try{window.open(p.url,"_blank","noopener")}catch(_e){} },
     };
     window.ShellCommandHandlers = commandHandlers;
     window.addEventListener("hashchange", function(){
@@ -602,6 +655,10 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
   if(launcherToggle){launcherToggle.onclick=function(){var open=launcherPanel&&!launcherPanel.hidden;if(launcherPanel)launcherPanel.hidden=open;this.setAttribute("aria-expanded",String(!open));if(!open)openLauncher()}}
   var launcherClose=q("[data-launcher-close]");
   if(launcherClose)launcherClose.onclick=function(){if(launcherPanel)launcherPanel.hidden=true};
+  /* S5: Exit Workspace is an explicit chrome affordance routing through the
+     typed command back to the public landing. */
+  var exitWorkspaceBtn=q("[data-exit-workspace]");
+  if(exitWorkspaceBtn)exitWorkspaceBtn.onclick=function(){dispatchCommand("exit-workspace",{})};
   var wsToggle=q("[data-ws-toggle]"),wsPanel=q("[data-workstream-switcher]");
   if(wsToggle&&wsPanel){wsToggle.onclick=function(){var open=wsPanel.hidden;wsPanel.hidden=!open;this.setAttribute("aria-expanded",String(open));if(open)renderSwitcher()}}
   var arrangeButton=q("[data-arrange]");if(arrangeButton)arrangeButton.onclick=toggleArrange;
@@ -631,11 +688,15 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
     return Promise.all([load(),loadBoundary()]);
   }).then(function(values){
     state.model=values[0];setMode();render();applyView();renderSwitcher();
-    /* S1b: apply an initial deep link (#app=...&ws=...) once the registry and
-       model are available. */
-    if (typeof ShellCommands !== "undefined" && ShellCommands.applyDeepLink && typeof location !== "undefined") {
-      ShellCommands.applyDeepLink(location.hash, window.ShellCommandHandlers);
+    /* S5: an explicit deep link in the URL wins (S1b semantics). Capture the
+       hash before any first-run Home open mutates it. First run (no saved
+       session) opens Cortxt Home as the entry app when no deep link applied. */
+    var bootHash=(typeof location!=="undefined")?location.hash:"";
+    var bootApplied=false;
+    if (typeof ShellCommands !== "undefined" && ShellCommands.applyDeepLink && window.ShellCommandHandlers) {
+      bootApplied=ShellCommands.applyDeepLink(bootHash, window.ShellCommandHandlers);
     }
+    if(!state.hadSavedSession&&!bootApplied)openHome();
   }).catch(function(error){
     q("[data-mode-banner]").innerHTML="<strong>Data unavailable</strong><span>"+esc(error.message)+"</span>";
     q("[data-attention-title]").textContent="Work Console could not establish authoritative state.";
