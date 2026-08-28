@@ -374,6 +374,32 @@ function showConsole(name,silent){
 /* Guarded so the pure geometry helpers (tileRects/geomFor) can be required
    in a DOM-less runtime for layout tests. */
 if(typeof document!=="undefined"&&typeof window!=="undefined"){
+  /* S1a recursion guard: a Cortxt OS shell must never mount inside another
+     Cortxt OS window. If this page is embedded in a frame, refuse to render
+     the desktop and show an affordance instead. `window.top` access is
+     security-thrown in some contexts; treat that as embedded (fail safe). */
+  var isRecursionMount = false;
+  try {
+    isRecursionMount = (typeof window.top !== "undefined") && (window.self !== window.top);
+  } catch (_e) { isRecursionMount = true; }
+  if (isRecursionMount) {
+    var _banner = q("[data-mode-banner]");
+    if (_banner) _banner.innerHTML = "<strong>Open in Cortxt OS</strong><span>This surface cannot be embedded inside the OS.</span>";
+    var _canvas = q("[data-canvas]");
+    if (_canvas) _canvas.innerHTML = '' +
+      '<div style="max-width:520px;margin:4rem auto;text-align:center;">' +
+        '<h2 style="margin:0 0 .5rem;">Open in Cortxt OS</h2>' +
+        '<p style="color:var(--muted);line-height:1.5;margin:0 0 1rem;">A Cortxt OS window cannot be embedded inside itself. Use the launcher to open this app in the OS.</p>' +
+      '</div>';
+  } else if (typeof ShellIframeBridge !== "undefined" && ShellIframeBridge.listenFromIframe) {
+    /* Origin-validated activation from an iframe-hosted app (S1a). The
+       bridge validates origin, command, and payload; we only focus/open the
+       requested app. No window.top navigation. */
+    ShellIframeBridge.listenFromIframe(function(payload){
+      var id = (payload && payload.appId) || null;
+      if (id && state && state.registry) focusApp(id);
+    });
+  }
   q("[data-reveal-apps]").onclick=function(){var drawer=q("[data-app-drawer]");state.ui.drawer=drawer.hidden;drawer.hidden=!drawer.hidden;this.setAttribute("aria-expanded",String(state.ui.drawer));persist()};
   var arrangeButton=q("[data-arrange]");if(arrangeButton)arrangeButton.onclick=toggleArrange;
   qa("[data-window-focus]").forEach(function(x){x.onclick=function(){focusApp(x.dataset.windowFocus)}});

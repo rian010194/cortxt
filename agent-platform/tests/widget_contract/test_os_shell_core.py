@@ -540,6 +540,81 @@ def test_decisions_evidence_renderer_registration_behavior():
 
 # --- site mirror parity ------------------------------------------
 
-@pytest.mark.parametrize("name", ["index.html", "os.css", "work-console.js", "apps.json"])
+# Files that MUST be byte-identical between the authoritative widget source
+# and the web-served site mirror. Deliberately excludes maker.js/maker.html:
+# those ship different product versions per surface (issue #435, S1a), so a
+# byte-equality assertion on them would be false/red. Their single
+# source-of-truth reconciliation is left to the TypeScript/source-of-truth
+# track, not S1a.
+@pytest.mark.parametrize("name", [
+    "index.html", "os.css", "work-console.js", "apps.json",
+    "os-renderer.js", "app-renderer-decisions-evidence.js",
+])
 def test_site_mirror_is_identical(name):
     assert (WIDGET / name).read_text(encoding="utf-8") == (MIRROR / name).read_text(encoding="utf-8")
+
+
+# --- S1a: Studio navigation boundary (issue #435) -----------------
+# These assertions target the ACTUALLY DEPLOYED web-served files under
+# site/public/widgets (the surface a browser hits at /widgets/), plus the
+# authoritative shell files that the site mirror must stay identical to for
+# the affected artifacts.
+
+SITE_MAKER = (MIRROR / "maker.js").read_text(encoding="utf-8")
+SHELL_BRIDGE = (WIDGET / "shell-iframe-bridge.js").read_text(encoding="utf-8")
+SITE_HTML = (MIRROR / "index.html").read_text(encoding="utf-8")
+
+
+def test_studio_back_no_longer_navigates_to_workspace_or_widgets():
+    # The recursion vector must be gone from the deployed Studio pane:
+    # no plain anchor to /workspace/ or /widgets/ for the back-to-Work-Console
+    # affordance. The affordance is now a button wired to the bridge.
+    assert 'studio-back" href="/workspace/"' not in SITE_MAKER
+    assert 'href="/workspace/"' not in SITE_MAKER
+    assert '<a class="studio-back"' not in SITE_MAKER
+    assert 'data-studio-back' in SITE_MAKER
+    assert 'parent.postMessage' in SITE_MAKER
+
+
+def test_studio_sends_only_the_allowed_shell_command():
+    # The Studio pane posts exactly the allow-listed command with version 1.
+    assert '"activate-app"' in SITE_MAKER
+    assert '"cortxt-os-iframe"' in SITE_MAKER
+    assert 'v: 1' in SITE_MAKER
+    assert 'appId: "work-console"' in SITE_MAKER
+
+
+def test_parent_validates_origin_command_and_payload():
+    # The shell must validate origin, command, and payload before acting.
+    shell = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+    assert 'ShellIframeBridge.listenFromIframe' in shell
+    bridge = SHELL_BRIDGE
+    assert 'validateMessage' in bridge
+    assert 'normalizeOrigin' in bridge
+    assert 'ALLOWED_COMMANDS' in bridge
+    assert '"activate-app"' in bridge
+    assert 'ALLOWED_APP_IDS' in bridge
+
+
+def test_work_console_activated_in_outer_shell():
+    # On a valid activation command, the shell focuses/opens the requested app.
+    shell = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+    assert 'focusApp(id)' in shell
+    assert 'payload.appId' in shell
+
+
+def test_no_nested_os_mount_and_recursion_guard_present():
+    # The shell refuses to render the desktop when embedded, and shows the
+    # "Open in Cortxt OS" affordance (no window.top navigation).
+    shell = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+    assert 'isRecursionMount' in shell
+    assert 'window.top' in shell  # origin-validated check, not navigation
+    assert '<strong>Open in Cortxt OS</strong>' in shell
+
+
+def test_docs_link_points_to_real_docs():
+    # The Studio docs link must point at the real docs, not /widgets/ (OS).
+    assert '"/docs/widgets/"' in SITE_MAKER
+    # And the mislabeled "Docs"-style link to /widgets/ must not be the
+    # primary docs affordance in the studio pane header.
+    assert 'studio-links"><a href="/docs/widgets/"' in SITE_MAKER
