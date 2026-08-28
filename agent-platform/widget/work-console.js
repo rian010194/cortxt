@@ -78,7 +78,9 @@ function applyGeom(){
 }
 function clampFrac(v,max){return v<0?0:(v>max?max:v)}
 function beginWindowDrag(el,ev,mode){
-  if(!state.ui.arranging||isNarrow())return;
+  /* Direct window interaction: move/resize always works on desktop, without
+     requiring Arrange mode. Arrange is only an explicit layout action. */
+  if(isNarrow())return;
   if(ev.target.closest("button,a,input"))return;
   var canvas=q("[data-canvas]"),cr=canvas.getBoundingClientRect();
   var id=appIdForWindow(el.dataset.window),start=geomFor(id),sx=ev.clientX,sy=ev.clientY;
@@ -128,6 +130,18 @@ function windowOf(id){var a=appById(id);return a&&a.window?a.window:id}
 function appIdForWindow(win){var a=state.registry.find(function(x){return(x.window||x.id)===win});return a?a.id:win}
 function isDeferred(id){var a=appById(id);return!a||a.kind==="deferred"}
 function isPinned(id){var a=appById(id);return!!a&&a.kind==="pinned"}
+function activeWindowId(){
+  /* One source of truth for the active window: the open, non-minimized app
+     with the highest z-order. Focus, active app, and visual stacking all
+     derive from state.ui.z. */
+  var best="work-console",bz=-1;
+  Object.keys(state.ui.open).forEach(function(id){
+    if(!state.ui.open[id]||state.ui.min[id]||isDeferred(id))return;
+    var z=state.ui.z[id]||0;
+    if(z>=bz){bz=z;best=id}
+  });
+  return best;
+}
 
 /* ---- chrome built from the one registry ----------------------------- */
 function renderChrome(){
@@ -150,6 +164,15 @@ function renderChrome(){
       mnav.appendChild(m);
     }
   });
+  if(mnav){
+    /* Explicit back navigation on mobile: returns to the default app (Work
+       Console) and preserves the selected Workstream context (openApp only
+       changes the active mobile app, never the context). */
+    var back=document.createElement("button");
+    back.type="button";back.dataset.mobileBack="1";back.setAttribute("aria-label","Back to Work Console");back.textContent="\u2190";
+    back.addEventListener("click",function(){openApp("work-console")});
+    mnav.appendChild(back);
+  }
   syncNavActive();
 }
 function syncNavActive(){
@@ -177,6 +200,7 @@ function applyView(){
       var id=appIdForWindow(x.dataset.window),open=!!state.ui.open[id];
       x.hidden=!open;
       x.classList.toggle("minimized",open&&!!state.ui.min[id]);
+      x.classList.toggle("focused",open&&!state.ui.min[id]&&id===activeWindowId());
       if(open&&state.ui.z[id])x.style.zIndex=String(state.ui.z[id]);
       if(open)ensureStudio(id);
     });
@@ -312,6 +336,16 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
   qa("[data-console-view]").forEach(function(x){x.onclick=function(){showConsole(x.dataset.consoleView)}});
   qa("[data-window] .window-bar").forEach(function(bar){bar.addEventListener("dblclick",function(ev){if(ev.target.closest("button,a,input"))return;var win=bar.closest("[data-window]"),id=appIdForWindow(win.dataset.window);if(state.ui.min[id])setMin(id,false)})});
   initCompose();
+  /* Pointer-down on a window surface gives that window focus and raises it
+     (desktop). Interactive controls keep their own behavior; the window
+     chrome buttons already call focusApp/openApp themselves. */
+  document.addEventListener("pointerdown",function(ev){
+    if(isNarrow())return;
+    var win=ev.target.closest("[data-window]");
+    if(!win)return;
+    if(ev.target.closest("button,a,input"))return;
+    focusApp(appIdForWindow(win.dataset.window));
+  });
   var resizeTimer;window.addEventListener("resize",function(){clearTimeout(resizeTimer);resizeTimer=setTimeout(applyView,120)});
 
   restore();
