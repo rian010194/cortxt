@@ -13,7 +13,7 @@
 var SHELL_KEY="cortxt-os-shell",NARROW=720;
 var state={
   model:null,token:null,capabilities:[],registry:[],
-  ui:{open:{"work-console":true},min:{},z:{},geom:{},zTop:10,arranging:false,mobileApp:"work-console",drawer:false},
+  ui:{open:{"work-console":true},min:{},max:{},z:{},geom:{},zTop:10,arranging:false,mobileApp:"work-console",drawer:false},
   context:{workstreamId:null},
   apps:{"work-console":{panel:"attention"}}
 };
@@ -113,6 +113,7 @@ function restore(){
     state.ui=Object.assign(state.ui,saved.ui);
     state.ui.open=Object.assign({},saved.ui.open);state.ui.open["work-console"]=true;
     state.ui.min=Object.assign({},saved.ui.min);state.ui.z=Object.assign({},saved.ui.z);
+    state.ui.max=(saved.ui.max&&typeof saved.ui.max==="object")?Object.assign({},saved.ui.max):{};
     state.ui.geom=(saved.ui.geom&&typeof saved.ui.geom==="object")?Object.assign({},saved.ui.geom):{};
   }
   if(saved.context&&typeof saved.context.workstreamId==="string")state.context.workstreamId=saved.context.workstreamId;
@@ -145,8 +146,8 @@ function activeWindowId(){
 
 /* ---- chrome built from the one registry ----------------------------- */
 function renderChrome(){
-  var drawer=q("[data-app-list]"),mnav=q("[data-mobile-nav]");
-  if(drawer)drawer.innerHTML="";if(mnav)mnav.innerHTML="";
+  var drawer=q("[data-app-list]"),mnav=q("[data-mobile-nav]"),dock=q("[data-os-dock]");
+  if(drawer)drawer.innerHTML="";if(mnav)mnav.innerHTML="";if(dock)dock.innerHTML="";
   state.registry.forEach(function(a){
     var deferred=a.kind==="deferred";
     if(drawer){
@@ -162,6 +163,18 @@ function renderChrome(){
       m.type="button";m.dataset.app=a.id;m.textContent=a.short||a.title;
       m.addEventListener("click",function(){openApp(a.id)});
       mnav.appendChild(m);
+    }
+    if(dock){
+      /* Desktop taskbar/dock: one entry per app from the authoritative
+         registry. Non-deferred apps launch/focus on click; deferred apps stay
+         disabled "soon" entries (issue #432). */
+      var dk=document.createElement("button");
+      dk.type="button";dk.dataset.dockApp=a.id;dk.dataset.dockKind=a.kind||"window";
+      dk.setAttribute("aria-label",a.title+(deferred?" (soon)":""));
+      dk.innerHTML=(a.icon?'<span class="dock-icon">'+esc(a.icon)+'</span>':'')+'<span class="dock-label">'+esc(a.short||a.title)+'</span>';
+      if(deferred){dk.disabled=true;dk.setAttribute("aria-disabled","true")}
+      else dk.addEventListener("click",function(){openApp(a.id)});
+      dock.appendChild(dk);
     }
   });
   if(mnav){
@@ -180,6 +193,11 @@ function syncNavActive(){
   qa("[data-app]").forEach(function(x){
     var on=narrow?x.dataset.app===state.ui.mobileApp:!!state.ui.open[x.dataset.app];
     x.classList.toggle("active",on);
+  });
+  /* Dock active-app affordance: the dock entry of the active window is
+     highlighted, consistent with the focused window (one source of truth). */
+  qa("[data-dock-app]").forEach(function(x){
+    x.classList.toggle("active",narrow?x.dataset.dockApp===state.ui.mobileApp:x.dataset.dockApp===activeWindowId());
   });
 }
 
@@ -200,6 +218,7 @@ function applyView(){
       var id=appIdForWindow(x.dataset.window),open=!!state.ui.open[id];
       x.hidden=!open;
       x.classList.toggle("minimized",open&&!!state.ui.min[id]);
+      x.classList.toggle("maximized",open&&!state.ui.min[id]&&!!state.ui.max[id]);
       x.classList.toggle("focused",open&&!state.ui.min[id]&&id===activeWindowId());
       if(open&&state.ui.z[id])x.style.zIndex=String(state.ui.z[id]);
       if(open)ensureStudio(id);
@@ -235,6 +254,14 @@ function setMin(id,on){
   if(on)state.ui.min[id]=true;else delete state.ui.min[id];
   persist();applyView();
 }
+function setMax(id,on){
+  /* Maximize/restore (issue #432): the pinned console is always full-width and
+     cannot be maximized further; other windows toggle a persisted max flag. */
+  if(isDeferred(id)||isPinned(id))return;
+  if(on)state.ui.max[id]=true;else delete state.ui.max[id];
+  persist();applyView();
+}
+function toggleMax(id){setMax(id,!state.ui.max[id])}
 function toggleArrange(){state.ui.arranging=!state.ui.arranging;persist();applyView()}
 
 /* ---- selected Workstream context ------------------------------- */
@@ -351,6 +378,7 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
   var arrangeButton=q("[data-arrange]");if(arrangeButton)arrangeButton.onclick=toggleArrange;
   qa("[data-window-focus]").forEach(function(x){x.onclick=function(){focusApp(x.dataset.windowFocus)}});
   qa("[data-window-min]").forEach(function(x){x.onclick=function(){var id=x.dataset.windowMin;setMin(id,!state.ui.min[id])}});
+  qa("[data-window-max]").forEach(function(x){x.onclick=function(){toggleMax(x.dataset.windowMax)}});
   qa("[data-close-window]").forEach(function(x){x.onclick=function(){closeApp(x.dataset.closeWindow)}});
   qa("[data-console-view]").forEach(function(x){x.onclick=function(){showConsole(x.dataset.consoleView)}});
   qa("[data-window] .window-bar").forEach(function(bar){bar.addEventListener("dblclick",function(ev){if(ev.target.closest("button,a,input"))return;var win=bar.closest("[data-window]"),id=appIdForWindow(win.dataset.window);if(state.ui.min[id])setMin(id,false)})});
