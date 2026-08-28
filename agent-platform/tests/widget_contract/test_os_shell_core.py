@@ -695,3 +695,92 @@ def test_binding_indicator_rendered_in_chrome():
     assert 'function bindingLabel(id)' in JS
     assert 'el.textContent=id?bindingLabel(id):""' in JS
     assert '.binding-indicator' in S2_CSS
+
+
+# --- S1b: shell command router, deep links, history (issue #439) --------
+# The typed command router (shell-commands.js) plus the shell integration
+# (commandHandlers, deep-link boot/hashchange, history push) live in the
+# authoritative work-console.js/shell-commands.js and the mirrored site copy.
+
+SHELL_COMMANDS = (WIDGET / "shell-commands.js").read_text(encoding="utf-8")
+S1B_HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+
+
+def test_command_router_defines_typed_commands():
+    # The router declares exactly the typed command set; dispatch fails closed
+    # on unknown commands or missing handlers (no navigation side effects).
+    for cmd in ('"open-app"', '"close-app"', '"focus-app"', '"switch-workstream"',
+                '"open-home"', '"exit-workspace"', '"open-external"'):
+        assert cmd in SHELL_COMMANDS
+    assert 'dispatch: function (command, payload, handlers)' in SHELL_COMMANDS
+    assert 'if (!APP_COMMANDS[command]) return false;' in SHELL_COMMANDS
+
+
+def test_deep_link_parser_supports_app_and_ws():
+    # #app=<id>[&ws=<id>] parses into {appId, workstreamId}; empty hash yields
+    # nulls; "all" is a valid workstream value.
+    assert 'function parseDeepLink(hash)' in SHELL_COMMANDS
+    assert 'out.appId = v' in SHELL_COMMANDS
+    assert 'out.workstreamId = v' in SHELL_COMMANDS
+    assert 'applyDeepLink' in SHELL_COMMANDS
+
+
+def test_shell_wires_command_handlers():
+    # The shell exposes commandHandlers and dispatches to lifecycle functions;
+    # open-home no-ops gracefully; exit-workspace returns to landing;
+    # open-external opens a new tab.
+    assert 'window.ShellCommandHandlers = commandHandlers' in JS
+    assert '"open-app": function(p){ if(p&&p.appId)openApp(p.appId); }' in JS
+    assert '"close-app": function(p){ if(p&&p.appId)closeApp(p.appId); }' in JS
+    assert '"focus-app": function(p){ if(p&&p.appId)focusApp(p.appId); }' in JS
+    assert '"switch-workstream": function(p){ if(p&&p.workstreamId)switchWorkstream(p.workstreamId); }' in JS
+    assert '"open-home": function(){ /* typed command; Cortxt Home ships in S5 */ }' in JS
+    assert 'global.location.href="/"' in JS  # exit-workspace
+    assert 'global.open(p.url,"_blank","noopener")' in JS  # open-external
+
+
+def test_boot_and_hashchange_apply_deep_links():
+    # The shell reads the initial deep link after the model loads and reacts
+    # to hashchange; no location.reload-based navigation.
+    assert 'ShellCommands.applyDeepLink(location.hash, window.ShellCommandHandlers)' in JS
+    assert 'window.addEventListener("hashchange"' in JS
+    assert 'location.reload' not in JS
+
+
+def test_history_push_integration():
+    # App opening/focusing and workstream switching push the shell state onto
+    # the hash for defined back/refresh/deep-link semantics.
+    assert 'function pushShellState(appId)' in JS
+    assert 'ShellCommands.pushState(appId||null,activeContextId())' in JS
+    assert 'persist();applyView();pushShellState(id)' in JS
+    assert 'ShellCommands.pushState(state.ui.mobileApp||null,activeContextId())' in JS
+
+
+def test_router_behavior_in_domless_runtime():
+    # Behavioral check: execute shell-commands.js in a DOM-less runtime and
+    # prove command dispatch, deep-link parsing, and fail-closed unknown
+    # commands.
+    import subprocess
+    script = (
+        "const m=require(%s);"
+        "let got=[];"
+        "const h={"
+        "  'open-app':function(p){got.push(['open',p.appId])},"
+        "  'switch-workstream':function(p){got.push(['ws',p.workstreamId])}"
+        "};"
+        "if(m.dispatch('open-app',{appId:'studio'},h)!==true)process.exit(2);"
+        "if(m.dispatch('nope',{},h)!==false)process.exit(3);"
+        "if(m.dispatch('open-app',{},null)!==false)process.exit(4);"
+        "const d1=m.parseDeepLink('#app=studio&ws=WS-042');"
+        "if(d1.appId!=='studio'||d1.workstreamId!=='WS-042')process.exit(5);"
+        "const d2=m.parseDeepLink('');"
+        "if(d2.appId!==null||d2.workstreamId!==null)process.exit(6);"
+        "const d3=m.parseDeepLink('#ws=all');"
+        "if(d3.workstreamId!=='all')process.exit(7);"
+        "if(m.applyDeepLink('#app=evidence&ws=all',h)!==true)process.exit(8);"
+        "if(got.length!==3||got[0][0]!=='open'||got[1][1]!=='all'||got[2][0]!=='open')process.exit(9);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "shell-commands.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout

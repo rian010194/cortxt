@@ -312,18 +312,26 @@ function applyView(){
 }
 
 /* ---- desktop window lifecycle ----------------------------------- */
+/* S1b: app navigation pushes the shell state onto the hash so browser
+   back/refresh/deep-link have defined semantics. Guarded so the DOM-less
+   Node test runtime (no location/history) is unaffected. */
+function pushShellState(appId){
+  if(typeof ShellCommands!=="undefined"&&ShellCommands.pushState&&typeof location!=="undefined"){
+    ShellCommands.pushState(appId||null,activeContextId());
+  }
+}
 function openApp(id){
   if(isDeferred(id))return;
   state.ui.mobileApp=id;  /* last-touched app: what a switch to mobile shows */
   if(!isNarrow()){state.ui.open[id]=true;delete state.ui.min[id];state.ui.z[id]=++state.ui.zTop}
   ensureStudio(id);
-  persist();applyView();
+  persist();applyView();pushShellState(id);
 }
 function focusApp(id){
   if(isDeferred(id))return;
   state.ui.mobileApp=id;
   if(!isNarrow()){state.ui.open[id]=true;delete state.ui.min[id];state.ui.z[id]=++state.ui.zTop}
-  persist();applyView();
+  persist();applyView();pushShellState(id);
 }
 function closeApp(id){
   if(isPinned(id)||isDeferred(id))return;
@@ -376,6 +384,9 @@ function switchWorkstream(id){
   if(id==="all"){state.context.workstreamId=null}
   else{state.context.workstreamId=id}
   persist();propagateContext();renderSwitcher();
+  if(typeof ShellCommands!=="undefined"&&ShellCommands.pushState&&typeof location!=="undefined"){
+    ShellCommands.pushState(state.ui.mobileApp||null,activeContextId());
+  }
 }
 function recentWorkstreams(){
   /* Most-recently-used first; attention items float up. */
@@ -546,6 +557,27 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
       if (id && state && state.registry) focusApp(id);
     });
   }
+  /* S1b: typed shell command router — internal navigation goes through
+     commands, never ordinary page navigation. open-home is typed and no-ops
+     gracefully until Cortxt Home ships (S5); exit-workspace returns to the
+     public landing; open-external opens a new tab. */
+  if (typeof ShellCommands !== "undefined") {
+    var commandHandlers = {
+      "open-app": function(p){ if(p&&p.appId)openApp(p.appId); },
+      "close-app": function(p){ if(p&&p.appId)closeApp(p.appId); },
+      "focus-app": function(p){ if(p&&p.appId)focusApp(p.appId); },
+      "switch-workstream": function(p){ if(p&&p.workstreamId)switchWorkstream(p.workstreamId); },
+      "open-home": function(){ /* typed command; Cortxt Home ships in S5 */ },
+      "exit-workspace": function(){ try{global.location.href="/"}catch(_e){} },
+      "open-external": function(p){ if(p&&p.url)try{global.open(p.url,"_blank","noopener")}catch(_e){} },
+    };
+    window.ShellCommandHandlers = commandHandlers;
+    window.addEventListener("hashchange", function(){
+      if (typeof ShellCommands !== "undefined" && ShellCommands.applyDeepLink) {
+        ShellCommands.applyDeepLink(location.hash, commandHandlers);
+      }
+    });
+  }
   q("[data-reveal-apps]").onclick=function(){var drawer=q("[data-app-drawer]");state.ui.drawer=drawer.hidden;drawer.hidden=!drawer.hidden;this.setAttribute("aria-expanded",String(state.ui.drawer));persist()};
   var wsToggle=q("[data-ws-toggle]"),wsPanel=q("[data-workstream-switcher]");
   if(wsToggle&&wsPanel){wsToggle.onclick=function(){var open=wsPanel.hidden;wsPanel.hidden=!open;this.setAttribute("aria-expanded",String(open));if(open)renderSwitcher()}}
@@ -576,6 +608,11 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
     return Promise.all([load(),loadBoundary()]);
   }).then(function(values){
     state.model=values[0];setMode();render();applyView();renderSwitcher();
+    /* S1b: apply an initial deep link (#app=...&ws=...) once the registry and
+       model are available. */
+    if (typeof ShellCommands !== "undefined" && ShellCommands.applyDeepLink && typeof location !== "undefined") {
+      ShellCommands.applyDeepLink(location.hash, window.ShellCommandHandlers);
+    }
   }).catch(function(error){
     q("[data-mode-banner]").innerHTML="<strong>Data unavailable</strong><span>"+esc(error.message)+"</span>";
     q("[data-attention-title]").textContent="Work Console could not establish authoritative state.";
