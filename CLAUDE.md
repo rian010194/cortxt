@@ -65,17 +65,18 @@ normative record of decisions.
 
 ## Product surface and status
 
-- Per **ADR-042** (accepted 2026-08-26), Cortxt is **work- and
-  mandate-first**: durable authority, replaceable execution. Cortxt OS / Work
-  Console is the accepted default product app, currently an in-progress
-  shell, not a finished product. The `cortxt` CLI remains the local,
+- Per **ADR-042/044**, Cortxt is **work- and mandate-first**: durable
+  authority, replaceable execution. Cortxt OS is the general shell and
+  first-party app runtime; Work is its first principal app, not the identity
+  of the OS. Both remain under active development. The `cortxt` CLI remains the local,
   automation, bootstrap, diagnostic, and power-user interface (ADR-015/021,
   issue #186) and today is the most complete verified interface. The
   external, mandate-protected integration surface is an **MCP server**
   (`cortxt mcp serve`) per ADR-024/032. A thin `cortxt widget` surface
   provides declarative views/apps (ADR-021/038), not a top-level product
   category. The legacy web prototype removed before the first public release
-  (issue #225) is unrelated history, not a revival of Work Console.
+  (issue #225) is unrelated history. Work Console is retired by ADR-044 with a
+  bounded compatibility migration to Work.
 - GitHub Issues are the durable records for approved scope, evidence, review,
   and decisions (ADR-018).
 - Worker dispatch's workflow-state carrier is the GitHub Issue `workflow:*`
@@ -221,11 +222,10 @@ Do not:
 
 - treat any external runtime (Hermes, Pi, Codex, DSH, Buzz) as the product —
   they are replaceable resources behind Cortxt-owned ports (ADR-014/016);
-- treat the removed legacy web prototype as a product surface — Work Console
-  (ADR-042) is a distinct, newly accepted direction, unrelated to that
-  removed prototype (issues #186 and #225);
-- describe Work Console/Cortxt OS as fully shipped — it is accepted
-  direction under active development;
+- treat the removed legacy web prototype as a product surface or as the origin
+  of Work — it is unrelated history (issues #186 and #225);
+- treat Work as the identity of Cortxt OS, call the Work app Workspace, or
+  describe the OS or Work as fully shipped (ADR-044);
 - invent a second backlog or independent Kanban outside GitHub;
 - describe a successful smoke test as a finished production workflow;
 - add a new entry point before checking whether it preserves the dispatch
