@@ -1481,7 +1481,7 @@
 
   var MAKER_HTML =
     '<div class="maker-pane-header">' +
-      '<div><a class="studio-back" href="/workspace/">← Work Console</a><span class="maker-pane-title">Customize Workstream view</span><div class="card-meta" style="margin-top:6px">WS-042 · Municipal AI Act gap analysis</div></div>' +
+      '<div><button type="button" class="studio-back" data-studio-back>← Work Console</button><span class="maker-pane-title">Customize Workstream view</span><div class="card-meta" style="margin-top:6px">WS-042 · Municipal AI Act gap analysis</div></div>' +
       '<div class="studio-links"><a href="/docs/widgets/">Widget documentation</a></div>' +
     '</div>' +
     '<div class="studio-context"><span>Placement</span><strong>Workstream overview</strong><span>Data</span><strong>Decisions + evidence</strong></div>' +
@@ -1618,6 +1618,27 @@
     if (!container) return;
     container.classList.add("maker-pane");
     container.innerHTML = MAKER_HTML;
+
+    /* S1a (#435): the "back to Work Console" affordance must activate Work
+       Console in the PARENT shell via the origin-validated iframe bridge, not
+       navigate this iframe to /workspace/ (which recurses). Equivalent to
+       ShellIframeBridge.requestActivateApp, inlined so this older maker pane
+       does not require an extra script tag. */
+    (function wireStudioBack() {
+      var back = container.querySelector("[data-studio-back]");
+      if (!back) return;
+      back.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        try {
+          if (window.parent && window.parent.postMessage) {
+            window.parent.postMessage(
+              { source: "cortxt-os-iframe", v: 1, command: "activate-app", payload: { appId: "work-console" } },
+              "*"
+            );
+          }
+        } catch (_e) { /* ignore cross-origin/security errors */ }
+      });
+    })();
 
     var q = function (sel) { return container.querySelector(sel); };
     var qa = function (sel) { return Array.prototype.slice.call(container.querySelectorAll(sel)); };
