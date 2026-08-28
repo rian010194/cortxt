@@ -28,7 +28,23 @@ _Avoid_: Event
 
 **Workspace**:
 The optional Git branch and worktree attached to a workstream. It is execution metadata, not the workstream's identity.
-_Avoid_: Workstream
+_Avoid_: Workstream, Work app
+
+**Work**:
+The first principal Cortxt app, presenting a coherent work- and mandate-first surface for a selected Workstream. It is an app over Cortxt-owned state, not the Workstream itself or the operating system.
+_Avoid_: Work Console, Workspace
+
+**App**:
+A registered first-party product surface that consumes versioned Cortxt projections and requests mutations through authorized action ports. An app owns only its local presentation state, never platform authority.
+_Avoid_: System surface, widget
+
+**System surface**:
+A Cortxt OS presentation surface for cross-app concerns such as Home, launcher, global routing, or Activity Center. It owns no domain authority and is not a registered domain app.
+_Avoid_: App, dashboard
+
+**Attention item**:
+A read-only projection that directs the operator to an authoritative source record requiring or reporting attention. It is not a decision request, workflow record, or backlog item.
+_Avoid_: Task, notification record
 
 **Issue**:
 The durable record of scope, evidence, review, and approval in GitHub Issues. An issue carries exactly one `workflow:*` label at a time.

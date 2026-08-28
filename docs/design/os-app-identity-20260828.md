@@ -2,183 +2,178 @@
 
 Date: 2026-08-28
 Issue: rian010194/cortxt#422
-Status: design proposal, awaiting operator review; no implementation in this issue.
+Status: Reconciled with accepted ADR-044 on 2026-08-28; implementation remains separately gated.
 
 ## Purpose
 
-Define the real app boundaries of Cortxt OS before any app gains richer content.
-Work Console, Decisions, Evidence, and Studio must not remain different views of
-one generic app; Execution Inspector, Policies, Atlas, and Connections need clear
-distinct roles. This document fixes, for each app: **identity** (what it is),
-**responsibility** (what it owns and does not own), **navigation** (how it is
-reached and how it relates to other apps), **state** (what it reads/writes; what
-is shell-owned vs app-local vs platform-owned), and **contract** (which
-ADR-038 widget-contract reads/actions it uses, or its explicit non-widget
-surface).
+Define the boundary between Cortxt OS system surfaces, registered first-party
+apps, and Cortxt-owned authoritative state. ADR-044 supersedes this document's
+earlier proposal to make Work Console the mandatory default app. Work Console
+is retired through a bounded compatibility migration; Work is the first
+principal app but is not the identity of the OS.
 
-Boundaries that bind this document (normative):
+## Normative boundaries
 
-- **ADR-042**: the shell owns presentation, app lifecycle, focus, navigation,
-  layout, persistence, command/search, and notifications; the shell does NOT own
-  workflow, mandate, evidence, decisions, or approval state. Apps share the
-  selected Workstream through a shell-owned context contract; they do not fork
-  domain state or couple directly to Work Console. Work Console is the default
-  app. Studio configures or authors apps/compositions and is not the launcher or
-  the product identity.
-- **ADR-038**: any app surface is expressed through the declarative widget
-  contract (typed reads/render/actions, authorized action ports) and must not
-  widen authority. Widgets are inert projections over platform-owned state.
-- **ADR-043**: canonical design-system tokens; no private palette.
-- **CONTEXT.md**: controlled vocabulary (Workstream, Run, Agent Session, Lane,
-  Segment, Workspace, Issue, Workflow state).
+- **ADR-042**: Cortxt is work- and mandate-first. Durable authority survives
+  replaceable execution.
+- **ADR-044**: Cortxt OS is a general first-party app runtime. Work is its first
+  principal app; Home and Activity Center are system surfaces; Workspace keeps
+  its execution-resource meaning.
+- **ADR-038**: apps consume typed reads and request mutations through
+  authorized action ports. UI composition cannot widen authority.
+- **ADR-043**: every system surface and app consumes the canonical design
+  system through its declared adapter.
+- **CONTEXT.md**: Work, Workstream, Workspace, App, System surface, and
+  Attention item are distinct controlled terms.
 
-## Workstream context contract (shell-owned)
+The shell owns presentation, app lifecycle, focus, navigation, layout,
+persistence, validated commands, global context, search, notifications, and
+system chrome. It owns no workflow, mandate, evidence, decision, policy, or Run
+authority.
 
-The shell provides the **selected Workstream** to every mounted app:
+## Context and state contract
 
-- What the shell provides: a single `context.workstreamId` (persisted), the
-  current Workstream projection (id, title, outcome, workflow, attention,
-  decision, evidence, authority, acceptance criteria) and the fail-closed
-  data-loading boundary (synthetic vs local mode).
-- What an app may read: the Workstream projection and the shell mode banner.
-- What an app may NEVER do: fork or duplicate Workstream/domain state; couple
-  directly to Work Console; mutate platform authority (workflow labels, mandate,
-  evidence, decisions) except through a registered authorized action port with
-  operator approval; own the selection (selection changes are shell actions).
-- App-local state (e.g. Work Console's sub-view) stays in `state.apps[appId]`,
-  persisted under the single shell key; it never becomes authoritative.
+The shell may provide an active Workstream and focused record reference to a
+mounted app. These bindings are optional: an app that does not require a
+Workstream must be able to register and run without one.
 
-## App definitions
+State remains separated:
 
-### Work Console
-- Identity: the operator's default app; the work- and mandate-first home.
-- Responsibility: active Workstreams, desired outcomes, pending human decisions,
-  mandate/policy blocks, evidence requiring review; entry point into a
-  Workstream's mandate, progress, evidence, decisions, and execution.
-- Does not own: workflow state, mandate, decisions, approval; it projects them.
-- Navigation: default app, opened at cold start; opens review surfaces and
-  related apps (Decisions, Evidence).
-- State: reads Workstream projections; app-local view state only.
-- Contract: ADR-038 widget surface with `workstream.summary.v1`-class reads and
-  the `record-decision` action (review -> done) behind the operator gate.
+- shell state owns open apps, focus, layout, global context, and system-surface
+  presentation;
+- app-local state owns only that app's presentation preferences;
+- authoritative platform state owns Workstreams, mandates, workflow, Runs,
+  evidence, decisions, and policy; and
+- synthetic mode projects deterministic data and exposes no authoritative
+  mutations.
+
+An app may never fork domain state, read another app's private state, invoke
+another app's renderer, or mutate authority outside a registered action port.
+
+## System surfaces
+
+### Home
+
+Home is the entry, resume, onboarding, discovery, and product-status surface.
+It is not a domain app and owns no Workstream state.
+
+### Activity Center
+
+Activity Center is the shell-owned cross-app attention surface. It consumes
+typed Attention item projections, may group or deduplicate them, and dispatches
+validated commands to the responsible app and source record. Read, dismissed,
+grouping, and filter state are local presentation state.
+
+Activity Center cannot approve, mutate workflow state, own a decision request,
+become a backlog, or reproduce a complete app workflow.
+
+### Other system surfaces
+
+Launcher, dock, global Workstream router, search/command entry, and
+profile/settings are system surfaces. Their presence does not make their
+referenced domain state shell-owned.
+
+## Registered apps
+
+### Work
+
+- **Identity:** first principal work- and mandate-first app, app ID `work`.
+- **Responsibility:** present one coherent surface for the selected Workstream:
+  outcome, mandate summary, progress, blockers, next meaningful action,
+  decision and evidence summaries, milestones, and related resources.
+- **Does not own:** Workstream, workflow, mandate, decisions, evidence,
+  approval, or execution state.
+- **Navigation:** opens the responsible deep app with the exact Workstream and
+  record context. It is not permanently pinned and need not remain open.
+- **Contract:** versioned Workstream projections and validated app commands;
+  no private cross-app calls.
 
 ### Decisions
-- Identity: the authority app for human decisions on Workstreams.
-- Responsibility: pending decisions and their evidence in one place; the single
-  authorized approve action (workflow:review -> workflow:done) with approval
-  reference and explicit confirmation; fail closed without reviewed authority.
-- Does not own: the decision itself until the operator acts; cannot define scope.
-- Navigation: related app reachable from Work Console and shell chrome; reflects
-  the selected Workstream.
-- State: reads pending-decision projection; writes only via the authorized
-  action port.
-- Contract: ADR-038 with `decision.pending.v1` read and `workflow.record-decision.v1`
-  action (github-transition port, operator mode).
+
+- **Identity:** authority app for human decisions on Workstreams.
+- **Responsibility:** present pending decisions and their evidence; request the
+  authorized approval transition with explicit confirmation and approval
+  reference.
+- **Does not own:** scope or workflow state before the operator acts.
+- **Contract:** `decision.pending.v1`-class reads and the
+  `workflow.record-decision.v1` authorized action.
 
 ### Evidence
-- Identity: the attribution app for accepted and candidate evidence.
-- Responsibility: show evidence per Workstream and per Run; distinguish accepted,
-  complete, and conflicting evidence; keep evidence attributable.
-- Does not own: acceptance; acceptance is a decision action in Decisions.
-- Navigation: related app; opens from review surfaces and shell chrome.
-- State: reads evidence projections; no writes in this phase.
-- Contract: ADR-038 with `evidence.comparison.v1`-class reads; read-only.
 
-### Studio
-- Identity: the authoring/configuring app for apps and compositions.
-- Responsibility: configure or author apps/compositions under ADR-038; a
-  workspace for composition specs.
-- Does not own: launching apps, the OS identity, product identity, or domain
-  authority. Studio is not the launcher and not the product.
-- Navigation: a windowed app; iframe-hosted Widget Maker surface.
-- State: composition drafts only; never platform authority.
-- Contract: ADR-038 composition surface; deferred in the shell registry today.
+- **Identity:** attribution app for accepted and candidate evidence.
+- **Responsibility:** distinguish accepted, complete, incomplete, and
+  conflicting evidence per Workstream and Run.
+- **Does not own:** evidence acceptance; Decisions owns the operator action.
+- **Contract:** `evidence.comparison.v1`-class reads; read-only in this phase.
 
 ### Execution Inspector
-- Identity: the operations/diagnostics app (ADR-042 item 3 reframed, canonical
-  name per amendment D).
-- Responsibility: agent/runtime participants, sessions, terminals/logs,
-  pipelines, execution timelines, workspaces/worktrees/sandboxes,
-  provider/engine detail, cost/usage — available from a Workstream.
-- Does not own: durable work authority; it is subordinate diagnostics.
-- Navigation: from a Workstream; not the product entry point.
-- State: reads run/session/lane projections; read-only.
-- Contract: ADR-038 read surfaces over session/execution-map data; planned as an
-  operator surface (issue E).
+
+- **Identity:** operations and diagnostics app subordinate to a Workstream.
+- **Responsibility:** Runs, agent/runtime participants, sessions, timelines,
+  terminals and logs, Workspaces, worktrees, sandboxes, provider/engine detail,
+  cost, and usage.
+- **Does not own:** durable work authority.
+- **Contract:** read surfaces over session and execution-map projections.
 
 ### Policies
-- Identity: the policy surface for mandate/provider rules and data-class limits.
-- Responsibility: show applicable policies per Workstream/Work (mandate,
-  provider policy, data class, evidence gates).
-- Does not own: policy decisions; it projects platform policy state.
-- Navigation: related app from a Workstream.
-- State: reads policy projections; read-only in this phase.
-- Contract: ADR-038 reads; planned as an operator surface (issue E).
+
+- **Identity:** policy explanation surface.
+- **Responsibility:** show applicable mandate, provider, data-class, and
+  evidence-gate rules.
+- **Does not own:** policy authority or decisions.
+- **Contract:** policy projections; read-only in the initial phase.
 
 ### Atlas
-- Identity: the roadmap/map surface derived from GitHub Issues (issue #210;
-  `scripts/atlas_sync.py`), never a second backlog.
-- Responsibility: show roadmap maps and derived views; correlate to issues.
-- Does not own: backlog state; it is a derived projection.
-- Navigation: shell app; opens the Atlas view for the selected context.
-- State: reads atlas-derived projections; read-only.
-- Contract: ADR-038 reads over atlas data; distinct role from Work Console
-  (planning vs operations) (issue F).
+
+- **Identity:** roadmap and map surface derived from GitHub Issues.
+- **Responsibility:** show derived planning views and issue correlations.
+- **Does not own:** backlog or workflow state.
+- **Contract:** read-only Atlas projections.
 
 ### Connections
-- Identity: the integration surface for external systems (webhooks, providers,
-  runtimes, MCP consumers).
-- Responsibility: show and manage integration state (webhooks, adapters,
-  providers) behind authorized action ports.
-- Does not own: the integrations' authority; mutations only via authorized ports.
-- Navigation: shell app; distinct from Atlas and Policies.
-- State: reads connection/webhook projections; authorized writes only.
-- Contract: ADR-038 reads + authorized action ports (issue F).
 
-## ADR-038 mapping summary
+- **Identity:** external integration surface.
+- **Responsibility:** show and manage webhooks, adapters, providers, runtimes,
+  and MCP consumers through authorized ports.
+- **Does not own:** an integration's external authority.
+- **Contract:** connection reads and explicitly authorized mutations.
 
-| App | Reads | Actions | Ports | Notes |
-|---|---|---|---|---|
-| Work Console | workstream summary, attention | record-decision | github-transition | default app |
-| Decisions | decision pending | record-decision | github-transition | operator-gated |
-| Evidence | evidence comparison | — | — | read-only |
-| Studio | composition drafts | composition authoring | cli (allow-listed) | deferred today |
-| Execution Inspector | session/execution-map | — | — | planned (E) |
-| Policies | policy projections | — | — | planned (E) |
-| Atlas | atlas maps | — | — | planned (F) |
-| Connections | webhook/connection | authorized mutations | mcp/cli | planned (F) |
+### Studio
 
-## Proposed issue breakdown (C/D/E/F)
+- **Identity:** authoring and configuration app for declarative compositions.
+- **Responsibility:** edit composition drafts under ADR-038.
+- **Does not own:** app launching, OS identity, domain authority, or the app
+  distribution model.
+- **Contract:** deferred composition surface; third-party app installation is
+  outside S5.5.
 
-| Issue | Title (proposal) | File scope (non-overlapping) | Depends on | Kind |
-|---|---|---|---|---|
-| C | Build: Work Console complete operator app | `agent-platform/widget_contract/` (work-console reads), `agent-platform/widget/work-console.js` console panels, `site/public/widgets/` mirror, fixtures | B (this doc) | delivery |
-| D | Build: Decisions and Evidence authority journey | `agent-platform/widget_contract/` (decision/evidence reads+action), `agent-platform/widget/work-console.js` decisions/evidence windows, `action_host.py`, fixtures | B | delivery |
-| E | Plan: Execution Inspector and Policies operator surfaces | `docs/` (scoping) only | B | docs |
-| F | Plan: Atlas, Connections, Studio distinct roles | `docs/` (scoping) only | B | docs |
+## Registration contract
 
-Non-overlap: C owns Work Console panel + its contract reads; D owns Decisions/
-Evidence windows + their reads/action; E and F are docs-only. No file is shared
-between C and D except `work-console.js` (the shell file) — C and D must either
-be sequenced or split that file's ownership explicitly; recommendation:
-sequence C then D on separate branches, or give D its own window renderer
-module. C/D run only after operator approval of this design.
+Each app declares:
 
-## Consistency check
+```text
+id
+version
+title
+routes
+requiredCapabilities
+providedCommands
+contextBindings
+lifecycleMode
+supportedFormFactors
+```
 
-- ADR-042: this document keeps authority out of the shell and apps; every
-  mutation is a registered authorized action port. Pass.
-- ADR-038: every surface is mapped to the widget contract; no bespoke
-  authority-widening surface. Pass.
-- ADR-043: no new palette; all apps consume canonical tokens. Pass.
-- CONTEXT.md: vocabulary used consistently (Workstream, Run, Issue, Workspace).
-  Pass.
-- Conflicts flagged: none blocking; `docs/superpowers/` is gitignored, so this
-  design deliberately lives in the tracked `docs/design/` path.
+The S5.5 slice must prove that Work registration adds no Work-specific branch
+to shell core, an app without Workstream context can register and open, and all
+mutations pass through authorized action ports.
 
-## Supersedes / absorbs
+## Compatibility boundary
 
-- Issue #416 (research: OS current-state architecture) and #417 (diagnosis: OS
-  test gaps) remain open and `workflow:blocked`; this design absorbs their
-  intent (architecture mapping, acceptance coverage). The operator may close or
-  retry them separately; no automatic transition performed here.
+For one release cycle, `#app=work-console` and saved `work-console` state
+resolve to `work` while preserving the selected Workstream, favorites, and
+other open apps. Removing the alias requires a separate operator decision.
+
+The S5.5 implementation remains blocked until S5 passes its operator merge
+gate, its issue reaches `workflow:done`, the integration branch is synchronized,
+the S5.5 brief adopts the `work` identity, and the operator approves the first
+implementation slice.

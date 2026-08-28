@@ -4,7 +4,11 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-08-27 (ADR-043 accepted by operator approval: one global design-system source and explicit consumer contract). Previously updated 2026-08-26 (ADR-042 accepted by operator approval, including the pre-acceptance amendment retaining the Cortxt OS canvas/window/app-shell model and naming the cockpit's role Execution Inspector).
+Updated: 2026-08-28 (ADR-044 accepted by operator approval: distinguish Cortxt OS system surfaces,
+first-party apps, and Core authority; retire Work Console in favor of the Work
+app while preserving Workspace as an execution-resource term). Previously
+updated 2026-08-27 (ADR-043 accepted by operator approval: one global
+design-system source and explicit consumer contract).
 
 | # | Title | Status | Notes |
 | --- | --- | --- | --- |
@@ -39,8 +43,9 @@ Updated: 2026-08-27 (ADR-043 accepted by operator approval: one global design-sy
 | 039 | Execution map concurrency claims and prerequisite ordering | **Accepted** (2026-08-22) | Deterministic prerequisite waves + fail-closed pre-flight claims over issue/run/branch/worktree/label/session/engine-session/writer-domain resources; conditional all-or-nothing acquisition, leases with reconciliation, immutable attempt history, fresh blocker checks; disjoint-resource parallelism, driver/observer separation, receipt is a gate not authority; current JSON/process-local guards insufficient for parallel writers — durable store is an explicit operator decision (issue #251/#265) |
 | 040 | Delivery execution paths and workflow-label invariant | **Accepted** (2026-08-22) | Three sanctioned paths (dispatched runtime build / coordinator-direct fast fix / docs-ADR materialization) + hard label invariant: a merged delivery PR never leaves its issue at workflow:inbox; Atlas Work kind records kind for rendering only (issues #259-#262; operator question 2026-08-22) |
 | 041 | Backend Service Surface Reopens ADR-015 (Surface Dimension Only) | **Accepted** | Permits opt-in remote state behind the existing MCP external surface while preserving CLI-primary interaction and the loopback widget boundary. |
-| 042 | Work- and Mandate-First Product Surface with Replaceable Secure Execution | **Accepted** (2026-08-26) | Product hierarchy: durable Workstream authority above replaceable engines/providers/runtimes, expressed inside the existing Cortxt OS canvas/window/app-shell model; Work Console is the default app; Decisions/Evidence/Policies/Atlas/Connections/Execution Inspector are related apps over shared Workstream state; cockpit reframed as Execution Inspector (not "Run Inspector"); retain CLI/MCP/widgets; evaluate OpenShell as optional execution backend; require a continuity proof before broad UI change. |
+| 042 | Work- and Mandate-First Product Surface with Replaceable Secure Execution | **Accepted** (2026-08-26; app-default clauses superseded by ADR-044) | Product hierarchy: durable Workstream authority above replaceable engines/providers/runtimes, expressed inside the Cortxt OS canvas/window/app-shell model; ADR-044 replaces Work Console as the required default with Work as the first principal app; cockpit reframed as Execution Inspector (not "Run Inspector"); retain CLI/MCP/widgets; evaluate OpenShell as optional execution backend; require a continuity proof before broad UI change. |
 | 043 | Global design-system source and consumer contract | **Accepted** (2026-08-27) | Platform-owned preset source, generated web artifact, consumer adapters, shared authority/execution grammar, compatibility, and CI conformance. |
+| 044 | Cortxt OS system surfaces and first-party app boundary | **Accepted** (2026-08-28) | Cortxt OS is a general first-party app runtime; Work is its first principal app; Home and Activity Center are system surfaces; Work Console retires through a compatibility alias; Workspace keeps its execution-resource meaning. Supersedes only ADR-042 amendment B/C where they require Work Console as the automatically opened default app. |
 
 ## Decisions and Authority
 
