@@ -318,12 +318,13 @@ def test_multi_window_side_by_side_composition_gate():
     # S6d AC5 (operator-mandated gate): the opt-in window mode must place Work
     # and the secondary capability side by side with both materially visible;
     # the "side by side" bar only shows when the composition satisfies the
-    # claim.
+    # claim (sideBySideFeasible: desktop >= 900px).
     assert "PRIMARY_W=0.58" in JS or "PRIMARY_W=0.6" in JS
     assert 'rects[id]={x:PRIMARY_W+GUTTER' in JS
     assert "1-PRIMARY_W-GUTTER" in JS  # secondary column materially visible
-    assert "function sideBySideComposition()" in JS
-    assert 'mm.hidden=!sideBySideComposition()' in JS
+    assert "function sideBySideFeasible()" in JS
+    assert "window.innerWidth>=900" in JS
+    assert "function renderMultiModeBar()" in JS
     assert "windows stay side by side" in HTML
     assert "1-PRIMARY_W-GUTTER" in JS
 
@@ -341,6 +342,62 @@ def test_window_geometry_tiling_keeps_both_visible():
         "if(r['decisions'].w<0.30-eps)process.exit(2);"
         "if(work.w<0.30-eps)process.exit(3);"
         "if(r['decisions'].x<=work.w-eps)process.exit(4);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "work-console.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_window_resize_handle_is_visible_on_desktop():
+    # S6d fix (operator repro): the resize handle must be visible and usable
+    # on desktop windows — no hidden compose toggle. Narrow still hides it.
+    assert ".window-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;display:block" in CSS
+    assert ".canvas.compose .window-resize" not in CSS
+    mq = CSS[CSS.index("@media(max-width:720px){"):]
+    mq = mq[:mq.index("@media", 1)]
+    assert ".window-resize{display:none!important}" in mq
+
+
+def test_minimize_offers_restore_affordance():
+    # S6d fix (operator repro): minimizing must never make a window
+    # unreachable — the multi-window bar persists and offers a Restore
+    # button per minimized window; the bar never claims side-by-side when
+    # nothing is visible.
+    assert "function minimizedWindows()" in JS
+    assert "function anyWindowModel()" in JS
+    assert 'data-restore-window="'+'"' in JS or "data-restore-window=" in JS
+    assert 'aria-label="Restore ' in JS
+    assert 'setMin(b.dataset.restoreWindow,false)' in JS
+    assert "html+='<span>Multi-window mode</span>'" in JS
+    assert "' minimized</span>'" in JS
+
+
+def test_intermediate_width_honest_composition():
+    # S6d fix (operator gate): below the side-by-side threshold, windows
+    # stack full-width below Work instead of squeezing both columns; the bar
+    # drops the "side by side" claim.
+    assert "if(!sideBySideFeasible()){" in JS
+    assert "x:0,y:0.55,w:1,h:0.4" in JS
+    assert "html+='<span>Multi-window mode</span>'" in JS
+
+
+def test_window_lifecycle_state_machine():
+    # Behavioral: the window model transitions open -> min -> restore ->
+    # max -> restore -> close deterministically (pure state helpers).
+    import subprocess
+    script = (
+        "const m=require(%s);"
+        "const s={ui:{open:{},min:{},max:{},z:{},zTop:1,geom:{}}};"
+        "function setMin(id,on){if(on)s.ui.min[id]=true;else delete s.ui.min[id];}"
+        "function setMax(id,on){if(on)s.ui.max[id]=true;else delete s.ui.max[id];}"
+        "function close(id){delete s.ui.open[id];delete s.ui.min[id];delete s.ui.max[id];delete s.ui.z[id];}"
+        "s.ui.open['decisions']=true;s.ui.z['decisions']=++s.ui.zTop;"
+        "setMin('decisions',true);if(!s.ui.min['decisions'])process.exit(2);"
+        "setMin('decisions',false);if(s.ui.min['decisions'])process.exit(3);"
+        "setMax('decisions',true);if(!s.ui.max['decisions'])process.exit(4);"
+        "setMax('decisions',false);if(s.ui.max['decisions'])process.exit(5);"
+        "close('decisions');if(s.ui.open['decisions'])process.exit(6);"
         "console.log('ok');"
     ) % json.dumps(str(WIDGET / "work-console.js"))
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True)

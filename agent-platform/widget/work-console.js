@@ -172,12 +172,46 @@ function activeWindowId(){
 function anyOpenWindows(){
   return Object.keys(state.ui.open).some(function(id){return !!state.ui.open[id]&&!state.ui.min[id]});
 }
-function sideBySideComposition(){
-  /* The multi-window bar only claims "side by side" when the composition
-     genuinely satisfies it: at least one open window, Work as the primary
-     surface, and a desktop viewport. (S6d gate: never claim the composition
-     when it does not hold.) */
-  return anyOpenWindows() && (state.primary==="work"||state.primary==="deep") && !isNarrow();
+function anyWindowModel(){
+  /* Any window in the model — open or minimized — so the multi-window bar
+     can offer a restore affordance even when everything is minimized. */
+  return Object.keys(state.ui.open).some(function(id){return !!state.ui.open[id]});
+}
+function minimizedWindows(){
+  return Object.keys(state.ui.open).filter(function(id){return !!state.ui.open[id]&&!!state.ui.min[id]});
+}
+function sideBySideFeasible(){
+  /* True when the viewport is wide enough for Work + a secondary to both be
+     materially useful (>= 900px desktop; narrow is never side-by-side). */
+  return !isNarrow() && window.innerWidth>=900;
+}
+function renderMultiModeBar(){
+  /* The bar is honest: it only claims "side by side" when the composition
+     satisfies that claim, and it always offers a restore affordance for
+     minimized windows. */
+  var mm=q("[data-multi-mode]");
+  if(!mm)return;
+  var visible=anyOpenWindows();
+  var minimized=minimizedWindows();
+  if(!anyWindowModel()||isNarrow()){mm.hidden=true;mm.innerHTML="";return}
+  mm.hidden=false;
+  var html='';
+  if(visible&&sideBySideFeasible()){
+    html+='<span>Multi-window mode — windows stay side by side.</span>';
+  }else if(visible){
+    html+='<span>Multi-window mode</span>';
+  }else{
+    html+='<span>'+minimized.map(function(id){var a=appById(id);return esc(a?a.title:id)}).join(", ")+' minimized</span>';
+  }
+  minimized.forEach(function(id){
+    var a=appById(id);
+    html+='<button type="button" class="chrome-button" data-restore-window="'+esc(id)+'" aria-label="Restore '+esc(a?a.title:id)+'">Restore '+esc(a?a.title:id)+'</button>';
+  });
+  html+='<button type="button" class="chrome-button" data-return-primary aria-label="Return to the focused primary layout">Return to primary</button>';
+  mm.innerHTML=html;
+  qa("[data-restore-window]",mm).forEach(function(b){b.onclick=function(){setMin(b.dataset.restoreWindow,false)}});
+  var ret=mm.querySelector("[data-return-primary]");
+  if(ret)ret.onclick=returnToPrimary;
 }
 
 /* ---- selected Workstream context ------------------------------- */
@@ -327,9 +361,9 @@ function applyView(){
       if(open)ensureStudio(id);
     });
   }
-  /* Multi-window mode bar: only claims side-by-side when it holds. */
-  var mm=q("[data-multi-mode]");
-  if(mm)mm.hidden=!sideBySideComposition();
+  /* Multi-window mode bar: honest claim + restore affordance for minimized
+     windows. */
+  renderMultiModeBar();
   /* Chrome nav active state. */
   qa(".nav-item[data-nav-home]").forEach(function(b){b.classList.toggle("active",state.primary==="home")});
   qa(".nav-item[data-nav-work]").forEach(function(b){b.classList.toggle("active",state.primary==="work"||state.primary==="deep")});
@@ -360,6 +394,18 @@ function applyWindowGeometry(){
   var ids=Object.keys(state.ui.open).filter(function(id){return !!state.ui.open[id]&&!state.ui.min[id]});
   if(!ids.length){
     qa("[data-window]").forEach(function(el){el.style.left=el.style.top=el.style.width=el.style.height=""});
+    return;
+  }
+  if(!sideBySideFeasible()){
+    /* Intermediate/narrow-desktop widths: honest alternative composition —
+       windows stack full-width below Work instead of squeezing both columns
+       below usable widths. */
+    ids.forEach(function(id){
+      var el=q('[data-window="'+windowOf(id)+'"]');if(!el)return;
+      var g=state.ui.geom[id]||{x:0,y:0.55,w:1,h:0.4};
+      el.style.left=(g.x*100).toFixed(3)+"%";el.style.top=(g.y*100).toFixed(3)+"%";
+      el.style.width=(g.w*100).toFixed(3)+"%";el.style.height=(g.h*100).toFixed(3)+"%";
+    });
     return;
   }
   var tiles=tileRects(ids);

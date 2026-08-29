@@ -170,8 +170,8 @@ button,input{font:inherit}button{color:inherit}
 .window-actions{display:flex;gap:5px}
 .window-actions button{border:0;background:transparent;padding:3px 7px;font-size:11px;border-radius:6px;color:var(--muted)}
 .window-actions button:hover{background:var(--layer);color:var(--text)}
-.window-resize{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;display:none}
-.canvas.compose .window-resize{display:block}
+.window-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;display:block;z-index:2;border-radius:0 0 11px 0}
+.window-resize::after{content:"";position:absolute;right:3px;bottom:3px;width:8px;height:8px;border-right:1px solid var(--dim);border-bottom:1px solid var(--dim);border-radius:0 0 3px 0;opacity:.7}
 .app-window .app-body{flex:1;overflow:auto;padding:14px 16px}
 .app-window iframe{flex:1;border:0}
 /* ---- multi-window mode bar ---- */
