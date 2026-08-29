@@ -158,6 +158,27 @@ def resolve_blocker_status(repo: str, number: int, *, run_subprocess: Callable[.
     return value
 
 
+ISSUE_DETAIL_FIELDS = "number,title,body,labels,state,milestone,url"
+
+
+def read_issue_detail(repo: str, number: int, *, run_subprocess: Callable[..., Any] = subprocess.run,
+                      timeout_seconds: int = 20) -> dict[str, Any]:
+    """Read one issue with the fields the detail projection needs, fail-closed.
+
+    Malformed/truncated reads raise the same GitHubReadError subclasses as the
+    list path, so a caller can render an explicit unavailable state instead of
+    guessing a partial issue.
+    """
+    value = _run(run_subprocess, ["gh", "issue", "view", str(number), "--repo", repo,
+                 "--json", ISSUE_DETAIL_FIELDS], timeout_seconds)
+    if not isinstance(value, dict) or value.get("number") != number:
+        raise GitHubJSONError(f"issue #{number} lookup returned invalid data")
+    required = {"number", "title", "body", "labels", "state", "milestone", "url"}
+    if not required <= set(value):
+        raise GitHubJSONError(f"issue #{number} record has malformed fields")
+    return value
+
+
 class LastGoodIssues:
     """Keeps a process-local last-good projection while making stale status explicit."""
     def __init__(self, clock: Callable[[], float] = time.time):

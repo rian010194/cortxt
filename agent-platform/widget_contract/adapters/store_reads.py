@@ -1,10 +1,16 @@
 """Read and normalize injected operational stores."""
 
 from copy import deepcopy
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from ..registry import TYPES
 from ..validation import validate
+from ..run_authority import (
+    correlate_run_summaries,
+    run_summaries_projection,
+    summaries_from_sessions,
+)
+from ..detail import build_workstream_detail_v1
 
 
 class ReadAdapterError(ValueError):
@@ -527,6 +533,46 @@ def read_decision_pending_v1(store: Mapping[str, Any]) -> dict[str, Any]:
     }
     try:
         validate(result, TYPES["decision.pending.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_run_summaries_v1(issue_ref: str,
+                          dispatcher_store: Mapping[str, Any] | None,
+                          session_docs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Correlate Runs from the dispatcher runs.json and the session-event store.
+
+    Provenance-preserving (S7a #470): conflicting statuses on the same run_id
+    are rendered as a ``conflict`` record, never silently merged. Validates the
+    result against ``run.summaries.v1``.
+    """
+    dispatcher_runs = dispatcher_store if isinstance(dispatcher_store, Mapping) else {}
+    sessions = list(session_docs) if session_docs is not None else []
+    summaries = correlate_run_summaries(
+        issue_ref, dispatcher_runs, summaries_from_sessions(sessions, issue_ref))
+    result = run_summaries_projection(issue_ref, summaries)
+    try:
+        validate(result, TYPES["run.summaries.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_workstream_detail_v1(issue: Mapping[str, Any],
+                              runs: Sequence[Mapping[str, Any]],
+                              *,
+                              repo: str,
+                              status: str = "fresh",
+                              error: Mapping[str, Any] | None = None,
+                              age_seconds: int = 0,
+                              synthetic: bool = False) -> dict[str, Any]:
+    """Build and validate the versioned Workstream detail projection."""
+    result = build_workstream_detail_v1(
+        issue, runs, repo=repo, status=status, error=error,
+        age_seconds=age_seconds, synthetic=synthetic)
+    try:
+        validate(result, TYPES["workstream.detail.v1"].schema)
     except Exception as exc:
         raise ReadAdapterError(str(exc)) from exc
     return result
