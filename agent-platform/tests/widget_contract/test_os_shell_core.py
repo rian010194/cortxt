@@ -1360,3 +1360,89 @@ def test_activity_synthetic_mode_non_mutating():
     # S5.5c review: the focus-record handler validates the record reference
     # against the model (unknown records fail closed).
     assert 'String(x.number||x.id)===String(p.recordRef)' in S55C_JS
+
+
+# --- S5.5d: desktop chrome + hierarchy (issue #457) ---------------------
+# os.css ownership transfers to S5.5d (operator decision D7): dead console
+# styling removed; compact dock states; no top app-tab row; primary/secondary
+# composition (Work full-canvas when alone); window active/inactive chrome;
+# empty desktop; motion/a11y/responsive hardening.
+
+S55D_CSS = (WIDGET / "os.css").read_text(encoding="utf-8")
+S55D_HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+S55D_JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+
+
+def test_os_css_has_no_dead_console_styling():
+    # AC1: the retired Work Console markup's selectors are gone from os.css;
+    # the selectors that remain are live (home/launcher/dock/windows/empty
+    # desktop are all still rendered).
+    for dead in ("console-layout", "console-nav", "console-content",
+                 "attention-card", "workstream-row", "review-grid",
+                 "authority-card", "app-drawer", "home-surface"):
+        assert dead not in S55D_CSS, dead
+    # Live shared selectors must survive (used by the current renderers).
+    for live in (".empty-state", ".review-actions", ".projection-list",
+                 ".primary-action", ".eyebrow", ".binding-indicator",
+                 ".ws-item", ".app-launcher", ".empty-desktop"):
+        assert live in S55D_CSS, live
+
+
+def test_dock_states_compact_and_distinct():
+    # AC2: favorite (outlined icon + tooltip label via aria-label), running
+    # (quiet dot), active (accent underline/raised + dot) are visually
+    # distinct; deferred apps never appear in the dock (existing S4 test).
+    assert ".os-dock button.running::after" in S55D_CSS
+    assert ".os-dock button.active::before" in S55D_CSS
+    assert ".os-dock button.active{" in S55D_CSS
+    assert ".os-dock button:focus-visible" in S55D_CSS
+    assert ".os-dock button{min-height:40px}" in S55D_CSS
+    assert 'dk.setAttribute("aria-label",a.title)' in S55D_JS  # tooltip label
+
+
+def test_no_top_app_tab_row_in_chrome():
+    # AC3: the os-bar holds system chrome only; no permanent per-app text-tab
+    # row (apps live in the dock/launcher/mobile nav, rendered from the
+    # registry).
+    assert 'data-app-tab' not in S55D_HTML
+    assert 'class="app-tabs"' not in S55D_HTML
+    assert 'data-app="' not in S55D_HTML  # no hardcoded per-app buttons
+    osbar = S55D_HTML[S55D_HTML.index("<header class=\"os-bar\""):S55D_HTML.index("</header>")]
+    assert "data-ws-toggle" in osbar and "data-launcher-toggle" in osbar
+    assert "data-activity-toggle" in osbar and "data-exit-workspace" in osbar
+
+
+def test_primary_full_canvas_when_alone_and_tiled_with_secondaries():
+    # AC4: Work is full-canvas when it is the only open window (no empty
+    # right column); a requested secondary tiles the right column via the
+    # existing geometry.
+    assert 'if(secondaryOpenIds().length===0)tiles["work"]={x:0,y:0,w:1,h:1};' in S55D_JS
+    assert ".app-window.primary{left:0;top:0;width:100%;height:100%;z-index:1}" in S55D_CSS
+    assert "function tileRects(openIds)" in S55D_JS  # secondary tiling intact
+
+
+def test_window_active_inactive_chrome_and_focus_ring():
+    # AC5: focused vs unfocused windows are visually distinct; a visible
+    # focus ring exists on interactive chrome controls.
+    assert ".app-window:not(.focused):not(.minimized){opacity:.92}" in S55D_CSS
+    assert ".app-window.focused{outline:1px solid var(--accent)}" in S55D_CSS
+    assert "outline:2px solid var(--accent);outline-offset:2px" in S55D_CSS
+
+
+def test_empty_desktop_styled_and_usable():
+    # AC6: the empty desktop is styled and raised above the canvas; the
+    # launcher affordance is present.
+    assert ".empty-desktop{z-index:5}" in S55D_CSS
+    assert ".empty-desktop{" in S55D_CSS
+    assert "data-empty-desktop" in S55D_HTML
+    assert 'data-launcher-toggle' in S55D_HTML
+
+
+def test_motion_a11y_responsive_hardening():
+    # AC7: reduced motion respected; keyboard focus visible; coarse-pointer
+    # targets adequate (44px mobile nav); narrow-width chrome correct.
+    assert "@media(prefers-reduced-motion:reduce)" in S55D_CSS
+    assert ".mobile-nav button{min-height:44px}" in S55D_CSS
+    assert "@media(max-width:720px)" in S55D_CSS
+    assert ".os-dock{display:none}" in S55D_CSS  # dock hidden on mobile
+    assert ".window-actions{display:none}" in S55D_CSS  # no desktop chrome on mobile
