@@ -410,6 +410,36 @@ RUN_SUMMARIES_SCHEMA = {"type": "object", "additionalProperties": False,
                                        "issue_ref": {"type": "string"},
                                        "runs": {"type": "array", "items": RUN_SUMMARY_SCHEMA}}}
 
+# --- dispatch.request.v1 (S7b, #471) ----------------------------------------
+DISPATCH_REQUEST_SCHEMA = {"type": "object", "additionalProperties": False,
+                           "required": ["schema_version", "issue_id", "eligible", "workflow",
+                                        "workflow_labels", "scope", "acceptance_criteria",
+                                        "approval_reference", "worker_role", "workflow_id",
+                                        "engine", "routing_reason", "routable_task_tags",
+                                        "max_runtime_seconds", "max_cost_usd", "max_parallel_workers",
+                                        "delegation_depth", "artifact_policy", "missing"],
+                           "properties": {
+                               "schema_version": {"const": 1},
+                               "issue_id": {"type": "string"},
+                               "eligible": {"type": "boolean"},
+                               "workflow": {"type": "string"},
+                               "workflow_labels": {"type": "array", "items": {"type": "string"}},
+                               "scope": {"type": ["string", "null"]},
+                               "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+                               "approval_reference": {"type": ["string", "null"]},
+                               "worker_role": {"type": ["string", "null"]},
+                               "workflow_id": {"type": ["string", "null"]},
+                               "engine": {"type": ["string", "null"]},
+                               "routing_reason": {"type": ["string", "null"]},
+                               "routable_task_tags": {"type": "array", "items": {"type": "string"}},
+                               "max_runtime_seconds": {"type": ["integer", "null"], "minimum": 0},
+                               "max_cost_usd": {"type": ["number", "null"], "minimum": 0},
+                               "max_parallel_workers": {"type": ["integer", "null"], "minimum": 0},
+                               "delegation_depth": {"type": ["integer", "null"], "minimum": 0},
+                               "artifact_policy": {"type": "string"},
+                               "missing": {"type": "array", "items": {"type": "string"}},
+                           }}
+
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
     "dispatcher.active-runs.v1": TypeEntry(ACTIVE_RUNS_SCHEMA, "operational"),
@@ -437,6 +467,7 @@ TYPES = {
     "action.status.v1": TypeEntry({"type": "object"}, "operational"),
     "workstream.detail.v1": TypeEntry(WORKSTREAM_DETAIL_SCHEMA, "public-metadata"),
     "run.summaries.v1": TypeEntry(RUN_SUMMARIES_SCHEMA, "operational"),
+    "dispatch.request.v1": TypeEntry(DISPATCH_REQUEST_SCHEMA, "public-metadata"),
 }
 
 READ_OPERATIONS = {
@@ -458,6 +489,7 @@ READ_OPERATIONS = {
     "issue.workflow.get.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["issue_number"], "properties": {"issue_number": {"type": "integer", "minimum": 1}}}, "issue.workflow.v1", "public-metadata", 2000, 30, 30, "read:issue-workflow", True),
     "workstream.detail.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo", "issue_number"], "properties": {"repo": {"type": "string"}, "issue_number": {"type": "integer", "minimum": 1}}}, "workstream.detail.v1", "public-metadata", 5000, 30, 30, "read:workstream-detail"),
     "run.summaries.v1": ReadOperation("store", {"type": "object", "additionalProperties": False, "required": ["issue_ref"], "properties": {"issue_ref": {"type": "string"}}}, "run.summaries.v1", "operational", 500, 60, 2, "read:run-summaries"),
+    "dispatch.request.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo", "issue_number"], "properties": {"repo": {"type": "string"}, "issue_number": {"type": "integer", "minimum": 1}}}, "dispatch.request.v1", "public-metadata", 5000, 30, 30, "read:dispatch-request"),
 }
 
 ISSUE_ID_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["issue_id"],
