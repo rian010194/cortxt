@@ -1,14 +1,13 @@
 {
   "apps": [
-    {"id": "home", "title": "Cortxt Home", "short": "Home", "icon": "home", "route": "/", "kind": "window", "window": "home", "widgets": null, "capabilities": [], "mode": "public", "mobile": true},
-    {"id": "work", "title": "Work", "short": "Work", "icon": "work", "route": "/work", "kind": "pinned", "window": "work", "widgets": ["work"], "capabilities": ["read:workstream-summary"], "mode": "operator", "mobile": true},
+    {"id": "home", "title": "Home", "short": "Home", "icon": "home", "route": "/", "kind": "surface", "window": null, "widgets": null, "capabilities": [], "mode": "public", "mobile": true},
+    {"id": "work", "title": "Work", "short": "Work", "icon": "work", "route": "/work", "kind": "primary", "window": null, "widgets": ["work"], "capabilities": ["read:workstream-summary"], "mode": "operator", "mobile": true},
     {"id": "decisions", "title": "Decisions", "short": "Decisions", "icon": "decisions", "route": "/work/decisions", "kind": "window", "window": "decisions", "widgets": ["decisions"], "capabilities": ["read:decision-pending", "act:record-decision"], "mode": "operator", "mobile": true},
     {"id": "evidence", "title": "Evidence", "short": "Evidence", "icon": "evidence", "route": "/work/evidence", "kind": "window", "window": "evidence", "widgets": ["evidence"], "capabilities": ["read:evidence-comparison"], "mode": "operator", "mobile": true},
-    {"id": "studio", "title": "Studio", "short": "Studio", "icon": "studio", "route": "/studio", "kind": "window", "window": "studio", "widgets": null, "capabilities": ["act:composition-authoring"], "mode": "operator", "mobile": false},
-    {"id": "execution", "title": "Execution Inspector", "short": "Execution", "icon": "execution", "route": "/work/execution", "kind": "deferred", "widgets": ["pulse", "agents"], "capabilities": ["read:execution-map", "read:session-agents", "read:session-pulse"], "mode": "operator", "mobile": false},
-    {"id": "policies", "title": "Policies", "short": "Policies", "icon": "policies", "route": "/work/policies", "kind": "deferred", "widgets": null, "capabilities": ["read:policy-projection"], "mode": "operator", "mobile": false},
-    {"id": "atlas", "title": "Atlas", "short": "Atlas", "icon": "atlas", "route": "/atlas", "kind": "deferred", "widgets": null, "capabilities": ["read:atlas-map"], "mode": "public", "mobile": true},
-    {"id": "connections", "title": "Connections", "short": "Connections", "icon": "connections", "route": "/work/connections", "kind": "deferred", "widgets": null, "capabilities": ["read:webhooks", "act:connection-manage"], "mode": "operator", "mobile": false},
-    {"id": "all", "title": "All widgets", "widgets": null}
+    {"id": "policies", "title": "Policies", "short": "Policies", "icon": "policies", "route": "/work/policies", "kind": "window", "window": "policies", "widgets": null, "capabilities": ["read:policy-projection"], "mode": "operator", "mobile": true},
+    {"id": "execution", "title": "Execution Inspector", "short": "Execution", "icon": "execution", "route": "/work/execution", "kind": "window", "window": "execution", "widgets": ["pulse", "agents"], "capabilities": ["read:execution-map", "read:session-agents", "read:session-pulse"], "mode": "operator", "mobile": true},
+    {"id": "atlas", "title": "Atlas", "short": "Atlas", "icon": "atlas", "route": "/atlas", "kind": "window", "window": "atlas", "widgets": null, "capabilities": ["read:atlas-map"], "mode": "public", "mobile": true},
+    {"id": "connections", "title": "Connections", "short": "Connections", "icon": "connections", "route": "/work/connections", "kind": "window", "window": "connections", "widgets": null, "capabilities": ["read:webhooks", "act:connection-manage"], "mode": "operator", "mobile": true},
+    {"id": "studio", "title": "Studio", "short": "Studio", "icon": "studio", "route": "/studio", "kind": "window", "window": "studio", "widgets": null, "capabilities": ["act:composition-authoring"], "mode": "operator", "mobile": false}
   ]
 }

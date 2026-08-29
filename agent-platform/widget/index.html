@@ -4,36 +4,59 @@
 <body>
 <div class="mode-banner" data-mode-banner><strong>Loading Cortxt OS</strong><span>Checking the Cortxt-owned data boundary…</span></div>
 <div class="os-shell">
-  <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-ws-toggle aria-expanded="false" aria-controls="workstream-switcher">Workstreams</button><button class="chrome-button" data-launcher-toggle aria-expanded="false" aria-controls="app-launcher">Launcher</button><button class="chrome-button" data-activity-toggle aria-expanded="false" aria-controls="activity-panel">Activity <b data-activity-count>0</b></button><button class="chrome-button" data-exit-workspace aria-label="Exit Workspace to the public landing">Exit</button><button class="avatar" aria-label="Operator profile">RA</button></header>
+  <header class="os-bar">
+    <a class="brand" href="/" aria-label="Go to Cortxt landing page" title="Go to Cortxt landing page"><i>C</i><span class="os-name">Cortxt OS</span></a>
+    <nav class="os-nav" aria-label="Primary">
+      <button type="button" class="nav-item" data-nav-home aria-label="Home">Home</button>
+      <button type="button" class="nav-item" data-nav-work aria-label="Work">Work</button>
+    </nav>
+    <button type="button" class="chrome-button ws-chip" data-ws-toggle aria-expanded="false" aria-controls="workstream-switcher"><span class="ws-chip-label" data-active-context>No Workstream selected</span><span class="ws-chip-caret">▾</span></button>
+    <span class="bar-spacer"></span>
+    <button type="button" class="chrome-button icon-only" data-search-toggle aria-expanded="false" aria-controls="search-panel" aria-label="Search or run a command" title="Search or run a command ( / or Ctrl+K )">⌘</button>
+    <button type="button" class="chrome-button" data-activity-toggle aria-expanded="false" aria-controls="activity-panel" aria-label="Open Activity Center">Activity <b data-activity-count>0</b></button>
+    <button type="button" class="avatar" aria-label="Operator profile">RA</button>
+  </header>
   <aside class="ws-switcher" id="workstream-switcher" data-workstream-switcher aria-label="Workstream switcher" hidden>
     <div class="ws-head"><p>Workstreams</p><button type="button" class="ws-create" data-ws-create>New workstream</button></div>
     <div class="ws-list" data-ws-list></div>
   </aside>
-  <aside class="app-launcher" id="app-launcher" data-launcher aria-label="App launcher" hidden>
-    <div class="launcher-head"><p>Applications</p><button type="button" class="launcher-close" data-launcher-close aria-label="Close launcher">×</button></div>
-    <div class="launcher-list" data-launcher-list></div>
+  <aside class="search-panel" id="search-panel" data-search-panel aria-label="Search and commands" hidden>
+    <div class="search-head"><p>Search or run a command</p><button type="button" class="search-close" data-search-close aria-label="Close search">×</button></div>
+    <input type="search" class="search-input" data-search-input placeholder="Apps, workstreams, actions…" aria-label="Search">
+    <div class="search-results" data-search-results></div>
   </aside>
   <aside class="activity-panel" id="activity-panel" data-activity-panel aria-label="Activity Center" hidden>
     <div class="activity-body" data-activity-body></div>
   </aside>
-  <nav class="os-dock" data-os-dock aria-label="Application dock"></nav>
   <main class="canvas" data-canvas>
-    <section class="app-window primary" data-window="work" data-app-kind="pinned" aria-labelledby="work-title">      <header class="window-bar"><div><span>First principal app</span><h1 id="work-title">Work</h1></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="work" aria-label="Minimize Work">Minimize</button><button data-window-focus="work" aria-label="Focus Work">Focus</button></div></header>
-      <span class="window-resize" data-window-resize aria-hidden="true"></span>
+    <section class="system-surface" data-surface="home" aria-label="Home" hidden>
+      <div class="app-body home-app" data-home-body></div>
+    </section>
+    <section class="primary-surface" data-surface="work" aria-label="Work" hidden>
       <div class="app-body work-app" data-work-body></div>
     </section>
-    <section class="app-window related" data-window="decisions" data-app-kind="window" hidden><header class="window-bar"><div><span>Related app</span><h2>Decisions</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="decisions" aria-label="Minimize Decisions">Minimize</button><button data-window-max="decisions" aria-label="Maximize Decisions">Maximize</button><button data-window-focus="decisions" aria-label="Focus Decisions">Focus</button><button data-close-window="decisions" aria-label="Close Decisions">×</button></div></header><div class="app-body" data-decisions-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
-    <section class="app-window related" data-window="evidence" data-app-kind="window" hidden><header class="window-bar"><div><span>Related app</span><h2>Evidence</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="evidence" aria-label="Minimize Evidence">Minimize</button><button data-window-max="evidence" aria-label="Maximize Evidence">Maximize</button><button data-window-focus="evidence" aria-label="Focus Evidence">Focus</button><button data-close-window="evidence" aria-label="Close Evidence">×</button></div></header><div class="app-body" data-evidence-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
-    <section class="app-window related studio-window" data-window="studio" hidden><header class="window-bar"><div><span>Active Workstream</span><h2>Studio</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="studio" aria-label="Minimize Studio">Minimize</button><button data-window-max="studio" aria-label="Maximize Studio">Maximize</button><button data-window-focus="studio" aria-label="Focus Studio">Focus</button><button data-close-window="studio" aria-label="Close Studio">×</button></div></header><iframe title="Studio" data-studio-frame data-src="maker.html"></iframe><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
-    <section class="app-window related home-window" data-window="home" data-app-kind="window" hidden><header class="window-bar"><div><span>Start here</span><h2>Cortxt Home</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="home" aria-label="Minimize Cortxt Home">Minimize</button><button data-window-max="home" aria-label="Maximize Cortxt Home">Maximize</button><button data-window-focus="home" aria-label="Focus Cortxt Home">Focus</button><button data-close-window="home" aria-label="Close Cortxt Home">×</button></div></header><div class="app-body home-app" data-home-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="deep-surface" data-surface="deep" aria-label="Deep capability" hidden>
+      <header class="deep-bar">
+        <button type="button" class="chrome-button" data-deep-back aria-label="Back to Work">← Back to Work</button>
+        <h2 data-deep-title></h2>
+        <span class="deep-binding" data-deep-binding></span>
+        <span class="bar-spacer"></span>
+        <button type="button" class="chrome-button" data-deep-window aria-label="Open in a new window">Open in new window</button>
+      </header>
+      <div class="app-body deep-app" data-deep-body></div>
+    </section>
+    <section class="app-window" data-window="decisions" data-app-kind="window" hidden><header class="window-bar"><div><h2>Decisions</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="decisions" aria-label="Minimize Decisions">Minimize</button><button data-window-max="decisions" aria-label="Maximize Decisions">Maximize</button><button data-window-focus="decisions" aria-label="Focus Decisions">Focus</button><button data-close-window="decisions" aria-label="Close Decisions">×</button></div></header><div class="app-body" data-decisions-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="app-window" data-window="evidence" data-app-kind="window" hidden><header class="window-bar"><div><h2>Evidence</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="evidence" aria-label="Minimize Evidence">Minimize</button><button data-window-max="evidence" aria-label="Maximize Evidence">Maximize</button><button data-window-focus="evidence" aria-label="Focus Evidence">Focus</button><button data-close-window="evidence" aria-label="Close Evidence">×</button></div></header><div class="app-body" data-evidence-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="app-window" data-window="policies" data-app-kind="window" hidden><header class="window-bar"><div><h2>Policies</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="policies" aria-label="Minimize Policies">Minimize</button><button data-window-max="policies" aria-label="Maximize Policies">Maximize</button><button data-window-focus="policies" aria-label="Focus Policies">Focus</button><button data-close-window="policies" aria-label="Close Policies">×</button></div></header><div class="app-body" data-policies-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="app-window" data-window="execution" data-app-kind="window" hidden><header class="window-bar"><div><h2>Execution Inspector</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="execution" aria-label="Minimize Execution Inspector">Minimize</button><button data-window-max="execution" aria-label="Maximize Execution Inspector">Maximize</button><button data-window-focus="execution" aria-label="Focus Execution Inspector">Focus</button><button data-close-window="execution" aria-label="Close Execution Inspector">×</button></div></header><div class="app-body" data-execution-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="app-window" data-window="atlas" data-app-kind="window" hidden><header class="window-bar"><div><h2>Atlas</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="atlas" aria-label="Minimize Atlas">Minimize</button><button data-window-max="atlas" aria-label="Maximize Atlas">Maximize</button><button data-window-focus="atlas" aria-label="Focus Atlas">Focus</button><button data-close-window="atlas" aria-label="Close Atlas">×</button></div></header><div class="app-body" data-atlas-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="app-window" data-window="connections" data-app-kind="window" hidden><header class="window-bar"><div><h2>Connections</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="connections" aria-label="Minimize Connections">Minimize</button><button data-window-max="connections" aria-label="Maximize Connections">Maximize</button><button data-window-focus="connections" aria-label="Focus Connections">Focus</button><button data-close-window="connections" aria-label="Close Connections">×</button></div></header><div class="app-body" data-connections-body></div><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
+    <section class="app-window studio-window" data-window="studio" data-app-kind="window" hidden><header class="window-bar"><div><h2>Studio</h2></div><span class="binding-indicator" data-binding-indicator title="Workstream binding"></span><div class="window-actions"><button data-window-min="studio" aria-label="Minimize Studio">Minimize</button><button data-window-max="studio" aria-label="Maximize Studio">Maximize</button><button data-window-focus="studio" aria-label="Focus Studio">Focus</button><button data-close-window="studio" aria-label="Close Studio">×</button></div></header><iframe title="Studio" data-studio-frame data-src="maker.html"></iframe><span class="window-resize" data-window-resize aria-hidden="true"></span></section>
   </main>
-  <section class="empty-desktop" data-empty-desktop aria-label="Desktop" hidden>
-    <div class="empty-desktop-inner">
-      <h2>No windows open</h2>
-      <p>Open an app from the dock or launcher to get started.</p>
-      <button type="button" class="chrome-button" data-launcher-toggle>Open launcher</button>
-    </div>
-  </section>
+  <div class="multi-mode-bar" data-multi-mode hidden>
+    <span>Multi-window mode — windows stay side by side.</span>
+    <button type="button" class="chrome-button" data-return-primary aria-label="Return to the focused primary layout">Return to primary</button>
+  </div>
   <nav class="mobile-nav" data-mobile-nav aria-label="Applications"></nav>
 </div>
 <script src="maker.js"></script>
