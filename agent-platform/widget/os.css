@@ -133,6 +133,8 @@ button,input{font:inherit}button{color:inherit}
 .work-card .wc-main{font-size:13.5px;line-height:1.5;color:var(--text);margin:0 0 8px}
 .work-card .wc-sub{font-size:11.5px;color:var(--muted);line-height:1.45;margin:0 0 8px}
 .work-card .wc-meta{font-size:10.5px;color:var(--dim);margin:0}
+.progress-track{height:5px;border-radius:999px;background:var(--layer);overflow:hidden;margin:8px 0 2px}
+.progress-fill{height:100%;border-radius:999px;background:var(--good)}
 .work-card .wc-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--layer);width:100%;background:none;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left;color:var(--text);font-size:12.5px}
 .work-card .wc-row small{color:var(--dim);font-size:11px}
 .work-card .wc-row .done-mark{color:var(--good)}
