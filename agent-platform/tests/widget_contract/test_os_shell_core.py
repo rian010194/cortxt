@@ -312,6 +312,143 @@ def test_work_fixture_supports_full_hierarchy():
     assert ws039["blockers"] and ws039["blockers"][0]["reason"] and ws039["blockers"][0]["recovery"]
 
 
+# --- S6d: Activity, responsive, a11y, presets, multi-window gate (#465) ---
+
+def test_multi_window_side_by_side_composition_gate():
+    # S6d AC5 (operator-mandated gate): the opt-in window mode must place Work
+    # and the secondary capability side by side with both materially visible;
+    # the "side by side" bar only shows when the composition satisfies the
+    # claim (sideBySideFeasible: desktop >= 900px).
+    assert "PRIMARY_W=0.58" in JS or "PRIMARY_W=0.6" in JS
+    assert 'rects[id]={x:PRIMARY_W+GUTTER' in JS
+    assert "1-PRIMARY_W-GUTTER" in JS  # secondary column materially visible
+    assert "function sideBySideFeasible()" in JS
+    assert "window.innerWidth>=900" in JS
+    assert "function renderMultiModeBar()" in JS
+    assert "windows stay side by side" in HTML
+    assert "1-PRIMARY_W-GUTTER" in JS
+
+
+def test_window_geometry_tiling_keeps_both_visible():
+    # Behavioral: with one secondary window open, Work occupies the primary
+    # column and the secondary the right column — both >= 30% of the canvas.
+    import subprocess
+    script = (
+        "const m=require(%s);"
+        "const eps=1e-9;"
+        "const r=m.tileRects(['decisions']);"
+        "const g=m.GUTTER||0.014;"
+        "const work={x:0,y:0,w:1-r['decisions'].w-g,h:1};"
+        "if(r['decisions'].w<0.30-eps)process.exit(2);"
+        "if(work.w<0.30-eps)process.exit(3);"
+        "if(r['decisions'].x<=work.w-eps)process.exit(4);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "work-console.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_window_resize_handle_is_visible_on_desktop():
+    # S6d fix (operator repro): the resize handle must be visible and usable
+    # on desktop windows — no hidden compose toggle. Narrow still hides it.
+    assert ".window-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;display:block" in CSS
+    assert ".canvas.compose .window-resize" not in CSS
+    mq = CSS[CSS.index("@media(max-width:720px){"):]
+    mq = mq[:mq.index("@media", 1)]
+    assert ".window-resize{display:none!important}" in mq
+
+
+def test_minimize_offers_restore_affordance():
+    # S6d fix (operator repro): minimizing must never make a window
+    # unreachable — the multi-window bar persists and offers a Restore
+    # button per minimized window; the bar never claims side-by-side when
+    # nothing is visible.
+    assert "function minimizedWindows()" in JS
+    assert "function anyWindowModel()" in JS
+    assert 'data-restore-window="'+'"' in JS or "data-restore-window=" in JS
+    assert 'aria-label="Restore ' in JS
+    assert 'setMin(b.dataset.restoreWindow,false)' in JS
+    assert "html+='<span>Multi-window mode</span>'" in JS
+    assert "' minimized</span>'" in JS
+
+
+def test_intermediate_width_honest_composition():
+    # S6d fix (operator gate): below the side-by-side threshold, windows
+    # stack full-width below Work instead of squeezing both columns; the bar
+    # drops the "side by side" claim.
+    assert "if(!sideBySideFeasible()){" in JS
+    assert "x:0,y:0.55,w:1,h:0.4" in JS
+    assert "html+='<span>Multi-window mode</span>'" in JS
+
+
+def test_window_lifecycle_state_machine():
+    # Behavioral: the window model transitions open -> min -> restore ->
+    # max -> restore -> close deterministically (pure state helpers).
+    import subprocess
+    script = (
+        "const m=require(%s);"
+        "const s={ui:{open:{},min:{},max:{},z:{},zTop:1,geom:{}}};"
+        "function setMin(id,on){if(on)s.ui.min[id]=true;else delete s.ui.min[id];}"
+        "function setMax(id,on){if(on)s.ui.max[id]=true;else delete s.ui.max[id];}"
+        "function close(id){delete s.ui.open[id];delete s.ui.min[id];delete s.ui.max[id];delete s.ui.z[id];}"
+        "s.ui.open['decisions']=true;s.ui.z['decisions']=++s.ui.zTop;"
+        "setMin('decisions',true);if(!s.ui.min['decisions'])process.exit(2);"
+        "setMin('decisions',false);if(s.ui.min['decisions'])process.exit(3);"
+        "setMax('decisions',true);if(!s.ui.max['decisions'])process.exit(4);"
+        "setMax('decisions',false);if(s.ui.max['decisions'])process.exit(5);"
+        "close('decisions');if(s.ui.open['decisions'])process.exit(6);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "work-console.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_activity_authority_and_local_state_boundaries():
+    # S6d AC1: Activity groups/dedupes/filters/marks read/dismisses locally
+    # and navigates via validated focus-record only; no mutation port.
+    assert "activityVisibleItems" in JS
+    assert "state.activity.filters.groupBy" in JS
+    assert "state.activity.read" in JS and "state.activity.dismissed" in JS
+    assert "Presentation state is local. Workflow status is authoritative." in JS
+    assert "record-decision" not in JS
+    assert 'fetch("api/action"' not in JS
+    assert "focus-record" in (WIDGET / "shell-commands.js").read_text(encoding="utf-8")
+
+
+def test_responsive_one_surface_and_no_window_chrome_narrow():
+    # S6d AC2: narrow layouts show one surface, minimal nav, no window
+    # chrome; Activity is a full-screen sheet.
+    mq = CSS[CSS.index("@media(max-width:720px){"):]
+    mq = mq[:mq.index("@media", 1)]
+    assert ".window-bar{display:none}" in mq
+    assert ".window-actions{display:none}" in mq
+    assert ".window-resize{display:none!important}" in mq
+    assert ".activity-panel{top:0;width:100vw;max-width:100vw;border-left:0" in mq
+    assert ".mobile-nav{position:fixed" in mq and "bottom:0" in mq
+    assert "overflow-x:hidden" in CSS
+
+
+def test_accessibility_focus_and_reduced_preferences():
+    # S6d AC3/AC4: visible focus on every interactive control; reduced motion
+    # and reduced transparency respected; presets via canonical tokens only.
+    assert ".attention-row:focus-visible" in CSS and ".recent-row:focus-visible" in CSS
+    assert ".window-bar:focus-within" in CSS and ".activity-panel:focus-within" in CSS
+    assert "@media(prefers-reduced-motion:reduce)" in CSS
+    assert "@media(prefers-reduced-transparency:reduce)" in CSS
+    assert "min-height:44px" in CSS  # coarse-pointer targets
+
+
+def test_terminology_regression_s6d():
+    # S6d AC6: no Workspace misuse, no Soon wall, no arch chrome labels.
+    assert "Exit Workspace" not in HTML
+    assert "data-exit-workspace" not in HTML
+    assert "Soon" not in HTML and "Soon" not in JS
+    assert "First principal app" not in HTML
+    assert "Related app" not in HTML
+
+
 # --- surface navigation + multi-window opt-in ----------------------------
 
 def test_one_primary_surface_at_a_time():

@@ -172,6 +172,47 @@ function activeWindowId(){
 function anyOpenWindows(){
   return Object.keys(state.ui.open).some(function(id){return !!state.ui.open[id]&&!state.ui.min[id]});
 }
+function anyWindowModel(){
+  /* Any window in the model — open or minimized — so the multi-window bar
+     can offer a restore affordance even when everything is minimized. */
+  return Object.keys(state.ui.open).some(function(id){return !!state.ui.open[id]});
+}
+function minimizedWindows(){
+  return Object.keys(state.ui.open).filter(function(id){return !!state.ui.open[id]&&!!state.ui.min[id]});
+}
+function sideBySideFeasible(){
+  /* True when the viewport is wide enough for Work + a secondary to both be
+     materially useful (>= 900px desktop; narrow is never side-by-side). */
+  return !isNarrow() && window.innerWidth>=900;
+}
+function renderMultiModeBar(){
+  /* The bar is honest: it only claims "side by side" when the composition
+     satisfies that claim, and it always offers a restore affordance for
+     minimized windows. */
+  var mm=q("[data-multi-mode]");
+  if(!mm)return;
+  var visible=anyOpenWindows();
+  var minimized=minimizedWindows();
+  if(!anyWindowModel()||isNarrow()){mm.hidden=true;mm.innerHTML="";return}
+  mm.hidden=false;
+  var html='';
+  if(visible&&sideBySideFeasible()){
+    html+='<span>Multi-window mode — windows stay side by side.</span>';
+  }else if(visible){
+    html+='<span>Multi-window mode</span>';
+  }else{
+    html+='<span>'+minimized.map(function(id){var a=appById(id);return esc(a?a.title:id)}).join(", ")+' minimized</span>';
+  }
+  minimized.forEach(function(id){
+    var a=appById(id);
+    html+='<button type="button" class="chrome-button" data-restore-window="'+esc(id)+'" aria-label="Restore '+esc(a?a.title:id)+'">Restore '+esc(a?a.title:id)+'</button>';
+  });
+  html+='<button type="button" class="chrome-button" data-return-primary aria-label="Return to the focused primary layout">Return to primary</button>';
+  mm.innerHTML=html;
+  qa("[data-restore-window]",mm).forEach(function(b){b.onclick=function(){setMin(b.dataset.restoreWindow,false)}});
+  var ret=mm.querySelector("[data-return-primary]");
+  if(ret)ret.onclick=returnToPrimary;
+}
 
 /* ---- selected Workstream context ------------------------------- */
 function items(){return(state.model&&state.model.workstreams)||[]}
@@ -320,9 +361,9 @@ function applyView(){
       if(open)ensureStudio(id);
     });
   }
-  /* Multi-window mode bar. */
-  var mm=q("[data-multi-mode]");
-  if(mm)mm.hidden=!anyOpenWindows()||narrow;
+  /* Multi-window mode bar: honest claim + restore affordance for minimized
+     windows. */
+  renderMultiModeBar();
   /* Chrome nav active state. */
   qa(".nav-item[data-nav-home]").forEach(function(b){b.classList.toggle("active",state.primary==="home")});
   qa(".nav-item[data-nav-work]").forEach(function(b){b.classList.toggle("active",state.primary==="work"||state.primary==="deep")});
@@ -334,16 +375,18 @@ function applyView(){
     el.textContent=id?bindingLabel(id):"";
   });
 }
-/* Deterministic non-overlapping window geometry for the opt-in window mode:
-   a simple 2-column grid over the canvas. */
+/* Deterministic, non-overlapping window geometry for the opt-in window mode
+   (S6d multi-window composition gate): Work keeps the primary left column
+   (~58%) and the secondary capability(ies) tile the right column, so both
+   surfaces remain materially visible side-by-side. Persisted custom
+   geometry (drag/resize) is honored. */
+var PRIMARY_W=0.58,GUTTER=0.014,MIN_W=0.18,MIN_H=0.16;
 function tileRects(ids){
   var rects={},n=(ids||[]).length;
   if(!n)return rects;
-  var cols=Math.min(2,n),rows=Math.ceil(n/cols),g=0.012;
-  var cw=(1-g*(cols+1))/cols,ch=(1-g*(rows+1))/rows;
+  var h=(1-GUTTER*(n-1))/n;
   ids.forEach(function(id,i){
-    var r=Math.floor(i/cols),c=i%cols;
-    rects[id]={x:g+c*(cw+g),y:g+r*(ch+g),w:cw,h:ch};
+    rects[id]={x:PRIMARY_W+GUTTER,y:i*(h+GUTTER),w:1-PRIMARY_W-GUTTER,h:h};
   });
   return rects;
 }
@@ -351,6 +394,18 @@ function applyWindowGeometry(){
   var ids=Object.keys(state.ui.open).filter(function(id){return !!state.ui.open[id]&&!state.ui.min[id]});
   if(!ids.length){
     qa("[data-window]").forEach(function(el){el.style.left=el.style.top=el.style.width=el.style.height=""});
+    return;
+  }
+  if(!sideBySideFeasible()){
+    /* Intermediate/narrow-desktop widths: honest alternative composition —
+       windows stack full-width below Work instead of squeezing both columns
+       below usable widths. */
+    ids.forEach(function(id){
+      var el=q('[data-window="'+windowOf(id)+'"]');if(!el)return;
+      var g=state.ui.geom[id]||{x:0,y:0.55,w:1,h:0.4};
+      el.style.left=(g.x*100).toFixed(3)+"%";el.style.top=(g.y*100).toFixed(3)+"%";
+      el.style.width=(g.w*100).toFixed(3)+"%";el.style.height=(g.h*100).toFixed(3)+"%";
+    });
     return;
   }
   var tiles=tileRects(ids);
@@ -366,7 +421,7 @@ function clampFrac(v,max){return v<0?0:(v>max?max:v)}
 function geomFor(id){
   var g=state.ui.geom[id];
   if(g&&typeof g.x==="number")return g;
-  return {x:0.05,y:0.05,w:0.9,h:0.8};
+  return {x:PRIMARY_W+GUTTER,y:0,w:1-PRIMARY_W-GUTTER,h:0.9};
 }
 function beginWindowDrag(el,ev,mode){
   /* Direct window interaction: move/resize always works on desktop, without

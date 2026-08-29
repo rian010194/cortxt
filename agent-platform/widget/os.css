@@ -170,8 +170,8 @@ button,input{font:inherit}button{color:inherit}
 .window-actions{display:flex;gap:5px}
 .window-actions button{border:0;background:transparent;padding:3px 7px;font-size:11px;border-radius:6px;color:var(--muted)}
 .window-actions button:hover{background:var(--layer);color:var(--text)}
-.window-resize{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;display:none}
-.canvas.compose .window-resize{display:block}
+.window-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;display:block;z-index:2;border-radius:0 0 11px 0}
+.window-resize::after{content:"";position:absolute;right:3px;bottom:3px;width:8px;height:8px;border-right:1px solid var(--dim);border-bottom:1px solid var(--dim);border-radius:0 0 3px 0;opacity:.7}
 .app-window .app-body{flex:1;overflow:auto;padding:14px 16px}
 .app-window iframe{flex:1;border:0}
 /* ---- multi-window mode bar ---- */
@@ -204,10 +204,14 @@ button,input{font:inherit}button{color:inherit}
   .mobile-nav button.active{color:var(--accent)}
   .ws-switcher{left:10px;right:10px;width:auto;top:60px}
   .search-panel{top:60px;width:94vw}
-  .activity-panel{top:0;width:100vw;max-width:100vw;border-left:0}
+  .activity-panel{top:0;width:100vw;max-width:100vw;border-left:0;box-shadow:none}
   .work-layout{grid-template-columns:1fr}
   .work-head{flex-direction:column;align-items:flex-start}
   .work-head .wh-status{align-items:flex-start}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 @media(prefers-reduced-transparency:reduce){.ws-switcher,.search-panel,.app-window,.activity-panel,.multi-mode-bar{background:var(--surface)}}
+/* S6d: visible, high-contrast focus on every interactive control (including
+   panel/window surfaces); activity panel z-order above the multi-mode bar. */
+.activity-panel{z-index:60}
+.window-bar:focus-within,.activity-panel:focus-within{outline:1px solid var(--accent);outline-offset:-1px}
