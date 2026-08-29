@@ -86,6 +86,10 @@ function geomFor(id,openIds){
 function applyGeom(){
   if(isNarrow())return;
   var tiles=tileRects(secondaryOpenIds());
+  /* S5.5d: the primary Work surface is full-canvas when it is the only open
+     window (no empty right column); a requested secondary app tiles the
+     right column via the existing geometry. */
+  if(secondaryOpenIds().length===0)tiles["work"]={x:0,y:0,w:1,h:1};
   qa("[data-window]").forEach(function(el){
     var id=appIdForWindow(el.dataset.window);
     if(el.hidden){el.style.left=el.style.top=el.style.width=el.style.height="";return}
