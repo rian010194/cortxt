@@ -409,7 +409,7 @@ def test_work_summary_projects_workstream_state_without_forking():
     # title/outcome/workflow/decision/evidence, with validated deep links into
     # Decisions and Evidence. No app-local fork, no review flow, no mutation.
     assert "work-objective" in JS
-    assert "work-facts" in JS
+    assert "work-hero" in JS
     assert 'data-work-open="decisions"' in JS
     assert 'data-work-open="evidence"' in JS
     assert 'dispatchCommand("open-app",{appId:b.dataset.workOpen})' in JS
@@ -1151,3 +1151,95 @@ def test_attention_item_validation_behavioral():
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
+
+
+# --- S5.5b: Work primary surface (issue #452) ---------------------------
+# The Work app is the coherent primary surface for the selected Workstream:
+# objective/mandate summary, phase/status, next action, blockers, decisions
+# summary, evidence summary, milestones/plan, related resources. Every
+# summary deep-links to its responsible app with exact context through
+# validated references; Work never duplicates a full app workflow and adds
+# no Work-specific branch to shell core.
+
+S55B_JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+
+
+def test_work_surface_presents_full_workstream_summary():
+    # The Work renderer projects objective/mandate, phase/status, next action,
+    # blockers, decisions, evidence, milestones/plan, and related resources
+    # from the shell-owned context (no app-local fork).
+    assert "work-hero" in S55B_JS
+    assert "work-objective" in S55B_JS
+    assert "work-mandate" in S55B_JS
+    for card in ("status", "next", "decisions", "evidence", "milestones", "related"):
+        assert f'data-work-card="{card}"' in S55B_JS
+    assert "x.phase||x.workflow" in S55B_JS
+    assert "nextAction" in S55B_JS
+    assert "x.blockers" in S55B_JS
+    assert "x.milestones" in S55B_JS
+    assert "x.related" in S55B_JS
+
+
+def test_work_summaries_deep_link_with_exact_context():
+    # Each summary deep-links to its responsible app with the exact Workstream
+    # (and optional record) context; the router validates before dispatch.
+    assert "function deepLink(appId,workstreamId,recordRef)" in S55B_JS
+    assert '"app="+encodeURIComponent(appId)' in S55B_JS
+    assert '"ws="+encodeURIComponent(workstreamId)' in S55B_JS
+    assert '"record="+encodeURIComponent(recordRef)' in S55B_JS
+    assert "data-work-deep" in S55B_JS
+    assert 'deep("decisions")' in S55B_JS and 'deep("evidence")' in S55B_JS
+    assert 'deep("execution")' in S55B_JS and 'deep("policies")' in S55B_JS
+    assert "ShellCommands.applyDeepLink(b.dataset.workDeep" in S55B_JS
+
+
+def test_work_does_not_duplicate_full_app_workflows():
+    # ADR-044: Work summarizes and deep-links; it never embeds another app's
+    # renderer, mutation, or full workflow.
+    assert "app-renderer-decisions-evidence" not in S55B_JS  # no renderer import
+    assert "renderDecisions(" not in S55B_JS and "renderEvidence(" not in S55B_JS
+    assert "record-decision" not in S55B_JS  # no mutation port
+    assert "data-work-open" in S55B_JS  # typed commands only
+    assert 'dispatchCommand("open-app"' in S55B_JS
+
+
+def test_work_surface_still_read_only_and_synthetic_safe():
+    # The Work surface is read-only: it renders projections and dispatches
+    # validated navigation; it never mutates authority, and synthetic mode
+    # changes nothing about it.
+    assert "state.model.synthetic" in S55B_JS
+    assert 'fetch("api/action"' not in S55B_JS
+    assert "work-note" in S55B_JS
+
+
+def test_home_to_work_transition_preserved():
+    # Home tile/action opens Work with the selected Workstream; first-run
+    # still opens Home; the open-home command is unchanged.
+    assert '"open-home": function(){ openHome(); }' in S55B_JS
+    assert "function openHome()" in S55B_JS and 'openApp("home")' in S55B_JS
+    assert 'if(!state.hadSavedSession&&!bootApplied)openHome()' in S55B_JS
+    assert 'data-home-open="work"' in S55B_JS
+
+
+def test_landing_and_workspace_pages_use_work_language():
+    # ADR-044 wording: the landing and /workspace/ entry label the app Work;
+    # Workspace remains only the execution-resource term / landing entry URL.
+    idx = Path(__file__).resolve().parents[3] / "site" / "src" / "pages" / "index.astro"
+    text = idx.read_text(encoding="utf-8")
+    assert "Work Console" not in text
+    assert "Cortxt OS / Work, Evidence, Decisions" in text
+    assert 'href="/workspace/">Workspace</a>' in text  # landing entry unchanged
+    ws = Path(__file__).resolve().parents[3] / "site" / "src" / "pages" / "workspace.astro"
+    wtext = ws.read_text(encoding="utf-8")
+    assert "Work Console" not in wtext
+    assert "Cortxt OS and Work" in wtext
+
+
+def test_work_primary_surface_no_shell_core_branch():
+    # ADR-044 conformance (extended): the Work primary surface still adds no
+    # Work-specific branch to shell core; deep links route through the generic
+    # validated router.
+    core = RENDERER + SHELL_COMMANDS
+    assert 'if(id==="work")' not in core
+    assert 'appId==="work"' not in core
+    assert 'workstreamId==="work"' not in core

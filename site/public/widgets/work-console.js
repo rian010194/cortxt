@@ -555,14 +555,16 @@ function isValidAttentionItem(item){
   return typeof item.targetCommand==="string"&&item.targetCommand.length>0;
 }
 
-/* ---- Work app (S5.5a/ADR-044) ----------------------------------- */
+/* ---- Work app (S5.5b/ADR-044) ----------------------------------- */
 /* Work is the first principal work- and mandate-first app (app ID `work`,
-   route `/work`; ADR-044). S5.5a establishes its identity and a minimal
-   read-only surface: the selected Workstream summary with validated deep
-   links into the responsible apps. The full Work primary surface (summaries,
-   milestones, mobile presentation) ships in S5.5b; Activity Center (a
-   shell-owned system surface) ships in S5.5c. Work is not the identity of
-   the OS and adds no Work-specific branch to shell core. */
+   route `/work`; ADR-044). S5.5a established its identity and a minimal
+   read-only summary. S5.5b extends it into the coherent primary surface for
+   the selected Workstream: objective/mandate summary, current phase/status,
+   next meaningful action, blockers, decisions summary, evidence summary,
+   milestones/plan, and related resources. Every summary deep-links to its
+   responsible app with the exact Workstream and record context; Work never
+   duplicates a full app workflow and never mutates authority. Work is not
+   the identity of the OS and adds no Work-specific branch to shell core. */
 function render(){
   var workEl=q("[data-work-body]");
   if(workEl&&!OSRenderer.render("work",workEl,{workstream:currentItem(),state:state}))renderWork(workEl,{workstream:currentItem(),state:state});
@@ -573,22 +575,65 @@ function render(){
   renderSwitcher();
   propagateContext();
 }
+function deepLink(appId,workstreamId,recordRef){
+  /* Build a validated deep link hash for an app with the exact Workstream
+     (and optional record) context; the router validates before dispatch. */
+  var parts=[];
+  if(appId)parts.push("app="+encodeURIComponent(appId));
+  if(workstreamId)parts.push("ws="+encodeURIComponent(workstreamId));
+  if(recordRef)parts.push("record="+encodeURIComponent(recordRef));
+  return parts.length?"#"+parts.join("&"):"#";
+}
 function renderWork(winEl,ctx){
   var s=(ctx&&ctx.state)||state,x=(ctx&&ctx.workstream)||null;
   if(!x){winEl.innerHTML=empty("Select a Workstream to project its work.");return}
   var decision=x.decision||null,evidence=x.evidence||[];
+  var phase=x.phase||x.workflow||"in-progress";
+  var nextAction=(decision&&decision.summary)||null;
+  var blockers=(x.blockers&&x.blockers.length)?x.blockers:[];
+  var milestones=(x.milestones&&x.milestones.length)?x.milestones:[];
+  var related=(x.related&&x.related.length)?x.related:[];
+  function deep(appId,recordRef){return deepLink(appId,x.id,recordRef)}
   winEl.innerHTML=
-    '<span class="eyebrow">'+esc(x.id)+' · Work</span>'+
-    '<h2>'+esc(x.title)+'</h2>'+
-    '<p class="work-objective">'+esc(x.outcome)+'</p>'+
-    '<dl class="work-facts"><div><dt>Workflow</dt><dd>'+esc(x.workflow||"\u2014")+'</dd></div>'+
-    '<div><dt>Decision</dt><dd>'+(decision?esc(decision.summary):"None pending")+'</dd></div>'+
-    '<div><dt>Evidence</dt><dd>'+(evidence.length?evidence.length+" attributable records":"None")+'</dd></div></dl>'+
-    '<div class="work-actions">'+
-    '<button type="button" class="primary-action" data-work-open="decisions">Open Decisions</button>'+
-    '<button type="button" class="chrome-button" data-work-open="evidence">Open Evidence</button>'+
-    '</div><small class="work-note">Summaries are read-only projections. Decisions and evidence open in their responsible apps with the exact Workstream context; Work never duplicates a full app workflow.</small>';
+    '<div class="work-hero">'+
+      '<span class="eyebrow">'+esc(x.id)+' · Work</span>'+
+      '<h2>'+esc(x.title)+'</h2>'+
+      '<p class="work-objective">'+esc(x.outcome)+'</p>'+
+      '<p class="work-mandate">'+((x.acceptance_criteria)?("Mandate: "+esc(x.acceptance_criteria)):("Mandate: "+esc(x.outcome)))+'</p>'+
+    '</div>'+
+    '<div class="work-grid">'+
+      '<section class="work-card" data-work-card="status"><h3>Status</h3><p><span class="work-phase">'+esc(phase)+'</span> · '+esc(x.workflow||"no workflow label")+'</p>'+
+        (blockers.length?'<p class="work-blockers"><b>Blocked by:</b> '+blockers.map(esc).join(", ")+'</p>':"")+
+      '</section>'+
+      '<section class="work-card" data-work-card="next"><h3>Next</h3>'+
+        (nextAction?'<p>'+esc(nextAction)+'</p>':'<p>No decision or next action is pending.</p>')+
+        '<div class="work-actions">'+
+          '<button type="button" class="primary-action" data-work-open="decisions">Open Decisions</button>'+
+          '<button type="button" class="chrome-button" data-work-open="evidence">Open Evidence</button>'+
+          '<button type="button" class="chrome-button" data-work-open="execution">Execution Inspector</button>'+
+        '</div>'+
+      '</section>'+
+      '<section class="work-card" data-work-card="decisions"><h3>Decisions</h3>'+
+        (decision?'<p>'+esc(decision.summary)+'</p><button type="button" class="link-button" data-work-deep="'+esc(deep("decisions"))+'">Open with context →</button>':'<p>No authoritative decision is pending.</p>')+
+      '</section>'+
+      '<section class="work-card" data-work-card="evidence"><h3>Evidence</h3>'+
+        (evidence.length?evidence.map(function(ev){return '<p><b>'+esc(ev.title)+'</b> — '+esc(ev.detail)+' <em>('+esc(ev.status)+')</em></p>'}).join("")+'<button type="button" class="link-button" data-work-deep="'+esc(deep("evidence"))+'">Open Evidence with context →</button>':'<p>No attributable evidence yet.</p>')+
+      '</section>'+
+      (milestones.length?'<section class="work-card" data-work-card="milestones"><h3>Milestones</h3>'+milestones.map(function(m){return '<p>'+esc(m.title)+(m.done?' ✓':'')+'</p>'}).join("")+'</section>':"")+
+      (related.length?'<section class="work-card" data-work-card="related"><h3>Related</h3>'+related.map(function(r){return '<p>'+esc(r.title)+' <button type="button" class="link-button" data-work-deep="'+esc(deep("atlas",r.ref))+'">Open →</button></p>'}).join("")+'</section>':"")+
+    '</div>'+
+    '<div class="work-open-links">'+
+      '<button type="button" class="chrome-button" data-work-deep="'+esc(deep("policies"))+'">Policies</button>'+
+      '<button type="button" class="chrome-button" data-work-deep="'+esc(deep("execution"))+'">Execution Inspector</button>'+
+    '</div>'+
+    '<small class="work-note">Summaries are read-only projections. Each summary opens its responsible app with the exact Workstream context through validated deep links; Work never duplicates a full app workflow.</small>';
   qa("[data-work-open]",winEl).forEach(function(b){b.addEventListener("click",function(){dispatchCommand("open-app",{appId:b.dataset.workOpen})})});
+  qa("[data-work-deep]",winEl).forEach(function(b){b.addEventListener("click",function(){
+    if(typeof location!=="undefined"){try{location.hash=b.dataset.workDeep}catch(_e){}}
+    if(typeof ShellCommands!=="undefined"&&ShellCommands.applyDeepLink&&window.ShellCommandHandlers){
+      ShellCommands.applyDeepLink(b.dataset.workDeep,window.ShellCommandHandlers);
+    }
+  })});
 }
 if(typeof OSRenderer!=="undefined"){OSRenderer.register("work",renderWork)}
 
