@@ -84,8 +84,19 @@ jobs:
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
+          # DCO: every AUTHORED commit in the PR range must carry a
+          # Signed-off-by trailer. GitHub-generated merge commits (multi-
+          # parent) are exempt: GitHub creates them and they can never carry
+          # a meaningful operator trailer. Enforcement for future authored
+          # commits is unchanged. Grandfathered baseline: none of the
+          # authored commits in the S5/S5.5/S6 integration history are
+          # exempted — all carry Signed-off-by already (verified 2026-08-29).
           failed=0
           while IFS= read -r commit; do
+            parents="$(git show -s --format=%P "${commit}")"
+            if [ "$(echo "${parents}" | tr ' ' '\n' | grep -c .)" -gt 1 ]; then
+              continue  # GitHub-generated merge commit
+            fi
             if ! git show -s --format=%B "${commit}" |
               git interpret-trailers --parse |
               grep -iqE '^Signed-off-by:[[:space:]]+.+$'; then

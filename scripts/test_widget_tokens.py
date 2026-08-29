@@ -161,12 +161,20 @@ def main() -> int:
     check("integrated maker contains error line", "data-mk-tokens-error" in maker_surface)
     check("integrated maker wires applyTokens", "applyTokens" in maker_surface)
 
-    # 7. index.html contains tokens application marker
+    # 7. The OS shell consumes canonical tokens through the shared maker.js
+    # adapter at runtime (ADR-043). index.html loads maker.js before the
+    # shell; the shell's loadTokens() fetches tokens.json and applies the
+    # canonical tokens via window.WidgetMaker.applyTokens. Inline markup
+    # markers are obsolete (retired with the S6 shell changes) and must not
+    # be reintroduced.
     index_html_path = AP / "widget" / "index.html"
     check("index.html exists", index_html_path.is_file())
     index_html = index_html_path.read_text(encoding="utf-8")
-    check("index.html contains applyTokens marker", "applyTokens" in index_html)
-    check("index.html references tokens.json", "tokens.json" in index_html)
+    check("index.html loads maker.js before the shell", index_html.index('src="maker.js"') < index_html.index('src="work-console.js"'))
+    work_console = (AP / "widget" / "work-console.js").read_text(encoding="utf-8")
+    check("shell loadTokens() fetches tokens.json", 'fetch("tokens.json"' in work_console)
+    check("shell applies tokens via WidgetMaker adapter", "window.WidgetMaker" in work_console and "applyTokens" in work_console)
+    check("index.html does not rely on obsolete inline applyTokens markup", "applyTokens" not in index_html)
 
     # 8. node --check passes on maker.js and inline scripts
     res_mjs = subprocess.run(["node", "--check", str(maker_js_path)], capture_output=True, text=True)
