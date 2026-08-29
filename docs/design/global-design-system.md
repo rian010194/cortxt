@@ -25,7 +25,7 @@ The canonical preset source is `agent-platform/widget/presets/visual-tokens.v2.j
 | --- | --- | --- |
 | Landing | `landing-theme.js`, `landing.css` | Narrative scale, composition, marketing density |
 | Docs | `theme-tokens.js`, `custom.css` | Reading widths, docs navigation, code presentation |
-| OS / Work Console | Widget Host loader and host CSS | App/window chrome, interaction density, canvas behavior |
+| OS / Work | Widget Host loader and host CSS | App/window chrome, interaction density, canvas behavior |
 | Embedded widgets | Host inheritance and fallback | Domain layout inside the widget contract |
 | Atlas | `theme-tokens.js`, `atlas.css` | Graph layout, edges, progressive disclosure |
 | Execution Inspector | OS/Widget Host adapter | Dense execution detail subordinate to its Workstream |
