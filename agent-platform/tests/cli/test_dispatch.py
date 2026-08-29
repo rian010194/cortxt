@@ -13,6 +13,16 @@ def _sessions(store: Path):
     return [state.load(store, d.name) for d in store.iterdir() if d.is_dir()]
 
 
+class _FakeClaudeAdapter:
+    def __init__(self, response):
+        self._response = response
+        self.calls = []
+
+    def invoke(self, profile, prompt, *, timeout_seconds, model=None, provider=None, cwd=None, session_id=None):
+        self.calls.append((profile, prompt, timeout_seconds, model, provider))
+        return self._response
+
+
 def test_dispatch_routes_parallel_dispatch_tag_to_hermes_and_invokes_it(tmp_path):
     # research/background-task now route to dsh (cheap tie-break on engine_id,
     # deliberate operator decision 2026-08-21); hermes keeps parallel-dispatch.
@@ -53,20 +63,22 @@ def test_dispatch_writes_the_widget_snapshot_on_success(tmp_path):
     assert doc["sessions"][0]["status"] == "succeeded"
 
 
-def test_dispatch_writes_the_widget_snapshot_when_routed_to_claude_direct(tmp_path):
+def test_dispatch_writes_the_widget_snapshot_when_routed_to_claude(tmp_path):
     store = tmp_path / "sessions"
     snapshot = tmp_path / "widget" / "snapshot.json"
-    with patch("routing.hermes_invoker.invoke_hermes"):
+    fake = _FakeClaudeAdapter({"status": "succeeded", "profile": "builder"})
+    with patch("runtime.default_engine_context.ClaudeAdapter", return_value=fake):
         main([
             "dispatch",
             "--tags", "widget-ui",
-            "--task-id", "snapshot-on-blocked",
+            "--task-id", "snapshot-on-claude",
             "--prompt", "n/a",
             "--store", str(store),
             "--snapshot", str(snapshot),
         ])
     doc = json.loads(snapshot.read_text(encoding="utf-8"))
-    assert doc["sessions"][0]["status"] == "blocked"
+    assert doc["sessions"][0]["status"] == "succeeded"
+    assert len(fake.calls) == 1
 
 
 def test_dispatch_writes_the_widget_snapshot_on_hermes_failure(tmp_path):
@@ -287,9 +299,11 @@ def test_dispatch_reports_failure_when_hermes_invocation_fails(tmp_path):
     assert terminal["payload"]["status"] == "failed"
 
 
-def test_dispatch_routes_widget_ui_tag_to_claude_direct_without_invoking_hermes(tmp_path):
+def test_dispatch_routes_widget_ui_tag_to_claude_and_invokes_it(tmp_path):
     store = tmp_path / "sessions"
-    with patch("routing.hermes_invoker.invoke_hermes") as fake_invoke:
+    fake = _FakeClaudeAdapter({"status": "succeeded", "profile": "builder"})
+    with patch("routing.hermes_invoker.invoke_hermes") as fake_invoke_hermes, \
+         patch("runtime.default_engine_context.ClaudeAdapter", return_value=fake):
         exit_code = main([
             "dispatch",
             "--tags", "widget-ui",
@@ -297,16 +311,18 @@ def test_dispatch_routes_widget_ui_tag_to_claude_direct_without_invoking_hermes(
             "--prompt", "n/a",
             "--store", str(store),
         ])
-    fake_invoke.assert_not_called()
+    fake_invoke_hermes.assert_not_called()
     assert exit_code == 0
+    assert len(fake.calls) == 1
     terminal = _sessions(store)[0]["events"][-1]
-    assert terminal["payload"]["status"] == "blocked"
-    assert "claude-direct" in terminal["payload"]["reason"]
+    assert terminal["payload"]["status"] == "succeeded"
 
 
-def test_dispatch_falls_back_to_claude_direct_for_unmatched_tags(tmp_path):
+def test_dispatch_falls_back_to_claude_for_unmatched_tags(tmp_path):
     store = tmp_path / "sessions"
-    with patch("routing.hermes_invoker.invoke_hermes") as fake_invoke:
+    fake = _FakeClaudeAdapter({"status": "succeeded", "profile": "builder"})
+    with patch("routing.hermes_invoker.invoke_hermes") as fake_invoke_hermes, \
+         patch("runtime.default_engine_context.ClaudeAdapter", return_value=fake):
         exit_code = main([
             "dispatch",
             "--tags", "some-totally-unknown-shape",
@@ -314,10 +330,11 @@ def test_dispatch_falls_back_to_claude_direct_for_unmatched_tags(tmp_path):
             "--prompt", "n/a",
             "--store", str(store),
         ])
-    fake_invoke.assert_not_called()
+    fake_invoke_hermes.assert_not_called()
     assert exit_code == 0
+    assert len(fake.calls) == 1
     terminal = _sessions(store)[0]["events"][-1]
-    assert terminal["payload"]["status"] == "blocked"
+    assert terminal["payload"]["status"] == "succeeded"
 
 
 def test_dispatch_records_routing_reason_in_evidence(tmp_path, capsys):

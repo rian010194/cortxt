@@ -2413,13 +2413,10 @@ def _run_dispatch(
     tracks. See .hermes/plans/2026-08-19-orchestrator-dispatch-v01.md.
 
     Invocation goes through an EngineContext broker (ADR-026/027) instead of
-    a hardcoded if/elif on engine_id -- "claude-direct" has no adapter
-    registered (no confirmed one-shot Claude Code CLI entry point exists;
-    guessing one would repeat the exact mistake ADR-022 was written to
-    avoid), so its broker has no provider and the task is recorded as
-    "blocked" -- picked up by a human/Claude Code session, not auto-executed.
-    Any other engine_id with no registered adapter gets the same treatment,
-    not a silent fallback to whatever IS registered.
+    a hardcoded if/elif on engine_id. The verified engine id is `claude`,
+    backed by the live-verified headless `claude -p` ClaudeAdapter
+    (2026-08-20). Any engine_id with no registered adapter is recorded as
+    "blocked" -- never silently dispatched to whatever IS registered.
 
     `engine_context` is None in every real CLI invocation (build_default_
     engine_context() is used); tests inject a fake one directly.
@@ -2480,8 +2477,13 @@ def _run_dispatch(
                 (profile for tag, profile in _HERMES_PROFILE_BY_TAG.items() if tag in tags),
                 "builder",
             )
+            # The profile string is a Hermes concept. Forward it only to the
+            # Hermes-family adapters; claude/dsh take no profile, so passing
+            # "builder" would reach ClaudeAdapter's --agent mapping and emit a
+            # bogus `claude --agent builder`.
+            profile = hermes_profile if choice.engine_id in ("hermes", "hermes-free") else None
             result = broker.invoke(
-                hermes_profile, args.prompt, timeout_seconds=args.timeout,
+                profile, args.prompt, timeout_seconds=args.timeout,
                 model=args.model, provider=args.provider,
             )
             state.append(store, session_id, 0, "session.terminal", {"status": result["status"]})
@@ -2493,10 +2495,7 @@ def _run_dispatch(
             evidence["hermes_result"] = {k: v for k, v in result.items() if k != "stdout"}
             status = "succeeded" if result["status"] == "succeeded" else "failed"
         else:
-            if choice.engine_id == "claude-direct":
-                reason = "routed to claude-direct: pick this up in a Claude Code session"
-            else:
-                reason = f"routed to {choice.engine_id}: no invoker wired for this engine yet"
+            reason = f"routed to {choice.engine_id}: no invoker wired for this engine yet"
             state.append(store, session_id, 0, "session.terminal", {"status": "blocked", "reason": reason})
             status = "succeeded"  # dispatch itself succeeded: routing + recording worked
 

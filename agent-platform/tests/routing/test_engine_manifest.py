@@ -157,9 +157,9 @@ def test_route_rejects_empty_task_tags():
 # --- default v0.1 registry (ADR-022) ---
 
 
-def test_default_manifests_register_claude_direct_hermes_hermes_free_and_dsh():
+def test_default_manifests_register_claude_hermes_hermes_free_and_dsh():
     ids = {m.engine_id for m in DEFAULT_MANIFESTS}
-    assert ids == {"claude-direct", "hermes", "hermes-free", "dsh"}
+    assert ids == {"claude", "hermes", "hermes-free", "dsh"}
 
 
 def test_hermes_default_manifest_notes_cite_tonights_incidents():
@@ -195,11 +195,11 @@ def test_route_over_default_manifests_keeps_hermes_for_parallel_dispatch():
     assert choice.engine_id == "hermes"
 
 
-def test_route_over_default_manifests_keeps_claude_direct_for_general():
+def test_route_over_default_manifests_keeps_claude_for_general():
     choice = route(["general"], DEFAULT_MANIFESTS)
-    assert choice.engine_id == "claude-direct"
+    assert choice.engine_id == "claude"
 
 
-def test_route_over_default_manifests_falls_back_to_claude_direct_for_unknown_shape():
+def test_route_over_default_manifests_falls_back_to_claude_for_unknown_shape():
     choice = route(["some-shape-nobody-declared"], DEFAULT_MANIFESTS)
-    assert choice.engine_id == "claude-direct"
+    assert choice.engine_id == "claude"

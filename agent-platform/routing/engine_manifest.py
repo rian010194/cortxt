@@ -16,7 +16,7 @@ COST_ORDER = {"free": 0, "cheap": 1, "metered": 2}
 VALID_COST_CLASSES = frozenset(COST_ORDER)
 VALID_RELIABILITY_CLASSES = frozenset({"verified", "unverified", "degraded"})
 
-DEFAULT_FALLBACK_ENGINE = "claude-direct"
+DEFAULT_FALLBACK_ENGINE = "claude"
 
 
 class InvalidManifestError(ValueError):
@@ -70,12 +70,14 @@ class EngineChoice:
 
 DEFAULT_MANIFESTS: tuple[EngineManifest, ...] = (
     EngineManifest(
-        engine_id="claude-direct",
+        engine_id="claude",
         task_shapes=("general", "review", "adr-drafting", "widget-ui", "cli", "security-sensitive"),
         cost_class="metered",
         reliability_class="verified",
-        notes="Phase 2/ADR-022 bootstrap fallback: the only engine that finished "
-        "Phase 2 (issue #166) without an off-track dispatch or a wasted iteration budget.",
+        notes="Verified headless Claude Code CLI (`claude -p`, ClaudeAdapter, live-verified "
+        "2026-08-20). Carries the Phase 2/ADR-022 bootstrap-fallback record: the only "
+        "engine that finished Phase 2 (issue #166) without an off-track dispatch or a "
+        "wasted iteration budget.",
     ),
     EngineManifest(
         engine_id="hermes",
