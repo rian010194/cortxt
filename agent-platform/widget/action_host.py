@@ -32,7 +32,11 @@ from widget_contract.adapters.github_ports import (
     LastGoodIssues, TransitionDenied, gh_inbox_to_ready, gh_issue_workflow_labels, gh_review_to_done,
     read_issue_detail,
 )
-from widget_contract.adapters.store_reads import read_run_summaries_v1, read_workstream_detail_v1
+from widget_contract.adapters.store_reads import (
+    read_dispatch_request_v1,
+    read_run_summaries_v1,
+    read_workstream_detail_v1,
+)
 from widget_contract.run_authority import correlate_run_summaries, summaries_from_sessions
 from widget_contract.workstreams import build_workstream_projection
 from widget_contract.generation import generate_widget_spec
@@ -223,6 +227,19 @@ class ActionHost:
         issue_ref = f"{repo}#{number}"
         return read_run_summaries_v1(issue_ref, self._read_dispatcher_runs(), self._read_session_docs())
 
+    def dispatch_request(self, repo: str, number: int) -> dict:
+        """The authoritative dispatch request a confirmation view must render."""
+        issue = self._issue_reader(repo, number)
+        from routing.engine_manifest import DEFAULT_FALLBACK_ENGINE, DEFAULT_MANIFESTS
+        from runtime.default_engine_context import build_default_engine_context
+        from widget_contract.dispatch_request import route_for_issue
+
+        choice, tags = route_for_issue(issue, DEFAULT_MANIFESTS, fallback=DEFAULT_FALLBACK_ENGINE)
+        context = build_default_engine_context()
+        engine_registered = bool(choice and context.get(choice.engine_id).has_provider)
+        return read_dispatch_request_v1(
+            issue, choice, repo=repo, engine_registered=engine_registered, routable_tags=tags)
+
     def _widget_for_action(self, action_id: str):
         if any(action.id == action_id for action in self.widget.actions):
             return self.widget
@@ -354,6 +371,9 @@ class ActionHandler(SimpleHTTPRequestHandler):
         if path in ("/api/runs", "/api/runs/"):
             self._handle_read("runs")
             return
+        if path in ("/api/dispatch-request", "/api/dispatch-request/"):
+            self._handle_read("dispatch-request")
+            return
         super().do_GET()
 
     def _issue_ref_from_query(self) -> tuple[str, int] | None:
@@ -377,8 +397,10 @@ class ActionHandler(SimpleHTTPRequestHandler):
         try:
             if kind == "workstream-detail":
                 self._json(200, self.host.workstream_detail(repo, number))
-            else:
+            elif kind == "runs":
                 self._json(200, self.host.run_summaries(repo, number))
+            else:
+                self._json(200, self.host.dispatch_request(repo, number))
         except Exception as exc:
             self._json(503, {"schema_version": 1, "status": "unavailable",
                              "error": {"kind": getattr(exc, "kind", "read_error"), "message": str(exc)}})

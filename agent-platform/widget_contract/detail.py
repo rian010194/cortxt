@@ -51,10 +51,20 @@ def _section(body: str, names: Sequence[str]) -> str | None:
 
 
 def _bullets(body: str, names: Sequence[str]) -> list[str]:
-    section = _section(body, names)
-    if not section:
-        return []
-    return [match.group(1).strip() for match in BULLET.finditer(section) if match.group(1).strip()]
+    """Extract explicit bullet items from the named section.
+
+    Reads the raw section so bullet markers are preserved; independent of
+    `_section`'s bullet-stripping (which serves plain-text section fields).
+    """
+    matches = list(SECTION.finditer(body))
+    wanted = {name.casefold() for name in names}
+    for index, match in enumerate(matches):
+        if match.group(1).strip().casefold() not in wanted:
+            continue
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
+        section = body[match.end():end]
+        return [m.group(1).strip() for m in BULLET.finditer(section) if m.group(1).strip()]
+    return []
 
 
 def parse_relations(body: str) -> list[dict[str, Any]]:
