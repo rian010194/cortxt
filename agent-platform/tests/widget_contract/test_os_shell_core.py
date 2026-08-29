@@ -308,10 +308,11 @@ def test_direct_resize_handle_visible_without_arrange():
 
 
 def test_mobile_back_navigation_preserves_context():
-    # Mobile nav gains an explicit back control that returns to the default
-    # app; openApp only changes the active mobile app, never the context.
+    # Mobile nav gains an explicit back control; S5.5b: back is deterministic
+    # (Workstream -> Home); openApp only changes the active mobile app, never
+    # the context.
     assert 'data-mobile-back' in JS or "mobileBack" in JS
-    assert 'openApp("work")' in JS
+    assert 'openApp("home")' in JS
 
 
 # --- dock/taskbar + maximize/restore (#432) ----------------------------
@@ -1182,15 +1183,17 @@ def test_work_surface_presents_full_workstream_summary():
 
 def test_work_summaries_deep_link_with_exact_context():
     # Each summary deep-links to its responsible app with the exact Workstream
-    # (and optional record) context; the router validates before dispatch.
-    assert "function deepLink(appId,workstreamId,recordRef)" in S55B_JS
+    # context; the router validates app/workstream before dispatch. Record
+    # context is introduced with the validated per-app record router in S5.5c.
+    assert "function deepLink(appId,workstreamId)" in S55B_JS
     assert '"app="+encodeURIComponent(appId)' in S55B_JS
     assert '"ws="+encodeURIComponent(workstreamId)' in S55B_JS
-    assert '"record="+encodeURIComponent(recordRef)' in S55B_JS
     assert "data-work-deep" in S55B_JS
     assert 'deep("decisions")' in S55B_JS and 'deep("evidence")' in S55B_JS
     assert 'deep("execution")' in S55B_JS and 'deep("policies")' in S55B_JS
     assert "ShellCommands.applyDeepLink(b.dataset.workDeep" in S55B_JS
+    # No record= emission in S5.5b (the validated record router is S5.5c).
+    assert '"record="+encodeURIComponent' not in S55B_JS
 
 
 def test_work_does_not_duplicate_full_app_workflows():
@@ -1233,6 +1236,13 @@ def test_landing_and_workspace_pages_use_work_language():
     wtext = ws.read_text(encoding="utf-8")
     assert "Work Console" not in wtext
     assert "Cortxt OS and Work" in wtext
+
+
+def test_mobile_back_is_deterministic_workstream_to_home():
+    # S5.5b AC5: mobile back is deterministic (Workstream -> Home), not back
+    # to Work.
+    assert 'back.setAttribute("aria-label","Back to Home")' in S55B_JS
+    assert 'back.addEventListener("click",function(){openApp("home")})' in S55B_JS
 
 
 def test_work_primary_surface_no_shell_core_branch():

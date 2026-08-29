@@ -311,8 +311,9 @@ function renderChrome(){
       mnav.appendChild(m);
     });
     var back=document.createElement("button");
-    back.type="button";back.dataset.mobileBack="1";back.setAttribute("aria-label","Back to Work");back.textContent="\u2190";
-    back.addEventListener("click",function(){openApp("work")});
+    back.type="button";back.dataset.mobileBack="1";back.setAttribute("aria-label","Back to Home");back.textContent="\u2190";
+    /* S5.5b: deterministic back — Workstream -> Home (brief 7.9/AC5). */
+    back.addEventListener("click",function(){openApp("home")});
     mnav.appendChild(back);
   }
   syncNavActive();
@@ -575,13 +576,14 @@ function render(){
   renderSwitcher();
   propagateContext();
 }
-function deepLink(appId,workstreamId,recordRef){
+function deepLink(appId,workstreamId){
   /* Build a validated deep link hash for an app with the exact Workstream
-     (and optional record) context; the router validates before dispatch. */
+     context; the router validates app/workstream before dispatch. Record
+     context (&record=<ref>) is introduced together with the validated
+     per-app record router in S5.5c (shell-commands.js is not S5.5b-owned). */
   var parts=[];
   if(appId)parts.push("app="+encodeURIComponent(appId));
   if(workstreamId)parts.push("ws="+encodeURIComponent(workstreamId));
-  if(recordRef)parts.push("record="+encodeURIComponent(recordRef));
   return parts.length?"#"+parts.join("&"):"#";
 }
 function renderWork(winEl,ctx){
@@ -593,7 +595,7 @@ function renderWork(winEl,ctx){
   var blockers=(x.blockers&&x.blockers.length)?x.blockers:[];
   var milestones=(x.milestones&&x.milestones.length)?x.milestones:[];
   var related=(x.related&&x.related.length)?x.related:[];
-  function deep(appId,recordRef){return deepLink(appId,x.id,recordRef)}
+  function deep(appId){return deepLink(appId,x.id)}
   winEl.innerHTML=
     '<div class="work-hero">'+
       '<span class="eyebrow">'+esc(x.id)+' · Work</span>'+
@@ -620,7 +622,7 @@ function renderWork(winEl,ctx){
         (evidence.length?evidence.map(function(ev){return '<p><b>'+esc(ev.title)+'</b> — '+esc(ev.detail)+' <em>('+esc(ev.status)+')</em></p>'}).join("")+'<button type="button" class="link-button" data-work-deep="'+esc(deep("evidence"))+'">Open Evidence with context →</button>':'<p>No attributable evidence yet.</p>')+
       '</section>'+
       (milestones.length?'<section class="work-card" data-work-card="milestones"><h3>Milestones</h3>'+milestones.map(function(m){return '<p>'+esc(m.title)+(m.done?' ✓':'')+'</p>'}).join("")+'</section>':"")+
-      (related.length?'<section class="work-card" data-work-card="related"><h3>Related</h3>'+related.map(function(r){return '<p>'+esc(r.title)+' <button type="button" class="link-button" data-work-deep="'+esc(deep("atlas",r.ref))+'">Open →</button></p>'}).join("")+'</section>':"")+
+      (related.length?'<section class="work-card" data-work-card="related"><h3>Related</h3>'+related.map(function(r){return '<p>'+esc(r.title)+' <button type="button" class="link-button" data-work-deep="'+esc(deep("atlas"))+'">Open →</button></p>'}).join("")+'</section>':"")+
     '</div>'+
     '<div class="work-open-links">'+
       '<button type="button" class="chrome-button" data-work-deep="'+esc(deep("policies"))+'">Policies</button>'+
@@ -629,7 +631,9 @@ function renderWork(winEl,ctx){
     '<small class="work-note">Summaries are read-only projections. Each summary opens its responsible app with the exact Workstream context through validated deep links; Work never duplicates a full app workflow.</small>';
   qa("[data-work-open]",winEl).forEach(function(b){b.addEventListener("click",function(){dispatchCommand("open-app",{appId:b.dataset.workOpen})})});
   qa("[data-work-deep]",winEl).forEach(function(b){b.addEventListener("click",function(){
-    if(typeof location!=="undefined"){try{location.hash=b.dataset.workDeep}catch(_e){}}
+    /* Dispatch through the validated router only (single dispatch; the hash
+       change is a by-product of applyDeepLink's handlers, not a second
+       dispatch source here). */
     if(typeof ShellCommands!=="undefined"&&ShellCommands.applyDeepLink&&window.ShellCommandHandlers){
       ShellCommands.applyDeepLink(b.dataset.workDeep,window.ShellCommandHandlers);
     }
