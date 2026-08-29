@@ -258,6 +258,60 @@ def test_home_recent_list_is_recency_ordered():
     assert "function recentWorkstreams()" in JS
 
 
+# --- S6c: Work primary surface and contextual capability flow (#463) -----
+
+def test_work_surfaces_identity_mandate_state_and_next():
+    # S6c AC1-2: the Work header projects id/title/outcome, mandate, and
+    # status/phase; the Next card shows the next meaningful action with a
+    # primary Open Decisions action.
+    assert "work-mandate" in JS
+    assert 'x.mandate||x.acceptance_criteria' in JS
+    assert "work-phase" in JS
+    assert "next-card" in JS
+    assert "x.nextAction" in JS
+    assert 'class="primary-action" data-deep-open="decisions"' in JS
+
+
+def test_work_surfaces_blockers_with_reason_and_recovery():
+    # S6c AC2: blocked Workstreams show the reason and an explicit recovery
+    # path — status is never communicated by color alone.
+    assert "var blockers=(x.blockers&&x.blockers.length)?x.blockers:[]" in JS
+    assert "<b>Recovery:</b> " in JS
+    assert "style=\"color:var(--bad)\"" in JS
+
+
+def test_work_milestones_show_progress():
+    # S6c AC4: milestones list done/pending with a progress indication that
+    # is structural (text + track), not color-only.
+    assert "doneCount" in JS and "pct" in JS
+    assert "of "+" " in JS or "complete (" in JS
+    assert "progress-track" in JS and "progress-fill" in JS
+    assert "progress-track{" in CSS and "progress-fill{" in CSS
+
+
+def test_work_execution_detail_is_subordinate():
+    # S6c AC5: runs/agents/providers are dense subordinate detail revealed on
+    # demand; execution never reads as the Workstream's identity.
+    assert "exec-sub" in JS
+    assert "replaceable execution, subordinate to this Workstream" in JS
+    assert "Open Execution Inspector →" in JS
+    assert "data-deep-open=\"execution\"" in JS
+
+
+def test_work_fixture_supports_full_hierarchy():
+    # S6c AC7: the synthetic fixture gains mandate/phase/nextAction/
+    # milestones/runs/related/blockers per Workstream so the Work surface
+    # renders the complete durable-authority hierarchy.
+    fixture = json.loads((WIDGET / "fixtures" / "workstreams.json").read_text(encoding="utf-8"))
+    assert fixture["synthetic"] is True
+    ws042 = next(w for w in fixture["workstreams"] if w["id"] == "WS-042")
+    for field in ("mandate", "phase", "nextAction", "milestones", "runs", "related"):
+        assert field in ws042, field
+    assert ws042["milestones"] and ws042["runs"]
+    ws039 = next(w for w in fixture["workstreams"] if w["id"] == "WS-039")
+    assert ws039["blockers"] and ws039["blockers"][0]["reason"] and ws039["blockers"][0]["recovery"]
+
+
 # --- surface navigation + multi-window opt-in ----------------------------
 
 def test_one_primary_surface_at_a_time():

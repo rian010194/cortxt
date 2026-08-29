@@ -738,7 +738,10 @@ function renderWork(winEl,ctx){
   var decision=x.decision||null,evidence=x.evidence||[];
   var phase=x.phase||x.workflow||"in-progress";
   var milestones=(x.milestones&&x.milestones.length)?x.milestones:[];
+  var blockers=(x.blockers&&x.blockers.length)?x.blockers:[];
   var runs=(x.runs&&x.runs.length)?x.runs:[];
+  var doneCount=milestones.filter(function(m){return m.done}).length;
+  var pct=milestones.length?Math.round(doneCount/milestones.length*100):0;
   var phaseClass=phase.toLowerCase().indexOf("block")>=0?"blocked":(phase.toLowerCase().indexOf("accept")>=0||phase.toLowerCase().indexOf("done")>=0?"done":"");
   var html='<div class="work-inner">'+
     '<div class="work-head">'+
@@ -764,10 +767,17 @@ function renderWork(winEl,ctx){
             '<button type="button" class="chrome-button" data-win-open="decisions">Open in new window</button>'+
           '</div>'+
         '</section>'+
+        (blockers.length?'<section class="work-card"><h3>Blocked</h3>'+blockers.map(function(b){
+          return '<p class="wc-main" style="color:var(--bad)">'+esc(b.reason)+'</p><p class="wc-sub"><b>Recovery:</b> '+esc(b.recovery)+'</p>';
+        }).join("")+'</section>':"")+
         '<section class="work-card"><h3>Evidence</h3>'+
           (evidence.length?evidence.map(function(ev){return '<p class="wc-row" style="cursor:default"><strong>'+esc(ev.title)+'</strong><small>'+esc(ev.status)+'</small></p><p class="wc-sub">'+esc(ev.detail)+'</p>'}).join("")+'<button type="button" class="link-button" data-deep-open="evidence">Open Evidence with context →</button>':'<p class="wc-sub">No attributable evidence yet.</p>')+
         '</section>'+
-        (milestones.length?'<section class="work-card"><h3>Milestones</h3>'+milestones.map(function(m){return '<p class="wc-row" style="cursor:default"><strong>'+esc(m.title)+'</strong>'+(m.done?'<small class="done-mark">✓ done</small>':'<small>pending</small>')+'</p>'}).join("")+'</section>':"")+
+        (milestones.length?'<section class="work-card"><h3>Milestones</h3>'+
+          '<p class="wc-meta">'+esc(String(doneCount))+' of '+esc(String(milestones.length))+' complete ('+esc(String(pct))+'%)</p>'+
+          '<div class="progress-track" aria-hidden="true"><div class="progress-fill" style="width:'+esc(String(pct))+'%"></div></div>'+
+          milestones.map(function(m){return '<p class="wc-row" style="cursor:default"><strong>'+esc(m.title)+'</strong>'+(m.done?'<small class="done-mark">✓ done</small>':'<small>pending</small>')+'</p>'}).join("")+
+        '</section>':"")+
       '</div>'+
       '<div class="work-col">'+
         '<section class="work-card"><h3>Decisions</h3>'+
