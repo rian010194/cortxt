@@ -224,6 +224,28 @@ def test_multi_window_is_an_explicit_opt_in():
     assert 'function openDeep(appId,recordRef)' in JS
 
 
+def test_open_window_from_deep_returns_to_work_primary():
+    # Reviewer finding 1: opening a window from a deep capability collapses
+    # the deep surface back to Work so the window and Work are both visible
+    # (window mode never duplicates the in-context surface).
+    assert 'if(state.primary==="deep"){state.primary="work";state.deepApp=null;state.deepRec=null}' in JS
+
+
+def test_v4_migration_drops_surface_windows():
+    # Reviewer finding 2: v4 surfaces (home/work) are never windows; the
+    # migration removes them from the window model so an upgrading S5.5
+    # session cannot show the multi-window bar with zero windows.
+    assert '["home","work"].forEach(function(surf){if(saved.ui[k][surf]!==undefined)delete saved.ui[k][surf]})' in JS
+
+
+def test_focus_record_accepts_prefixed_and_bare_refs():
+    # Reviewer finding 3: the documented deep-link form record=#<number> and
+    # the bare form both resolve known records; unknown records still fail
+    # closed.
+    assert 'var ref=String(p.recordRef).replace(/^#/,"")' in JS
+    assert 'String(x.number||x.id)===ref' in JS
+
+
 def test_narrow_never_shows_window_chrome():
     # Mobile is one surface at a time; desktop window behavior is never
     # emulated on narrow layouts.
@@ -392,13 +414,13 @@ def test_work_surface_never_duplicates_full_app_workflows():
 
 
 def test_work_summaries_deep_link_with_exact_context():
-    assert "function deepLink(appId,workstreamId,recordRef)" in JS
-    assert '"app="+encodeURIComponent(appId)' in JS
-    assert '"ws="+encodeURIComponent(workstreamId)' in JS
-    assert '"record="+encodeURIComponent(recordRef)' in JS
+    # Work's deep-open buttons open the responsible app with the exact
+    # Workstream and record context in-context (S6a), with an explicit
+    # opt-in window path.
     assert "data-deep-open" in JS
     assert "data-win-open" in JS
     assert 'openDeep(appId,"#"+String(x.number||x.id))' in JS
+    assert "function openDeep(appId,recordRef)" in JS
 
 
 def test_shell_core_has_no_work_specific_branch():
@@ -494,16 +516,17 @@ def test_v2_to_v4_migration_renames_work_console_and_derives_primary():
         "const m=require(%s);"
         "const saved={v:3,ui:{open:{'work-console':true,'decisions':true},mobileApp:'work-console',z:{'work-console':5},min:{},max:{},geom:{}},context:{workstreamId:'WS-042'},apps:{'work-console':{panel:'attention'},'decisions':{}},windows:[{id:'win-work-console',appId:'work-console',contextBinding:{mode:'locked',workstreamId:'WS-042'}},{id:'win-decisions',appId:'decisions'}],dockFavorites:['work-console','decisions','evidence'],desktopLayout:{}};"
         "m.migrateSavedState(saved);"
-        "if(saved.ui.open['work']!==true||saved.ui.open['work-console']!==undefined)process.exit(2);"
+        "if(saved.ui.open['work']!==undefined||saved.ui.open['work-console']!==undefined)process.exit(2);"
         "if(saved.ui.open['decisions']!==true)process.exit(3);"
         "if(saved.ui.mobileApp!=='work')process.exit(4);"
-        "if(saved.ui.z['work']!==5)process.exit(5);"
+        "if(saved.ui.z['work']!==undefined)process.exit(5);"
         "if(saved.context.workstreamId!=='WS-042')process.exit(6);"
         "if(saved.apps['work']===undefined||saved.apps['work-console']!==undefined)process.exit(7);"
         "if(saved.windows[0].appId!=='work'||saved.windows[1].appId!=='decisions')process.exit(8);"
         "if(saved.dockFavorites[0]!=='work')process.exit(9);"
         "if(saved.primary!=='work')process.exit(10);"
         "if(saved.schemaVersion!==4)process.exit(11);"
+        "if(saved.ui.open['work']!==undefined)process.exit(13);"
         "const unbound={v:3,ui:{open:{},mobileApp:'work'},context:{workstreamId:null},apps:{},windows:[],dockFavorites:[]};"
         "m.migrateSavedState(unbound);"
         "if(unbound.primary!=='home')process.exit(12);"

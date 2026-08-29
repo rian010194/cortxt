@@ -89,7 +89,8 @@ function migrateSavedState(saved){
   }
   if(!saved.activity||typeof saved.activity!=="object")saved.activity={open:false,filters:{groupBy:"time",types:{},workstreamId:null},read:{},dismissed:{}};
   /* v4: derive the primary surface from the previous session shape. A saved
-     session that had Work open resumes Work; anything else resumes Home. */
+     session that had Work open resumes Work; anything else resumes Home.
+     Surfaces are never windows in v4: drop home/work from the window model. */
   if(saved.primary==null){
     var hadWork=!!(saved.ui&&saved.ui.open&&saved.ui.open["work"]);
     saved.primary=hadWork?"work":"home";
@@ -97,6 +98,14 @@ function migrateSavedState(saved){
   if(saved.deepApp==null)saved.deepApp=null;
   if(saved.deepRec==null)saved.deepRec=null;
   if(saved.multiMode==null)saved.multiMode=false;
+  if(saved.ui&&typeof saved.ui==="object"){
+    ["open","min","max","z","geom"].forEach(function(k){
+      if(saved.ui[k]&&typeof saved.ui[k]==="object"){
+        ["home","work"].forEach(function(surf){if(saved.ui[k][surf]!==undefined)delete saved.ui[k][surf]});
+      }
+    });
+    if(saved.ui.mobileApp==="home"||saved.ui.mobileApp==="work")saved.ui.mobileApp=saved.primary;
+  }
   saved.schemaVersion=4;
 }
 function persist(){
@@ -255,11 +264,15 @@ function openDeep(appId,recordRef){
   showPrimary("deep");
 }
 function openWindow(id){
-  /* Explicit opt-in multi-window: surface apps never become windows. */
+  /* Explicit opt-in multi-window: surface apps never become windows. When
+     opened from a deep capability, the deep surface collapses back to Work
+     so the window and Work are both visible (window mode never duplicates
+     the in-context surface). */
   var a=appById(id);
   if(!a||isSurfaceKind(a.id))return;
   state.ui.open[a.id]=true;delete state.ui.min[a.id];state.ui.z[a.id]=++state.ui.zTop;
   state.multiMode=true;
+  if(state.primary==="deep"){state.primary="work";state.deepApp=null;state.deepRec=null}
   persist();applyView();renderAll();
   pushShellState();
 }
@@ -702,13 +715,6 @@ function renderHome(winEl,ctx){
 if(typeof OSRenderer!=="undefined"){OSRenderer.register("home",renderHome)}
 
 /* ---- Work app (S5.5b/ADR-044 + S6a surface routing) ------------------ */
-function deepLink(appId,workstreamId,recordRef){
-  var parts=[];
-  if(appId)parts.push("app="+encodeURIComponent(appId));
-  if(workstreamId)parts.push("ws="+encodeURIComponent(workstreamId));
-  if(recordRef)parts.push("record="+encodeURIComponent(recordRef));
-  return parts.length?"#"+parts.join("&"):"#";
-}
 function renderWork(winEl,ctx){
   var s=(ctx&&ctx.state)||state,x=(ctx&&ctx.workstream)||null;
   if(!x){
@@ -731,7 +737,6 @@ function renderWork(winEl,ctx){
   var milestones=(x.milestones&&x.milestones.length)?x.milestones:[];
   var runs=(x.runs&&x.runs.length)?x.runs:[];
   var phaseClass=phase.toLowerCase().indexOf("block")>=0?"blocked":(phase.toLowerCase().indexOf("accept")>=0||phase.toLowerCase().indexOf("done")>=0?"done":"");
-  function deep(appId,rec){return deepLink(appId,x.id,rec)}
   var html='<div class="work-inner">'+
     '<div class="work-head">'+
       '<div>'+
@@ -927,7 +932,10 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
         var a=appById(migrateWorkConsole(p.appId));
         if(!a)return;
         if(p.workstreamId&&p.workstreamId!=="all"&&!items().some(function(x){return x.id===p.workstreamId}))return;
-        if(!items().some(function(x){return String(x.number||x.id)===String(p.recordRef)}))return;
+        /* The documented deep-link form is record=#<number>; accept both the
+           prefixed and bare forms so known records never fail closed. */
+        var ref=String(p.recordRef).replace(/^#/,"");
+        if(!items().some(function(x){return String(x.number||x.id)===ref}))return;
         if(p.workstreamId)selectWorkstream(p.workstreamId);
         openDeep(a.id,p.recordRef);
       },
