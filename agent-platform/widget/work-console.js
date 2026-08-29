@@ -659,7 +659,7 @@ function renderHome(winEl,ctx){
   /* Returning entry with a selection: resume-first (S6b). */
   var resume=x;
   var attention=attentionItems().filter(function(it){return it.requiresAttention});
-  var recent=list.slice(0,3);
+  var recent=recentWorkstreams().filter(function(w){return w.id!==x.id}).slice(0,3);
   var html2='<div class="home-inner">'+
     '<span class="eyebrow">Home</span>'+
     '<h1 class="home-heading">Resume your work</h1>'+

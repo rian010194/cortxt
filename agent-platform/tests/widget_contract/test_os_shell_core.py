@@ -250,6 +250,14 @@ def test_home_has_no_marketing_prose():
     assert 'disabled aria-disabled="true"' not in JS
 
 
+def test_home_recent_list_is_recency_ordered():
+    # Reviewer finding (S6b): the Home "Recent Workstreams" section must be
+    # truthful — it uses the recency+attention sort (recentWorkstreams),
+    # excluding the resume Workstream, not raw model order.
+    assert "var recent=recentWorkstreams().filter(function(w){return w.id!==x.id}).slice(0,3)" in JS
+    assert "function recentWorkstreams()" in JS
+
+
 # --- surface navigation + multi-window opt-in ----------------------------
 
 def test_one_primary_surface_at_a_time():
