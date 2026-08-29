@@ -4,7 +4,7 @@
 <body>
 <div class="mode-banner" data-mode-banner><strong>Loading Cortxt OS</strong><span>Checking the Cortxt-owned data boundary…</span></div>
 <div class="os-shell">
-  <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-ws-toggle aria-expanded="false" aria-controls="workstream-switcher">Workstreams</button><button class="chrome-button" data-launcher-toggle aria-expanded="false" aria-controls="app-launcher">Launcher</button><button class="chrome-button" data-exit-workspace aria-label="Exit Workspace to the public landing">Exit</button><button class="avatar" aria-label="Operator profile">RA</button></header>
+  <header class="os-bar"><a class="brand" href="/" aria-label="Cortxt home"><i>C</i><span>Cortxt OS</span></a><span class="active-context" data-active-context>No Workstream selected</span><button class="chrome-button" data-ws-toggle aria-expanded="false" aria-controls="workstream-switcher">Workstreams</button><button class="chrome-button" data-launcher-toggle aria-expanded="false" aria-controls="app-launcher">Launcher</button><button class="chrome-button" data-activity-toggle aria-expanded="false" aria-controls="activity-panel">Activity <b data-activity-count>0</b></button><button class="chrome-button" data-exit-workspace aria-label="Exit Workspace to the public landing">Exit</button><button class="avatar" aria-label="Operator profile">RA</button></header>
   <aside class="ws-switcher" id="workstream-switcher" data-workstream-switcher aria-label="Workstream switcher" hidden>
     <div class="ws-head"><p>Workstreams</p><button type="button" class="ws-create" data-ws-create>New workstream</button></div>
     <div class="ws-list" data-ws-list></div>
@@ -12,6 +12,9 @@
   <aside class="app-launcher" id="app-launcher" data-launcher aria-label="App launcher" hidden>
     <div class="launcher-head"><p>Applications</p><button type="button" class="launcher-close" data-launcher-close aria-label="Close launcher">×</button></div>
     <div class="launcher-list" data-launcher-list></div>
+  </aside>
+  <aside class="activity-panel" id="activity-panel" data-activity-panel aria-label="Activity Center" hidden>
+    <div class="activity-body" data-activity-body></div>
   </aside>
   <nav class="os-dock" data-os-dock aria-label="Application dock"></nav>
   <main class="canvas" data-canvas>

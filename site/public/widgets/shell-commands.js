@@ -13,11 +13,15 @@
      open-home{}                open Cortxt Home (typed; no-ops until S5)
      exit-workspace{}           return to the public landing experience
      open-external{url}         explicit external navigation (new tab)
+     focus-record{appId, workstreamId, recordRef}  validated navigation to a
+                              source record inside an app (S5.5c/ADR-044:
+                              Activity Center validated navigation)
 
-   Deep links (#app=<id>[&ws=<id>]) resolve the legacy `work-console` app id
-   to the first principal app `work` through a one-release compatibility
-   alias (ADR-044). Unknown commands, apps, and workstreams fail closed: the
-   router ignores them and never navigates.
+   Deep links (#app=<id>[&ws=<id>][&record=<ref>]) resolve the legacy
+   `work-console` app id to the first principal app `work` through a
+   one-release compatibility alias (ADR-044). Unknown commands, apps,
+   workstreams, and record references fail closed: the router ignores them
+   and never navigates.
 */
 (function (global) {
   "use strict";
@@ -29,6 +33,7 @@
     "open-home": true,
     "exit-workspace": true,
     "open-external": true,
+    "focus-record": true,
   };
 
   /* ADR-044: Work Console is retired. For one release cycle its app id
@@ -47,9 +52,10 @@
   /* ---- deep links ---------------------------------------------------- */
   function parseDeepLink(hash) {
     /* Accepts "#app=studio&ws=WS-042", "#app=work-console" (-> "#app=work"),
-       "#ws=all", or empty. Returns {appId, workstreamId} (either may be
-       null); the legacy work-console app id normalizes to `work`. */
-    var out = { appId: null, workstreamId: null };
+       "#ws=all", "#app=decisions&ws=WS-042&record=#445", or empty. Returns
+       {appId, workstreamId, recordRef} (each may be null); the legacy
+       work-console app id normalizes to `work`. */
+    var out = { appId: null, workstreamId: null, recordRef: null };
     if (!hash || hash === "#" || hash === "#/") return out;
     var h = hash.charAt(0) === "#" ? hash.slice(1) : hash;
     if (h.charAt(0) === "/") h = h.slice(1);
@@ -60,6 +66,7 @@
       var v = kv.length > 1 ? decodeURIComponent(kv[1] || "").trim() : "";
       if (k === "app" && v) out.appId = normalizeAppId(v);
       else if (k === "ws" && v) out.workstreamId = v;
+      else if (k === "record" && v) out.recordRef = v;
     }
     return out;
   }
@@ -96,7 +103,13 @@
         handlers["switch-workstream"]({ workstreamId: link.workstreamId });
         applied = true;
       }
-      if (link.appId && handlers && typeof handlers["open-app"] === "function") {
+      /* S5.5c: a deep link carrying a record reference navigates through the
+         validated focus-record command (app/workstream/record all validated
+         by the handler; unknown values fail closed). */
+      if (link.appId && link.recordRef && handlers && typeof handlers["focus-record"] === "function") {
+        handlers["focus-record"]({ appId: link.appId, workstreamId: link.workstreamId, recordRef: link.recordRef });
+        applied = true;
+      } else if (link.appId && handlers && typeof handlers["open-app"] === "function") {
         handlers["open-app"]({ appId: link.appId });
         applied = true;
       }

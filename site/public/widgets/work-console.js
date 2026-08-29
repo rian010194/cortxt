@@ -31,6 +31,7 @@ var state={
   windows:[],
   dockFavorites:[],
   desktopLayout:{},
+  activity:{open:false,filters:{groupBy:"time",types:{},workstreamId:null},read:{},dismissed:{}},
   schemaVersion:3,
   hadSavedSession:false
 };
@@ -162,11 +163,12 @@ function migrateSavedState(saved){
       if(saved.dockFavorites[i]==="work-console")saved.dockFavorites[i]="work";
     }
   }
+  if(!saved.activity||typeof saved.activity!=="object")saved.activity={open:false,filters:{groupBy:"time",types:{},workstreamId:null},read:{},dismissed:{}};
   saved.schemaVersion=3;
 }
 function persist(){
   syncWindowsFromUi();
-  try{localStorage.setItem(SHELL_KEY,JSON.stringify({v:3,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout,schemaVersion:3}))}catch(_e){}
+  try{localStorage.setItem(SHELL_KEY,JSON.stringify({v:3,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout,activity:state.activity,schemaVersion:3}))}catch(_e){}
 }
 function restore(){
   var saved;try{saved=JSON.parse(localStorage.getItem(SHELL_KEY)||"null")}catch(_e){saved=null}
@@ -183,6 +185,7 @@ function restore(){
   if(saved.context&&typeof saved.context.workstreamId==="string")state.context.workstreamId=saved.context.workstreamId;
   if(saved.context&&typeof saved.context.activeWorkstreamId==="string")state.context.activeWorkstreamId=saved.context.activeWorkstreamId;
   if(saved.apps&&typeof saved.apps==="object")state.apps=Object.assign(state.apps,saved.apps);
+  if(saved.activity&&typeof saved.activity==="object")state.activity=Object.assign(state.activity,saved.activity);
   if(saved.v===2||saved.v===3){
     if(Array.isArray(saved.windows)){
       state.windows=saved.windows.slice();
@@ -641,6 +644,150 @@ function renderWork(winEl,ctx){
 }
 if(typeof OSRenderer!=="undefined"){OSRenderer.register("work",renderWork)}
 
+/* ---- Activity Center (S5.5c/ADR-044 items 5-6) ----------------------- */
+/* Activity Center is a SHELL-OWNED system surface (a right-side panel), not
+   a registered app and not a window. It consumes typed Attention item
+   projections (ADR-044 minimum contract) derived from the shell-owned
+   model, and may group, dedupe, filter, mark read locally, and dismiss
+   locally where allowed. It may NEVER approve, mutate workflow state, own
+   decision requests, reproduce a full app workflow, or become a second
+   backlog. Item actions are validated navigation only (focus-record). */
+function attentionItems(){
+  /* Derive typed AttentionItemProjection items from the shell-owned
+     Workstream model. Read-only: never mutates the model. */
+  var list=(state.model&&state.model.workstreams)||[];
+  var items=[];
+  list.forEach(function(x){
+    if(x.attention){
+      items.push({
+        id:"att-"+x.id+"-decision",
+        sourceCapability:"read:decision-pending",
+        sourceRecordRef:String(x.number||x.id),
+        sourceVersion:"v1",
+        workstreamId:x.id,
+        occurredAt:new Date().toISOString(),
+        severity:x.attention==="decision"?"high":"medium",
+        requiresAttention:true,
+        title:x.title,
+        summary:(x.decision&&x.decision.summary)||("Workstream "+x.id+" requires attention ("+x.attention+")."),
+        targetCommand:"focus-record",
+        dedupeKey:"ws:"+x.id+":"+x.attention,
+        expiresAt:null
+      });
+    }
+    if(x.workflow==="done"){
+      items.push({
+        id:"att-"+x.id+"-done",
+        sourceCapability:"read:workstream-summary",
+        sourceRecordRef:String(x.number||x.id),
+        sourceVersion:"v1",
+        workstreamId:x.id,
+        occurredAt:new Date().toISOString(),
+        severity:"low",
+        requiresAttention:false,
+        title:x.title,
+        summary:"Important completed work: "+(x.outcome||"accepted"),
+        targetCommand:"focus-record",
+        dedupeKey:"ws:"+x.id+":done",
+        expiresAt:null
+      });
+    }
+  });
+  return items.filter(isValidAttentionItem);
+}
+function activityVisibleItems(){
+  var items=attentionItems();
+  var f=state.activity.filters||{types:{},workstreamId:null};
+  var seen={};
+  return items.filter(function(it){
+    /* Dedupe repeated signals by their stable dedupeKey (keep first). */
+    if(it.dedupeKey){if(seen[it.dedupeKey])return false;seen[it.dedupeKey]=true}
+    if(it.requiresAttention===false&&f.types&&f.types["done"]===false)return false;
+    if(f.workstreamId&&it.workstreamId!==f.workstreamId)return false;
+    if(state.activity.dismissed&&state.activity.dismissed[it.id])return false;
+    return true;
+  });
+}
+function activityGroupKey(it,groupBy){
+  /* Grouping keys: time buckets by the item's occurredAt date; type uses
+     severity; workstream uses the bound workstream id. */
+  if(groupBy==="type")return it.severity;
+  if(groupBy==="workstream")return it.workstreamId||"all";
+  var d=it.occurredAt?String(it.occurredAt).slice(0,10):"unknown";
+  return d;
+}
+function activityCount(){
+  return attentionItems().filter(function(it){return it.requiresAttention&&!state.activity.read[it.id]}).length;
+}
+function renderActivity(){
+  var panel=q("[data-activity-panel]"),badge=q("[data-activity-count]");
+  if(badge)badge.textContent=String(activityCount());
+  if(!panel)return;
+  var items=activityVisibleItems(),read=state.activity.read||{},f=state.activity.filters||{};
+  var html='<div class="activity-head"><h3>Activity</h3><button type="button" data-activity-close aria-label="Close Activity Center">×</button></div>';
+  html+='<div class="activity-filters">'+
+    '<button type="button" data-activity-group="time"'+(f.groupBy==="time"?' class="active"':'')+'>Time</button>'+
+    '<button type="button" data-activity-group="type"'+(f.groupBy==="type"?' class="active"':'')+'>Type</button>'+
+    '<button type="button" data-activity-group="workstream"'+(f.groupBy==="workstream"?' class="active"':'')+'>Workstream</button>'+
+  '</div>';
+  if(!items.length)html+='<div class="empty-state">Nothing needs your attention.</div>';
+  else{
+    var groups={};
+    items.forEach(function(it){
+      var key=activityGroupKey(it,f.groupBy);
+      (groups[key]=groups[key]||[]).push(it);
+    });
+    Object.keys(groups).forEach(function(g){
+      html+='<div class="activity-group"><h4>'+esc(g)+'</h4>';
+      groups[g].forEach(function(it){
+        html+='<article class="activity-item'+(read[it.id]?' read':'')+'" data-activity-id="'+esc(it.id)+'">'+
+          '<span class="state">'+esc(it.severity)+'</span>'+
+          '<strong>'+esc(it.title)+'</strong>'+
+          '<p>'+esc(it.summary)+'</p>'+
+          '<div class="activity-actions">'+
+            '<button type="button" data-activity-open="'+esc(it.id)+'">Open →</button>'+
+            '<button type="button" data-activity-read="'+esc(it.id)+'">'+(read[it.id]?'Mark unread':'Mark read')+'</button>'+
+            '<button type="button" data-activity-dismiss="'+esc(it.id)+'">Dismiss</button>'+
+          '</div></article>';
+      });
+      html+='</div>';
+    });
+  }
+  html+='<small class="activity-note">Presentation state is local. Workflow status is authoritative.</small>';
+  panel.innerHTML=html;
+  qa("[data-activity-close]",panel).forEach(function(b){b.onclick=toggleActivity});
+  qa("[data-activity-group]",panel).forEach(function(b){b.onclick=function(){state.activity.filters.groupBy=b.dataset.activityGroup;persist();renderActivity()}});
+  qa("[data-activity-read]",panel).forEach(function(b){b.onclick=function(){
+    var id=b.dataset.activityRead;if(state.activity.read[id])delete state.activity.read[id];else state.activity.read[id]=Date.now();
+    persist();renderActivity();
+  }});
+  qa("[data-activity-dismiss]",panel).forEach(function(b){b.onclick=function(){state.activity.dismissed[b.dataset.activityDismiss]=Date.now();persist();renderActivity()}});
+  qa("[data-activity-open]",panel).forEach(function(b){b.onclick=function(){
+    var it=attentionItems().find(function(x){return x.id===b.dataset.activityOpen});
+    if(!it)return;
+    /* Validated navigation only (ADR-044): app/workstream/record are
+       validated by the focus-record handler; unknown values fail closed. */
+    dispatchCommand("focus-record",{appId:it.sourceCapability==="read:decision-pending"?"decisions":"evidence",workstreamId:it.workstreamId,recordRef:it.sourceRecordRef});
+  }});
+}
+function toggleActivity(){
+  state.activity.open=!state.activity.open;
+  var panel=q("[data-activity-panel]");
+  if(panel)panel.hidden=!state.activity.open;
+  if(state.activity.open)renderActivity();
+  persist();
+}
+/* Scoped Activity Center presentation (S5.5c-owned; os.css is S5.5d-owned).
+   Built only from canonical ADR-043 tokens -- the same offline-fallback
+   pattern the Home window uses. Injected once, guarded for the DOM-less
+   test runtime. */
+if(typeof document!=="undefined"&&!document.getElementById("activity-scope-style")){
+  var _st=document.createElement("style");
+  _st.id="activity-scope-style";
+  _st.textContent='.activity-panel{position:fixed;top:30px;right:0;bottom:0;width:340px;max-width:86vw;background:var(--surface,#181b20);border-left:1px solid var(--stroke,#5b6471);z-index:40;display:flex;flex-direction:column;box-shadow:-18px 0 44px #0006}.activity-panel[hidden]{display:none}.activity-body{overflow:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px}.activity-head{display:flex;align-items:center;justify-content:space-between}.activity-head h3{margin:0;font-size:14px}.activity-filters{display:flex;gap:6px}.activity-filters button{border:1px solid var(--stroke,#5b6471);background:var(--layer,#ffffff0d);border-radius:7px;padding:5px 9px;font-size:11px;cursor:pointer;color:var(--muted,#8d97a3)}.activity-filters button.active{color:var(--text,#e7ebf0);border-color:var(--strong,#727c8a)}.activity-group h4{margin:12px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim,#65717f)}.activity-item{border:1px solid var(--stroke,#5b6471);background:var(--layer,#ffffff0d);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:5px}.activity-item.read{opacity:.6}.activity-item .state{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--warn,#d8c49a)}.activity-item strong{font-size:13px;color:var(--text,#e7ebf0)}.activity-item p{margin:0;font-size:11.5px;line-height:1.5;color:var(--muted,#8d97a3)}.activity-actions{display:flex;gap:6px;flex-wrap:wrap}.activity-actions button{border:1px solid var(--stroke,#5b6471);background:var(--layer,#ffffff0d);border-radius:7px;padding:4px 8px;font-size:11px;cursor:pointer}.activity-note{font-size:10.5px;color:var(--dim,#65717f)}@media(max-width:720px){.activity-panel{top:0;width:100vw;max-width:100vw;border-left:0}}';
+  (document.head||document.documentElement).appendChild(_st);
+}
+
 /* ---- Cortxt Home app (S5) ------------------------------------------- */
 /* Cortxt Home is a registered app (issue #445): the landing-to-workspace
    entry and the first-run surface. It projects the shell's app registry as
@@ -733,12 +880,25 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
       "open-home": function(){ openHome(); },
       "exit-workspace": function(){ try{window.location.href="/"}catch(_e){} },
       "open-external": function(p){ if(p&&p.url)try{window.open(p.url,"_blank","noopener")}catch(_e){} },
+      "focus-record": function(p){ if(!p||!p.appId||!p.recordRef)return; var a=appById(migrateWorkConsole(p.appId)); if(!a||isDeferred(a.id))return; if(p.workstreamId&&p.workstreamId!=="all"&&!items().some(function(x){return x.id===p.workstreamId}))return; if(!items().some(function(x){return String(x.number||x.id)===String(p.recordRef)}))return; if(p.workstreamId)switchWorkstream(p.workstreamId); focusApp(a.id); },
     };
     window.ShellCommandHandlers = commandHandlers;
     window.addEventListener("hashchange", function(){
       if (typeof ShellCommands !== "undefined" && ShellCommands.applyDeepLink) {
         ShellCommands.applyDeepLink(location.hash, commandHandlers);
       }
+    });
+  }
+  /* S5.5c: Activity Center chrome trigger + panel close semantics (Escape,
+     close control, outside interaction); panel never hides confirmations. */
+  var activityToggle=q("[data-activity-toggle]"),activityPanel=q("[data-activity-panel]");
+  if(activityToggle)activityToggle.onclick=toggleActivity;
+  if(activityPanel){
+    document.addEventListener("keydown",function(ev){if(ev.key==="Escape"&&!activityPanel.hidden){state.activity.open=false;activityPanel.hidden=true;persist()}});
+    document.addEventListener("pointerdown",function(ev){
+      if(activityPanel.hidden)return;
+      if(ev.target.closest("[data-activity-panel]")||ev.target.closest("[data-activity-toggle]"))return;
+      state.activity.open=false;activityPanel.hidden=true;persist();
     });
   }
   /* S4: launcher trigger/close replace the removed "Apps & canvas" drawer. */
@@ -779,6 +939,11 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
     return Promise.all([load(),loadBoundary()]);
   }).then(function(values){
     state.model=values[0];setMode();render();applyView();renderSwitcher();
+    /* S5.5c: render the Activity Center badge and restore its panel state
+       (local presentation state only). */
+    var _panel=q("[data-activity-panel]");
+    if(_panel)_panel.hidden=!state.activity.open;
+    renderActivity();
     /* S5: an explicit deep link in the URL wins (S1b semantics). Capture the
        hash before any first-run Home open mutates it. First run (no saved
        session) opens Cortxt Home as the entry app when no deep link applied. */
