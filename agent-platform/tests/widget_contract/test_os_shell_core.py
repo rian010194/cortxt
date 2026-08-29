@@ -195,8 +195,10 @@ def test_first_time_entry_stays_unbound():
     assert "No Workstream selected" in HTML
     assert 'chip.textContent=x?(x.id+" · "+x.title):"No Workstream selected"' in JS
     # The first-time Home surface explains the smallest next step and the
-    # demo selection binds explicitly.
-    assert 'if(!s.hadSavedSession)' in JS
+    # demo selection binds explicitly (first-time = no saved session AND no
+    # selected Workstream, so an in-session demo entry flips Home to the
+    # returning state without a reload).
+    assert 'if(!s.hadSavedSession&&!x){' in JS
     assert "Start a Workstream" in JS
     assert "Explore the demo Workstream" in JS
     assert 'selectWorkstream(items()[0].id)' in JS
@@ -256,6 +258,18 @@ def test_home_recent_list_is_recency_ordered():
     # excluding the resume Workstream, not raw model order.
     assert "var recent=recentWorkstreams().filter(function(w){return w.id!==x.id}).slice(0,3)" in JS
     assert "function recentWorkstreams()" in JS
+
+
+def test_home_after_demo_entry_is_returning_not_firsttime():
+    # Release acceptance regression (found on the Cloudflare preview): after
+    # entering the demo Workstream and navigating back to Home in the same
+    # session, Home must render the RETURNING resume state, not the
+    # first-time state. First-time is keyed on "no saved session AND no
+    # selected Workstream" so an in-session selection flips Home to
+    # returning without a reload.
+    assert "if(!s.hadSavedSession&&!x){" in JS
+    assert "Resume your work" in JS
+    assert "data-resume-work" in JS
 
 
 # --- S6c: Work primary surface and contextual capability flow (#463) -----

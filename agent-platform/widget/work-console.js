@@ -668,7 +668,7 @@ function renderHome(winEl,ctx){
   var s=(ctx&&ctx.state)||state;
   var x=currentItem();
   var list=items().filter(function(w){return w.id!=="all"});
-  if(!s.hadSavedSession){
+  if(!s.hadSavedSession&&!x){
     /* First-time state: truthful unbound context, smallest next step. */
     winEl.innerHTML='<div class="firsttime-inner"><div class="firsttime-card">'+
       '<span class="eyebrow">Home</span>'+
