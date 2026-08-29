@@ -43,9 +43,9 @@ object, not any one interface. The governing principle is durable authority,
 replaceable execution. Three interfaces expose that authority today, each
 with a distinct role:
 
-- **Cortxt OS / Work Console** is the accepted default product app (ADR-042).
-  Its current implementation is a shell in active development, not a
-  finished product — do not describe it as shipped.
+- **Cortxt OS** is the accepted general shell and first-party app runtime
+  (ADR-044). **Work** is its first principal app, not the identity of the OS.
+  Both are in active development — do not describe them as shipped.
 - The **`cortxt` CLI** remains an important local, automation, bootstrap,
   diagnostic, and power-user surface (ADR-015/021), and today is the most
   complete verified interface.
@@ -53,10 +53,10 @@ with a distinct role:
   integration surface (ADR-024, ADR-032).
 
 The legacy web prototype removed before the first public release (issue
-#225) is unrelated history and still not the product surface; Work Console
-is a distinct, newly accepted direction, not a revival of that prototype. A
+#225) is unrelated history and still not the product surface. Work Console is
+retired by ADR-044 with a bounded compatibility migration to Work. A
 thin `cortxt widget` surface (ADR-021/038) provides declarative views and
-apps consumed by the CLI/TUI, the Widget Host, and Work Console; it is a UI
+apps consumed by the CLI/TUI, the Widget Host, and Work; it is a UI
 substrate, not a top-level interface in its own right. Cockpit/runtime detail
 (sessions, pipelines, execution maps) continues as an Execution Inspector
 view inside a Workstream, not the default product home (ADR-042, amendment D).
@@ -66,7 +66,8 @@ view inside a Workstream, not the default product home (ADR-042, amendment D).
 | Component | Responsibility | Current constraint |
 |---|---|---|
 | GitHub Issues | Canonical scope, acceptance criteria, evidence, review, approval, and workflow state via `workflow:*` labels (ADR-018) | Project 4 is frozen legacy. An issue must be approved and authoritatively `workflow:ready` before dispatch. |
-| Cortxt OS / Work Console | Accepted default product app for Workstreams, mandates, evidence, and decisions (ADR-042) | Direction accepted; implementation is an in-progress shell, not a finished product. |
+| Cortxt OS | General shell and first-party app runtime: app lifecycle, windows, navigation, global context, commands, and system surfaces (ADR-044) | Owns presentation only; implementation is in progress. |
+| Work | First principal work- and mandate-first app over the selected Workstream (ADR-044) | Not the OS identity and not a source of domain authority; implementation follows the S5.5 gate. |
 | `cortxt` CLI | Local, automation, bootstrap, diagnostic, and power-user interface: runtimes, credentials, addons, sessions, dispatcher, MCP server, widget snapshot | Most complete verified interface today (ADR-015/021), no longer the sole product surface after ADR-042. |
 | `cortxt mcp serve` | External, mandate-protected programmable integration surface exposing platform capabilities as MCP tools | ADR-024/032; read-only slice shipped, SDK integration deferred (see ADR-024 follow-ups). |
 | Dispatcher (`scripts/dispatcher.py`) | Claim/run identity per dispatch contract, workflow label transitions | Single-process; concurrency model documented in ADR-018. |
@@ -135,11 +136,10 @@ Do not:
 
 - treat Hermes, Pi, Codex, Buzz, or any external runtime as the product — they
   are replaceable resources behind Cortxt-owned ports (ADR-014/016);
-- treat the removed legacy web prototype as a product surface — Work Console
-  (ADR-042) is a distinct, newly accepted direction, unrelated to that
-  removed prototype (issues #186 and #225);
-- describe the Cortxt OS / Work Console shell as fully shipped — it is
-  accepted direction (ADR-042) under active development;
+- treat the removed legacy web prototype as a product surface or the origin of
+  Work — it is unrelated history (issues #186 and #225);
+- treat Work as the identity of Cortxt OS, call the Work app Workspace, or
+  describe the OS or Work as fully shipped (ADR-044);
 - invent a second backlog or independent Kanban outside GitHub;
 - describe a successful smoke test as a finished production workflow;
 - add a new `buzz-run` or similar entry point before checking whether it

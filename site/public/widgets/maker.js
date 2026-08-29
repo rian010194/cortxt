@@ -1481,26 +1481,22 @@
 
   var MAKER_HTML =
     '<div class="maker-pane-header">' +
-      '<div><span class="maker-pane-title">Widget Studio</span><div class="card-meta" style="margin-top:4px">Build a governed view from a typed specification.</div></div>' +
-      '<a href="/docs/widgets/" class="candidate-copy" style="text-decoration:none;">Documentation &rarr;</a>' +
+      '<div><button type="button" class="studio-back" data-studio-back>← Work Console</button><span class="maker-pane-title">Customize Workstream view</span><div class="card-meta" style="margin-top:6px">WS-042 · Municipal AI Act gap analysis</div></div>' +
+      '<div class="studio-links"><a href="/docs/widgets/">Widget documentation</a></div>' +
     '</div>' +
-    '<div class="studio-guide" aria-label="Widget creation steps">' +
-      '<div><i>01</i><b>Choose</b><span>Start from a working widget or template.</span></div>' +
-      '<div><i>02</i><b>Shape</b><span>Describe the view or edit its typed spec.</span></div>' +
-      '<div><i>03</i><b>Export</b><span>Validate, preview, then install with the CLI.</span></div>' +
-    '</div>' +
+    '<div class="studio-context"><span>Placement</span><strong>Workstream overview</strong><span>Data</span><strong>Decisions + evidence</strong></div>' +
     '<nav class="main-nav">' +
-      '<button type="button" class="tab-btn active" data-mk-tab="gallery">Templates</button>' +
-      '<button type="button" class="tab-btn" data-mk-tab="studio">Build</button>' +
-      '<button type="button" class="tab-btn" data-mk-tab="tokens">Tokens</button>' +
+      '<button type="button" class="tab-btn" data-mk-tab="gallery">Starting points</button>' +
+      '<button type="button" class="tab-btn active" data-mk-tab="studio">Design</button>' +
       '<button type="button" class="tab-btn" data-mk-tab="import">Import</button>' +
+      '<button type="button" class="tab-btn" data-mk-tab="tokens">Developer</button>' +
     '</nav>' +
     '<div class="view-mode-toggle" role="group" aria-label="CLI display mode">' +
       '<button type="button" class="toggle-btn active" data-mk-cli="split">Split</button>' +
       '<button type="button" class="toggle-btn" data-mk-cli="overlay">Overlay</button>' +
       '<button type="button" class="toggle-btn" data-mk-cli="hidden">Widgets only</button>' +
     '</div>' +
-    '<section class="view-section" data-mk-section="gallery">' +
+    '<section class="view-section hidden" data-mk-section="gallery">' +
       '<div class="examples-band">' +
         '<div class="examples-band-header">' +
           '<span class="eyebrow">Examples</span>' +
@@ -1510,20 +1506,21 @@
       '</div>' +
       '<div class="gallery-grid" data-mk-gallery-grid></div>' +
     '</section>' +
-    '<section class="view-section hidden" data-mk-section="studio">' +
+    '<section class="view-section" data-mk-section="studio">' +
       '<div class="studio-container">' +
         '<div class="editor-pane">' +
           '<div class="editor-toolbar" style="flex-direction:column;align-items:stretch;gap:6px;">' +
-            '<span class="eyebrow">Describe</span>' +
-            '<textarea class="code-input" data-mk-studio-prompt spellcheck="false" style="min-height:48px;" placeholder="Describe the widget you want, e.g. a table of open evidence gaps"></textarea>' +
+            '<span class="eyebrow">What should this view help you notice?</span><span class="field-help">Describe an operator need. Cortxt keeps the view scoped to WS-042 and its authorized data.</span>' +
+            '<textarea class="code-input studio-prompt" data-mk-studio-prompt spellcheck="false" placeholder="Show unresolved evidence gaps first, then the controls ready for acceptance."></textarea>' +
+            '<div class="prompt-examples"><button type="button" data-prompt-example="Show unresolved evidence gaps first.">Evidence gaps</button><button type="button" data-prompt-example="Summarize decisions waiting for a person.">Pending decisions</button><button type="button" data-prompt-example="Show progress toward the accepted outcome.">Outcome progress</button></div>' +
             '<div style="display:flex;gap:6px;align-items:center;">' +
-              '<button type="button" class="candidate-copy" data-mk-action="studio-generate">Generate</button>' +
+              '<button type="button" class="candidate-copy primary-action" data-mk-action="studio-generate">Create first draft</button>' +
               '<button type="button" class="candidate-copy hidden" data-mk-action="studio-confirm-install" data-mk-studio-confirm-btn disabled>Confirm &amp; install</button>' +
               '<span data-mk-studio-generate-status class="pulse-status"></span>' +
             '</div>' +
           '</div>' +
           '<div class="editor-toolbar">' +
-            '<span class="eyebrow">Spec Template</span>' +
+            '<span class="eyebrow">View structure</span>' +
             '<select class="editor-select" data-mk-preset-select>' +
               '<option value="candidates">Candidates (GitHub)</option>' +
               '<option value="pulse">Session Pulse (Store)</option>' +
@@ -1536,35 +1533,35 @@
               '<option value="custom">Blank Spec</option>' +
             '</select>' +
           '</div>' +
-          '<div class="editor-body">' +
+          '<details class="advanced-editor"><summary>Developer details · specification and fixture data</summary><div class="editor-body">' +
             '<span class="eyebrow">Widget Spec (YAML)</span>' +
             '<textarea class="code-input" data-mk-studio-spec spellcheck="false"></textarea>' +
             '<span class="eyebrow" style="margin-top:4px;">Fixture Data (JSON)</span>' +
             '<textarea class="code-input" data-mk-studio-data spellcheck="false" style="min-height:90px;"></textarea>' +
             '<div style="display:flex;gap:6px;">' +
-              '<button type="button" class="candidate-copy" data-mk-action="export-studio">Export package</button>' +
-              '<button type="button" class="candidate-copy" data-mk-action="rerender-studio">Re-render</button>' +
+              '<button type="button" class="candidate-copy" data-mk-action="export-studio">Download .cw package</button>' +
+              '<button type="button" class="candidate-copy" data-mk-action="rerender-studio">Validate &amp; preview</button>' +
             '</div>' +
-          '</div>' +
+          '</div></details>' +
         '</div>' +
         '<div class="editor-pane">' +
           '<div class="editor-toolbar">' +
-            '<span class="eyebrow">Live Render &amp; CLI</span>' +
+            '<span class="eyebrow">Live preview</span>' +
             '<div class="status-ok" data-mk-studio-status>Valid</div>' +
           '</div>' +
           '<div class="card-body" style="flex:1;">' +
             '<div class="pane pane-render" data-mk-studio-render-pane></div>' +
             '<div class="pane pane-cli">' +
               '<div class="pane-title">' +
-                '<span>CLI Counterpart</span>' +
-                '<button type="button" class="candidate-copy" data-mk-action="copy-studio-cmd">Copy command</button>' +
+                '<span>Add to Work Console</span>' +
+                '<button type="button" class="candidate-copy developer-only" data-mk-action="copy-studio-cmd">Copy command</button>' +
               '</div>' +
-              '<div class="cli-cmd-box"><div class="cli-cmd" data-mk-studio-cmd-text>cortxt widget load --spec custom.yaml --view loaded</div></div>' +
-              '<div class="pane-title" style="margin-top:4px;">' +
+              '<p class="install-help">This preview shows where the view will live. Adding it is disabled because the public demo cannot change a workspace.</p><button type="button" class="studio-add" disabled>Add to Workstream overview</button><details class="developer-output"><summary>CLI installation</summary><div class="cli-cmd-box"><div class="cli-cmd" data-mk-studio-cmd-text>cortxt widget load --spec custom.yaml --view loaded</div></div></details>' +
+              '<div class="pane-title developer-only" style="margin-top:4px;">' +
                 '<span>CLI Render JSON</span>' +
                 '<button type="button" class="candidate-copy" data-mk-action="copy-studio-json">Copy JSON</button>' +
               '</div>' +
-              '<pre class="cli-json" data-mk-studio-json-text>{}</pre>' +
+              '<pre class="cli-json developer-only" data-mk-studio-json-text>{}</pre>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -1621,6 +1618,27 @@
     if (!container) return;
     container.classList.add("maker-pane");
     container.innerHTML = MAKER_HTML;
+
+    /* S1a (#435): the "back to Work Console" affordance must activate Work
+       Console in the PARENT shell via the origin-validated iframe bridge, not
+       navigate this iframe to /workspace/ (which recurses). Equivalent to
+       ShellIframeBridge.requestActivateApp, inlined so this older maker pane
+       does not require an extra script tag. */
+    (function wireStudioBack() {
+      var back = container.querySelector("[data-studio-back]");
+      if (!back) return;
+      back.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        try {
+          if (window.parent && window.parent.postMessage) {
+            window.parent.postMessage(
+              { source: "cortxt-os-iframe", v: 1, command: "activate-app", payload: { appId: "work-console" } },
+              "*"
+            );
+          }
+        } catch (_e) { /* ignore cross-origin/security errors */ }
+      });
+    })();
 
     var q = function (sel) { return container.querySelector(sel); };
     var qa = function (sel) { return Array.prototype.slice.call(container.querySelectorAll(sel)); };
@@ -1989,6 +2007,7 @@
 
     function loadPreset(key) {
       var p = PRESETS[key] || PRESETS.custom;
+      q("[data-mk-preset-select]").value = key;
       q("[data-mk-studio-spec]").value = p.spec;
       q("[data-mk-studio-data]").value = JSON.stringify(p.data || {}, null, 2);
       studioCliCmd = p.hint || ("cortxt widget load --spec " + key + ".yaml --view loaded");
@@ -2399,6 +2418,11 @@
     q("[data-mk-preset-select]").addEventListener("change", function (ev) { loadPreset(ev.target.value); });
     q("[data-mk-studio-spec]").addEventListener("input", handleStudioInput);
     q("[data-mk-studio-data]").addEventListener("input", handleStudioInput);
+    qa("[data-prompt-example]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        q("[data-mk-studio-prompt]").value = btn.dataset.promptExample;
+      });
+    });
     q("[data-mk-tokens-input]").addEventListener("input", handleTokensInput);
     q("[data-mk-import-file]").addEventListener("change", handleImportFile);
     q("[data-mk-import-textarea]").addEventListener("input", handleImportTextChange);
@@ -2422,8 +2446,12 @@
 
     initTokens();
     loadManifestAndRender();
-    loadPreset("candidates");
+    loadPreset("compliance");
     setCliMode(cliMode);
+    switchMode("studio");
+    var workstreamParam = new URLSearchParams(window.location.search).get("workstream");
+    var globalContext = document.getElementById("gbar-context");
+    if (workstreamParam && globalContext) globalContext.textContent = workstreamParam + " · Workstream overview";
   }
 
   return {

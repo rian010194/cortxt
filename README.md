@@ -40,8 +40,8 @@ Workstream does not have to be reconstructed around each replacement.
 - **CLI and MCP interfaces** over Cortxt-owned contracts.
 - **Declarative views and actions** with explicit authorization boundaries.
 
-The emerging Cortxt OS brings these contracts together through Work Console,
-Decisions, Evidence, Policies, Execution Inspector, Connections, and Studio.
+The emerging Cortxt OS brings these contracts together through Work, Decisions,
+Evidence, Policies, Execution Inspector, Connections, and Studio.
 Its purpose is to make durable work understandable—not to turn agent activity
 into another terminal cockpit.
 

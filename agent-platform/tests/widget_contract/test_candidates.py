@@ -206,7 +206,7 @@ def test_cli_visual_path_atomically_writes_contract_artifact(monkeypatch, capsys
 
 def test_widget_renders_copy_command_handoff_controls_without_post():
     from pathlib import Path
-    html = (Path(__file__).resolve().parents[2] / "widget" / "index.html").read_text(encoding="utf-8")
+    html = (Path(__file__).resolve().parents[2] / "widget" / "maker.html").read_text(encoding="utf-8")
     assert "Copy command" in html
     assert "Open in CLI" not in html
     assert "copyCommand" in html

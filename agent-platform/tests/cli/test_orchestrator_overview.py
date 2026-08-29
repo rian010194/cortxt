@@ -77,17 +77,28 @@ def test_transcript_record_engine_session_id_defaults_to_none():
 
 
 def test_widget_is_manifest_driven_shell_without_legacy_tabs():
-    widget = Path(__file__).parents[2] / "widget" / "index.html"
-    html = widget.read_text(encoding="utf-8")
+    # The generic manifest host now lives in the Studio surface (maker.html);
+    # index.html is the Cortxt OS shell whose apps come from apps.json (issue
+    # #418). Both are still manifest/registry driven with no legacy admin tabs.
+    widget_dir = Path(__file__).parents[2] / "widget"
+    html = (widget_dir / "maker.html").read_text(encoding="utf-8")
+    shell = (widget_dir / "index.html").read_text(encoding="utf-8")
 
     assert 'class="window' in html
     # Legacy admin-surface tabs and swimlane surface are removed from the widget.
-    assert 'data-tab="pipeline"' not in html
-    assert 'data-tab="logg"' not in html
-    assert 'data-tab="flotta"' not in html
-    assert 'id="workstream-select"' not in html
-    assert 'id="lanes"' not in html
-    # The shell is manifest-driven and generic.
+    for text in (html, shell):
+        assert 'data-tab="pipeline"' not in text
+        assert 'data-tab="logg"' not in text
+        assert 'data-tab="flotta"' not in text
+        assert 'id="workstream-select"' not in text
+        assert 'id="lanes"' not in text
+    # The Studio host is manifest-driven and generic.
     assert "loadManifest" in html
     assert "renderGenericNode" in html
     assert "widgets.json" in html
+    # The OS shell is registry-driven: no hard-coded per-app button list and
+    # no legacy admin drawer (S6a removed the launcher drawer).
+    assert "apps.json" in (widget_dir / "work-console.js").read_text(encoding="utf-8")
+    assert "data-mobile-nav" in shell and "data-nav-home" in shell
+    assert "data-app-list" not in shell
+    assert "data-app-drawer" not in shell

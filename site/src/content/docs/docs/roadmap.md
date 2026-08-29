@@ -21,9 +21,9 @@ declarative widget contracts, a continuity proof, and accepted ADR-042.
 
 ### In active development
 
-Cortxt OS shell, Work Console, Decisions, Evidence, Execution Inspector
-integration, Studio and prompt-generated views/apps, and a real dogfood
-vertical slice.
+Cortxt OS shell, Work (first principal app), Decisions, Evidence, Execution
+Inspector integration, Studio and prompt-generated views/apps, and a real
+dogfood vertical slice.
 
 ### Future or conditional
 

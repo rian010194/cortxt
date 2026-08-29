@@ -83,6 +83,14 @@ def fake_raises(exc):
     return _run
 
 
+def recording_subprocess(seen):
+    """Records (cmd, cwd) of every subprocess call; returns a success."""
+    def _run(*args, **kwargs):
+        seen.append((args[0], kwargs.get("cwd")))
+        return subprocess.CompletedProcess(args[0], 0, stdout="ok", stderr="")
+    return _run
+
+
 run = d.Run(run_id="r1", issue_id="o/r#1", workflow="wedge-b", worker_role="researcher",
             runtime="hermes-researcher", claimed_at=time.time(), lease_seconds=60)
 
@@ -295,6 +303,43 @@ def run_all_checks():
     check("dsh run completed via complete()", q_dsh["status"] == "succeeded")
     check("dsh label moved to workflow:review (top-level run)", gh_dsh.labels["o/r#8"] == ["workflow:review"])
     check("dsh result envelope has no leaked internal keys", "_status" not in q_dsh["result"] and "_elapsed_seconds" not in q_dsh["result"])
+
+    print("== #419 worktree binding: HermesAdapter runs with the isolated worktree cwd ==")
+    wt = Path(tempfile.mkdtemp(prefix="worktree-"))
+    seen_wt = []
+    wa.register_adapter("test-wt-hermes", wa.HermesAdapter(
+        profile="researcher", run_subprocess=recording_subprocess(seen_wt), log_dir=new_log_dir()))
+    disp_wt, gh_wt = new_dispatcher({"o/r#9": ["workflow:ready"]})
+    run_wt = disp_wt.claim("o/r#9", "wedge-b", "researcher", "test-wt-hermes", 60)
+    thread_wt = wa.dispatch_async(disp_wt, run_wt, "do the thing", worktree=wt)
+    thread_wt.join(timeout=5)
+    check("worker subprocess cwd is the isolated worktree", seen_wt and seen_wt[0][1] == wt)
+    check("worktree-bound run completed", disp_wt.query(run_wt.run_id)["status"] == "succeeded")
+
+    print("== #419 worktree binding: no worktree -> cwd stays None (subprocess default) ==")
+    seen_none = []
+    wa.register_adapter("test-no-wt-hermes", wa.HermesAdapter(
+        profile="researcher", run_subprocess=recording_subprocess(seen_none), log_dir=new_log_dir()))
+    disp_none, gh_none = new_dispatcher({"o/r#10": ["workflow:ready"]})
+    run_none = disp_none.claim("o/r#10", "wedge-b", "researcher", "test-no-wt-hermes", 60)
+    thread_none = wa.dispatch_async(disp_none, run_none, "do the thing")
+    thread_none.join(timeout=5)
+    check("no worktree -> subprocess cwd None", seen_none and seen_none[0][1] is None)
+
+    print("== #419 worktree binding: DshWorkerAdapter forwards the worktree cwd ==")
+    dsh_seen = []
+    wa.register_adapter("test-wt-dsh", wa.DshWorkerAdapter(
+        invoke_dsh=lambda prompt, timeout_seconds, cwd, provider=None, model=None: (
+            dsh_seen.append(cwd), {"status": "succeeded", "stdout": "ok", "stderr": "",
+                                   "session_id": "s", "finish_reason": "completed",
+                                   "elapsed_seconds": 1.0})[1],
+        log_dir=new_log_dir()))
+    disp_dsh_wt, gh_dsh_wt = new_dispatcher({"o/r#11": ["workflow:ready"]})
+    run_dsh_wt = disp_dsh_wt.claim("o/r#11", "wedge-b", "researcher", "test-wt-dsh", 60)
+    thread_dsh_wt = wa.dispatch_async(disp_dsh_wt, run_dsh_wt, "do the thing", worktree=wt)
+    thread_dsh_wt.join(timeout=5)
+    check("dsh worker cwd is the isolated worktree", dsh_seen == [wt])
+    check("dsh worktree-bound run completed", disp_dsh_wt.query(run_dsh_wt.run_id)["status"] == "succeeded")
 
 def test_all_checks_pass():
     """Pytest entry point: run the same checks as the standalone script."""

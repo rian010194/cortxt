@@ -28,8 +28,9 @@ from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
 from widget_contract.adapters.cli_ports import ClaimRunDenied, gh_claim_run_resume
 from widget_contract.adapters.github_ports import (
-    TransitionDenied, gh_inbox_to_ready, gh_issue_workflow_labels, gh_review_to_done,
+    LastGoodIssues, TransitionDenied, gh_inbox_to_ready, gh_issue_workflow_labels, gh_review_to_done,
 )
+from widget_contract.workstreams import build_workstream_projection
 from widget_contract.generation import generate_widget_spec
 from widget_contract.loader import load_widget_file
 from widget_contract.validation import ValidationError, validate
@@ -37,6 +38,8 @@ from widget_contract.validation import ValidationError, validate
 WIDGET_DIR = Path(__file__).parent
 AGENT_PLATFORM_DIR = WIDGET_DIR.parent
 SPEC_PATH = AGENT_PLATFORM_DIR / "widget_contract" / "specs" / "candidates-0.1.yaml"
+DECISIONS_SPEC_PATH = AGENT_PLATFORM_DIR / "widget_contract" / "specs" / "decisions-0.1.yaml"
+DEFAULT_REPO = "rian010194/cortxt"
 HOST = "127.0.0.1"
 PORT = 8765
 MAX_BODY_BYTES = 8 * 1024
@@ -132,6 +135,8 @@ class ActionHost:
         self._max_requests = max_requests
         self._calls: Deque[float] = deque()
         self._widget = None
+        self._decisions_widget = None
+        self._issues = LastGoodIssues()
 
     @property
     def widget(self):
@@ -141,13 +146,32 @@ class ActionHost:
 
     def capabilities(self) -> dict:
         """Declarative capability summary the same-origin page renders against."""
+        widgets = [self.widget]
+        if self._spec_path != DECISIONS_SPEC_PATH:
+            if self._decisions_widget is None:
+                self._decisions_widget = load_widget_file(DECISIONS_SPEC_PATH)
+            widgets.append(self._decisions_widget)
+        actions = [action for widget in widgets for action in widget.actions]
         return {
             "actions_enabled": True,
             "actions": [{"id": a.id, "operation": a.operation, "port": a.port,
                          "effect_class": a.confirm.get("effect_class"),
                          "authorization": dict(a.authorization), "confirm": dict(a.confirm)}
-                        for a in self.widget.actions],
+                        for a in actions],
         }
+
+    def workstreams(self, repo: str = DEFAULT_REPO) -> dict:
+        raw = self._issues.read(repo)
+        return build_workstream_projection(repo, raw["issues"], status=raw["status"], error=raw["error"])
+
+    def _widget_for_action(self, action_id: str):
+        if any(action.id == action_id for action in self.widget.actions):
+            return self.widget
+        if self._decisions_widget is None:
+            self._decisions_widget = load_widget_file(DECISIONS_SPEC_PATH)
+        if any(action.id == action_id for action in self._decisions_widget.actions):
+            return self._decisions_widget
+        raise NotFound(f"unknown action {action_id}")
 
     def _check_rate(self) -> None:
         now = self._clock()
@@ -173,11 +197,12 @@ class ActionHost:
         if not isinstance(approval_ref, str) or not approval_ref:
             raise InvalidRequest("approval_ref is required")
         try:
-            action = build_action(self.widget, action_id, issue_id, approval_ref, confirm)
+            widget = self._widget_for_action(action_id)
+            action = build_action(widget, action_id, issue_id, approval_ref, confirm)
         except UnknownAction as exc:
             raise NotFound(f"unknown action {action_id}") from exc
         executor, context = build_executor(
-            self.widget, action_id=action_id, approval_ref=approval_ref, confirm=confirm,
+            widget, action_id=action_id, approval_ref=approval_ref, confirm=confirm,
             labels_reader=self._labels_reader, transition_writer=self._transition_writer,
             resume=self._resume, review_transition_writer=self._review_transition_writer)
         try:
@@ -255,6 +280,14 @@ class ActionHandler(SimpleHTTPRequestHandler):
             return
         if path in ("/api/capabilities", "/api/capabilities/"):
             self._json(200, self.host.capabilities())
+            return
+        if path in ("/api/workstreams", "/api/workstreams/"):
+            try:
+                self._json(200, self.host.workstreams())
+            except Exception as exc:
+                self._json(503, {"schema_version": 1, "mode": "local", "synthetic": False,
+                                 "status": "unavailable", "workstreams": [],
+                                 "error": {"kind": getattr(exc, "kind", "github_read"), "message": str(exc)}})
             return
         super().do_GET()
 

@@ -289,3 +289,4 @@ body{background:
 .proof-strip-pending{display:none}
 nav a{color:color-mix(in srgb,var(--text) 70%,var(--muted))}
 @media(max-width:1000px){.hero{min-height:auto}.hero-system{transform:none}.proof-strip-text p{display:block}.proof-strip-pending{display:inline}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.hero-system{transform:none}}

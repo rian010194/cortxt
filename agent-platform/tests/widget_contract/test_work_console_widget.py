@@ -144,8 +144,22 @@ def test_cli_work_console_view_failing_reader_produces_error_state(tmp_path):
     assert artifact["render"]["primitive"] == "error-state"
 
 
-def test_work_console_default_hides_studio_until_studio_is_opened():
+def test_studio_is_a_registered_window_hidden_until_opened():
+    # S6a (issue #459) / ADR-044: the Work Console app identity is retired,
+    # so the shell has no `data-window="console"` section. Studio ships as a
+    # registered window app whose window starts hidden and whose iframe is not
+    # loaded until the app is opened (issue #418 lifecycle preserved).
     host = HOST.read_text(encoding="utf-8")
-    assert 'var studioOpen = appId === "studio"' in host
-    assert 'classList.toggle("app-hidden", !studioOpen)' in host
-    assert 'applyApp(appState.activeId)' in host
+    assert 'data-window="console"' not in host
+    assert 'data-window="studio"' in host
+    assert 'data-studio-frame data-src="maker.html"' in host
+    assert 'src="maker.html"' not in host.replace('data-src="maker.html"', "")
+    apps = json.loads((HOST.parent / "apps.json").read_text(encoding="utf-8"))
+    assert any(app["id"] == "studio" for app in apps["apps"])
+    # Manifest-driven registration: the shell reads apps.json and renders the
+    # chrome from the registry (no hard-coded per-app buttons, no legacy tabs).
+    shell = (HOST.parent / "work-console.js").read_text(encoding="utf-8")
+    assert "apps.json" in shell
+    assert "data-mobile-nav" in host
+    assert "data-app-list" not in host
+    assert "data-app-drawer" not in host

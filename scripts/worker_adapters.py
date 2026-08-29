@@ -40,13 +40,18 @@ RUN_LOG_DIR = Path(".hermes") / "dispatch" / "runs"
 
 
 class WorkerAdapter(Protocol):
-    def invoke(self, run: Run, task_prompt: str, timeout_seconds: int) -> dict:
+    def invoke(self, run: Run, task_prompt: str, timeout_seconds: int,
+               worktree: Path | None = None) -> dict:
         """Run the worker (the caller backgrounds this call) and return a
         result_envelope dict plus an internal `_status` key the caller pops
         off and passes to Dispatcher.complete(). Must never raise for an
         ordinary worker failure — a failed/timed_out envelope is a normal
         return, not an exception. `dispatch_async` treats a raise from this
-        method as a backstop case, not the expected path."""
+        method as a backstop case, not the expected path.
+
+        `worktree`, when given, is the run's isolated git worktree: the
+        worker subprocess must run with that directory as its cwd so it can
+        never write outside the assigned workspace (#419)."""
         ...
 
 
@@ -83,7 +88,8 @@ class HermesAdapter:
     )
     log_dir: Path = field(default=RUN_LOG_DIR)
 
-    def invoke(self, run: Run, task_prompt: str, timeout_seconds: int) -> dict:
+    def invoke(self, run: Run, task_prompt: str, timeout_seconds: int,
+               worktree: Path | None = None) -> dict:
         started = time.time()
         try:
             proc = self.run_subprocess(
@@ -91,6 +97,10 @@ class HermesAdapter:
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
+                # Bound the worker to its run's isolated worktree (#419): the
+                # subprocess must never inherit the CLI's cwd, which may be an
+                # unrelated directory or another checkout.
+                cwd=worktree if worktree is not None else None,
             )
         except subprocess.TimeoutExpired as exc:
             log_path = self._write_run_log(run, stdout=exc.stdout, stderr=exc.stderr)
@@ -217,7 +227,8 @@ class DshWorkerAdapter:
     invoke_dsh: Callable = field(default=None)  # type: ignore[assignment]
     log_dir: Path = field(default=RUN_LOG_DIR)
 
-    def _call(self, run: Run, task_prompt: str, timeout_seconds: int) -> dict:
+    def _call(self, run: Run, task_prompt: str, timeout_seconds: int,
+              worktree: Path | None = None) -> dict:
         # Default resolved at call time (not as a class-attribute default) so
         # tests can inject a fake and the import stays lazy: the DSH SDK may
         # be absent entirely. Provider/model routing is provider-neutral
@@ -226,22 +237,26 @@ class DshWorkerAdapter:
         # when neither is set.
         provider = os.environ.get("CORTXT_DSH_PROVIDER")
         model = os.environ.get("CORTXT_DSH_MODEL")
+        # Run inside the isolated worktree when one is assigned (#419); never
+        # silently fall back to the CLI's cwd for a worktree-backed run.
+        cwd = worktree if worktree is not None else Path.cwd()
         if self.invoke_dsh is None:
             from routing.dsh_invoker import invoke_dsh as _default
 
             return _default(
                 task_prompt, timeout_seconds=timeout_seconds,
-                provider=provider, model=model, cwd=Path.cwd(),
+                provider=provider, model=model, cwd=cwd,
             )
         return self.invoke_dsh(
             task_prompt, timeout_seconds=timeout_seconds,
-            provider=provider, model=model, cwd=Path.cwd(),
+            provider=provider, model=model, cwd=cwd,
         )
 
-    def invoke(self, run: Run, task_prompt: str, timeout_seconds: int) -> dict:
+    def invoke(self, run: Run, task_prompt: str, timeout_seconds: int,
+               worktree: Path | None = None) -> dict:
         started = time.time()
         try:
-            result = self._call(run, task_prompt, timeout_seconds)
+            result = self._call(run, task_prompt, timeout_seconds, worktree=worktree)
         except Exception as exc:  # noqa: BLE001 - DshInvocationError and friends
             return {
                 "_status": "failed",
@@ -325,7 +340,8 @@ def register_adapter(runtime: str, adapter: WorkerAdapter) -> None:
     ADAPTER_REGISTRY[runtime] = adapter
 
 
-def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str) -> threading.Thread:
+def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str,
+                   worktree: Path | None = None) -> threading.Thread:
     """Invoke `run`'s adapter in a background thread, then call
     dispatcher.complete() with the resulting envelope.
 
@@ -340,6 +356,10 @@ def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str) -> thread
     exception. We attempt one best-effort complete() with a synthesized
     failure envelope; if that also fails, we print to stderr as a last
     resort so the failure is at least visible in process output.
+
+    `worktree` (the run's isolated git worktree) is forwarded to the
+    adapter so the worker subprocess runs with that cwd, never the CLI's
+    (#419).
     """
     adapter = ADAPTER_REGISTRY.get(run.runtime)
     if adapter is None:
@@ -349,7 +369,8 @@ def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str) -> thread
 
     def _run() -> None:
         try:
-            envelope = adapter.invoke(run, task_prompt, timeout_seconds=run.lease_seconds)
+            envelope = adapter.invoke(run, task_prompt, timeout_seconds=run.lease_seconds,
+                                      worktree=worktree)
             status = envelope.pop("_status")
             envelope.pop("_elapsed_seconds", None)
         except Exception as exc:  # noqa: BLE001 - deliberate backstop, adapters must not raise
