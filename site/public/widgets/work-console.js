@@ -656,10 +656,10 @@ function renderHome(winEl,ctx){
     if(allapps2)allapps2.addEventListener("click",function(){openSearch("")});
     return;
   }
-  /* Returning entry with a selection: resume-first (S6b will polish). */
+  /* Returning entry with a selection: resume-first (S6b). */
   var resume=x;
   var attention=attentionItems().filter(function(it){return it.requiresAttention});
-  var recent=list.slice(0,3);
+  var recent=recentWorkstreams().filter(function(w){return w.id!==x.id}).slice(0,3);
   var html2='<div class="home-inner">'+
     '<span class="eyebrow">Home</span>'+
     '<h1 class="home-heading">Resume your work</h1>'+
@@ -670,7 +670,7 @@ function renderHome(winEl,ctx){
         '<div class="rc-body">'+
           '<p class="rc-title">'+esc(resume.id)+' — '+esc(resume.title)+'</p>'+
           '<p class="rc-outcome">'+esc(resume.outcome)+'</p>'+
-          '<p class="rc-meta">'+esc(resume.workflow||"no workflow label")+(resume.phase?(" · "+esc(resume.phase)):"")+'</p>'+
+          '<p class="rc-meta">'+esc(resume.workflow||"no workflow label")+(resume.phase?(" · "+esc(resume.phase)):"")+(resume.nextAction?(" · Next: "+esc(resume.nextAction)):"")+'</p>'+
         '</div>'+
         '<button type="button" class="primary-action" data-resume-work>Resume Work →</button>'+
       '</div></div>';
@@ -684,6 +684,7 @@ function renderHome(winEl,ctx){
         '<span class="a-main"><span class="a-title">'+esc(it.title)+'</span><span class="a-sum">'+esc(it.summary)+'</span></span>'+
         '<span class="link-button">Open →</span></button>';
     });
+    html2+='<div class="attention-more"><button type="button" class="link-button" data-home-activity>All attention in Activity →</button></div>';
     html2+='</div></div>';
   }
   html2+='<div class="home-section"><h3>Recent Workstreams</h3><div class="recent-list">';
@@ -704,6 +705,8 @@ function renderHome(winEl,ctx){
       if(it)navigateAttention(it);
     });
   });
+  var homeActivity=q("[data-home-activity]",winEl);
+  if(homeActivity)homeActivity.addEventListener("click",function(){toggleActivity()});
   qa("[data-recent-ws]",winEl).forEach(function(b){
     b.addEventListener("click",function(){selectWorkstream(b.dataset.recentWs);openWork()});
   });

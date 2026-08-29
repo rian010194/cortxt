@@ -202,6 +202,62 @@ def test_first_time_entry_stays_unbound():
     assert 'selectWorkstream(items()[0].id)' in JS
 
 
+# --- S6b: Home resume experience (issue #461) ----------------------------
+
+def test_home_resume_default_behavior():
+    # S6b AC1: a returning session renders a resume card for the selected
+    # Workstream with one obvious action that enters Work; Home has no window
+    # chrome.
+    assert "Resume your work" in JS
+    assert 'data-resume-work' in JS
+    assert 'Resume Work →' in JS
+    assert 'resumeBtn.addEventListener("click",function(){openWork()})' in JS
+    assert 'data-window="home"' not in HTML
+    # The resume meta surfaces workflow, phase, and the next meaningful
+    # action so the operator knows exactly what to resume.
+    assert 'resume.nextAction?(" · Next: "+esc(resume.nextAction))' in JS
+
+
+def test_home_first_time_and_no_selection_states():
+    # S6b AC2: distinct first-time and no-selection states with the smallest
+    # useful next step; no authoritative state implied before selection.
+    assert "Start a Workstream" in JS
+    assert "Select or start a Workstream" in JS
+    assert "No Workstream is selected. Choose one to resume, or start a new one." in JS
+    assert 'data-recent-ws' in JS
+
+
+def test_home_attention_preview_is_read_only_navigation():
+    # S6b AC3: the Home attention preview is a read-only projection; rows
+    # navigate via validated focus-record (navigateAttention); no mutation
+    # port exists in Home; Activity remains the authoritative surface.
+    assert 'attentionItems().filter(function(it){return it.requiresAttention})' in JS
+    assert "attention.slice(0,3)" in JS
+    assert 'navigateAttention(it)' in JS
+    assert 'data-attention-open' in JS
+    assert 'data-home-activity' in JS
+    assert 'toggleActivity()' in JS
+    assert "record-decision" not in JS
+    assert 'fetch("api/action"' not in JS
+
+
+def test_home_has_no_marketing_prose():
+    # S6b: Home is operational, not a landing page. No landing-page
+    # narrative or "Soon" wall lives in the Home renderer.
+    assert "Durable work, in one place." not in JS
+    assert "Agents get swapped." not in JS
+    assert "Sooner" not in JS
+    assert 'disabled aria-disabled="true"' not in JS
+
+
+def test_home_recent_list_is_recency_ordered():
+    # Reviewer finding (S6b): the Home "Recent Workstreams" section must be
+    # truthful — it uses the recency+attention sort (recentWorkstreams),
+    # excluding the resume Workstream, not raw model order.
+    assert "var recent=recentWorkstreams().filter(function(w){return w.id!==x.id}).slice(0,3)" in JS
+    assert "function recentWorkstreams()" in JS
+
+
 # --- surface navigation + multi-window opt-in ----------------------------
 
 def test_one_primary_surface_at_a_time():
