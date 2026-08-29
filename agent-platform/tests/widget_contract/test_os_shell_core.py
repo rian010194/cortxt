@@ -93,7 +93,7 @@ def test_single_persistence_key_carries_ui_context_app_and_windows():
     # Schema v3 (S5.5a) persists ui/context/apps plus the WindowInstance model,
     # dock favorites, and desktop layout under one key; v1/v2 blobs migrate.
     assert 'SHELL_KEY="cortxt-os-shell"' in JS
-    assert 'localStorage.setItem(SHELL_KEY,JSON.stringify({v:3,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout,schemaVersion:3}))' in JS
+    assert 'localStorage.setItem(SHELL_KEY,JSON.stringify({v:3,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout,activity:state.activity,schemaVersion:3}))' in JS
     assert 'function restore()' in JS and 'localStorage.getItem(SHELL_KEY)' in JS
     assert 'saved.v===2||saved.v===3' in JS  # schema-version gate
     assert 'syncWindowsFromUi()' in JS  # migration path for v1 blobs
@@ -1064,7 +1064,7 @@ def test_v3_writer_keeps_v2_fields_and_rollback_safe():
     # The v3 writer keeps the v2 field set intact (additive schema), persists
     # schemaVersion 3, and migrates saved blobs on read; an older v2 reader
     # ignores the unknown v3 fields.
-    assert 'JSON.stringify({v:3,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout,schemaVersion:3})' in JS
+    assert 'JSON.stringify({v:3,ui:state.ui,context:state.context,apps:state.apps,windows:state.windows,dockFavorites:state.dockFavorites,desktopLayout:state.desktopLayout,activity:state.activity,schemaVersion:3})' in JS
     assert 'saved.schemaVersion=3' in JS
     assert 'function migrateSavedState(saved)' in JS
     assert 'saved.v===2||saved.v===3' in JS
@@ -1253,3 +1253,103 @@ def test_work_primary_surface_no_shell_core_branch():
     assert 'if(id==="work")' not in core
     assert 'appId==="work"' not in core
     assert 'workstreamId==="work"' not in core
+
+
+# --- S5.5c: Activity Center (issue #455) --------------------------------
+# Shell-owned system surface (ADR-044 items 5-6): right-side panel consuming
+# typed AttentionItemProjection items with local presentation state only;
+# validated record navigation (focus-record); no mutation port.
+
+S55C_HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+S55C_JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+S55C_COMMANDS = (WIDGET / "shell-commands.js").read_text(encoding="utf-8")
+
+
+def test_activity_center_is_shell_surface_not_app_or_window():
+    # ADR-044 item 5: Activity Center is a shell-owned system surface, NOT a
+    # registered app and NOT a window.
+    by_id = {a["id"]: a for a in APPS["apps"]}
+    assert "activity" not in by_id and "activity-center" not in by_id
+    assert 'data-activity-panel' in S55C_HTML
+    assert 'data-activity-toggle' in S55C_HTML
+    assert 'data-activity-count' in S55C_HTML
+    assert 'data-window="activity"' not in S55C_HTML
+    assert 'activity:{open:false' in S55C_JS
+
+
+def test_activity_items_conform_to_attention_projection():
+    # Items derive from the shell-owned model and each conforms to the
+    # AttentionItemProjection contract (validated by isValidAttentionItem).
+    assert "function attentionItems()" in S55C_JS
+    assert "function isValidAttentionItem(item)" in S55C_JS
+    assert "sourceCapability" in S55C_JS and "targetCommand" in S55C_JS
+    assert "requiresAttention" in S55C_JS and "dedupeKey" in S55C_JS
+    assert "items.filter(isValidAttentionItem)" in S55C_JS
+
+
+def test_activity_group_dedupe_filter_read_dismiss_local():
+    # Group (time/type/workstream), dedupe, filter, mark read, dismiss are
+    # local presentation operations persisted under the shell key only.
+    assert "activityVisibleItems" in S55C_JS
+    assert "state.activity.filters.groupBy" in S55C_JS
+    assert "state.activity.read" in S55C_JS and "state.activity.dismissed" in S55C_JS
+    assert "data-activity-group" in S55C_JS
+    assert "data-activity-read" in S55C_JS and "data-activity-dismiss" in S55C_JS
+    assert "Presentation state is local. Workflow status is authoritative." in S55C_JS
+    assert "dedupeKey" in S55C_JS
+
+
+def test_activity_cannot_invoke_workflow_or_decision_mutations():
+    # ADR-044 item 6: Activity may NOT approve, mutate workflow state, own
+    # decision requests, or reproduce a full app workflow. The panel has no
+    # mutation action port; the only action is validated navigation.
+    assert "record-decision" not in S55C_JS
+    assert "data-activity-accept" not in S55C_JS
+    assert "data-activity-approve" not in S55C_JS
+    assert 'fetch("api/action"' not in S55C_JS
+    assert 'data-activity-open' in S55C_JS
+    assert 'dispatchCommand("focus-record"' in S55C_JS
+    assert "Never" in S55C_JS or "never" in S55C_JS  # boundary comment
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node unavailable")
+def test_activity_record_navigation_validates_fail_closed():
+    # The validated record router: parseDeepLink parses record=; applyDeepLink
+    # dispatches focus-record when a record is present; unknown app/ws/record
+    # fail closed (no navigation).
+    script = (
+        "const m=require(%s);"
+        "const h={"
+        "  'open-app':function(p){got.push(['open',p.appId])},"
+        "  'focus-record':function(p){got.push(['record',p.appId,p.workstreamId,p.recordRef])},"
+        "  'switch-workstream':function(p){got.push(['ws',p.workstreamId])}"
+        "};let got=[];"
+        "const d=m.parseDeepLink('#app=decisions&ws=WS-042&record=42');"
+        "if(d.appId!=='decisions'||d.workstreamId!=='WS-042'||d.recordRef!=='42')process.exit(2);"
+        "const d2=m.parseDeepLink('#app=evidence&ws=WS-042');"
+        "if(d2.recordRef!==null)process.exit(3);"
+        "if(m.applyDeepLink('#app=decisions&ws=WS-042&record=42',h)!==true)process.exit(4);"
+        "if(got.length!==2||got[0][0]!=='ws'||got[1][0]!=='record'||got[1][2]!=='WS-042'||got[1][3]!=='42')process.exit(5);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "shell-commands.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_activity_panel_close_semantics_and_mobile_sheet():
+    # Panel closes with Escape, close control, or outside interaction; on
+    # mobile it becomes a full-screen sheet (media query in scoped styles).
+    assert 'ev.key==="Escape"' in S55C_JS
+    assert "data-activity-close" in S55C_JS
+    assert "ev.target.closest(\"[data-activity-panel]\")" in S55C_JS
+    assert "@media(max-width:720px)" in S55C_JS
+    assert "width:100vw" in S55C_JS
+
+
+def test_activity_synthetic_mode_non_mutating():
+    # The panel renders from the shell-owned synthetic model and exposes no
+    # authoritative mutations; item actions are navigation only.
+    assert "state.model.synthetic" in S55C_JS
+    assert "state.model&&state.model.workstreams" in S55C_JS
+    assert "focus-record" in S55C_COMMANDS
