@@ -23,13 +23,17 @@ from collections import deque
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Deque, Mapping
+from urllib.parse import parse_qs
 
 from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
 from widget_contract.adapters.cli_ports import ClaimRunDenied, gh_claim_run_resume
 from widget_contract.adapters.github_ports import (
     LastGoodIssues, TransitionDenied, gh_inbox_to_ready, gh_issue_workflow_labels, gh_review_to_done,
+    read_issue_detail,
 )
+from widget_contract.adapters.store_reads import read_run_summaries_v1, read_workstream_detail_v1
+from widget_contract.run_authority import correlate_run_summaries, summaries_from_sessions
 from widget_contract.workstreams import build_workstream_projection
 from widget_contract.generation import generate_widget_spec
 from widget_contract.loader import load_widget_file
@@ -120,6 +124,8 @@ class ActionHost:
                  review_transition_writer: Callable[[str], Mapping[str, Any]] = gh_review_to_done,
                  resume: Callable[[str], Any] | None = None,
                  registry: Path | None = None, scripts_dir: Path | None = None,
+                 session_store: Path | None = None,
+                 issue_reader: Callable[..., Mapping[str, Any]] | None = None,
                  token: str | None = None, clock: Callable[[], float] = time.monotonic,
                  max_requests: int = MAX_REQUESTS_PER_MINUTE) -> None:
         self._spec_path = Path(spec_path)
@@ -128,6 +134,8 @@ class ActionHost:
         self._review_transition_writer = review_transition_writer
         self._scripts_dir = Path(scripts_dir) if scripts_dir else (AGENT_PLATFORM_DIR / "scripts")
         self._registry = Path(registry) if registry else (AGENT_PLATFORM_DIR / ".dispatch" / "runs.json")
+        self._session_store = Path(session_store) if session_store else (AGENT_PLATFORM_DIR / ".sessions")
+        self._issue_reader = issue_reader or read_issue_detail
         self._resume = resume or (lambda issue_id: gh_claim_run_resume(
             issue_id, registry=self._registry, scripts_dir=self._scripts_dir))
         self.token = token or secrets.token_urlsafe(32)
@@ -163,6 +171,43 @@ class ActionHost:
     def workstreams(self, repo: str = DEFAULT_REPO) -> dict:
         raw = self._issues.read(repo)
         return build_workstream_projection(repo, raw["issues"], status=raw["status"], error=raw["error"])
+
+    def _read_dispatcher_runs(self) -> Mapping[str, Any]:
+        try:
+            data = json.loads(self._registry.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeError):
+            return {}
+        return data if isinstance(data, Mapping) else {}
+
+    def _read_session_docs(self) -> list[Mapping[str, Any]]:
+        docs: list[Mapping[str, Any]] = []
+        if not self._session_store.is_dir():
+            return docs
+        for child in sorted(self._session_store.iterdir()):
+            if not child.is_dir():
+                continue
+            session_file = child / "session.json"
+            if not session_file.is_file():
+                continue
+            try:
+                doc = json.loads(session_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, UnicodeError):
+                continue
+            if isinstance(doc, Mapping):
+                docs.append(doc)
+        return docs
+
+    def workstream_detail(self, repo: str, number: int) -> dict:
+        issue = self._issue_reader(repo, number)
+        issue_ref = f"{repo}#{number}"
+        runs = correlate_run_summaries(
+            issue_ref, self._read_dispatcher_runs(),
+            summaries_from_sessions(self._read_session_docs(), issue_ref))
+        return read_workstream_detail_v1(issue, runs, repo=repo, status="fresh", age_seconds=0)
+
+    def run_summaries(self, repo: str, number: int) -> dict:
+        issue_ref = f"{repo}#{number}"
+        return read_run_summaries_v1(issue_ref, self._read_dispatcher_runs(), self._read_session_docs())
 
     def _widget_for_action(self, action_id: str):
         if any(action.id == action_id for action in self.widget.actions):
@@ -289,7 +334,40 @@ class ActionHandler(SimpleHTTPRequestHandler):
                                  "status": "unavailable", "workstreams": [],
                                  "error": {"kind": getattr(exc, "kind", "github_read"), "message": str(exc)}})
             return
+        if path in ("/api/workstream-detail", "/api/workstream-detail/"):
+            self._handle_read("workstream-detail")
+            return
+        if path in ("/api/runs", "/api/runs/"):
+            self._handle_read("runs")
+            return
         super().do_GET()
+
+    def _issue_ref_from_query(self) -> tuple[str, int] | None:
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        issue = parse_qs(query).get("issue", [""])[0]
+        if "#" not in issue:
+            return None
+        repo, num = issue.rsplit("#", 1)
+        if not repo or not num.isdigit():
+            return None
+        return repo, int(num)
+
+    def _handle_read(self, kind: str) -> None:
+        parsed = self._issue_ref_from_query()
+        if parsed is None:
+            self._json(400, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": "validation_error",
+                                       "message": "issue query parameter must be owner/repo#N"}})
+            return
+        repo, number = parsed
+        try:
+            if kind == "workstream-detail":
+                self._json(200, self.host.workstream_detail(repo, number))
+            else:
+                self._json(200, self.host.run_summaries(repo, number))
+        except Exception as exc:
+            self._json(503, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": getattr(exc, "kind", "read_error"), "message": str(exc)}})
 
     def do_OPTIONS(self) -> None:
         # No CORS preflight answer: the host is same-origin only, so cross-origin
