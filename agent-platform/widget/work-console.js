@@ -172,6 +172,13 @@ function activeWindowId(){
 function anyOpenWindows(){
   return Object.keys(state.ui.open).some(function(id){return !!state.ui.open[id]&&!state.ui.min[id]});
 }
+function sideBySideComposition(){
+  /* The multi-window bar only claims "side by side" when the composition
+     genuinely satisfies it: at least one open window, Work as the primary
+     surface, and a desktop viewport. (S6d gate: never claim the composition
+     when it does not hold.) */
+  return anyOpenWindows() && (state.primary==="work"||state.primary==="deep") && !isNarrow();
+}
 
 /* ---- selected Workstream context ------------------------------- */
 function items(){return(state.model&&state.model.workstreams)||[]}
@@ -320,9 +327,9 @@ function applyView(){
       if(open)ensureStudio(id);
     });
   }
-  /* Multi-window mode bar. */
+  /* Multi-window mode bar: only claims side-by-side when it holds. */
   var mm=q("[data-multi-mode]");
-  if(mm)mm.hidden=!anyOpenWindows()||narrow;
+  if(mm)mm.hidden=!sideBySideComposition();
   /* Chrome nav active state. */
   qa(".nav-item[data-nav-home]").forEach(function(b){b.classList.toggle("active",state.primary==="home")});
   qa(".nav-item[data-nav-work]").forEach(function(b){b.classList.toggle("active",state.primary==="work"||state.primary==="deep")});
@@ -334,16 +341,18 @@ function applyView(){
     el.textContent=id?bindingLabel(id):"";
   });
 }
-/* Deterministic non-overlapping window geometry for the opt-in window mode:
-   a simple 2-column grid over the canvas. */
+/* Deterministic, non-overlapping window geometry for the opt-in window mode
+   (S6d multi-window composition gate): Work keeps the primary left column
+   (~58%) and the secondary capability(ies) tile the right column, so both
+   surfaces remain materially visible side-by-side. Persisted custom
+   geometry (drag/resize) is honored. */
+var PRIMARY_W=0.58,GUTTER=0.014,MIN_W=0.18,MIN_H=0.16;
 function tileRects(ids){
   var rects={},n=(ids||[]).length;
   if(!n)return rects;
-  var cols=Math.min(2,n),rows=Math.ceil(n/cols),g=0.012;
-  var cw=(1-g*(cols+1))/cols,ch=(1-g*(rows+1))/rows;
+  var h=(1-GUTTER*(n-1))/n;
   ids.forEach(function(id,i){
-    var r=Math.floor(i/cols),c=i%cols;
-    rects[id]={x:g+c*(cw+g),y:g+r*(ch+g),w:cw,h:ch};
+    rects[id]={x:PRIMARY_W+GUTTER,y:i*(h+GUTTER),w:1-PRIMARY_W-GUTTER,h:h};
   });
   return rects;
 }
@@ -366,7 +375,7 @@ function clampFrac(v,max){return v<0?0:(v>max?max:v)}
 function geomFor(id){
   var g=state.ui.geom[id];
   if(g&&typeof g.x==="number")return g;
-  return {x:0.05,y:0.05,w:0.9,h:0.8};
+  return {x:PRIMARY_W+GUTTER,y:0,w:1-PRIMARY_W-GUTTER,h:0.9};
 }
 function beginWindowDrag(el,ev,mode){
   /* Direct window interaction: move/resize always works on desktop, without

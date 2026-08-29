@@ -312,6 +312,86 @@ def test_work_fixture_supports_full_hierarchy():
     assert ws039["blockers"] and ws039["blockers"][0]["reason"] and ws039["blockers"][0]["recovery"]
 
 
+# --- S6d: Activity, responsive, a11y, presets, multi-window gate (#465) ---
+
+def test_multi_window_side_by_side_composition_gate():
+    # S6d AC5 (operator-mandated gate): the opt-in window mode must place Work
+    # and the secondary capability side by side with both materially visible;
+    # the "side by side" bar only shows when the composition satisfies the
+    # claim.
+    assert "PRIMARY_W=0.58" in JS or "PRIMARY_W=0.6" in JS
+    assert 'rects[id]={x:PRIMARY_W+GUTTER' in JS
+    assert "1-PRIMARY_W-GUTTER" in JS  # secondary column materially visible
+    assert "function sideBySideComposition()" in JS
+    assert 'mm.hidden=!sideBySideComposition()' in JS
+    assert "windows stay side by side" in HTML
+    assert "1-PRIMARY_W-GUTTER" in JS
+
+
+def test_window_geometry_tiling_keeps_both_visible():
+    # Behavioral: with one secondary window open, Work occupies the primary
+    # column and the secondary the right column — both >= 30% of the canvas.
+    import subprocess
+    script = (
+        "const m=require(%s);"
+        "const eps=1e-9;"
+        "const r=m.tileRects(['decisions']);"
+        "const g=m.GUTTER||0.014;"
+        "const work={x:0,y:0,w:1-r['decisions'].w-g,h:1};"
+        "if(r['decisions'].w<0.30-eps)process.exit(2);"
+        "if(work.w<0.30-eps)process.exit(3);"
+        "if(r['decisions'].x<=work.w-eps)process.exit(4);"
+        "console.log('ok');"
+    ) % json.dumps(str(WIDGET / "work-console.js"))
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_activity_authority_and_local_state_boundaries():
+    # S6d AC1: Activity groups/dedupes/filters/marks read/dismisses locally
+    # and navigates via validated focus-record only; no mutation port.
+    assert "activityVisibleItems" in JS
+    assert "state.activity.filters.groupBy" in JS
+    assert "state.activity.read" in JS and "state.activity.dismissed" in JS
+    assert "Presentation state is local. Workflow status is authoritative." in JS
+    assert "record-decision" not in JS
+    assert 'fetch("api/action"' not in JS
+    assert "focus-record" in (WIDGET / "shell-commands.js").read_text(encoding="utf-8")
+
+
+def test_responsive_one_surface_and_no_window_chrome_narrow():
+    # S6d AC2: narrow layouts show one surface, minimal nav, no window
+    # chrome; Activity is a full-screen sheet.
+    mq = CSS[CSS.index("@media(max-width:720px){"):]
+    mq = mq[:mq.index("@media", 1)]
+    assert ".window-bar{display:none}" in mq
+    assert ".window-actions{display:none}" in mq
+    assert ".window-resize{display:none!important}" in mq
+    assert ".activity-panel{top:0;width:100vw;max-width:100vw;border-left:0" in mq
+    assert ".mobile-nav{position:fixed" in mq and "bottom:0" in mq
+    assert "overflow-x:hidden" in CSS
+
+
+def test_accessibility_focus_and_reduced_preferences():
+    # S6d AC3/AC4: visible focus on every interactive control; reduced motion
+    # and reduced transparency respected; presets via canonical tokens only.
+    assert ".attention-row:focus-visible" in CSS and ".recent-row:focus-visible" in CSS
+    assert ".window-bar:focus-within" in CSS and ".activity-panel:focus-within" in CSS
+    assert "@media(prefers-reduced-motion:reduce)" in CSS
+    assert "@media(prefers-reduced-transparency:reduce)" in CSS
+    assert "min-height:44px" in CSS  # coarse-pointer targets
+
+
+def test_terminology_regression_s6d():
+    # S6d AC6: no Workspace misuse, no Soon wall, no arch chrome labels.
+    assert "Exit Workspace" not in HTML
+    assert "data-exit-workspace" not in HTML
+    assert "Soon" not in HTML and "Soon" not in JS
+    assert "First principal app" not in HTML
+    assert "Related app" not in HTML
+
+
 # --- surface navigation + multi-window opt-in ----------------------------
 
 def test_one_primary_surface_at_a_time():
