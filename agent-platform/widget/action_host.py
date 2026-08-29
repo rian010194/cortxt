@@ -115,6 +115,11 @@ class NotFound(ActionHostError):
     kind = "not_found"
 
 
+class StoreUnavailable(ActionHostError):
+    http_status = 503
+    kind = "store_unavailable"
+
+
 class ActionHost:
     """Operator-gated action boundary behind the loopback HTTP server."""
 
@@ -173,13 +178,19 @@ class ActionHost:
         return build_workstream_projection(repo, raw["issues"], status=raw["status"], error=raw["error"])
 
     def _read_dispatcher_runs(self) -> Mapping[str, Any]:
+        if not self._registry.exists():
+            return {}
         try:
             data = json.loads(self._registry.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, UnicodeError):
-            return {}
-        return data if isinstance(data, Mapping) else {}
+        except (OSError, json.JSONDecodeError, UnicodeError) as error:
+            raise StoreUnavailable(f"dispatcher runs registry is unreadable: {error}") from error
+        if not isinstance(data, Mapping):
+            raise StoreUnavailable("dispatcher runs registry is not a JSON object")
+        return data
 
     def _read_session_docs(self) -> list[Mapping[str, Any]]:
+        from runtime import session_state as state
+
         docs: list[Mapping[str, Any]] = []
         if not self._session_store.is_dir():
             return docs
@@ -190,11 +201,14 @@ class ActionHost:
             if not session_file.is_file():
                 continue
             try:
-                doc = json.loads(session_file.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError, UnicodeError):
+                docs.append(state.load(self._session_store, child.name))
+            except state.SessionError as error:
+                # A corrupt/hash-broken record is authoritative-data loss, not
+                # "no runs": fail closed rather than silently returning empty.
+                if error.category == "integrity_error":
+                    raise StoreUnavailable(
+                        f"session store record {child.name} is corrupt: {error.message}") from error
                 continue
-            if isinstance(doc, Mapping):
-                docs.append(doc)
         return docs
 
     def workstream_detail(self, repo: str, number: int) -> dict:

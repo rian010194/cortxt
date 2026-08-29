@@ -2,7 +2,10 @@
 
 import json
 
-from widget.action_host import ActionHandler, ActionHost
+import pytest
+
+from runtime import session_state as state
+from widget.action_host import ActionHandler, ActionHost, StoreUnavailable
 from widget_contract.registry import TYPES
 from widget_contract.validation import validate
 
@@ -65,19 +68,25 @@ def test_workstream_detail_endpoint_read_is_schema_valid_and_correlated(tmp_path
     assert detail["runs"][0]["sources"] == ["dispatcher.runs"]
 
 
+def _write_run_session(store, *, run_id="run_1", issue_id=ISSUE_REF, status="failed"):
+    doc = state.create(store, task_id="s7a-test", run_id=run_id, issue_id=issue_id,
+                       worker_role="builder", runtime="dsh")
+    sid = doc["session_id"]
+    state.append(store, sid, 0, "run.created",
+                 {"run_id": run_id, "issue_ref": issue_id, "engine_id": "dsh", "profile": "builder"})
+    state.append(store, sid, 1, "run.running",
+                 {"run_id": run_id, "started_at": "2026-08-29T12:00:01Z"})
+    state.append(store, sid, 2, "run.engine_turn", {"status": status, "engine_id": "dsh"})
+    return store
+
+
 def test_runs_endpoint_renders_conflict_across_stores(tmp_path):
-    session_doc = {
-        "events": [
-            {"event_type": "session.created",
-             "payload": {"run_id": "run_1", "issue_id": ISSUE_REF, "engine_id": "dsh"},
-             "timestamp": "2026-08-29T12:00:00Z"},
-            {"event_type": "session.terminal",
-             "payload": {"status": "failed"},
-             "timestamp": "2026-08-29T13:00:00Z"},
-        ]
-    }
-    host = _host(tmp_path, registry_doc={"run_1": _run_record("run_1", status="in_progress")},
-                 session_docs=[session_doc])
+    registry = tmp_path / "runs.json"
+    registry.write_text(json.dumps({"run_1": _run_record("run_1", status="in_progress")}), encoding="utf-8")
+    session_store = tmp_path / ".sessions"
+    _write_run_session(session_store, run_id="run_1", issue_id=ISSUE_REF, status="failed")
+    host = ActionHost(registry=registry, session_store=session_store,
+                      issue_reader=lambda repo, number: _issue(number))
     result = host.run_summaries("owner/repo", 470)
     validate(result, TYPES["run.summaries.v1"].schema)
     assert result["issue_ref"] == ISSUE_REF
@@ -85,11 +94,24 @@ def test_runs_endpoint_renders_conflict_across_stores(tmp_path):
     assert result["runs"][0]["conflict"]["values"] == ["in_progress", "failed"]
 
 
-def test_missing_or_malformed_runs_registry_fails_closed_to_empty(tmp_path):
-    registry = tmp_path / "runs.json"
-    registry.write_text("{not valid json", encoding="utf-8")
+def test_malformed_runs_registry_fails_closed(tmp_path):
     host = _host(tmp_path, registry_doc=None)
-    # Override with a malformed registry path that the host tolerates as empty.
+    host._registry.write_text("{not valid json", encoding="utf-8")
+    with pytest.raises(StoreUnavailable):
+        host.run_summaries("owner/repo", 470)
+
+
+def test_malformed_session_record_fails_closed(tmp_path):
+    host = _host(tmp_path, registry_doc={}, session_docs=None)
+    session_dir = tmp_path / ".sessions" / ("session_" + "0" * 32)
+    session_dir.mkdir(parents=True)
+    (session_dir / "session.json").write_text("{corrupt", encoding="utf-8")
+    with pytest.raises(StoreUnavailable):
+        host.run_summaries("owner/repo", 470)
+
+
+def test_absent_store_is_empty_not_unavailable(tmp_path):
+    host = _host(tmp_path, registry_doc=None, session_docs=None)
     result = host.run_summaries("owner/repo", 470)
     validate(result, TYPES["run.summaries.v1"].schema)
     assert result["runs"] == []

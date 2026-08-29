@@ -149,6 +149,7 @@ def build_workstream_detail_v1(
     workflow, workflow_labels = _workflow_state(issue)
 
     evidence = _section(body, ("Evidence", "Verification", "Validation"))
+    has_evidence = bool(evidence)
     acceptance = _bullets(body, ("Acceptance criteria", "Acceptance Criteria",
                                  "Deterministic acceptance criteria"))
     approval = _section(body, ("Approval status", "Approval", "Human approval", "Operator approval"))
@@ -179,8 +180,10 @@ def build_workstream_detail_v1(
         "relations": parse_relations(body),
         "runs": [dict(run) for run in runs],
         "evidence": {
-            "present": bool(evidence),
-            "summary": (evidence[:1200] if evidence else None),
+            "present": has_evidence,
+            # Content-free: never copy raw issue body text (no secrets, prompts,
+            # reasoning, or artifact content) into the projection.
+            "summary": ("recorded" if has_evidence else None),
             "review_state": "review" if workflow == "review" else None,
         },
         "source": {

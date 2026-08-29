@@ -1,5 +1,7 @@
 """S7a (#470) deterministic tests for the versioned Workstream detail projection."""
 
+import json
+
 from widget_contract.adapters.store_reads import read_run_summaries_v1, read_workstream_detail_v1
 from widget_contract.detail import build_synthetic_workstream_detail_v1, parse_dispatch_limits, parse_relations
 from widget_contract.registry import TYPES
@@ -113,10 +115,13 @@ def test_conflicting_stores_render_conflict_not_silent_merge():
     session = summaries_from_sessions([{
         "events": [
             {"event_type": "session.created",
-             "payload": {"run_id": "run_1", "issue_id": f"{REPO}#470", "engine_id": "dsh"},
+             "payload": {"run_id": "run_1", "issue_id": f"{REPO}#470", "runtime": "dsh"},
              "timestamp": "2026-08-29T12:00:00Z"},
-            {"event_type": "session.terminal",
-             "payload": {"status": "failed"},
+            {"event_type": "run.running",
+             "payload": {"run_id": "run_1", "started_at": "2026-08-29T12:00:01Z"},
+             "timestamp": "2026-08-29T12:00:01Z"},
+            {"event_type": "run.engine_turn",
+             "payload": {"status": "failed", "engine_id": "dsh"},
              "timestamp": "2026-08-29T13:00:00Z"},
         ]
     }], f"{REPO}#470")
@@ -124,6 +129,56 @@ def test_conflicting_stores_render_conflict_not_silent_merge():
     assert runs[0]["status"] == "conflict"
     assert runs[0]["conflict"] == {"field": "status", "values": ["in_progress", "failed"]}
     assert runs[0]["sources"] == ["dispatcher.runs", "session.events"]
+
+
+def test_terminal_timestamp_conflict_is_rendered_not_silently_preferred():
+    dispatcher = {"run_1": _dispatcher_run(run_id="run_1", status="failed", finished_at=1756471000.0)}
+    session = summaries_from_sessions([{
+        "events": [
+            {"event_type": "session.created",
+             "payload": {"run_id": "run_1", "issue_id": f"{REPO}#470", "runtime": "dsh"},
+             "timestamp": "2026-08-29T12:00:00Z"},
+            {"event_type": "run.engine_turn",
+             "payload": {"status": "failed", "engine_id": "dsh"},
+             "timestamp": "2026-08-29T14:00:00Z"},
+        ]
+    }], f"{REPO}#470")
+    runs = correlate_run_summaries(f"{REPO}#470", dispatcher, session)
+    assert runs[0]["status"] == "conflict"
+    assert runs[0]["conflict"]["field"] == "finished_at"
+
+
+def test_mcp_terminal_status_reads_engine_turn_not_a_terminal_event_type():
+    session = summaries_from_sessions([{
+        "events": [
+            {"event_type": "session.created",
+             "payload": {"run_id": "run_1", "issue_id": f"{REPO}#470", "runtime": "dsh"},
+             "timestamp": "2026-08-29T12:00:00Z"},
+            {"event_type": "run.running",
+             "payload": {"run_id": "run_1", "started_at": "2026-08-29T12:00:01Z"},
+             "timestamp": "2026-08-29T12:00:01Z"},
+            {"event_type": "run.engine_turn",
+             "payload": {"status": "succeeded", "engine_id": "dsh"},
+             "timestamp": "2026-08-29T12:30:00Z"},
+        ]
+    }], f"{REPO}#470")
+    assert session[0]["status"] == "succeeded"
+    assert session[0]["finished_at"] == "2026-08-29T12:30:00Z"
+
+
+def test_mcp_running_only_run_is_in_progress():
+    session = summaries_from_sessions([{
+        "events": [
+            {"event_type": "session.created",
+             "payload": {"run_id": "run_1", "issue_id": f"{REPO}#470", "runtime": "dsh"},
+             "timestamp": "2026-08-29T12:00:00Z"},
+            {"event_type": "run.running",
+             "payload": {"run_id": "run_1", "started_at": "2026-08-29T12:00:01Z"},
+             "timestamp": "2026-08-29T12:00:01Z"},
+        ]
+    }], f"{REPO}#470")
+    assert session[0]["status"] == "in_progress"
+    assert session[0]["finished_at"] is None
 
 
 def test_run_summaries_are_immutable_and_retry_history_is_preserved():
@@ -152,20 +207,23 @@ def test_freshness_and_age_are_represented():
 def test_redaction_no_prompt_reasoning_secret_or_artifact_content():
     issue = _issue(body=(
         "## Scope\n\nBuild it.\n\n"
-        "## Evidence\n\napi_key=deadbeef password=hunter2 do not publish secret\n\n"
-        "## Outcome\n\nReasoning: step one is to..."
+        "## Evidence\n\napi_key=deadbeef password=hunter2 do not publish secret. "
+        "Reasoning: step one is to...\n\n"
+        "## Outcome\n\nShip the read model.\n"
     ))
     runs = correlate_run_summaries(f"{REPO}#470", {
         "run_1": _dispatcher_run(run_id="run_1"),
     }, [])
     detail = read_workstream_detail_v1(issue, runs, repo=REPO)
+    # Evidence presence is a content-free marker, never the raw section text.
+    assert detail["evidence"]["summary"] == "recorded"
     assert "api_key" not in detail["mandate"]["scope"]
-    # Evidence summary is explicit section text; secrets in evidence are not
-    # promoted into mandate/issue fields, and no run summary carries them.
-    for run in detail["runs"]:
-        assert "api_key" not in str(run)
-        assert "hunter2" not in str(run)
     assert "api_key" not in detail["issue"]["title"]
+    # The entire projection (including evidence.summary) must never contain
+    # prompt/secret/reasoning material copied verbatim from the issue body.
+    rendered = json.dumps(detail)
+    for marker in ("api_key", "deadbeef", "hunter2", "do not publish", "Reasoning:"):
+        assert marker not in rendered, marker
 
 
 def test_parse_dispatch_limits_returns_only_explicit_fields():

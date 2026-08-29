@@ -12,11 +12,16 @@ slice). It defines a read-only adapter that
 - correlates them by exact ``issue_ref``,
 - preserves each record's provenance as an explicit ``sources`` list, and
 - renders a ``conflict`` instead of silently merging whenever two stores
-  disagree on the same ``run_id``'s status or terminal timestamp.
+  disagree on the same ``run_id``'s status OR terminal timestamp.
 
 Runs are immutable summaries: a retry creates a new ``run_id`` and never
 overwrites an earlier record. No prompt, reasoning, secret, or artifact
 content ever enters a summary.
+
+The MCP/session-event run shape mirrors ``cortxt_mcp/run_lifecycle.py``:
+``run.running`` carries ``started_at``; the terminal result is the last
+``run.engine_turn`` (payload ``status``); ``run.review_submitted`` is the
+post-terminal review state.
 """
 from __future__ import annotations
 
@@ -30,7 +35,7 @@ RUNNING_STATUS = "in_progress"
 CONFLICT_STATUS = "conflict"
 KNOWN_STATUSES = frozenset(
     {"in_progress", "succeeded", "failed", "timed_out", "budget_exceeded",
-     "blocked", "cancelled", "conflict", "unknown"}
+     "blocked", "cancelled", "review_submitted", "conflict", "unknown"}
 )
 
 
@@ -92,8 +97,9 @@ def summaries_from_sessions(session_docs: Sequence[Mapping[str, Any]], issue_ref
 
     A session represents a run when its ``session.created`` payload carries a
     ``run_id`` and an ``issue_id``/``issue_ref`` matching ``issue_ref`` exactly.
-    Terminal status comes from the last terminal event payload; an unfinished
-    run is ``in_progress``. Fields that are absent stay absent (never guessed).
+    ``started_at`` comes from ``run.running``; terminal status is the last
+    ``run.engine_turn`` status, or ``review_submitted`` after review sync. An
+    unfinished run is ``in_progress``. Fields that are absent stay absent.
     """
     summaries: list[dict[str, Any]] = []
     for doc in session_docs:
@@ -108,27 +114,42 @@ def summaries_from_sessions(session_docs: Sequence[Mapping[str, Any]], issue_ref
         owner_ref = _pick(payload, "issue_id", "issue_ref")
         if not run_id or str(owner_ref) != issue_ref:
             continue
-        status = RUNNING_STATUS
-        finished_at: str | None = None
+
+        started_at = _iso(created.get("timestamp"))
         for event in events:
+            if not isinstance(event, Mapping):
+                continue
+            if str(event.get("event_type") or "") == "run.running":
+                epayload = event.get("payload") if isinstance(event.get("payload"), Mapping) else {}
+                started_at = _iso(epayload.get("started_at")) or started_at
+                break
+
+        status = RUNNING_STATUS
+        finished_at = None
+        for event in reversed(events):
             if not isinstance(event, Mapping):
                 continue
             etype = str(event.get("event_type") or "")
             epayload = event.get("payload") if isinstance(event.get("payload"), Mapping) else {}
-            if etype in ("session.terminal", "run.terminal"):
+            if etype == "run.review_submitted":
+                status = "review_submitted"
+                finished_at = _iso(event.get("timestamp"))
+                break
+            if etype == "run.engine_turn":
                 candidate = epayload.get("status")
-                if isinstance(candidate, str) and candidate:
-                    status = candidate if candidate in KNOWN_STATUSES else "unknown"
-                    finished_at = _iso(event.get("timestamp")) or finished_at
-        if status not in KNOWN_STATUSES:
-            status = "unknown"
+                status = candidate if (isinstance(candidate, str) and candidate in KNOWN_STATUSES) else "unknown"
+                finished_at = _iso(event.get("timestamp"))
+                break
+            if etype == "run.running":
+                break
+
         summaries.append({
             "run_id": str(run_id),
             "issue_ref": issue_ref,
             "status": status,
-            "engine": _iso(_pick(payload, "engine_id", "runtime")),
+            "engine": _iso(_pick(payload, "runtime", "engine_id")),
             "worker_role": _pick(payload, "worker_role", "profile"),
-            "started_at": _iso(created.get("timestamp")),
+            "started_at": started_at,
             "finished_at": finished_at,
             "sources": [STORE_SESSION],
             "conflict": None,
@@ -143,6 +164,28 @@ def _agree(a: dict[str, Any], b: dict[str, Any], field: str) -> bool:
     return left == right
 
 
+def _merged_tail(existing: dict[str, Any], summary: dict[str, Any], *,
+                 status: str, conflict: dict[str, Any] | None) -> dict[str, Any]:
+    """The fields shared by agreement and conflict outcomes, with provenance resolved."""
+    return {
+        "run_id": existing["run_id"],
+        "issue_ref": existing["issue_ref"],
+        "status": status,
+        "engine": existing.get("engine") if existing.get("engine") is not None else summary.get("engine"),
+        "worker_role": existing.get("worker_role") if existing.get("worker_role") is not None else summary.get("worker_role"),
+        "started_at": existing.get("started_at") if existing.get("started_at") is not None else summary.get("started_at"),
+        "finished_at": existing.get("finished_at") if existing.get("finished_at") is not None else summary.get("finished_at"),
+        "sources": sorted({STORE_DISPATCHER, STORE_SESSION}),
+        "conflict": conflict,
+    }
+
+
+def _conflict_tail(existing: dict[str, Any], summary: dict[str, Any],
+                   field: str, values: list[str]) -> dict[str, Any]:
+    return _merged_tail(existing, summary, status=CONFLICT_STATUS,
+                        conflict={"field": field, "values": values})
+
+
 def correlate_run_summaries(
     issue_ref: str,
     dispatcher_runs: Mapping[str, Any],
@@ -153,8 +196,8 @@ def correlate_run_summaries(
     Returns a list (newest-``run_id`` first, cosmetic) of immutable summaries.
     A run present in one store carries that store in ``sources``; a run present
     in both and in agreement merges ``sources``; a run present in both that
-    disagrees on ``status`` is rendered as ``conflict`` with both statuses
-    listed, never resolved.
+    disagrees on ``status`` or on a shared terminal ``finished_at`` is rendered
+    as ``conflict`` with both values listed, never resolved.
     """
     merged: dict[str, dict[str, Any]] = {}
     for run in dispatcher_runs.values():
@@ -185,33 +228,15 @@ def correlate_run_summaries(
             merged[run_id] = summary
             continue
         if not _agree(existing, summary, "status"):
-            merged[run_id] = {
-                "run_id": run_id,
-                "issue_ref": issue_ref,
-                "status": CONFLICT_STATUS,
-                "engine": existing.get("engine") if existing.get("engine") is not None else summary.get("engine"),
-                "worker_role": existing.get("worker_role") if existing.get("worker_role") is not None else summary.get("worker_role"),
-                "started_at": existing.get("started_at") if existing.get("started_at") is not None else summary.get("started_at"),
-                "finished_at": existing.get("finished_at") if existing.get("finished_at") is not None else summary.get("finished_at"),
-                "sources": sorted({STORE_DISPATCHER, STORE_SESSION}),
-                "conflict": {
-                    "field": "status",
-                    "values": [existing["status"], summary["status"]],
-                },
-            }
+            merged[run_id] = _conflict_tail(existing, summary, "status",
+                                            [existing["status"], summary["status"]])
             continue
-        # Agreement: merge provenance and prefer the non-null terminal fields.
-        merged[run_id] = {
-            "run_id": run_id,
-            "issue_ref": issue_ref,
-            "status": existing["status"],
-            "engine": existing.get("engine") if existing.get("engine") is not None else summary.get("engine"),
-            "worker_role": existing.get("worker_role") if existing.get("worker_role") is not None else summary.get("worker_role"),
-            "started_at": existing.get("started_at") if existing.get("started_at") is not None else summary.get("started_at"),
-            "finished_at": existing.get("finished_at") if existing.get("finished_at") is not None else summary.get("finished_at"),
-            "sources": sorted({STORE_DISPATCHER, STORE_SESSION}),
-            "conflict": None,
-        }
+        if (existing.get("finished_at") is not None and summary.get("finished_at") is not None
+                and existing["finished_at"] != summary["finished_at"]):
+            merged[run_id] = _conflict_tail(existing, summary, "finished_at",
+                                            [existing["finished_at"], summary["finished_at"]])
+            continue
+        merged[run_id] = _merged_tail(existing, summary, status=existing["status"], conflict=None)
     return sorted(merged.values(), key=lambda item: item["run_id"], reverse=True)
 
 

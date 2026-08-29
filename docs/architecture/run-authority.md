@@ -25,9 +25,9 @@ writer:
 - `widget_contract/run_authority.py` correlates Run summaries from both stores
   by exact `issue_ref`, preserving each record's `sources`.
 - A Run present in both stores and in agreement merges provenance only.
-- A Run present in both stores that disagrees on `status` is rendered as
-  `status: "conflict"` with both statuses listed under `conflict.values` —
-  never resolved, never silently merged.
+- A Run present in both stores that disagrees on `status` or on a shared
+  terminal `finished_at` is rendered as `status: "conflict"` with both values
+  listed under `conflict.values` — never resolved, never silently merged.
 - Runs are immutable summaries: a retry creates a new `run_id` and never
   overwrites an earlier record.
 
