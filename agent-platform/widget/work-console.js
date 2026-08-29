@@ -698,12 +698,23 @@ function attentionItems(){
 function activityVisibleItems(){
   var items=attentionItems();
   var f=state.activity.filters||{types:{},workstreamId:null};
+  var seen={};
   return items.filter(function(it){
+    /* Dedupe repeated signals by their stable dedupeKey (keep first). */
+    if(it.dedupeKey){if(seen[it.dedupeKey])return false;seen[it.dedupeKey]=true}
     if(it.requiresAttention===false&&f.types&&f.types["done"]===false)return false;
     if(f.workstreamId&&it.workstreamId!==f.workstreamId)return false;
     if(state.activity.dismissed&&state.activity.dismissed[it.id])return false;
     return true;
   });
+}
+function activityGroupKey(it,groupBy){
+  /* Grouping keys: time buckets by the item's occurredAt date; type uses
+     severity; workstream uses the bound workstream id. */
+  if(groupBy==="type")return it.severity;
+  if(groupBy==="workstream")return it.workstreamId||"all";
+  var d=it.occurredAt?String(it.occurredAt).slice(0,10):"unknown";
+  return d;
 }
 function activityCount(){
   return attentionItems().filter(function(it){return it.requiresAttention&&!state.activity.read[it.id]}).length;
@@ -723,7 +734,7 @@ function renderActivity(){
   else{
     var groups={};
     items.forEach(function(it){
-      var key=f.groupBy==="type"?(it.severity):(f.groupBy==="workstream"?(it.workstreamId||"all"):(it.requiresAttention?"needs attention":"completed"));
+      var key=activityGroupKey(it,f.groupBy);
       (groups[key]=groups[key]||[]).push(it);
     });
     Object.keys(groups).forEach(function(g){
@@ -869,7 +880,7 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
       "open-home": function(){ openHome(); },
       "exit-workspace": function(){ try{window.location.href="/"}catch(_e){} },
       "open-external": function(p){ if(p&&p.url)try{window.open(p.url,"_blank","noopener")}catch(_e){} },
-      "focus-record": function(p){ if(!p||!p.appId||!p.recordRef)return; var a=appById(migrateWorkConsole(p.appId)); if(!a||isDeferred(a.id))return; if(p.workstreamId&&p.workstreamId!=="all"&&!items().some(function(x){return x.id===p.workstreamId}))return; if(p.workstreamId)switchWorkstream(p.workstreamId); focusApp(a.id); },
+      "focus-record": function(p){ if(!p||!p.appId||!p.recordRef)return; var a=appById(migrateWorkConsole(p.appId)); if(!a||isDeferred(a.id))return; if(p.workstreamId&&p.workstreamId!=="all"&&!items().some(function(x){return x.id===p.workstreamId}))return; if(!items().some(function(x){return String(x.number||x.id)===String(p.recordRef)}))return; if(p.workstreamId)switchWorkstream(p.workstreamId); focusApp(a.id); },
     };
     window.ShellCommandHandlers = commandHandlers;
     window.addEventListener("hashchange", function(){

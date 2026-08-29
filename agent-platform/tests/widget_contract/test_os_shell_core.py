@@ -1297,6 +1297,10 @@ def test_activity_group_dedupe_filter_read_dismiss_local():
     assert "data-activity-read" in S55C_JS and "data-activity-dismiss" in S55C_JS
     assert "Presentation state is local. Workflow status is authoritative." in S55C_JS
     assert "dedupeKey" in S55C_JS
+    # S5.5c review: explicit dedupe by dedupeKey and time-based grouping.
+    assert "function activityGroupKey(it,groupBy)" in S55C_JS
+    assert "seen[it.dedupeKey]" in S55C_JS
+    assert "occurredAt?String(it.occurredAt).slice(0,10)" in S55C_JS
 
 
 def test_activity_cannot_invoke_workflow_or_decision_mutations():
@@ -1353,3 +1357,6 @@ def test_activity_synthetic_mode_non_mutating():
     assert "state.model.synthetic" in S55C_JS
     assert "state.model&&state.model.workstreams" in S55C_JS
     assert "focus-record" in S55C_COMMANDS
+    # S5.5c review: the focus-record handler validates the record reference
+    # against the model (unknown records fail closed).
+    assert 'String(x.number||x.id)===String(p.recordRef)' in S55C_JS
