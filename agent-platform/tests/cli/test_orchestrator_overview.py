@@ -96,6 +96,9 @@ def test_widget_is_manifest_driven_shell_without_legacy_tabs():
     assert "loadManifest" in html
     assert "renderGenericNode" in html
     assert "widgets.json" in html
-    # The OS shell is registry-driven: no hard-coded per-app button list.
+    # The OS shell is registry-driven: no hard-coded per-app button list and
+    # no legacy admin drawer (S6a removed the launcher drawer).
     assert "apps.json" in (widget_dir / "work-console.js").read_text(encoding="utf-8")
-    assert "data-app-list" in shell and "data-mobile-nav" in shell
+    assert "data-mobile-nav" in shell and "data-nav-home" in shell
+    assert "data-app-list" not in shell
+    assert "data-app-drawer" not in shell

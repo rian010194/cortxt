@@ -6,16 +6,19 @@
    defined semantics.
 
    Commands (typed):
-     open-app{appId}            focus/open an app window
-     close-app{appId}           close an app window
+     open-app{appId}            open an app on the primary surface (S6a:
+                                Home/Work as surfaces; other apps in context)
+     close-app{appId}           close an app window (explicit multi-window)
      focus-app{appId}           raise an app window
      switch-workstream{workstreamId}  select a workstream ("all" allowed)
-     open-home{}                open Cortxt Home (typed; no-ops until S5)
-     exit-workspace{}           return to the public landing experience
+     open-home{}                open Cortxt Home (system surface)
      open-external{url}         explicit external navigation (new tab)
      focus-record{appId, workstreamId, recordRef}  validated navigation to a
-                              source record inside an app (S5.5c/ADR-044:
+                              source record inside an app (ADR-044:
                               Activity Center validated navigation)
+     open-window{appId}         explicit opt-in: open the app as a window
+     return-primary{}           collapse multi-window mode back to the
+                              focused primary surface
 
    Deep links (#app=<id>[&ws=<id>][&record=<ref>]) resolve the legacy
    `work-console` app id to the first principal app `work` through a
@@ -31,9 +34,10 @@
     "focus-app": true,
     "switch-workstream": true,
     "open-home": true,
-    "exit-workspace": true,
     "open-external": true,
     "focus-record": true,
+    "open-window": true,
+    "return-primary": true,
   };
 
   /* ADR-044: Work Console is retired. For one release cycle its app id
