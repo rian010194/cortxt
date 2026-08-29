@@ -314,6 +314,102 @@ ATTENTION_QUEUE_SCHEMA = {"type": "object", "additionalProperties": False,
                           "required": ["items"],
                           "properties": {"items": {"type": "array", "items": ATTENTION_ITEM_SCHEMA}}}
 
+# --- workstream.detail.v1 (S7a, #470) ---------------------------------------
+RUN_CONFLICT_SCHEMA = {"type": "object", "additionalProperties": False,
+                       "required": ["field", "values"],
+                       "properties": {"field": {"type": "string"},
+                                      "values": {"type": "array", "items": {"type": "string"}}}}
+RUN_SUMMARY_SCHEMA = {"type": "object", "additionalProperties": False,
+                      "required": ["run_id", "issue_ref", "status", "engine", "worker_role",
+                                   "started_at", "finished_at", "sources", "conflict"],
+                      "properties": {
+                          "run_id": {"type": "string"},
+                          "issue_ref": {"type": "string"},
+                          "status": {"type": "string"},
+                          "engine": {"type": ["string", "null"]},
+                          "worker_role": {"type": ["string", "null"]},
+                          "started_at": {"type": ["string", "null"]},
+                          "finished_at": {"type": ["string", "null"]},
+                          "sources": {"type": "array", "items": {"type": "string"}},
+                          "conflict": {"type": ["object", "null"], "additionalProperties": False,
+                                       "required": ["field", "values"],
+                                       "properties": {"field": {"type": "string"},
+                                                      "values": {"type": "array", "items": {"type": "string"}}}},
+                      }}
+ISSUE_DETAIL_SCHEMA = {"type": "object", "additionalProperties": False,
+                        "required": ["issue_id", "number", "title", "state", "workflow",
+                                     "workflow_labels", "url", "milestone"],
+                        "properties": {
+                            "issue_id": {"type": "string"},
+                            "number": {"type": "integer", "minimum": 1},
+                            "title": {"type": "string"},
+                            "state": {"type": "string"},
+                            "workflow": {"type": "string"},
+                            "workflow_labels": {"type": "array", "items": {"type": "string"}},
+                            "url": {"type": ["string", "null"]},
+                            "milestone": {"type": ["string", "null"]},
+                        }}
+DISPATCH_LIMITS_SCHEMA = {"type": "object", "additionalProperties": False,
+                           "properties": {
+                               "worker_role": {"type": "string"},
+                               "workflow": {"type": "string"},
+                               "max_runtime_seconds": {"type": "integer", "minimum": 0},
+                               "max_cost_usd": {"type": "number", "minimum": 0},
+                               "max_parallel_workers": {"type": "integer", "minimum": 0},
+                               "delegation_depth": {"type": "integer", "minimum": 0},
+                           }}
+MANDATE_DETAIL_SCHEMA = {"type": "object", "additionalProperties": False,
+                          "required": ["outcome", "scope", "acceptance_criteria",
+                                       "approval_reference", "dispatch_limits"],
+                          "properties": {
+                              "outcome": {"type": ["string", "null"]},
+                              "scope": {"type": ["string", "null"]},
+                              "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+                              "approval_reference": {"type": ["string", "null"]},
+                              "dispatch_limits": DISPATCH_LIMITS_SCHEMA,
+                          }}
+RELATION_SCHEMA = {"type": "object", "additionalProperties": False,
+                   "required": ["relation", "target"],
+                   "properties": {"relation": {"type": "string", "enum": ["part-of", "blocked-by"]},
+                                  "target": {"type": "integer", "minimum": 1}}}
+EVIDENCE_DETAIL_SCHEMA = {"type": "object", "additionalProperties": False,
+                          "required": ["present", "summary", "review_state"],
+                          "properties": {
+                              "present": {"type": "boolean"},
+                              "summary": {"type": ["string", "null"]},
+                              "review_state": {"type": ["string", "null"]},
+                          }}
+SOURCE_STATE_SCHEMA = {"type": "object", "additionalProperties": False,
+                        "required": ["status", "age_seconds", "complete", "error"],
+                        "properties": {
+                            "status": {"type": "string", "enum": ["fresh", "stale", "unavailable"]},
+                            "age_seconds": {"type": "integer", "minimum": 0},
+                            "complete": {"type": "boolean"},
+                            "error": {"type": ["object", "null"], "additionalProperties": False,
+                                      "required": ["kind", "message"],
+                                      "properties": {"kind": {"type": "string"},
+                                                     "message": {"type": "string"}}},
+                        }}
+WORKSTREAM_DETAIL_SCHEMA = {"type": "object", "additionalProperties": False,
+                             "required": ["schema_version", "mode", "synthetic", "issue",
+                                          "mandate", "relations", "runs", "evidence", "source"],
+                             "properties": {
+                                 "schema_version": {"const": 1},
+                                 "mode": {"type": "string", "enum": ["local", "synthetic"]},
+                                 "synthetic": {"type": "boolean"},
+                                 "issue": ISSUE_DETAIL_SCHEMA,
+                                 "mandate": MANDATE_DETAIL_SCHEMA,
+                                 "relations": {"type": "array", "items": RELATION_SCHEMA},
+                                 "runs": {"type": "array", "items": RUN_SUMMARY_SCHEMA},
+                                 "evidence": EVIDENCE_DETAIL_SCHEMA,
+                                 "source": SOURCE_STATE_SCHEMA,
+                             }}
+RUN_SUMMARIES_SCHEMA = {"type": "object", "additionalProperties": False,
+                        "required": ["schema_version", "issue_ref", "runs"],
+                        "properties": {"schema_version": {"const": 1},
+                                       "issue_ref": {"type": "string"},
+                                       "runs": {"type": "array", "items": RUN_SUMMARY_SCHEMA}}}
+
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
     "dispatcher.active-runs.v1": TypeEntry(ACTIVE_RUNS_SCHEMA, "operational"),
@@ -339,6 +435,8 @@ TYPES = {
     "core.array.v1": TypeEntry({"type": "array"}, "public-metadata"),
     "core.object.v1": TypeEntry({"type": "object"}, "public-metadata"),
     "action.status.v1": TypeEntry({"type": "object"}, "operational"),
+    "workstream.detail.v1": TypeEntry(WORKSTREAM_DETAIL_SCHEMA, "public-metadata"),
+    "run.summaries.v1": TypeEntry(RUN_SUMMARIES_SCHEMA, "operational"),
 }
 
 READ_OPERATIONS = {
@@ -358,6 +456,8 @@ READ_OPERATIONS = {
     "decision.pending.v1": ReadOperation("store", JSON_OBJECT, "decision.pending.v1", "operational", 500, 60, 2, "read:decision-pending"),
     "attention.queue.v1": ReadOperation("store", JSON_OBJECT, "attention.queue.v1", "operational", 500, 60, 2, "read:attention-queue"),
     "issue.workflow.get.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["issue_number"], "properties": {"issue_number": {"type": "integer", "minimum": 1}}}, "issue.workflow.v1", "public-metadata", 2000, 30, 30, "read:issue-workflow", True),
+    "workstream.detail.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo", "issue_number"], "properties": {"repo": {"type": "string"}, "issue_number": {"type": "integer", "minimum": 1}}}, "workstream.detail.v1", "public-metadata", 5000, 30, 30, "read:workstream-detail"),
+    "run.summaries.v1": ReadOperation("store", {"type": "object", "additionalProperties": False, "required": ["issue_ref"], "properties": {"issue_ref": {"type": "string"}}}, "run.summaries.v1", "operational", 500, 60, 2, "read:run-summaries"),
 }
 
 ISSUE_ID_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["issue_id"],
