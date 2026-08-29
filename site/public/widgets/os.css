@@ -104,6 +104,7 @@ button,input{font:inherit}button{color:inherit}
 .attention-row .a-main{flex:1;min-width:0}
 .attention-row .a-title{font-size:13px;font-weight:600}
 .attention-row .a-sum{font-size:11.5px;color:var(--muted);line-height:1.4}
+.attention-more{margin-top:2px}
 .recent-list{display:grid;gap:6px}
 .recent-row{display:flex;align-items:center;gap:10px;border:0;background:transparent;padding:8px 10px;border-radius:9px;cursor:pointer;text-align:left;color:var(--muted)}
 .recent-row:hover{background:var(--layer);color:var(--text)}
