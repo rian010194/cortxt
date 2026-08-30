@@ -643,14 +643,19 @@ class _ReusableThreadingHTTPServer(ThreadingHTTPServer):
 
 
 # Paths (repo-root-relative, forward-slash form) that `--require-clean`
-# ignores when deciding clean/dirty. These are known audit-evidence files
-# written by a previous proof run (#482) and intentionally left untracked
-# in this worktree -- their presence is not a signal that the worktree is
-# actually unpredictable, so a source-integrity check that flagged them
-# would be reporting a false positive, not a real risk. Matching is exact
-# (repo-root-relative path only): a same-named file elsewhere, or a file
-# that merely starts with one of these names (e.g. a `.bak` sibling), is
-# NOT exempted and still makes the worktree dirty.
+# ignores when deciding clean/dirty, but ONLY when the git status code for
+# that line is exactly "??" (untracked). These are known audit-evidence
+# files written by a previous proof run (#482) and intentionally left
+# untracked in this worktree -- their presence as untracked runtime state is
+# not a signal that the worktree is actually unpredictable, so a
+# source-integrity check that flagged them would be reporting a false
+# positive, not a real risk. A staged (e.g. `A `) or tracked-and-modified
+# (e.g. ` M`, `MM`) copy of one of these paths is NOT exempted -- that is a
+# real change to tracked/staged content, not the intentional untracked case,
+# and still makes the worktree dirty. Matching is exact (repo-root-relative
+# path only): a same-named file elsewhere, or a file that merely starts with
+# one of these names (e.g. a `.bak` sibling), is NOT exempted and still
+# makes the worktree dirty.
 _KNOWN_AUDIT_EVIDENCE_PATHS = frozenset({
     "scripts/runs.json",
     "scripts/runs.claims.sqlite3",
@@ -708,11 +713,28 @@ def source_signature(*, run_subprocess: Callable = None, repo_dir: Path | None =
     if status_output is None and _git("rev-parse", "--is-inside-work-tree") != "true":
         clean_status = "unknown"
     else:
-        relevant_lines = [
-            line for line in (status_output.splitlines() if status_output else [])
-            if _git_status_path(line) not in _KNOWN_AUDIT_EVIDENCE_PATHS
-        ]
-        clean_status = "clean" if not relevant_lines else "dirty"
+        status_lines = status_output.splitlines() if status_output else []
+        relevant_lines = []
+        allowed_untracked_count = 0
+        for line in status_lines:
+            path = _git_status_path(line)
+            # The allowlist exempts these four known audit-evidence paths
+            # ONLY when the status code for that line is exactly "??"
+            # (untracked). A staged or tracked-and-modified copy of one of
+            # these paths is NOT exempted -- the allowlist covers the
+            # intentional untracked-runtime-state case only, not any git
+            # state a same-named path happens to be in.
+            status_code = line[:2] if len(line) >= 2 else ""
+            if path in _KNOWN_AUDIT_EVIDENCE_PATHS and status_code == "??":
+                allowed_untracked_count += 1
+                continue
+            relevant_lines.append(line)
+        if relevant_lines:
+            clean_status = "dirty"
+        elif allowed_untracked_count:
+            clean_status = "clean_with_allowed_runtime_state"
+        else:
+            clean_status = "clean"
 
     return {
         "module_file": str(Path(__file__).resolve()),
@@ -737,9 +759,10 @@ def main(*, port: int = PORT, spec_path: Path | None = None,
               f"worktree; start with `python agent-platform/cli/unified_cli.py widget "
               f"--enable-actions` from the intended worktree instead.")
         return 1
-    if require_clean and clean_status != "clean":
+    if require_clean and clean_status not in ("clean", "clean_with_allowed_runtime_state"):
         print(f"[action_host] refusing to start: worktree clean_status="
-              f"{clean_status!r} (required: 'clean'). A dirty or unknown "
+              f"{clean_status!r} (required: 'clean' or "
+              f"'clean_with_allowed_runtime_state'). A dirty or unknown "
               f"worktree means the running commit does not fully describe what's on disk -- "
               f"commit, stage, or discard the uncommitted changes before starting a proof host.")
         return 1
