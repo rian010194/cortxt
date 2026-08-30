@@ -86,7 +86,9 @@ class GitHubOps:
 
     def _gh(self, *args: str) -> str:
         try:
-            result = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=GH_CLI_TIMEOUT_SECONDS)
+            result = subprocess.run(["gh", *args], capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace",
+                                    timeout=GH_CLI_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired as exc:
             raise GitHubError(f"gh {' '.join(args)} timed out after {GH_CLI_TIMEOUT_SECONDS}s") from exc
         if result.returncode != 0:

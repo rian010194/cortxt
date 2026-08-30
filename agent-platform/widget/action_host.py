@@ -205,7 +205,9 @@ class ActionHost:
         self._labels_reader = labels_reader
         self._transition_writer = transition_writer
         self._review_transition_writer = review_transition_writer
-        self._scripts_dir = Path(scripts_dir) if scripts_dir else (AGENT_PLATFORM_DIR / "scripts")
+        # Launcher modules live in the repository-level scripts directory,
+        # alongside agent-platform, not inside the Python package tree.
+        self._scripts_dir = Path(scripts_dir) if scripts_dir else (AGENT_PLATFORM_DIR.parent / "scripts")
         self._registry = Path(registry) if registry else (AGENT_PLATFORM_DIR / ".dispatch" / "runs.json")
         self._session_store = Path(session_store) if session_store else (AGENT_PLATFORM_DIR / ".sessions")
         self._issue_reader = issue_reader or read_issue_detail
@@ -295,14 +297,20 @@ class ActionHost:
     def _build_dispatch_request(self, repo: str, number: int, *, issue: Mapping[str, Any] | None = None) -> dict:
         """Build the authoritative dispatch request for an issue (shared by the
         read endpoint and the claim-run confirmation binding)."""
+        import sys
+
         from routing.engine_manifest import DEFAULT_FALLBACK_ENGINE, DEFAULT_MANIFESTS
-        from runtime.default_engine_context import build_default_engine_context
         from widget_contract.dispatch_request import route_for_issue
 
         issue = issue if issue is not None else self._issue_reader(repo, number)
         choice, tags = route_for_issue(issue, DEFAULT_MANIFESTS, fallback=DEFAULT_FALLBACK_ENGINE)
-        context = build_default_engine_context()
-        engine_registered = bool(choice and context.get(choice.engine_id).has_provider)
+        # Authoritative dispatchability: eligibility must match what the
+        # WorkLauncher can actually dispatch (scripts.worker_adapters registry),
+        # so the projection and the real launch can never disagree (S7b #482).
+        if str(self._scripts_dir) not in sys.path:
+            sys.path.insert(0, str(self._scripts_dir))
+        from worker_adapters import is_runtime_dispatchable
+        engine_registered = bool(choice and is_runtime_dispatchable(choice.engine_id))
         return read_dispatch_request_v1(
             issue, choice, repo=repo, engine_registered=engine_registered, routable_tags=tags)
 

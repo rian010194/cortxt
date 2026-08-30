@@ -7,6 +7,7 @@ in test_dispatcher.py. Run directly: python scripts/test_worker_adapters.py
 (0 = pass)
 """
 import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -303,6 +304,93 @@ def run_all_checks():
     check("dsh run completed via complete()", q_dsh["status"] == "succeeded")
     check("dsh label moved to workflow:review (top-level run)", gh_dsh.labels["o/r#8"] == ["workflow:review"])
     check("dsh result envelope has no leaked internal keys", "_status" not in q_dsh["result"] and "_elapsed_seconds" not in q_dsh["result"])
+
+    print("== ADAPTER_REGISTRY: hermes-free registered by default (S7b #482) ==")
+    check("hermes-free present in registry", "hermes-free" in wa.ADAPTER_REGISTRY)
+    check("default hermes-free adapter is a HermesFreeAdapter",
+          isinstance(wa.ADAPTER_REGISTRY["hermes-free"], wa.HermesFreeAdapter))
+
+    print("== is_runtime_dispatchable: one authoritative dispatchability check (S7b #482) ==")
+    check("hermes-free is dispatchable", wa.is_runtime_dispatchable("hermes-free") is True)
+    check("hermes-researcher is dispatchable", wa.is_runtime_dispatchable("hermes-researcher") is True)
+    check("dsh is dispatchable", wa.is_runtime_dispatchable("dsh") is True)
+    check("claude-direct is NOT dispatchable (no launcher adapter; #474 prereq)",
+          wa.is_runtime_dispatchable("claude-direct") is False)
+    check("codex is NOT dispatchable (no launcher adapter)", wa.is_runtime_dispatchable("codex") is False)
+    check("unknown runtime is NOT dispatchable", wa.is_runtime_dispatchable("no-such") is False)
+
+    print("== HermesFreeAdapter.invoke: succeeded envelope via the shared invoker ==")
+    hf_log_dir = new_log_dir()
+    hf_seen = []
+    hf_adapter = wa.HermesFreeAdapter(
+        invoke_hermes=lambda profile, prompt, timeout_seconds, model=None, provider=None, cwd=None, session_id=None: (
+            hf_seen.append((profile, model, provider, cwd)),
+            {"status": "succeeded", "stdout": "free answer", "stderr": "",
+             "elapsed_seconds": 1.0, "session_id": None})[1],
+        log_dir=hf_log_dir,
+    )
+    old_model, old_provider = os.environ.get("CORTXT_FREE_MODEL"), os.environ.get("CORTXT_FREE_PROVIDER")
+    os.environ["CORTXT_FREE_MODEL"] = "test-free-model"
+    os.environ["CORTXT_FREE_PROVIDER"] = "test-free-provider"
+    try:
+        hf_env = hf_adapter.invoke(run, "do the thing", timeout_seconds=60)
+    finally:
+        if old_model is None:
+            os.environ.pop("CORTXT_FREE_MODEL", None)
+        else:
+            os.environ["CORTXT_FREE_MODEL"] = old_model
+        if old_provider is None:
+            os.environ.pop("CORTXT_FREE_PROVIDER", None)
+        else:
+            os.environ["CORTXT_FREE_PROVIDER"] = old_provider
+    check("hermes-free status succeeded", hf_env["_status"] == "succeeded")
+    check("hermes-free worker_role carried from the run", hf_env["worker_role"] == "researcher")
+    check("hermes-free profile is the run worker role", hf_seen and hf_seen[0][0] == "researcher")
+    check("hermes-free model/provider come from env, never hardcoded",
+          hf_seen and hf_seen[0][1] == "test-free-model" and hf_seen[0][2] == "test-free-provider")
+    check("hermes-free cost unknown, not zero", "unknown" in hf_env["cost"].lower())
+    check("hermes-free evidence does NOT carry raw stdout", "free answer" not in hf_env["evidence"])
+    check("hermes-free error None on success", hf_env["error"] is None)
+
+    print("== HermesFreeAdapter.invoke: env not configured -> failed envelope, never raises ==")
+    hf_env2 = wa.HermesFreeAdapter(log_dir=new_log_dir()).invoke(run, "do the thing", timeout_seconds=60)
+    check("hermes-free unconfigured status failed", hf_env2["_status"] == "failed")
+    check("hermes-free unconfigured error category runtime_unavailable",
+          hf_env2["error"]["category"] == "runtime_unavailable")
+    check("hermes-free unconfigured recovery names the env vars",
+          "CORTXT_FREE_MODEL" in hf_env2["error"]["recovery"])
+
+    print("== dispatch_async: end-to-end hermes-free run reaches dispatcher.complete() ==")
+    disp_hf, gh_hf = new_dispatcher({"o/r#12": ["workflow:ready"]})
+    wa.register_adapter("test-hf-ok", wa.HermesFreeAdapter(
+        invoke_hermes=lambda profile, prompt, timeout_seconds, model=None, provider=None, cwd=None, session_id=None: {
+            "status": "succeeded", "stdout": "worked", "stderr": "",
+            "elapsed_seconds": 1.0, "session_id": None,
+        },
+        log_dir=new_log_dir(),
+    ))
+    old_model2, old_provider2 = os.environ.get("CORTXT_FREE_MODEL"), os.environ.get("CORTXT_FREE_PROVIDER")
+    os.environ["CORTXT_FREE_MODEL"] = "test-free-model"
+    os.environ["CORTXT_FREE_PROVIDER"] = "test-free-provider"
+    try:
+        run_hf = disp_hf.claim("o/r#12", "wedge-b", "researcher", "test-hf-ok", 60)
+        thread_hf = wa.dispatch_async(disp_hf, run_hf, "do the thing")
+        thread_hf.join(timeout=5)
+    finally:
+        if old_model2 is None:
+            os.environ.pop("CORTXT_FREE_MODEL", None)
+        else:
+            os.environ["CORTXT_FREE_MODEL"] = old_model2
+        if old_provider2 is None:
+            os.environ.pop("CORTXT_FREE_PROVIDER", None)
+        else:
+            os.environ["CORTXT_FREE_PROVIDER"] = old_provider2
+    check("hermes-free thread finished", not thread_hf.is_alive())
+    q_hf = disp_hf.query(run_hf.run_id)
+    check("hermes-free run completed via complete()", q_hf["status"] == "succeeded")
+    check("hermes-free label moved to workflow:review", gh_hf.labels["o/r#12"] == ["workflow:review"])
+    check("hermes-free result envelope has no leaked internal keys",
+          "_status" not in q_hf["result"] and "_elapsed_seconds" not in q_hf["result"])
 
     print("== #419 worktree binding: HermesAdapter runs with the isolated worktree cwd ==")
     wt = Path(tempfile.mkdtemp(prefix="worktree-"))

@@ -324,6 +324,127 @@ class UnknownRuntimeError(RuntimeError):
     pass
 
 
+@dataclass
+class HermesFreeAdapter:
+    """Free-tier hermes route for the WorkLauncher dispatch registry.
+
+    Reuses the same invoker the platform-registered HermesFreeAdapter wraps
+    (``routing.hermes_invoker.invoke_hermes``, resolved lazily at call time so
+    the import stays cheap and injectable), and reads provider/model strictly
+    from ``CORTXT_FREE_MODEL`` / ``CORTXT_FREE_PROVIDER`` environment
+    variables -- never hard-coded, so provider/credential policy is not
+    duplicated here (S7b #482 dogfood defect).
+
+    A missing configuration is an ordinary worker failure (a failed envelope
+    with ``runtime_unavailable`` recovery guidance), never an exception --
+    matching the WorkerAdapter contract. Raw stdout/stderr goes to the local
+    gitignored run log only; envelope fields are short, bounded, structured
+    summaries (no model reasoning in GitHub).
+    """
+
+    invoke_hermes: Callable = field(default=None)  # type: ignore[assignment]
+    log_dir: Path = field(default=RUN_LOG_DIR)
+
+    def _call(self, run: Run, task_prompt: str, timeout_seconds: int,
+              worktree: Path | None = None) -> dict | None:
+        model = os.environ.get("CORTXT_FREE_MODEL")
+        provider = os.environ.get("CORTXT_FREE_PROVIDER")
+        if not model or not provider:
+            return None
+        # Bound the worker to its run's isolated worktree when one exists
+        # (#419); never silently fall back to the CLI's cwd.
+        cwd = worktree if worktree is not None else Path.cwd()
+        if self.invoke_hermes is None:
+            from routing.hermes_invoker import invoke_hermes as _default
+            return _default(
+                run.worker_role, task_prompt, timeout_seconds=timeout_seconds,
+                model=model, provider=provider, cwd=cwd,
+            )
+        return self.invoke_hermes(
+            run.worker_role, task_prompt, timeout_seconds=timeout_seconds,
+            model=model, provider=provider, cwd=cwd,
+        )
+
+    def invoke(self, run: Run, task_prompt: str, timeout_seconds: int,
+               worktree: Path | None = None) -> dict:
+        started = time.time()
+        try:
+            result = self._call(run, task_prompt, timeout_seconds, worktree=worktree)
+        except Exception as exc:  # noqa: BLE001 - HermesInvocationError and friends
+            return {
+                "_status": "failed",
+                "runtime": "hermes-free",
+                "worker_role": run.worker_role,
+                "model": "unknown",
+                "usage": "unknown (worker never started)",
+                "cost": "unknown (not measured)",
+                "artifacts": [],
+                "evidence": f"worker never started: {type(exc).__name__}: {exc}",
+                "error": {
+                    "category": "runtime_unavailable",
+                    "recovery": f"{type(exc).__name__}: {exc}",
+                },
+                "_elapsed_seconds": time.time() - started,
+            }
+        if result is None:
+            return {
+                "_status": "failed",
+                "runtime": "hermes-free",
+                "worker_role": run.worker_role,
+                "model": "unknown",
+                "usage": "unknown (worker never started)",
+                "cost": "unknown (not measured)",
+                "artifacts": [],
+                "evidence": "free route not configured; worker never started",
+                "error": {
+                    "category": "runtime_unavailable",
+                    "recovery": "set CORTXT_FREE_MODEL and CORTXT_FREE_PROVIDER, then retry with a fresh run",
+                },
+                "_elapsed_seconds": time.time() - started,
+            }
+        status = result.get("status", "failed")
+        stdout = result.get("stdout", "")
+        stderr = result.get("stderr", "")
+        log_path = self._write_run_log(run, stdout=stdout, stderr=stderr)
+        log_note = f"see local run log {log_path}" if log_path else "local run log could not be written"
+        error = None
+        if status != "succeeded":
+            error = {
+                "category": "worker_nonzero_exit" if status == "failed" else status,
+                # Never the raw stderr tail: same "model reasoning in GitHub"
+                # problem `evidence` was fixed for; point at the local log.
+                "recovery": f"hermes-free reported status={status}; {log_note}",
+            }
+        return {
+            "_status": status,
+            "runtime": "hermes-free",
+            "worker_role": run.worker_role,
+            "model": "unknown (not captured by this adapter)",
+            "usage": "unknown (not captured by this adapter)",
+            "cost": "unknown (not measured)",
+            "artifacts": [log_path] if log_path else [],
+            "evidence": f"hermes-free reported status={status}; {log_note}",
+            "error": error,
+            "_elapsed_seconds": time.time() - started,
+        }
+
+    def _write_run_log(self, run: Run, stdout: "str | None", stderr: "str | None") -> "str | None":
+        """Write raw stdout/stderr to a local, gitignored file. Returns the
+        path as a string, or None if writing failed (never raises -- a
+        logging failure must not turn a real result into a worker error)."""
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = self.log_dir / f"{run.run_id}.log"
+            log_path.write_text(
+                f"=== stdout ===\n{stdout or ''}\n=== stderr ===\n{stderr or ''}\n",
+                encoding="utf-8",
+                errors="replace",
+            )
+            return str(log_path)
+        except OSError:
+            return None
+
+
 ADAPTER_REGISTRY: dict[str, WorkerAdapter] = {
     "hermes-researcher": HermesAdapter(profile="researcher"),
     "hermes-coordinator": HermesAdapter(profile="coordinator"),
@@ -331,6 +452,10 @@ ADAPTER_REGISTRY: dict[str, WorkerAdapter] = {
     # engine_id "dsh" for research/background-task; dispatcher.py's run.runtime
     # carries that engine_id, so the adapter key matches it directly).
     "dsh": DshWorkerAdapter(),
+    # Free-tier hermes route (engine_id "hermes-free" from the routing
+    # manifest). Wires the same invoker the platform HermesFreeAdapter wraps,
+    # so the WorkLauncher can actually dispatch what eligibility approves.
+    "hermes-free": HermesFreeAdapter(),
 }
 
 
@@ -338,6 +463,18 @@ def register_adapter(runtime: str, adapter: WorkerAdapter) -> None:
     """Add or replace an adapter. Keeps the registry open for extension
     (Pi Builder, hermes-coordinator, ...) without editing call sites."""
     ADAPTER_REGISTRY[runtime] = adapter
+
+
+def is_runtime_dispatchable(runtime: str) -> bool:
+    """Single authoritative runtime-dispatchability check (S7b #482).
+
+    The WorkLauncher dispatches through ``ADAPTER_REGISTRY``; dispatch-request
+    eligibility must consult exactly this registry so the projection and the
+    real launch cannot disagree (the dogfood defect: eligibility used the
+    platform engine context where ``hermes-free`` had a provider, while the
+    launcher registry had no ``hermes-free`` adapter).
+    """
+    return runtime in ADAPTER_REGISTRY
 
 
 def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str,

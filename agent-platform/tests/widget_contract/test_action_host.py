@@ -83,6 +83,12 @@ def _claim_request(host, number=2):
     return request
 
 
+def test_default_launcher_scripts_directory_is_repository_level():
+    host = _host()
+    assert host._scripts_dir == Path(__file__).resolve().parents[3] / "scripts"
+    assert (host._scripts_dir / "work_launcher.py").is_file()
+
+
 class _ExecutionGateError(RuntimeError):
     """Shapes like scripts/work_launcher.ExecutionGateError (stable code attr)."""
 

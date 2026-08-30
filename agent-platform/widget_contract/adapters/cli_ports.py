@@ -89,11 +89,14 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
     choice, tags = route_for_issue(issue, manifests, fallback=DEFAULT_FALLBACK_ENGINE)
 
     if engine_has_provider is None:
-        from runtime.default_engine_context import build_default_engine_context
-        context = build_default_engine_context()
+        # Authoritative dispatchability: the WorkLauncher dispatches through
+        # scripts.worker_adapters.ADAPTER_REGISTRY, so eligibility must consult
+        # exactly that registry (S7b #482 dogfood defect: the platform engine
+        # context and the launcher registry disagreed).
+        from worker_adapters import is_runtime_dispatchable
 
         def engine_has_provider(engine_id: str) -> bool:
-            return bool(context.get(engine_id).has_provider)
+            return is_runtime_dispatchable(engine_id)
 
     request = build_dispatch_request_v1(
         issue, choice, repo=repo,
