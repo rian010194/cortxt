@@ -142,9 +142,10 @@ def _init_repo(repo: Path) -> None:
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
 
 
-def test_source_signature_ignores_known_audit_evidence_files(tmp_path):
-    """Only the four known audit-evidence paths, all untracked and nothing
-    else changed, must still read as clean -- they are proof-run artifacts
+def test_source_signature_ignores_known_audit_evidence_files_when_untracked(tmp_path):
+    """Only the four known audit-evidence paths, all untracked (`??`) and
+    nothing else changed, must read as the dedicated
+    'clean_with_allowed_runtime_state' status -- they are proof-run artifacts
     left deliberately untracked (#482), not a sign the worktree is dirty."""
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -156,7 +157,54 @@ def test_source_signature_ignores_known_audit_evidence_files(tmp_path):
     (scripts_dir / "runs.claims.sqlite3-wal").write_bytes(b"")
 
     sig = source_signature(repo_dir=repo)
+    assert sig["clean_status"] == "clean_with_allowed_runtime_state"
+
+
+def test_source_signature_clean_when_no_audit_evidence_files_present(tmp_path):
+    """None of the four audit-evidence paths exist and nothing else changed
+    -> plain 'clean', not the allowed-runtime-state variant."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    sig = source_signature(repo_dir=repo)
     assert sig["clean_status"] == "clean"
+
+
+def test_source_signature_dirty_when_known_path_is_staged(tmp_path):
+    """A known audit-evidence path that is STAGED (index-added, status code
+    `A `) is NOT exempted -- the allowlist covers the untracked (`??`) case
+    only, so this must read as dirty."""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    scripts_dir = repo / "scripts"
+    (scripts_dir / "runs.json").write_text("{}")
+    subprocess.run(["git", "add", "scripts/runs.json"], cwd=repo, capture_output=True, check=True)
+
+    sig = source_signature(repo_dir=repo)
+    assert sig["clean_status"] == "dirty"
+
+
+def test_source_signature_dirty_when_known_path_is_tracked_and_modified(tmp_path):
+    """A known audit-evidence path that is already tracked (committed) and
+    then modified (status code ` M`) is NOT exempted -- the allowlist covers
+    the intentional untracked-runtime-state case only, so this must read as
+    dirty."""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    scripts_dir = repo / "scripts"
+    (scripts_dir / "runs.json").write_text("{}")
+    subprocess.run(["git", "add", "scripts/runs.json"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "add runs.json"], cwd=repo, capture_output=True, check=True)
+    (scripts_dir / "runs.json").write_text('{"changed": true}')
+
+    sig = source_signature(repo_dir=repo)
+    assert sig["clean_status"] == "dirty"
 
 
 def test_source_signature_dirty_with_extra_untracked_file_alongside_known(tmp_path):
@@ -266,6 +314,37 @@ def test_require_clean_starts_on_clean_worktree(monkeypatch):
                         lambda: {"module_file": "x", "repo_dir": "y",
                                  "git_commit": "abc123", "git_branch": "main",
                                  "clean_status": "clean"})
+    rc = main(require_commit="abc123", require_clean=True)
+    assert rc == 0
+    assert started.get("served") is True
+
+
+def test_require_clean_starts_on_clean_with_allowed_runtime_state(monkeypatch):
+    """'clean_with_allowed_runtime_state' (the four known audit-evidence
+    files present as untracked runtime state, nothing else changed) is
+    accepted by --require-clean just like plain 'clean'."""
+    started = {}
+
+    class _FakeServer:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def serve_forever(self):
+            started["served"] = True
+            raise KeyboardInterrupt()
+
+    import widget.action_host as action_host_mod
+    monkeypatch.setattr(action_host_mod, "_ReusableThreadingHTTPServer", _FakeServer)
+    monkeypatch.setattr(action_host_mod, "source_signature",
+                        lambda: {"module_file": "x", "repo_dir": "y",
+                                 "git_commit": "abc123", "git_branch": "main",
+                                 "clean_status": "clean_with_allowed_runtime_state"})
     rc = main(require_commit="abc123", require_clean=True)
     assert rc == 0
     assert started.get("served") is True
