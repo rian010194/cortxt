@@ -185,6 +185,9 @@ GATE_RECOVERY = {
                                "The claim release conflicted; reconcile the claim store manually."),
     "max_parallel_workers_reached": ("limits",
                                      "The approved max parallel workers ceiling is reached; wait for a slot or amend the issue."),
+    "runtime_not_configured": ("engine",
+                               "The routed engine is registered but missing required provider/model/auth "
+                               "configuration; set it and retry with a fresh dispatch request."),
 }
 
 
@@ -305,12 +308,16 @@ class ActionHost:
         issue = issue if issue is not None else self._issue_reader(repo, number)
         choice, tags = route_for_issue(issue, DEFAULT_MANIFESTS, fallback=DEFAULT_FALLBACK_ENGINE)
         # Authoritative dispatchability: eligibility must match what the
-        # WorkLauncher can actually dispatch (scripts.worker_adapters registry),
-        # so the projection and the real launch can never disagree (S7b #482).
+        # WorkLauncher can actually dispatch. `runtime_launch_config_ok` (not
+        # the weaker registry-only `is_runtime_dispatchable`) is the same
+        # function WorkLauncher._launch consults before creating any claim,
+        # so a runtime missing required provider/model/auth config is
+        # reported ineligible here -- never approved for display and then
+        # rejected only after a claim exists (S7b #482 follow-on).
         if str(self._scripts_dir) not in sys.path:
             sys.path.insert(0, str(self._scripts_dir))
-        from worker_adapters import is_runtime_dispatchable
-        engine_registered = bool(choice and is_runtime_dispatchable(choice.engine_id))
+        from worker_adapters import runtime_launch_config_ok
+        engine_registered = bool(choice and runtime_launch_config_ok(choice.engine_id))
         return read_dispatch_request_v1(
             issue, choice, repo=repo, engine_registered=engine_registered, routable_tags=tags)
 
@@ -635,7 +642,72 @@ class _ReusableThreadingHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
-def main(*, port: int = PORT, spec_path: Path | None = None) -> int:
+def source_signature(*, run_subprocess: Callable = None, repo_dir: Path | None = None) -> dict:
+    """The running code's actual identity: file path plus git commit/branch.
+
+    Documented launcher check for "which code is this host actually running"
+    (S7b dogfood defect: a previous session started via the installed
+    `cortxt.exe` and silently ran stale/wrong code -- a cp1252 encoding bug
+    that had already been fixed reappeared). Reads git metadata from
+    `repo_dir` (default: the repo containing this file); `commit`/`branch`
+    are "unknown" (never guessed) when git is unavailable or the directory
+    isn't a repo -- an operator comparing this against the worktree they
+    expect can then see a real mismatch instead of a false match.
+    """
+    import subprocess as _subprocess
+    run_subprocess = run_subprocess or _subprocess.run
+    repo_dir = repo_dir or AGENT_PLATFORM_DIR.parent
+
+    def _git(*args: str) -> str | None:
+        try:
+            proc = run_subprocess(["git", *args], cwd=str(repo_dir), capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", timeout=10)
+        except (OSError, _subprocess.SubprocessError):
+            return None
+        if proc.returncode != 0:
+            return None
+        return proc.stdout.strip() or None
+
+    status_output = _git("status", "--porcelain")
+    # `git status --porcelain` prints nothing (None here, since our helper
+    # maps empty stdout to None) exactly when the worktree is clean;
+    # "unknown" (never guessed clean) when git itself is unavailable, so a
+    # --require-clean caller fails closed instead of trusting a clean
+    # reading it never actually got.
+    if status_output is None and _git("rev-parse", "--is-inside-work-tree") != "true":
+        clean_status = "unknown"
+    else:
+        clean_status = "clean" if not status_output else "dirty"
+
+    return {
+        "module_file": str(Path(__file__).resolve()),
+        "repo_dir": str(repo_dir),
+        "git_commit": _git("rev-parse", "HEAD") or "unknown",
+        "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD") or "unknown",
+        "clean_status": clean_status,
+    }
+
+
+def main(*, port: int = PORT, spec_path: Path | None = None,
+         require_commit: str | None = None, require_clean: bool = False) -> int:
+    signature = source_signature()
+    clean_status = signature.get("clean_status", "unknown")
+    print(f"Cortxt widget action host source: file={signature['module_file']} "
+          f"commit={signature['git_commit']} branch={signature['git_branch']} "
+          f"clean_status={clean_status}")
+    if require_commit is not None and signature["git_commit"] != require_commit:
+        print(f"[action_host] refusing to start: running commit {signature['git_commit']!r} "
+              f"does not match required commit {require_commit!r}. This usually means an "
+              f"installed cortxt.exe or a stale checkout is running instead of the intended "
+              f"worktree; start with `python agent-platform/cli/unified_cli.py widget "
+              f"--enable-actions` from the intended worktree instead.")
+        return 1
+    if require_clean and clean_status != "clean":
+        print(f"[action_host] refusing to start: worktree clean_status="
+              f"{clean_status!r} (required: 'clean'). A dirty or unknown "
+              f"worktree means the running commit does not fully describe what's on disk -- "
+              f"commit, stage, or discard the uncommitted changes before starting a proof host.")
+        return 1
     host = ActionHost(spec_path=spec_path) if spec_path else ActionHost()
     with _ReusableThreadingHTTPServer((HOST, port), _make_handler(host)) as httpd:
         print(f"Cortxt widget action host: http://{HOST}:{port}/index.html "
@@ -653,5 +725,15 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--spec", type=Path, default=None,
                         help="Widget spec to serve actions for (default: candidates-0.1.yaml)")
+    parser.add_argument("--require-commit", default=None,
+                        help="Fail closed at startup unless the running git commit matches "
+                             "exactly (operator source-integrity check, S7b dogfood defect)")
+    parser.add_argument("--require-clean", action="store_true",
+                        help="Fail closed at startup unless the worktree is clean (no "
+                             "uncommitted changes) -- --require-commit alone only proves which "
+                             "commit HEAD is at, not that the working tree matches it exactly; "
+                             "proof/gated-launch tooling should pass both. Ordinary local "
+                             "widget use omits this and is unaffected.")
     args = parser.parse_args()
-    raise SystemExit(main(port=args.port, spec_path=args.spec))
+    raise SystemExit(main(port=args.port, spec_path=args.spec, require_commit=args.require_commit,
+                          require_clean=args.require_clean))

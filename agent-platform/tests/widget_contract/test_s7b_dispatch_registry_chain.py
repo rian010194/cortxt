@@ -179,7 +179,12 @@ def test_eligible_engine_is_actually_dispatchable_through_real_registry(tmp_path
     run = _wait_terminal(dispatcher, run_id)
     assert run.status == "succeeded"
     assert gh.labels["owner/repo#482"] == ["workflow:review"]
-    assert result["claim_id"] in {c.claim_id for c in store.active_claims(100.0)}
+    # Terminal claim release (S7b dogfood fix): dispatch_async's background
+    # thread completes the run directly through Dispatcher.complete(),
+    # bypassing WorkLauncher.submit(); the launcher's on_terminal hook must
+    # still release the execution-map claim once the run goes terminal, so
+    # no claim is left held for a Run that already succeeded.
+    assert result["claim_id"] not in {c.claim_id for c in store.active_claims(100.0)}
 
     # Second click / replay: the issue left workflow:ready, so the re-read at
     # confirmation rejects the same POST body without a second launch.
@@ -215,12 +220,19 @@ def test_registry_mismatch_fails_before_claim(tmp_path):
     assert calls == []  # no claim attempted -- the mismatch failed before launch
 
 
-def test_chain_post_claim_failure_is_terminal_and_releases_claim(tmp_path):
+def test_chain_post_claim_failure_is_terminal_and_releases_claim(tmp_path, monkeypatch):
     """Through the full chain (action host -> dispatch request -> launcher), a
     post-claim start failure marks the Run terminal and releases the claim --
     never leaving in_progress without a worker."""
     def boom(dispatcher, run, prompt, worktree=None):
         raise UnknownRuntimeError(f"no adapter registered for runtime={run.runtime!r}")
+
+    # hermes-free must pass the same pre-claim runtime_launch_config_ok gate
+    # eligibility now consults (S7b #482 follow-on) so this test still
+    # exercises the *post-claim* failure path (boom raised by dispatch),
+    # not the pre-claim config gate.
+    monkeypatch.setenv("CORTXT_FREE_MODEL", "test-free-model")
+    monkeypatch.setenv("CORTXT_FREE_PROVIDER", "test-free-provider")
 
     app, store, dispatcher, gh = _real_launcher(tmp_path, dispatch=boom)
     issue_reader = lambda repo, number: _eligible_issue(number)

@@ -2226,7 +2226,15 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             # ADR-038 host boundary: the operator-gated mutation endpoint lives in
             # action_host.py, not the read-only serve.py surface.
             from widget import action_host
-            action_host.main()
+            # --require-commit is opt-in (default None): ordinary local
+            # `cortxt widget --enable-actions` usage is unaffected. Proof/
+            # gated-launch tooling passes it explicitly to fail closed
+            # against a stale checkout or wrong worktree/commit (S7b dogfood
+            # defect: an installed cortxt.exe silently ran stale code) --
+            # this is a proof-tooling-set flag, not a blanket requirement on
+            # every widget start.
+            action_host.main(require_commit=getattr(args, "require_commit", None),
+                             require_clean=getattr(args, "require_clean", False))
         else:
             from widget import serve as widget_serve
             widget_serve.main()
@@ -3029,6 +3037,10 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
             return ResultEnvelope(status="failed", error={"category": "execution_map_gate",
                                                            "code": exc.code,
                                                            "message": exc.code})
+        if exc.__class__.__name__ == "NestedDispatchForbidden":
+            return ResultEnvelope(status="failed", error={"category": "nested_dispatch_forbidden",
+                                                           "code": "nested_dispatch_forbidden",
+                                                           "message": "refusing to dispatch a nested Run from inside a bounded worker"})
         return ResultEnvelope(status="failed", error={"category": "work_error", "message": str(exc)})
 
 
@@ -3222,6 +3234,14 @@ def main(argv: list[str] | None = None) -> int:
     widget_parser.add_argument("--plan-input", type=Path, help="Execution-map plan input JSON for the execution-map view")
     widget_parser.add_argument("--enable-actions", action="store_true",
                                help="Mount the operator-gated mutation endpoint (POST /api/action) on the loopback host (ADR-038 host boundary); default remains read-only")
+    widget_parser.add_argument("--require-commit", default=None,
+                               help="With --enable-actions: fail closed at startup unless the running git commit "
+                                    "matches exactly (opt-in source-integrity check for proof/gated-launch "
+                                    "tooling; ordinary local widget use omits this and is unaffected)")
+    widget_parser.add_argument("--require-clean", action="store_true",
+                               help="With --enable-actions: fail closed at startup unless the worktree has no "
+                                    "uncommitted changes (opt-in, pairs with --require-commit for proof/gated-"
+                                    "launch tooling; ordinary local widget use omits this and is unaffected)")
     widget_parser.add_argument("--tui", action="store_true", help="Render token-styled TUI output (forces ANSI even if piped)")
     widget_parser.add_argument("--tui-truecolor", action="store_true",
                                help="With --tui: derive 24-bit ANSI colors directly from tokens.json hex values (requires a 24-bit-capable terminal)")

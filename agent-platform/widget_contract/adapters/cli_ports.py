@@ -90,13 +90,17 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
 
     if engine_has_provider is None:
         # Authoritative dispatchability: the WorkLauncher dispatches through
-        # scripts.worker_adapters.ADAPTER_REGISTRY, so eligibility must consult
-        # exactly that registry (S7b #482 dogfood defect: the platform engine
-        # context and the launcher registry disagreed).
-        from worker_adapters import is_runtime_dispatchable
+        # scripts.worker_adapters.ADAPTER_REGISTRY AND consults
+        # runtime_launch_config_ok before creating any claim, so eligibility
+        # here must consult exactly that same stricter function -- not the
+        # weaker registry-only is_runtime_dispatchable -- or a runtime with a
+        # registered adapter but missing provider/model/auth config would be
+        # reported eligible and then rejected only after a claim exists
+        # (S7b #482 dogfood defect / follow-on).
+        from worker_adapters import runtime_launch_config_ok
 
         def engine_has_provider(engine_id: str) -> bool:
-            return is_runtime_dispatchable(engine_id)
+            return runtime_launch_config_ok(engine_id)
 
     request = build_dispatch_request_v1(
         issue, choice, repo=repo,

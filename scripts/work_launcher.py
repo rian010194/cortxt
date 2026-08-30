@@ -21,7 +21,8 @@ from launcher_inventory import (InventoryUnavailable, daemon_claims_reader,
                                 dispatcher_registry_reader, git_resources_reader,
                                 lifecycle_sessions_reader, make_graph_reader,
                                 writer_domain_reader)
-from worker_adapters import UnknownRuntimeError, dispatch_async
+from worker_adapters import (UnknownRuntimeError, dispatch_async,
+                             runtime_launch_config_ok)
 
 FORBIDDEN = re.compile(r"[\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6]")
 DEFAULT_ARTIFACT_POLICY = (
@@ -207,6 +208,46 @@ class WorkLauncher:
             raise ExecutionGateError("stale_receipt")
         return claim, result.receipt
 
+    def _on_worker_terminal(self, run_id: str, status: str) -> None:
+        """Release run_id's execution-map claim once its Run goes terminal.
+
+        Wired as dispatch_async's `on_terminal` hook so every terminal
+        status the background worker thread produces -- succeeded, failed,
+        or timed_out -- releases the claim, not just the ones that happen to
+        flow back through `submit()`. Never raises: a release failure here
+        must not crash the worker thread or hide the Run's real completion;
+        it is printed to stderr, matching the launcher's other best-effort
+        terminal bookkeeping (see `_fail_launch`).
+        """
+        if self.claim_store is None:
+            return
+        claim = self._claims_by_run.pop(run_id, None)
+        if claim is None:
+            claim = next((x for x in self.claim_store.active_claims(self.clock())
+                         if x.run_id == run_id), None)
+        if claim is None:
+            return
+        try:
+            self._release(claim, f"terminal:{status}")
+        except ExecutionGateError as exc:
+            print(f"[work_launcher] failed to release claim for {run_id}: {exc}", file=sys.stderr)
+
+    def sweep_expired(self) -> list[str]:
+        """Sweep expired in-progress runs to timed_out and release their
+        execution-map claims.
+
+        `Dispatcher.sweep_expired()` alone only moves the Run registry to
+        timed_out (a stuck worker thread that never itself completes, e.g. a
+        crashed subprocess whose adapter never returned); it has no
+        knowledge of the execution-map claim, so a caller that only ever
+        calls `dispatcher.sweep_expired()` directly leaves those claims held
+        forever. This wrapper is the sanctioned path for both.
+        """
+        swept = self.dispatcher.sweep_expired()
+        for run_id in swept:
+            self._on_worker_terminal(run_id, "timed_out")
+        return swept
+
     def _release(self, claim: ClaimRecord, reason: str) -> None:
         try:
             self.claim_store.release(claim.claim_id, claim.run_id, claim.driver_id,
@@ -270,10 +311,22 @@ class WorkLauncher:
         generic exception.
         """
         try:
-            if worktree.is_dir():
-                self.dispatch(self.dispatcher, run, prompt, worktree=worktree)
-            else:
-                self.dispatch(self.dispatcher, run, prompt)
+            # `on_terminal` releases the execution-map claim once the async
+            # worker actually reaches a terminal status, regardless of which
+            # status that is (succeeded, failed, or timed_out via the
+            # adapter's own timeout handling): dispatch_async's background
+            # thread calls Dispatcher.complete() directly and never went
+            # through WorkLauncher.submit(), so without this hook a claim
+            # stayed held past its Run's terminal transition (S7b terminal-
+            # claim-release dogfood defect).
+            kwargs = {"worktree": worktree} if worktree.is_dir() else {}
+            # `self.dispatch` is injectable (tests pass minimal fakes with a
+            # fixed 3-arg signature); only forward on_terminal when the
+            # callable actually declares it, so existing fakes keep working
+            # unchanged.
+            if "on_terminal" in inspect.signature(self.dispatch).parameters:
+                kwargs["on_terminal"] = self._on_worker_terminal
+            self.dispatch(self.dispatcher, run, prompt, **kwargs)
         except UnknownRuntimeError as exc:
             raise LauncherDispatchError(
                 "adapter_not_registered",
@@ -287,6 +340,17 @@ class WorkLauncher:
                 delegation_depth: int | None = None,
                 artifact_policy: str | None = None,
                 request_id: str | None = None) -> dict:
+        # Single authoritative pre-claim config gate (S7b #482 follow-on):
+        # `runtime_launch_config_ok` is the same function the eligibility
+        # projection consults (action_host._build_dispatch_request,
+        # cli_ports.gh_claim_run_resume), so a runtime that eligibility
+        # reported as launchable can never diverge from what actually starts
+        # here. Checked before ANY claim (execution-map gate or Dispatcher
+        # claim) is created -- a missing provider/model/auth-config runtime
+        # must fail closed before touching either claim store, not just when
+        # the adapter itself later refuses to start.
+        if not runtime_launch_config_ok(runtime):
+            raise ExecutionGateError("runtime_not_configured")
         if self.claim_store is None:
             # Legacy (pre-#262) path: no execution-map gate; Dispatcher owns the run_id.
             run = self.dispatcher.claim(issue_id, workflow, worker_role, runtime,

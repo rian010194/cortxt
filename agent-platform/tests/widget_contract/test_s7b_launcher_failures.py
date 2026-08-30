@@ -163,12 +163,18 @@ def test_pre_insertion_dispatcher_drift_is_safe(tmp_path):
 
 
 def test_unknown_runtime_and_generic_start_exception_are_terminal(tmp_path):
-    """An unknown/unregistered runtime and a generic adapter-start exception
-    both become terminal blocked with stable evidence and a released claim."""
+    """An unregistered/unconfigured runtime is rejected pre-claim (S7b #482
+    follow-on: `runtime_launch_config_ok` is the single authoritative
+    pre-claim gate, so this can never reach the post-claim adapter-start
+    path at all); a generic adapter-start exception for a *registered*
+    runtime still becomes terminal blocked with stable evidence and a
+    released claim."""
     app, store, dispatcher, gh, _ = _launcher(tmp_path / "a", dispatch=_boom_unknown)
-    with pytest.raises(LauncherDispatchError):
+    with pytest.raises(ExecutionGateError) as exc:
         _resume(app, runtime="no-such-engine")
-    assert dispatcher.registry.get("run-1").status == "blocked"
+    assert exc.value.code == "runtime_not_configured"
+    # No claim of any kind was ever created for the rejected runtime.
+    assert dispatcher.registry.get("run-1") is None
     assert store.active_claims(100.0) == ()
 
     app2, store2, dispatcher2, gh2, _ = _launcher(
