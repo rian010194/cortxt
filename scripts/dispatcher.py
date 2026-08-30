@@ -121,6 +121,15 @@ class Run:
     result: Optional[dict] = None
     gh_synced: bool = False  # set True once complete()'s GitHub label/comment step actually succeeds
     gh_sync_claimed_at: Optional[float] = None  # set while a _sync_github() call owns this run's GitHub step
+    # The approved dispatch request carried onto the claim/run record (S7b #471):
+    # the executed mandate must match the confirmed request, and these are
+    # enforced at the launcher boundary (worker ceiling before claim, cost
+    # ceiling on submit, delegation depth per run in spawn_child).
+    max_cost_usd: Optional[float] = None
+    max_parallel_workers: Optional[int] = None
+    delegation_depth: Optional[int] = None
+    artifact_policy: Optional[str] = None
+    request_id: Optional[str] = None
 
     def gh_sync_claim_stale(self, now: Optional[float] = None) -> bool:
         """A claim older than GH_SYNC_CLAIM_LEASE_SECONDS is treated as
@@ -225,13 +234,18 @@ class Dispatcher:
 
     def spawn_child(self, parent_run_id: str, n: int) -> Run:
         """delegation_depth is configurable (default: unbounded, see #136); a
-        child's depth is parent.depth + 1, same issue_id as the root."""
+        child's depth is parent.depth + 1, same issue_id as the root. The
+        per-run approved delegation depth (carried from the dispatch request)
+        takes precedence over the dispatcher's instance default."""
         with self._lock:
             parent = self.registry.get(parent_run_id)
             if parent is None:
                 raise RuntimeError(f"unknown parent run_id {parent_run_id}")
-            if self.delegation_depth is not None and parent.depth >= self.delegation_depth:
-                raise RuntimeError(f"delegation_depth={self.delegation_depth} exceeded: parent already at max depth")
+            depth_limit = (parent.delegation_depth
+                           if getattr(parent, "delegation_depth", None) is not None
+                           else self.delegation_depth)
+            if depth_limit is not None and parent.depth >= depth_limit:
+                raise RuntimeError(f"delegation_depth={depth_limit} exceeded: parent already at max depth")
             child = Run(
                 run_id=f"{parent_run_id}.{n}",
                 issue_id=parent.issue_id,
@@ -390,15 +404,24 @@ class Dispatcher:
 
     @staticmethod
     def _claim_comment(run: Run) -> str:
-        return (
-            "Claimed by dispatcher.\n"
-            f"run_id: `{run.run_id}`\n"
-            f"runtime: {run.runtime}\n"
-            f"worker_role: {run.worker_role}\n"
-            f"claimed_at: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(run.claimed_at))}\n"
-            f"lease_seconds: {run.lease_seconds}\n"
-            "status: workflow:ready -> workflow:in-progress (dispatch-contract.md)."
-        )
+        lines = [
+            "Claimed by dispatcher.",
+            f"run_id: `{run.run_id}`",
+            f"runtime: {run.runtime}",
+            f"worker_role: {run.worker_role}",
+            f"claimed_at: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(run.claimed_at))}",
+            f"lease_seconds: {run.lease_seconds}",
+        ]
+        if run.max_cost_usd is not None:
+            lines.append(f"max_cost_usd: {run.max_cost_usd}")
+        if run.max_parallel_workers is not None:
+            lines.append(f"max_parallel_workers: {run.max_parallel_workers}")
+        if run.delegation_depth is not None:
+            lines.append(f"delegation_depth: {run.delegation_depth}")
+        if run.request_id:
+            lines.append(f"request_id: `{run.request_id}`")
+        lines.append("status: workflow:ready -> workflow:in-progress (dispatch-contract.md).")
+        return "\n".join(lines)
 
     @staticmethod
     def _result_comment(run_id: str, status: str, envelope: dict) -> str:

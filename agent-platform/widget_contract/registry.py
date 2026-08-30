@@ -411,15 +411,26 @@ RUN_SUMMARIES_SCHEMA = {"type": "object", "additionalProperties": False,
                                        "runs": {"type": "array", "items": RUN_SUMMARY_SCHEMA}}}
 
 # --- dispatch.request.v1 (S7b, #471) ----------------------------------------
+ERROR_ENTRY_SCHEMA = {"type": "object", "additionalProperties": False,
+                      "required": ["code", "category", "recovery"],
+                      "properties": {"code": {"type": "string"},
+                                     "category": {"type": "string"},
+                                     "recovery": {"type": "string"}}}
+ENGINE_POLICY_SCHEMA = {"type": "object", "additionalProperties": False,
+                        "required": ["approved_reliability", "approved_engine"],
+                        "properties": {"approved_reliability": {"type": ["string", "null"]},
+                                       "approved_engine": {"type": ["string", "null"]}}}
 DISPATCH_REQUEST_SCHEMA = {"type": "object", "additionalProperties": False,
-                           "required": ["schema_version", "issue_id", "eligible", "workflow",
+                           "required": ["schema_version", "request_id", "issue_id", "eligible", "workflow",
                                         "workflow_labels", "scope", "acceptance_criteria",
                                         "approval_reference", "worker_role", "workflow_id",
                                         "engine", "routing_reason", "routable_task_tags",
-                                        "max_runtime_seconds", "max_cost_usd", "max_parallel_workers",
-                                        "delegation_depth", "artifact_policy", "missing"],
+                                        "engine_policy", "max_runtime_seconds", "max_cost_usd",
+                                        "max_parallel_workers", "delegation_depth",
+                                        "artifact_policy", "missing", "errors"],
                            "properties": {
                                "schema_version": {"const": 1},
+                               "request_id": {"type": "string"},
                                "issue_id": {"type": "string"},
                                "eligible": {"type": "boolean"},
                                "workflow": {"type": "string"},
@@ -432,12 +443,16 @@ DISPATCH_REQUEST_SCHEMA = {"type": "object", "additionalProperties": False,
                                "engine": {"type": ["string", "null"]},
                                "routing_reason": {"type": ["string", "null"]},
                                "routable_task_tags": {"type": "array", "items": {"type": "string"}},
+                               "engine_policy": {"type": ["object", "null"],
+                                                 "oneOf": [ENGINE_POLICY_SCHEMA,
+                                                           {"type": "null"}]},
                                "max_runtime_seconds": {"type": ["integer", "null"], "minimum": 0},
                                "max_cost_usd": {"type": ["number", "null"], "minimum": 0},
                                "max_parallel_workers": {"type": ["integer", "null"], "minimum": 0},
                                "delegation_depth": {"type": ["integer", "null"], "minimum": 0},
                                "artifact_policy": {"type": "string"},
                                "missing": {"type": "array", "items": {"type": "string"}},
+                               "errors": {"type": "array", "items": ERROR_ENTRY_SCHEMA},
                            }}
 
 TYPES = {
