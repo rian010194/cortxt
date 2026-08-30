@@ -773,6 +773,15 @@ function renderHome(winEl,ctx){
 if(typeof OSRenderer!=="undefined"){OSRenderer.register("home",renderHome)}
 
 /* ---- Work app (S5.5b/ADR-044 + S6a surface routing) ------------------ */
+function launchAvailable(s, x) {
+  /* AC1: Work exposes launch only for an eligible REAL Workstream whose
+     complete mandate is authoritatively workflow:ready. Synthetic/demo mode
+     has no action capability (AC7), so the affordance is never shown there;
+     the launch app itself re-checks the server eligibility fail-closed. */
+  return !!s && !!s.model && !s.model.synthetic &&
+    (s.capabilities || []).some(function (a) { return a && a.id === "claim-run"; }) &&
+    !!x && x.workflow === "ready";
+}
 function renderWork(winEl,ctx){
   var s=(ctx&&ctx.state)||state,x=(ctx&&ctx.workstream)||null;
   if(!x){
@@ -814,6 +823,7 @@ function renderWork(winEl,ctx){
           '<p class="wc-main">'+(x.nextAction?esc(x.nextAction):(decision?esc(decision.summary):"No next action pending."))+'</p>'+
           (decision?'<p class="wc-sub">'+esc(decision.summary)+'</p>':'')+
           '<div class="work-actions">'+
+            (launchAvailable(s,x)?'<button type="button" class="primary-action" data-launch-run>Review and start Run →</button>':'')+
             '<button type="button" class="primary-action" data-deep-open="decisions">Open Decisions →</button>'+
             '<button type="button" class="chrome-button" data-deep-open="evidence">Open Evidence</button>'+
             '<button type="button" class="chrome-button" data-deep-open="execution">Execution Inspector</button>'+
@@ -859,6 +869,9 @@ function renderWork(winEl,ctx){
       if(appId==="decisions"&&decision)openDeep(appId,"#"+String(x.number||x.id));
       else openDeep(appId);
     });
+  });
+  qa("[data-launch-run]",winEl).forEach(function(b){
+    b.addEventListener("click",function(){openDeep("launch")});
   });
   qa("[data-win-open]",winEl).forEach(function(b){
     b.addEventListener("click",function(){openWindow(b.dataset.winOpen)});
@@ -927,6 +940,8 @@ function propagateContext(){
   if(d&&!OSRenderer.render("decisions",d,ctx))d.innerHTML=x?'<span class="eyebrow">'+esc(x.id)+'</span><h3>'+esc(x.title)+'</h3><p>'+(x.decision?esc(x.decision.summary):"No authoritative decision is pending for this Workstream.")+'</p>':empty("Select a Workstream to project its decision.");
   var e=q("[data-evidence-body]");
   if(e&&!OSRenderer.render("evidence",e,ctx))e.innerHTML=x?'<span class="eyebrow">'+esc(x.id)+'</span><h3>Evidence</h3><div class="projection-list">'+(x.evidence.length?x.evidence.map(function(ev){return'<article><strong>'+esc(ev.title)+'</strong><p>'+esc(ev.detail)+'</p></article>'}).join(""):empty("No authoritative evidence is attached."))+'</div>':empty("Select a Workstream to project its evidence.");
+  var l=q("[data-launch-body]");
+  if(l&&!OSRenderer.render("launch",l,ctx))l.innerHTML=x?empty("Launch review is unavailable for this Workstream."):empty("Select a Workstream to review and start a Run.");
   var p=q("[data-policies-body]");
   if(p)p.innerHTML=x?'':'';
   qa("[data-studio-frame]").forEach(function(frame){
