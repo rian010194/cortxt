@@ -107,10 +107,11 @@ def run_all_checks():
     check("usage reported unknown, not guessed", "unknown" in env["usage"].lower())
     check("error is None on success", env["error"] is None)
     check("artifacts has exactly one local log reference", len(env["artifacts"]) == 1)
-    log_file = Path(env["artifacts"][0])
+    check("artifact reference is a stable id, not a raw filesystem path",
+          "\\" not in env["artifacts"][0] and "/" not in env["artifacts"][0])
+    log_file = log_dir / f"{run.run_id}.log"
     check("local log file actually written", log_file.exists())
     check("raw stdout lives in the local log, not in the envelope", "did the thing" in log_file.read_text())
-    check("local log is under the injected log_dir (never the repo)", log_file.parent == log_dir)
 
     print("== HermesAdapter.invoke: nonzero exit -> failed envelope, raw stderr in NEITHER evidence NOR error.recovery ==")
     log_dir2 = new_log_dir()
@@ -120,8 +121,10 @@ def run_all_checks():
     check("error category set", env2["error"]["category"] == "worker_nonzero_exit")
     check("raw stderr NOT in error.recovery (AGENTS.md: no model reasoning in GitHub)", "boom" not in env2["error"]["recovery"])
     check("recovery points at the local log instead", "run log" in env2["error"]["recovery"])
+    check("recovery does not leak a raw filesystem path either", "\\" not in env2["error"]["recovery"])
     check("evidence has no raw content", "boom" not in env2["evidence"])
-    check("raw stderr still captured in the local log for debugging", "boom" in Path(env2["artifacts"][0]).read_text())
+    check("raw stderr still captured in the local log for debugging",
+          "boom" in (log_dir2 / f"{run.run_id}.log").read_text())
 
     print("== HermesAdapter.invoke: local log write fails -> evidence/recovery don't falsely claim it succeeded ==")
     blocked_log_dir = Path(tempfile.mkdtemp(prefix="worker-logs-")) / "blocked"
@@ -257,22 +260,26 @@ def run_all_checks():
     check("dsh cost reported unknown, not zero", "unknown" in dsh_env["cost"].lower())
     check("dsh error is None on success", dsh_env["error"] is None)
     check("dsh artifacts has exactly one local log reference", len(dsh_env["artifacts"]) == 1)
-    check("dsh raw stdout lives in the local log, not the envelope", "the answer" in Path(dsh_env["artifacts"][0]).read_text())
+    check("dsh raw stdout lives in the local log, not the envelope",
+          "the answer" in (dsh_log_dir / f"{run.run_id}.log").read_text())
 
     print("== DshWorkerAdapter.invoke: failed status -> failed envelope, raw stderr stays local ==")
+    dsh_log_dir2 = new_log_dir()
     dsh_adapter2 = wa.DshWorkerAdapter(
         invoke_dsh=lambda prompt, timeout_seconds, cwd, provider=None, model=None: {
             "status": "failed", "stdout": "", "stderr": "boom: bad prompt",
             "session_id": None, "finish_reason": None, "elapsed_seconds": 0.4,
         },
-        log_dir=new_log_dir(),
+        log_dir=dsh_log_dir2,
     )
     dsh_env2 = dsh_adapter2.invoke(run, "do the thing", timeout_seconds=60)
     check("dsh status failed", dsh_env2["_status"] == "failed")
     check("dsh error category worker_nonzero_exit", dsh_env2["error"]["category"] == "worker_nonzero_exit")
     check("dsh raw stderr NOT in error.recovery", "boom" not in dsh_env2["error"]["recovery"])
     check("dsh recovery points at the local log", "run log" in dsh_env2["error"]["recovery"])
-    check("dsh raw stderr still captured in the local log", "boom" in Path(dsh_env2["artifacts"][0]).read_text())
+    check("dsh recovery does not leak a raw filesystem path", "\\" not in dsh_env2["error"]["recovery"])
+    check("dsh raw stderr still captured in the local log",
+          "boom" in (dsh_log_dir2 / f"{run.run_id}.log").read_text())
 
     print("== DshWorkerAdapter.invoke: DshInvocationError -> failed envelope, not an exception ==")
     def _raising_invoke(prompt, timeout_seconds, cwd, provider=None, model=None):
@@ -281,6 +288,98 @@ def run_all_checks():
     dsh_env3 = dsh_adapter3.invoke(run, "do the thing", timeout_seconds=60)
     check("dsh status failed on raise", dsh_env3["_status"] == "failed")
     check("dsh error category runtime_unavailable", dsh_env3["error"]["category"] == "runtime_unavailable")
+
+    print("== DshWorkerAdapter.invoke: nested-dispatch marker is set for the in-process SDK call and always restored (S7b #482 follow-on) ==")
+    _seen_marker = {}
+    def _observe_marker(prompt, timeout_seconds, cwd, provider=None, model=None):
+        _seen_marker["during_call"] = os.environ.get(wa.NESTED_DISPATCH_ENV)
+        return {"status": "succeeded", "stdout": "ok", "stderr": "",
+                "session_id": None, "finish_reason": None, "elapsed_seconds": 0.1}
+    assert wa.NESTED_DISPATCH_ENV not in os.environ, "test precondition: marker must start unset"
+    dsh_adapter_marker = wa.DshWorkerAdapter(invoke_dsh=_observe_marker, log_dir=new_log_dir())
+    dsh_adapter_marker.invoke(run, "do the thing", timeout_seconds=60)
+    check("nested-dispatch marker was set on os.environ for the duration of the in-process SDK call",
+          _seen_marker.get("during_call") == "1")
+    check("nested-dispatch marker is restored (unset) after the call returns",
+          wa.NESTED_DISPATCH_ENV not in os.environ)
+
+    def _raising_marker_probe(prompt, timeout_seconds, cwd, provider=None, model=None):
+        raise RuntimeError("sdk blew up mid-call")
+    dsh_adapter_marker2 = wa.DshWorkerAdapter(invoke_dsh=_raising_marker_probe, log_dir=new_log_dir())
+    dsh_adapter_marker2.invoke(run, "do the thing", timeout_seconds=60)
+    check("nested-dispatch marker is restored (unset) even when the SDK call raises",
+          wa.NESTED_DISPATCH_ENV not in os.environ)
+
+    # Prove the marker actually accomplishes something: a Dispatcher.claim()
+    # call made from inside the SDK callable (simulating a DSH-run worker
+    # that shells out to `cortxt work resume`) must be rejected, exactly
+    # like a nested Hermes worker is.
+    import dispatcher as _disp_mod
+    def _nested_claim_attempt(prompt, timeout_seconds, cwd, provider=None, model=None):
+        registry = _disp_mod.RunRegistry(Path(tempfile.mkdtemp(prefix="nested-dsh-")) / "runs.json")
+        gh_fake = type("FakeGH", (), {
+            "get_labels": lambda self, repo, num: ["workflow:ready"],
+            "swap_label": lambda self, repo, num, remove, add: None,
+            "comment": lambda self, repo, num, body: None,
+        })()
+        nested_dispatcher = _disp_mod.Dispatcher(registry, gh_fake)
+        try:
+            nested_dispatcher.claim("o/r#99", "v1", "researcher", "hermes-researcher", 60)
+            return {"status": "failed", "stdout": "", "stderr": "nested claim was NOT rejected",
+                    "session_id": None, "finish_reason": None, "elapsed_seconds": 0.1}
+        except _disp_mod.NestedDispatchForbidden:
+            return {"status": "succeeded", "stdout": "nested claim correctly rejected", "stderr": "",
+                    "session_id": None, "finish_reason": None, "elapsed_seconds": 0.1}
+    dsh_adapter_nested = wa.DshWorkerAdapter(invoke_dsh=_nested_claim_attempt, log_dir=new_log_dir())
+    nested_env = dsh_adapter_nested.invoke(run, "do the thing", timeout_seconds=60)
+    check("a Dispatcher.claim() made from inside the DSH in-process call is rejected as nested dispatch",
+          nested_env["_status"] == "succeeded")
+
+    print("== bounded_worker_context(): reference-counted, thread-safe under concurrent entries ==")
+    import threading as _threading
+    assert wa.NESTED_DISPATCH_ENV not in os.environ, "test precondition: marker must start unset"
+    N_THREADS = 8
+    barrier_enter = _threading.Barrier(N_THREADS)
+    barrier_release = _threading.Event()
+    seen_marker_while_active = []
+    errors = []
+
+    def _worker(idx):
+        try:
+            with wa.bounded_worker_context():
+                barrier_enter.wait(timeout=5)
+                # While at least one thread is inside the context, the
+                # marker must be set -- regardless of how many other
+                # threads have already exited their own context.
+                seen_marker_while_active.append(os.environ.get(wa.NESTED_DISPATCH_ENV))
+                barrier_release.wait(timeout=5)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [_threading.Thread(target=_worker, args=(i,)) for i in range(N_THREADS)]
+    for t in threads:
+        t.start()
+    # Let all threads reach "inside the context, waiting at barrier_enter",
+    # then release them all together so their exits race each other.
+    time.sleep(0.2)
+    barrier_release.set()
+    for t in threads:
+        t.join(timeout=5)
+    check("no exceptions from concurrent bounded_worker_context() entries", not errors)
+    check("marker was observed set ('1') by every concurrent thread while active",
+          seen_marker_while_active == ["1"] * N_THREADS)
+    check("marker is restored (unset) once the last concurrent context exits",
+          wa.NESTED_DISPATCH_ENV not in os.environ)
+    check("internal depth counter returned to zero", wa._nested_dispatch_depth == 0)
+
+    print("== bounded_worker_context(): nested/overlapping entries keep the marker set until the outermost exits ==")
+    assert wa.NESTED_DISPATCH_ENV not in os.environ
+    with wa.bounded_worker_context():
+        with wa.bounded_worker_context():
+            check("marker set with two nested contexts active", os.environ.get(wa.NESTED_DISPATCH_ENV) == "1")
+        check("marker still set after inner context exits (outer still active)",
+              os.environ.get(wa.NESTED_DISPATCH_ENV) == "1")
+    check("marker restored after outer context exits too", wa.NESTED_DISPATCH_ENV not in os.environ)
 
     print("== ADAPTER_REGISTRY: dsh registered by default ==")
     check("dsh present in registry", "dsh" in wa.ADAPTER_REGISTRY)
@@ -319,6 +418,25 @@ def run_all_checks():
     check("codex is NOT dispatchable (no launcher adapter)", wa.is_runtime_dispatchable("codex") is False)
     check("unknown runtime is NOT dispatchable", wa.is_runtime_dispatchable("no-such") is False)
 
+    print("== runtime_launch_config_ok: stricter pre-launch config check (S7b #482 follow-on) ==")
+    _old_fm, _old_fp = os.environ.pop("CORTXT_FREE_MODEL", None), os.environ.pop("CORTXT_FREE_PROVIDER", None)
+    try:
+        check("hermes-free registered but NOT launch-ready without CORTXT_FREE_MODEL/PROVIDER",
+              wa.runtime_launch_config_ok("hermes-free") is False)
+        os.environ["CORTXT_FREE_MODEL"] = "upstage/solar-pro4:free"
+        os.environ["CORTXT_FREE_PROVIDER"] = "nous"
+        check("hermes-free launch-ready once configured", wa.runtime_launch_config_ok("hermes-free") is True)
+    finally:
+        os.environ.pop("CORTXT_FREE_MODEL", None)
+        os.environ.pop("CORTXT_FREE_PROVIDER", None)
+        if _old_fm is not None:
+            os.environ["CORTXT_FREE_MODEL"] = _old_fm
+        if _old_fp is not None:
+            os.environ["CORTXT_FREE_PROVIDER"] = _old_fp
+    check("hermes-researcher has no extra config requirement -> launch-ready",
+          wa.runtime_launch_config_ok("hermes-researcher") is True)
+    check("unregistered runtime is never launch-ready", wa.runtime_launch_config_ok("no-such") is False)
+
     print("== HermesFreeAdapter.invoke: succeeded envelope via the shared invoker ==")
     hf_log_dir = new_log_dir()
     hf_seen = []
@@ -348,6 +466,10 @@ def run_all_checks():
     check("hermes-free profile is the run worker role", hf_seen and hf_seen[0][0] == "researcher")
     check("hermes-free model/provider come from env, never hardcoded",
           hf_seen and hf_seen[0][1] == "test-free-model" and hf_seen[0][2] == "test-free-provider")
+    check("hermes-free envelope reports the actual model used, not a blanket unknown (S7b #482)",
+          hf_env["model"] == "test-free-model")
+    check("hermes-free envelope reports the actual provider used, not a blanket unknown (S7b #482)",
+          hf_env["provider"] == "test-free-provider")
     check("hermes-free cost unknown, not zero", "unknown" in hf_env["cost"].lower())
     check("hermes-free evidence does NOT carry raw stdout", "free answer" not in hf_env["evidence"])
     check("hermes-free error None on success", hf_env["error"] is None)

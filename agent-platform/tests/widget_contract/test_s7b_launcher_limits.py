@@ -141,12 +141,19 @@ def test_max_parallel_workers_ceiling_enforced_before_claim(tmp_path):
 
 
 def test_adapter_start_failure_maps_to_stable_launcher_dispatch_error(tmp_path):
+    """A registered-but-later-unavailable adapter still maps to a stable
+    LauncherDispatchError post-claim. An entirely unregistered/unconfigured
+    runtime ("no-such-engine") is instead rejected pre-claim by
+    `runtime_launch_config_ok` (S7b #482 follow-on, see
+    test_s7b_launcher_failures.test_unknown_runtime_and_generic_start_exception_are_terminal)
+    -- this test exercises the still-reachable post-claim path using a
+    registered runtime whose dispatch callable raises UnknownRuntimeError."""
     def unavailable(dispatcher, run, prompt, worktree=None):
         raise UnknownRuntimeError(f"no adapter registered for runtime={run.runtime!r}")
 
     app, _ = _launcher(tmp_path, dispatch=unavailable)
     with pytest.raises(LauncherDispatchError) as exc:
-        app.resume("acme/repo#1", runtime="no-such-engine", worker_role="builder",
+        app.resume("acme/repo#1", runtime="hermes-free", worker_role="builder",
                    workflow="work-launcher/v1", max_runtime_seconds=5400, prompt="bounded",
                    max_cost_usd=8.0, max_parallel_workers=2, delegation_depth=1,
                    artifact_policy="policy", request_id="sha256:abc")

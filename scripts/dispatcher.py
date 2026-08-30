@@ -52,6 +52,7 @@ retries just that step for terminal runs where it didn't, giving that split
 an actual recovery path instead of only a stderr print from the caller.
 """
 import json
+import os
 import subprocess
 import threading
 import time
@@ -62,6 +63,26 @@ from typing import Optional
 
 DEFAULT_MAX_PARALLEL_WORKERS = None  # None = no ceiling (operator decision 2026-08-15, see #136)
 DEFAULT_DELEGATION_DEPTH = None  # None = no ceiling (operator decision 2026-08-15, see #136)
+
+# Set by worker_adapters._bounded_worker_env() on every bounded-worker
+# subprocess (HermesAdapter, HermesFreeAdapter, DshWorkerAdapter's hermes
+# CLI calls). Dispatcher.claim() checks this at the single choke point every
+# launch path (WorkLauncher and any legacy caller) goes through: a process
+# that inherited this marker is itself a bounded worker, and must not be
+# able to claim a second Run. This is a technical guard enforced in code,
+# not a prompt instruction -- a Hermes worker that shells out to
+# `cortxt work resume` or imports this module directly inherits the marker
+# from its parent subprocess env and is rejected before any registry write
+# (S7b nested-dispatch dogfood defect: an unauthorized second Run was
+# created from a separate, cwd-relative registry/store).
+NESTED_DISPATCH_ENV = "CORTXT_BOUNDED_WORKER"
+
+
+class NestedDispatchForbidden(RuntimeError):
+    """Raised when a process already running as a bounded worker attempts
+    to claim another Run through the sanctioned dispatcher entry point."""
+
+    code = "nested_dispatch_forbidden"
 GH_SYNC_CLAIM_LEASE_SECONDS = 30  # generous headroom over a real swap_label+comment round trip
 GH_CLI_TIMEOUT_SECONDS = 20  # strictly less than the lease above, so a gh call can never outlive its own claim
 
@@ -205,6 +226,11 @@ class Dispatcher:
         self.delegation_depth = delegation_depth
 
     def claim(self, issue_id: str, workflow: str, worker_role: str, runtime: str, lease_seconds: int, run_id: Optional[str] = None) -> Run:
+        if os.environ.get(NESTED_DISPATCH_ENV):
+            raise NestedDispatchForbidden(
+                "refusing claim(): this process is running inside a bounded worker "
+                f"({NESTED_DISPATCH_ENV} is set) and must not dispatch a nested Run"
+            )
         repo, num = issue_id.split("#")
         with self._lock:
             active = self.registry.active_issue_ids()
