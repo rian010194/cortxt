@@ -126,6 +126,89 @@ def test_source_signature_reports_clean_and_dirty_worktree(tmp_path):
     assert sig_dirty["clean_status"] == "dirty"
 
 
+def _init_repo(repo: Path) -> None:
+    import subprocess
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
+    (repo / "f.txt").write_text("x")
+    # `scripts/` must already be a tracked directory (as it is in the real
+    # repo) so `git status --porcelain` lists the untracked audit-evidence
+    # files individually, not the whole new directory collapsed to one line.
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "dispatcher.py").write_text("# placeholder")
+    subprocess.run(["git", "add", "f.txt", "scripts/dispatcher.py"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
+
+
+def test_source_signature_ignores_known_audit_evidence_files(tmp_path):
+    """Only the four known audit-evidence paths, all untracked and nothing
+    else changed, must still read as clean -- they are proof-run artifacts
+    left deliberately untracked (#482), not a sign the worktree is dirty."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    scripts_dir = repo / "scripts"
+    (scripts_dir / "runs.json").write_text("{}")
+    (scripts_dir / "runs.claims.sqlite3").write_bytes(b"")
+    (scripts_dir / "runs.claims.sqlite3-shm").write_bytes(b"")
+    (scripts_dir / "runs.claims.sqlite3-wal").write_bytes(b"")
+
+    sig = source_signature(repo_dir=repo)
+    assert sig["clean_status"] == "clean"
+
+
+def test_source_signature_dirty_with_extra_untracked_file_alongside_known(tmp_path):
+    """An additional untracked file alongside the four known ones must still
+    make the worktree dirty -- the exemption covers exactly those four
+    paths, not "any untracked files present"."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    scripts_dir = repo / "scripts"
+    (scripts_dir / "runs.json").write_text("{}")
+    (scripts_dir / "other_untracked.txt").write_text("surprise")
+
+    sig = source_signature(repo_dir=repo)
+    assert sig["clean_status"] == "dirty"
+
+
+def test_source_signature_dirty_with_modified_tracked_file(tmp_path):
+    """A modified tracked file must still make the worktree dirty, even
+    with none of the four known audit-evidence files present."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    (repo / "f.txt").write_text("changed")
+
+    sig = source_signature(repo_dir=repo)
+    assert sig["clean_status"] == "dirty"
+
+
+def test_source_signature_path_match_is_exact_not_prefix(tmp_path):
+    """A file that merely looks like a known audit-evidence path (a `.bak`
+    sibling, or the same basename in a different directory) is NOT exempted
+    and still makes the worktree dirty -- the match is exact, not a
+    prefix/substring match."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    scripts_dir = repo / "scripts"
+    (scripts_dir / "runs.json.bak").write_text("{}")
+
+    sig = source_signature(repo_dir=repo)
+    assert sig["clean_status"] == "dirty"
+
+    other_dir = repo / "other" / "scripts"
+    other_dir.mkdir(parents=True)
+    (other_dir / "runs.json").write_text("{}")
+    (scripts_dir / "runs.json.bak").unlink()
+
+    sig2 = source_signature(repo_dir=repo)
+    assert sig2["clean_status"] == "dirty"
+
+
 def test_require_clean_refuses_dirty_worktree(monkeypatch, capsys):
     """A dirty worktree with --require-clean fails closed BEFORE the server
     binds, even when --require-commit matches: a matching SHA alone doesn't

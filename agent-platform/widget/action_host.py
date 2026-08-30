@@ -642,6 +642,37 @@ class _ReusableThreadingHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
+# Paths (repo-root-relative, forward-slash form) that `--require-clean`
+# ignores when deciding clean/dirty. These are known audit-evidence files
+# written by a previous proof run (#482) and intentionally left untracked
+# in this worktree -- their presence is not a signal that the worktree is
+# actually unpredictable, so a source-integrity check that flagged them
+# would be reporting a false positive, not a real risk. Matching is exact
+# (repo-root-relative path only): a same-named file elsewhere, or a file
+# that merely starts with one of these names (e.g. a `.bak` sibling), is
+# NOT exempted and still makes the worktree dirty.
+_KNOWN_AUDIT_EVIDENCE_PATHS = frozenset({
+    "scripts/runs.json",
+    "scripts/runs.claims.sqlite3",
+    "scripts/runs.claims.sqlite3-shm",
+    "scripts/runs.claims.sqlite3-wal",
+})
+
+
+def _git_status_path(status_line: str) -> str:
+    """Extract the path from one `git status --porcelain` line.
+
+    Porcelain v1 format is `XY PATH` (or `XY ORIG -> PATH` for renames);
+    the path starts at column 4. Normalizes backslashes to forward slashes
+    so the comparison is stable across Windows/POSIX.
+    """
+    path = status_line[3:] if len(status_line) > 3 else status_line.strip()
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1]
+    path = path.strip().strip('"')
+    return path.replace("\\", "/")
+
+
 def source_signature(*, run_subprocess: Callable = None, repo_dir: Path | None = None) -> dict:
     """The running code's actual identity: file path plus git commit/branch.
 
@@ -677,7 +708,11 @@ def source_signature(*, run_subprocess: Callable = None, repo_dir: Path | None =
     if status_output is None and _git("rev-parse", "--is-inside-work-tree") != "true":
         clean_status = "unknown"
     else:
-        clean_status = "clean" if not status_output else "dirty"
+        relevant_lines = [
+            line for line in (status_output.splitlines() if status_output else [])
+            if _git_status_path(line) not in _KNOWN_AUDIT_EVIDENCE_PATHS
+        ]
+        clean_status = "clean" if not relevant_lines else "dirty"
 
     return {
         "module_file": str(Path(__file__).resolve()),
