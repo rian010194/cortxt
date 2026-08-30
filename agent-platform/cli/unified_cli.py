@@ -2253,11 +2253,16 @@ def _gh_review_to_done(issue_id: str) -> dict:
     return gh_review_to_done(issue_id)
 
 
-def _claim_run_resume(issue_id: str, *, registry: Path) -> dict:
-    """Resume a ready issue through the execution-map-gated launcher (shared default, injectable for tests)."""
+def _claim_run_resume(issue_id: str, *, registry: Path, approval_ref: str | None = None) -> dict:
+    """Resume a ready issue through the execution-map-gated launcher (shared default, injectable for tests).
+
+    `approval_ref` is the operator-provided approval reference; the launcher
+    binds it to the issue-derived dispatch-request approval reference (AC8).
+    """
     from widget_contract.adapters.cli_ports import gh_claim_run_resume
     return gh_claim_run_resume(issue_id, registry=registry,
-                               scripts_dir=_get_agent_platform_path().parent / "scripts")
+                               scripts_dir=_get_agent_platform_path().parent / "scripts",
+                               approval_ref=approval_ref)
 
 
 def _gh_webhooks_reader(repo: str) -> list[dict]:
@@ -2380,7 +2385,8 @@ def _run_widget_action(args: argparse.Namespace) -> ResultEnvelope:
             widget, action_id=args.action_id, approval_ref=args.approval_ref, confirm=args.confirm,
             labels_reader=_gh_issue_workflow_labels, transition_writer=_gh_inbox_to_ready,
             review_transition_writer=_gh_review_to_done,
-            resume=lambda issue_id: _claim_run_resume(issue_id, registry=registry))
+            resume=lambda issue_id: _claim_run_resume(issue_id, registry=registry,
+                                                      approval_ref=args.approval_ref))
         result = executor.execute(action, context)
         print(json.dumps(result, indent=2))
         return ResultEnvelope(status="succeeded", issue_id=issue_id, evidence=[{"action": result}])

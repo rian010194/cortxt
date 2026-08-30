@@ -18,7 +18,10 @@ from typing import Any, Mapping, Sequence
 
 WORKFLOW = re.compile(r"^workflow:(inbox|ready|in-progress|review|blocked|done)$", re.I)
 SECTION = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.M)
-BULLET = re.compile(r"^[-*]\s+(.+?)\s*$", re.M)
+# Markdown unordered (-, *) and ordered (1., 1)) list items (issue #471 uses
+# ordered acceptance criteria; the dispatch-contract limits are bulleted).
+BULLET = re.compile(r"^(?:[-*]|\d+[.)])\s+(.+?)\s*$", re.M)
+LIST_MARKER = re.compile(r"^(?:[-*]|\d+[.)])\s+")
 
 RELATION_PART_OF = "part-of"
 RELATION_BLOCKED_BY = "blocked-by"
@@ -45,7 +48,7 @@ def _section(body: str, names: Sequence[str]) -> str | None:
             continue
         end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
         value = body[match.end():end].strip()
-        value = re.sub(r"^[-*]\s+", "", value, flags=re.M).strip()
+        value = re.sub(r"^(?:[-*]|\d+[.)])\s+", "", value, flags=re.M).strip()
         return value or None
     return None
 
@@ -100,12 +103,17 @@ def _first_usd(value: str) -> float | None:
 
 
 def parse_dispatch_limits(body: str) -> dict[str, Any]:
-    """Parse explicit dispatch-limit fields; a missing field is simply absent."""
+    """Parse explicit dispatch-limit fields; a missing field is simply absent.
+
+    The real issue format (#471) writes these as Markdown list items
+    (``- Worker role: builder.``, ``- Max cost: USD 8.00 ...``), so each line's
+    leading list marker is stripped before the field prefix is matched.
+    """
     limits: dict[str, Any] = {}
     worker_role = None
     workflow = None
     for line in (body or "").splitlines():
-        stripped = line.strip()
+        stripped = LIST_MARKER.sub("", line.strip(), count=1).strip()
         lowered = stripped.casefold()
         if lowered.startswith("worker role:"):
             worker_role = stripped.split(":", 1)[1].strip().rstrip(".")

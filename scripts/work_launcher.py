@@ -20,7 +20,7 @@ from launcher_inventory import (InventoryUnavailable, daemon_claims_reader,
                                 dispatcher_registry_reader, git_resources_reader,
                                 lifecycle_sessions_reader, make_graph_reader,
                                 writer_domain_reader)
-from worker_adapters import dispatch_async
+from worker_adapters import UnknownRuntimeError, dispatch_async
 
 FORBIDDEN = re.compile(r"[\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6]")
 DEFAULT_ARTIFACT_POLICY = (
@@ -34,6 +34,22 @@ class ExecutionGateError(RuntimeError):
 
     def __init__(self, code: str):
         self.code = code
+        super().__init__(code)
+
+
+class LauncherDispatchError(RuntimeError):
+    """Stable adapter-start failure surfaced through the launcher boundary.
+
+    Covers "engine routed but no adapter registered" (unavailable engine) and
+    worktree-creation failure at launch time, so the action host can render a
+    stable category plus recovery guidance instead of a generic 500.
+    """
+
+    category = "adapter_start_failed"
+
+    def __init__(self, code: str, recovery: str | None = None):
+        self.code = code
+        self.recovery = recovery or "Inspect the launcher/worker log and retry with a fresh run."
         super().__init__(code)
 
 
@@ -211,14 +227,29 @@ class WorkLauncher:
         worker subprocess runs with that directory as cwd. A worktree path that
         was never created (the resume path) is not forwarded -- there is no
         directory to bind to, and inventing one would break the worker.
+
+        An engine with no registered adapter (adapter-start failure) is mapped
+        to a stable `LauncherDispatchError` with recovery guidance instead of a
+        generic exception.
         """
-        if worktree.is_dir():
-            self.dispatch(self.dispatcher, run, prompt, worktree=worktree)
-        else:
-            self.dispatch(self.dispatcher, run, prompt)
+        try:
+            if worktree.is_dir():
+                self.dispatch(self.dispatcher, run, prompt, worktree=worktree)
+            else:
+                self.dispatch(self.dispatcher, run, prompt)
+        except UnknownRuntimeError as exc:
+            raise LauncherDispatchError(
+                "adapter_not_registered",
+                recovery=f"No adapter is registered for runtime {run.runtime!r}; register an adapter, or "
+                         f"approve an issue Engine policy that routes to a registered engine.") from exc
 
     def _launch(self, issue_id: str, prompt: str, *, runtime: str, worker_role: str,
-                workflow: str, max_runtime_seconds: int, create_worktree: bool) -> dict:
+                workflow: str, max_runtime_seconds: int, create_worktree: bool,
+                max_cost_usd: float | None = None,
+                max_parallel_workers: int | None = None,
+                delegation_depth: int | None = None,
+                artifact_policy: str | None = None,
+                request_id: str | None = None) -> dict:
         if self.claim_store is None:
             # Legacy (pre-#262) path: no execution-map gate; Dispatcher owns the run_id.
             run = self.dispatcher.claim(issue_id, workflow, worker_role, runtime,
@@ -234,10 +265,18 @@ class WorkLauncher:
                 if getattr(proc, "returncode", 0):
                     self.dispatcher.complete(run_id, "blocked",
                                              {"error": "isolated worktree creation failed"})
-                    raise RuntimeError("isolated worktree creation failed")
+                    raise LauncherDispatchError(
+                        "worktree_creation_failed",
+                        recovery="Ensure the worktree root is writable and retry with a fresh run.")
             self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id, "worktree": str(worktree),
                     "branch": f"work/{run_id}"}
+
+        # Per-request worker ceiling, carried from the approved dispatch request
+        # and enforced before any claim is acquired (issue #471 AC2/AC4).
+        if max_parallel_workers is not None and hasattr(self.dispatcher.registry, "active_issue_ids"):
+            if len(self.dispatcher.registry.active_issue_ids()) >= max_parallel_workers:
+                raise ExecutionGateError("max_parallel_workers_reached")
 
         run_id = self.id_generator()
         worktree = self.worktree_root / run_id
@@ -245,6 +284,21 @@ class WorkLauncher:
         try:
             run = self._claim_dispatcher(run_id, issue_id, workflow, worker_role, runtime,
                                          max_runtime_seconds)
+            # Carry the full dispatch request onto the durable run record so the
+            # claim/run identity reflects the executed mandate (issue #471 AC2).
+            limit_fields = {}
+            if max_cost_usd is not None:
+                limit_fields["max_cost_usd"] = max_cost_usd
+            if max_parallel_workers is not None:
+                limit_fields["max_parallel_workers"] = max_parallel_workers
+            if delegation_depth is not None:
+                limit_fields["delegation_depth"] = delegation_depth
+            if artifact_policy is not None:
+                limit_fields["artifact_policy"] = artifact_policy
+            if request_id is not None:
+                limit_fields["request_id"] = request_id
+            if limit_fields and hasattr(self.dispatcher.registry, "update"):
+                self.dispatcher.registry.update(run_id, **limit_fields)
             if create_worktree:
                 branch = f"work/{run_id}"
                 self.worktree_root.mkdir(parents=True, exist_ok=True)
@@ -252,9 +306,11 @@ class WorkLauncher:
                                           str(worktree), "HEAD"], capture_output=True, text=True,
                                          cwd=str(self.repo_path))
                 if getattr(proc, "returncode", 0):
-                    self.dispatcher.complete(run_id, "blocked", {"error": "isolated worktree creation failed"})
-                    self._release(claim, "terminal:blocked")
-                    raise RuntimeError("isolated worktree creation failed")
+                    self.dispatcher.complete(run_id, "blocked",
+                                             {"error": "isolated worktree creation failed"})
+                    raise LauncherDispatchError(
+                        "worktree_creation_failed",
+                        recovery="Ensure the worktree root is writable and retry with a fresh run.")
             self._claims_by_run[run_id] = claim
             self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id, "worktree": str(worktree),
@@ -283,12 +339,50 @@ class WorkLauncher:
                             create_worktree=True)
 
     def resume(self, issue_id: str, *, runtime: str, worker_role: str, workflow: str,
-               max_runtime_seconds: int, prompt: str) -> dict:
+               max_runtime_seconds: int, prompt: str,
+               max_cost_usd: float | None = None,
+               max_parallel_workers: int | None = None,
+               delegation_depth: int | None = None,
+               artifact_policy: str | None = None,
+               request_id: str | None = None) -> dict:
+        """Resume a ready issue with the full approved dispatch request.
+
+        The dispatch-contract fields (cost ceiling, parallel-worker ceiling,
+        delegation depth, artifact policy, request snapshot id) are carried
+        onto the durable claim/run record and enforced: the worker ceiling is
+        checked before any claim, the cost ceiling is enforced in `submit()`
+        (a reported cost above the ceiling is recorded as budget_exceeded,
+        never silently accepted as success), and delegation depth is enforced
+        per run by `Dispatcher.spawn_child`.
+        """
         return self._launch(issue_id, prompt, runtime=runtime, worker_role=worker_role,
                             workflow=workflow, max_runtime_seconds=max_runtime_seconds,
-                            create_worktree=False)
+                            create_worktree=False, max_cost_usd=max_cost_usd,
+                            max_parallel_workers=max_parallel_workers,
+                            delegation_depth=delegation_depth,
+                            artifact_policy=artifact_policy, request_id=request_id)
 
     def submit(self, run_id: str, result: dict) -> dict:
+        """Record a terminal result, enforcing the approved cost ceiling.
+
+        When the run's mandate carries `max_cost_usd` and the result envelope
+        reports a numeric cost above that ceiling, the run is recorded as
+        `budget_exceeded` instead of whatever status the worker claimed --
+        the platform never accepts an over-budget result as success.
+        """
+        registry = getattr(self.dispatcher, "registry", None)
+        ceiling = None
+        if registry is not None and hasattr(registry, "get"):
+            run = registry.get(run_id)
+            if run is not None:
+                ceiling = getattr(run, "max_cost_usd", None)
+        if ceiling is not None:
+            cost = (result or {}).get("cost")
+            if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost > ceiling:
+                result = {**dict(result or {}), "status": "budget_exceeded",
+                          "error": {"category": "budget_exceeded",
+                                    "recovery": "Approved cost ceiling exceeded; amend the issue ceiling or "
+                                                "reduce scope, then start a fresh run."}}
         run = self.dispatcher.complete(run_id, result["status"], result)
         claim = self._claims_by_run.pop(run_id, None)
         if claim is None and self.claim_store is not None:

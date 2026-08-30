@@ -20,6 +20,7 @@ import re
 import secrets
 import time
 from collections import deque
+from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Deque, Mapping
@@ -61,6 +62,7 @@ ACTION_REQUEST_SCHEMA = {
         "action_id": {"type": "string"},
         "issue_id": {"type": "string"},
         "approval_ref": {"type": "string"},
+        "request_id": {"type": "string"},
         "confirm": {"type": "boolean"},
     },
 }
@@ -83,6 +85,14 @@ _WIDGET_VERSION_ID = re.compile(r"^[a-z0-9][a-z0-9.-]{0,31}$")
 class ActionHostError(RuntimeError):
     http_status = 500
     kind = "action_error"
+    category = None
+    recovery = None
+
+    def __init__(self, message: str | None = None, *, code: str | None = None,
+                 errors: list[dict[str, str]] | None = None) -> None:
+        super().__init__(message or self.kind)
+        self.code = code
+        self.errors = errors
 
 
 class InvalidRequest(ActionHostError):
@@ -100,13 +110,31 @@ class ActionDenied(ActionHostError):
     kind = "action_denied"
 
 
+class DispatchDenied(ActionHostError):
+    """The authoritative dispatch request is not eligible (missing mandate fields)."""
+
+    http_status = 409
+    kind = "dispatch_request_denied"
+
+
+class StaleDispatchDenied(ActionHostError):
+    """The confirmed request snapshot no longer matches the current Issue."""
+
+    http_status = 409
+    kind = "stale_dispatch_request"
+    category = "mandate"
+    recovery = "Re-fetch the dispatch request and confirm the current snapshot before launching."
+
+
 class GateDenied(ActionHostError):
     http_status = 409
     kind = "execution_map_gate"
 
     def __init__(self, code: str, message: str | None = None) -> None:
-        super().__init__(message or code)
-        self.code = code
+        super().__init__(message or code, code=code)
+        category, recovery = GATE_RECOVERY.get(code, ("execution_map", "Re-run the execution-map gate and retry."))
+        self.category = category
+        self.recovery = recovery
 
 
 class RateLimited(ActionHostError):
@@ -122,6 +150,42 @@ class NotFound(ActionHostError):
 class StoreUnavailable(ActionHostError):
     http_status = 503
     kind = "store_unavailable"
+
+
+class AdapterStartFailure(ActionHostError):
+    """Adapter-start failure with a stable category and recovery guidance (AC5)."""
+
+    http_status = 503
+    kind = "adapter_start_failed"
+    category = "adapter"
+
+    def __init__(self, code: str, message: str | None = None,
+                 recovery: str | None = None) -> None:
+        super().__init__(message or code, code=code)
+        self.recovery = recovery or "Inspect the launcher/worker log and retry with a fresh run."
+
+
+# Stable recovery guidance per execution-map gate code (AC5).
+GATE_RECOVERY = {
+    "resource_collision": ("claim_conflict",
+                           "Another active Run owns this issue or its resources; wait for it to finish or cancel it."),
+    "stale_receipt": ("execution_map",
+                      "The execution-map receipt is stale; refresh it and retry."),
+    "stale_issue_generation": ("execution_map",
+                               "The issue changed between preview and launch; re-confirm the current mandate."),
+    "issue_not_ready": ("workflow",
+                        "The issue is not workflow:ready; the operator must approve and mark it ready first."),
+    "inventory_unavailable": ("execution_map",
+                              "Execution-map inventory is unavailable; retry when the store is reachable."),
+    "execution_map_store_required": ("execution_map",
+                                     "The execution-map claim store is not configured; start the launcher with a store."),
+    "claim_not_active": ("execution_map",
+                         "The claim is no longer active; re-run the execution-map gate."),
+    "claim_release_conflict": ("execution_map",
+                               "The claim release conflicted; reconcile the claim store manually."),
+    "max_parallel_workers_reached": ("limits",
+                                     "The approved max parallel workers ceiling is reached; wait for a slot or amend the issue."),
+}
 
 
 class ActionHost:
@@ -145,8 +209,9 @@ class ActionHost:
         self._registry = Path(registry) if registry else (AGENT_PLATFORM_DIR / ".dispatch" / "runs.json")
         self._session_store = Path(session_store) if session_store else (AGENT_PLATFORM_DIR / ".sessions")
         self._issue_reader = issue_reader or read_issue_detail
-        self._resume = resume or (lambda issue_id: gh_claim_run_resume(
-            issue_id, registry=self._registry, scripts_dir=self._scripts_dir))
+        self._resume = resume or (lambda issue_id, *, approval_ref=None, request_id=None: gh_claim_run_resume(
+            issue_id, registry=self._registry, scripts_dir=self._scripts_dir,
+            approval_ref=approval_ref, request_id=request_id))
         self.token = token or secrets.token_urlsafe(32)
         self._clock = clock
         self._max_requests = max_requests
@@ -227,18 +292,54 @@ class ActionHost:
         issue_ref = f"{repo}#{number}"
         return read_run_summaries_v1(issue_ref, self._read_dispatcher_runs(), self._read_session_docs())
 
-    def dispatch_request(self, repo: str, number: int) -> dict:
-        """The authoritative dispatch request a confirmation view must render."""
-        issue = self._issue_reader(repo, number)
+    def _build_dispatch_request(self, repo: str, number: int, *, issue: Mapping[str, Any] | None = None) -> dict:
+        """Build the authoritative dispatch request for an issue (shared by the
+        read endpoint and the claim-run confirmation binding)."""
         from routing.engine_manifest import DEFAULT_FALLBACK_ENGINE, DEFAULT_MANIFESTS
         from runtime.default_engine_context import build_default_engine_context
         from widget_contract.dispatch_request import route_for_issue
 
+        issue = issue if issue is not None else self._issue_reader(repo, number)
         choice, tags = route_for_issue(issue, DEFAULT_MANIFESTS, fallback=DEFAULT_FALLBACK_ENGINE)
         context = build_default_engine_context()
         engine_registered = bool(choice and context.get(choice.engine_id).has_provider)
         return read_dispatch_request_v1(
             issue, choice, repo=repo, engine_registered=engine_registered, routable_tags=tags)
+
+    def dispatch_request(self, repo: str, number: int) -> dict:
+        """The authoritative dispatch request a confirmation view must render."""
+        return self._build_dispatch_request(repo, number)
+
+    def _bind_claim_run(self, issue_id: str, approval_ref: str, request_id: str) -> dict:
+        """Re-read the Issue and bind the confirmed action to the current request.
+
+        The authoritative dispatch request is rebuilt from the live Issue at
+        execution time (never from the browser): an ineligible request, a stale
+        request snapshot (`request_id` mismatch -- the Issue changed between
+        preview and confirmation), or a mismatched approval reference all fail
+        closed with stable categories before any launch effect.
+        """
+        repo, number = self._issue_ref(issue_id)
+        request = self._build_dispatch_request(repo, number)
+        if not request["eligible"]:
+            raise DispatchDenied(
+                "dispatch request is not eligible; missing: " + ", ".join(request["missing"]),
+                code="dispatch_request_not_eligible", errors=request["errors"])
+        if request_id != request["request_id"]:
+            raise StaleDispatchDenied(
+                "dispatch request snapshot has changed; re-fetch and confirm the current request")
+        if approval_ref != request["approval_reference"]:
+            raise AuthorizationFailure("approval reference does not match the approved issue mandate")
+        return request
+
+    @staticmethod
+    def _issue_ref(issue_id: str) -> tuple[str, int]:
+        if not isinstance(issue_id, str) or "#" not in issue_id:
+            raise InvalidRequest("issue_id must be owner/repo#N")
+        repo, number = issue_id.rsplit("#", 1)
+        if not repo or not number.isdigit():
+            raise InvalidRequest("issue_id must be owner/repo#N")
+        return repo, int(number)
 
     def _widget_for_action(self, action_id: str):
         if any(action.id == action_id for action in self.widget.actions):
@@ -258,12 +359,19 @@ class ActionHost:
             raise RateLimited("too many action requests; wait and retry")
 
     def execute(self, *, action_id: str, issue_id: str, approval_ref: str,
-                confirm: bool, token: str) -> dict:
+                confirm: bool, token: str, request_id: str | None = None) -> dict:
         """Validate, re-authorize, and dispatch one action request.
 
         Raises ActionHostError subclasses on every failure; nothing executes
         unless the operator gate (approval reference + confirm) and the
         registered adapters' own state checks all pass.
+
+        For `workflow.claim-run.v1` the confirmed action is bound to the
+        authoritative server-derived dispatch request (AC8): the request
+        snapshot id from the confirmation view must match the live Issue's
+        digest, the approval reference must match the issue-derived reference,
+        and the executor context carries that authoritative reference so a
+        caller-supplied value that does not match fails closed.
         """
         if not token or token != self.token:
             raise AuthorizationFailure("missing or invalid session token")
@@ -277,21 +385,41 @@ class ActionHost:
             action = build_action(widget, action_id, issue_id, approval_ref, confirm)
         except UnknownAction as exc:
             raise NotFound(f"unknown action {action_id}") from exc
+        authoritative_reference = None
+        if action.operation == "workflow.claim-run.v1":
+            if not isinstance(request_id, str) or not request_id:
+                raise InvalidRequest(
+                    "request_id is required for claim-run; confirm the current dispatch request snapshot")
+            request = self._bind_claim_run(issue_id, approval_ref, request_id)
+            authoritative_reference = request["approval_reference"]
         executor, context = build_executor(
             widget, action_id=action_id, approval_ref=approval_ref, confirm=confirm,
             labels_reader=self._labels_reader, transition_writer=self._transition_writer,
-            resume=self._resume, review_transition_writer=self._review_transition_writer)
+            resume=partial(self._resume, approval_ref=approval_ref, request_id=request_id),
+            review_transition_writer=self._review_transition_writer,
+            authoritative_reference=authoritative_reference)
         try:
             result = executor.execute(action, context)
         except AuthorizationDenied as exc:
             raise AuthorizationFailure(str(exc)) from exc
         except (TransitionDenied, ClaimRunDenied) as exc:
+            if exc.__class__.__name__ == "DispatchNotEligible" and hasattr(exc, "errors"):
+                raise DispatchDenied(
+                    str(exc), code="dispatch_request_not_eligible", errors=exc.errors) from exc
+            if exc.__class__.__name__ == "ApprovalMismatch":
+                raise AuthorizationFailure(str(exc)) from exc
+            if exc.__class__.__name__ == "StaleDispatchRequest":
+                raise StaleDispatchDenied(str(exc)) from exc
             raise ActionDenied(str(exc)) from exc
         except ValidationError as exc:
             raise InvalidRequest(str(exc)) from exc
         except Exception as exc:
             if exc.__class__.__name__ == "ExecutionGateError" and hasattr(exc, "code"):
                 raise GateDenied(exc.code) from exc
+            if exc.__class__.__name__ == "LauncherDispatchError" and hasattr(exc, "code"):
+                raise AdapterStartFailure(
+                    exc.code, message=str(exc),
+                    recovery=getattr(exc, "recovery", None)) from exc
             raise
         return {"status": "ok", "operation": action.operation, "result": result}
 
@@ -458,13 +586,19 @@ class ActionHandler(SimpleHTTPRequestHandler):
         try:
             result = self.host.execute(action_id=payload["action_id"], issue_id=payload["issue_id"],
                                        approval_ref=payload["approval_ref"], confirm=payload["confirm"],
-                                       token=token)
+                                       token=token, request_id=payload.get("request_id"))
             self._json(200, {"status": "ok", "action_id": payload["action_id"],
                              "issue_id": payload["issue_id"], **result})
         except ActionHostError as exc:
             body = {"status": "error", "error": {"kind": exc.kind, "message": str(exc)}}
-            if isinstance(exc, GateDenied):
+            if getattr(exc, "code", None):
                 body["error"]["code"] = exc.code
+            if getattr(exc, "category", None):
+                body["error"]["category"] = exc.category
+            if getattr(exc, "recovery", None):
+                body["error"]["recovery"] = exc.recovery
+            if getattr(exc, "errors", None):
+                body["error"]["errors"] = exc.errors
             self._json(exc.http_status, body)
         except Exception as exc:  # fail closed, never surface internals as success
             self._json(500, {"status": "error",
