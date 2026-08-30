@@ -30,6 +30,7 @@ CSS = (WIDGET / "os.css").read_text(encoding="utf-8")
 JS = (WIDGET / "work-console.js").read_text(encoding="utf-8")
 RENDERER = (WIDGET / "os-renderer.js").read_text(encoding="utf-8")
 D_RENDERER = (WIDGET / "app-renderer-decisions-evidence.js").read_text(encoding="utf-8")
+LAUNCH = (WIDGET / "app-renderer-work-launch.js").read_text(encoding="utf-8")
 
 SURFACES = {"home", "work"}
 REGISTERED_WINDOWS = {"decisions", "evidence", "policies", "execution", "atlas", "connections", "studio"}
@@ -817,9 +818,103 @@ def test_no_user_facing_workspace_misuse():
 @pytest.mark.parametrize("name", [
     "index.html", "os.css", "work-console.js", "apps.json",
     "shell-commands.js", "os-renderer.js", "app-renderer-decisions-evidence.js",
+    "app-renderer-work-launch.js",
 ])
 def test_site_mirror_is_identical(name):
     assert (WIDGET / name).read_text(encoding="utf-8") == (MIRROR / name).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("name", ["fixtures/dispatch-request.json", "fixtures/workstreams.json"])
+def test_site_mirror_fixtures_are_identical(name):
+    assert (WIDGET / name).read_text(encoding="utf-8") == (MIRROR / name).read_text(encoding="utf-8")
+
+
+# --- S7b: Review-and-start-Run surface (#471) ------------------------------
+
+def test_launch_app_registered_in_registry_and_renderer():
+    # The launch capability is a registered operator window app with the
+    # dispatch-request read and the claim-run action; the Work surface carries
+    # the affordance; the renderer registers into the shared registry.
+    by_id = {a["id"]: a for a in APPS["apps"]}
+    launch = by_id["launch"]
+    assert launch["kind"] == "window" and launch["mode"] == "operator"
+    assert "read:dispatch-request" in launch["capabilities"]
+    assert "act:claim-run" in launch["capabilities"]
+    assert 'data-window="launch"' in HTML
+    assert "data-launch-body" in HTML
+    assert 'OSRenderer.register("launch", renderLaunch)' in LAUNCH
+    assert "function renderLaunch(winEl, ctx)" in LAUNCH
+    assert 'data-launch-run' in JS
+    assert 'openDeep("launch")' in JS
+
+
+def test_work_exposes_launch_only_for_eligible_real_ready_workstream_ac1():
+    # AC1: launch is exposed from Work only when the shell is real (not
+    # synthetic), the claim-run action capability is present, and the selected
+    # Workstream is authoritatively workflow:ready.
+    assert "function launchAvailable(s, x)" in JS
+    assert "!s.model.synthetic" in JS
+    assert 'a.id === "claim-run"' in JS
+    assert 'x.workflow === "ready"' in JS
+    assert 'data-launch-run' in JS
+    # Synthetic mode has no action capability, so the affordance is never shown.
+    assert 'launchAvailable(s,x)' in JS
+
+
+def test_launch_renderer_binds_server_snapshot_ac2():
+    # AC2: the confirmation view renders the server-returned dispatch request
+    # byte-for-field and binds the action POST to the server-derived request
+    # snapshot id and approval reference (no free-text approval for claim-run).
+    assert 'fetch("api/dispatch-request?issue="' in LAUNCH
+    assert "req.scope" in LAUNCH and "req.acceptance_criteria" in LAUNCH
+    assert "req.worker_role" in LAUNCH and "req.workflow_id" in LAUNCH
+    assert "req.engine" in LAUNCH and "req.routing_reason" in LAUNCH
+    assert "req.engine_policy" in LAUNCH
+    assert "req.max_runtime_seconds" in LAUNCH and "req.max_cost_usd" in LAUNCH
+    assert "req.max_parallel_workers" in LAUNCH and "req.delegation_depth" in LAUNCH
+    assert "req.artifact_policy" in LAUNCH and "req.approval_reference" in LAUNCH
+    assert 'action_id: "claim-run"' in LAUNCH
+    assert 'approval_ref: req.approval_reference' in LAUNCH
+    assert 'request_id: req.request_id' in LAUNCH
+    # The approval reference is displayed read-only from the server; there is
+    # no editable approval input on the claim-run path.
+    assert 'data-launch-approval' in LAUNCH
+    assert 'data-launch-request-id' in LAUNCH
+
+
+def test_synthetic_preview_is_deterministic_and_non_mutating_ac7():
+    # AC7: synthetic mode renders a deterministic preview and never reaches the
+    # action port; the static host has no mutation route at all.
+    assert 'fixtures/dispatch-request.json' in LAUNCH
+    assert "s.model.synthetic" in LAUNCH
+    assert "no action capability" in LAUNCH
+    assert "non-mutating" in LAUNCH
+    # The action POST exists only on the live confirmed path.
+    assert 'fetch("api/action"' in LAUNCH
+    # The static default host stays read-only (no do_POST).
+    serve = (WIDGET / "serve.py").read_text(encoding="utf-8")
+    assert "do_POST" not in serve
+    # The synthetic fixture is a schema-shaped deterministic request.
+    fixture = json.loads((WIDGET / "fixtures" / "dispatch-request.json").read_text(encoding="utf-8"))
+    assert fixture["schema_version"] == 1
+    assert fixture["request_id"].startswith("sha256:")
+    assert fixture["eligible"] is True
+    assert fixture["acceptance_criteria"] and fixture["engine_policy"]
+
+
+def test_launch_ineligible_renders_structured_errors_with_recovery():
+    # AC1/AC5: an ineligible dispatch request renders the server's structured
+    # errors with recovery guidance and no launch affordance.
+    assert "req.eligible" in LAUNCH
+    assert "req.errors" in LAUNCH and "req.missing" in LAUNCH
+    assert "e.recovery" in LAUNCH
+    assert "Not launchable" in LAUNCH
+
+
+def test_launch_renderer_loaded_before_shell_boot():
+    # The renderer registers before the shell's renderAll() at boot.
+    assert HTML.index('src="os-renderer.js"') < HTML.index('src="app-renderer-work-launch.js"')
+    assert HTML.index('src="app-renderer-work-launch.js"') < HTML.index('src="work-console.js"')
 
 
 # --- S1a: Studio navigation boundary (issue #435) -----------------
