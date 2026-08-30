@@ -6,6 +6,7 @@ import inspect
 import json
 import re
 import subprocess
+import sys
 import time
 import uuid
 from dataclasses import asdict
@@ -57,7 +58,8 @@ class LauncherGitHub:
     """Small injectable GitHub port used by the launcher."""
 
     def _gh(self, *args: str) -> str:
-        proc = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=20)
+        proc = subprocess.run(["gh", *args], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=20)
         if proc.returncode:
             raise RuntimeError(proc.stderr.strip())
         return proc.stdout
@@ -212,6 +214,41 @@ class WorkLauncher:
         except ClaimConflict:
             raise ExecutionGateError("claim_release_conflict")
 
+    def _fail_launch(self, run_id: str, claim: ClaimRecord, exc: BaseException) -> None:
+        """Make a post-claim launch failure terminal and release the claim.
+
+        The Dispatcher claim is already durable by the time any adapter-start
+        failure can occur, so a failed worker start must never leave the Run
+        ``in_progress`` without a live worker: the Run is marked terminal
+        (``blocked`` with stable ``adapter_start_failed`` evidence) through the
+        sanctioned dispatcher completion path, and the execution-map claim is
+        released with an attributable terminal reason. Original Run history is
+        preserved: ``Dispatcher.complete`` refuses a second terminal
+        transition, so a later legitimate completion cannot overwrite this
+        record, and retry always requires a fresh ``run_id`` and fresh receipt.
+        """
+        evidence = {
+            "category": "adapter_start_failed",
+            "code": getattr(exc, "code", None) or exc.__class__.__name__,
+            "recovery": getattr(exc, "recovery", None) or str(exc),
+        }
+        try:
+            self.dispatcher.complete(
+                run_id, "blocked",
+                {"error": evidence,
+                 "evidence": f"worker start failed before dispatch: {type(exc).__name__}"})
+        except Exception as complete_exc:  # noqa: BLE001 - best-effort terminal marker
+            # The Run may not exist yet (failure before the dispatcher claim
+            # landed) or complete() itself failed; the claim release still runs.
+            print(f"[work_launcher] failed to mark {run_id} terminal: {complete_exc}",
+                  file=sys.stderr)
+        finally:
+            try:
+                self._release(claim, "terminal:adapter_start_failed")
+            except ExecutionGateError as release_exc:
+                print(f"[work_launcher] failed to release claim for {run_id}: {release_exc}",
+                      file=sys.stderr)
+
     def _claim_dispatcher(self, run_id: str, *args: Any):
         if "run_id" not in inspect.signature(self.dispatcher.claim).parameters:
             raise ExecutionGateError("dispatcher_run_id_unsupported")
@@ -306,11 +343,11 @@ class WorkLauncher:
                                           str(worktree), "HEAD"], capture_output=True, text=True,
                                          cwd=str(self.repo_path))
                 if getattr(proc, "returncode", 0):
-                    self.dispatcher.complete(run_id, "blocked",
-                                             {"error": "isolated worktree creation failed"})
-                    raise LauncherDispatchError(
+                    failure = LauncherDispatchError(
                         "worktree_creation_failed",
                         recovery="Ensure the worktree root is writable and retry with a fresh run.")
+                    self._fail_launch(run_id, claim, failure)
+                    raise failure
             self._claims_by_run[run_id] = claim
             self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id, "worktree": str(worktree),
@@ -318,9 +355,11 @@ class WorkLauncher:
                     "claim_generation": claim.claim_generation,
                     "receipt_id": receipt.receipt_id, "store_session_id": claim.store_session_id,
                     "engine_session_id": claim.engine_session_id}
-        except Exception:
-            if run_id not in self._claims_by_run:
-                self._release(claim, "launch_rejected")
+        except Exception as exc:
+            # Any post-claim failure (adapter start, worktree creation,
+            # dispatcher claim drift) must make the durable Run terminal and
+            # release the claim -- never leave in_progress without a worker.
+            self._fail_launch(run_id, claim, exc)
             raise
 
     def create(self, repo: str, title: str, scope: str, acceptance_criteria: list[str], *,

@@ -32,7 +32,8 @@ def gh_issue_workflow_labels(issue_id: str) -> list[str]:
     """Read an issue's workflow labels via gh (injectable for tests)."""
     repo, number = issue_id.rsplit("#", 1)
     proc = subprocess.run(["gh", "issue", "view", number, "-R", repo, "--json", "labels"],
-                          capture_output=True, text=True, timeout=20)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=20)
     if proc.returncode:
         raise RuntimeError(proc.stderr.strip())
     return [x.get("name", "") for x in json.loads(proc.stdout).get("labels", [])]
@@ -43,7 +44,8 @@ def gh_inbox_to_ready(issue_id: str) -> dict:
     repo, number = issue_id.rsplit("#", 1)
     proc = subprocess.run(["gh", "issue", "edit", number, "-R", repo,
                            "--remove-label", "workflow:inbox", "--add-label", "workflow:ready"],
-                          capture_output=True, text=True, timeout=20)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=20)
     if proc.returncode:
         raise RuntimeError(proc.stderr.strip())
     return {"issue_id": issue_id, "status": "ok"}
@@ -54,7 +56,8 @@ def gh_review_to_done(issue_id: str) -> dict:
     repo, number = issue_id.rsplit("#", 1)
     proc = subprocess.run(["gh", "issue", "edit", number, "-R", repo,
                            "--remove-label", "workflow:review", "--add-label", "workflow:done"],
-                          capture_output=True, text=True, timeout=20)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=20)
     if proc.returncode:
         raise RuntimeError(proc.stderr.strip())
     return {"issue_id": issue_id, "status": "ok"}
@@ -119,7 +122,8 @@ class BlockerLookupError(GitHubReadError): kind = "blocker_lookup"
 
 def _run(runner: Callable[..., Any], command: list[str], timeout_seconds: int) -> Any:
     try:
-        result = runner(command, capture_output=True, text=True, timeout=timeout_seconds)
+        result = runner(command, capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=timeout_seconds)
     except (subprocess.TimeoutExpired, TimeoutError) as exc:
         raise GitHubTimeoutError("GitHub read timed out") from exc
     if result.returncode:
