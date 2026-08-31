@@ -8,7 +8,7 @@ import pytest
 from widget_contract.adapters.github_ports import (
     FIELDS, MAX_ISSUES, BlockerLookupError, GitHubExitError, GitHubJSONError,
     GitHubTimeoutError, GitHubTruncationError, LastGoodCandidates, LastGoodIssues,
-    list_all_open_issues, resolve_blocker_status,
+    list_all_open_issues, read_issue_detail, resolve_blocker_status,
 )
 from widget_contract.candidates import build_candidates_view, render_candidates_tree
 from widget_contract.loader import load_widget_file
@@ -41,10 +41,38 @@ def test_all_open_read_has_required_fields_timeout_and_completeness_bound():
     command, options = calls[0][0][0], calls[0][1]
     assert result == {"schema_version": 1, "complete": True, "issues": []}
     assert command == ["gh", "issue", "list", "--repo", "o/r", "--state", "open", "--limit", str(MAX_ISSUES), "--json", FIELDS]
-    assert options == {"capture_output": True, "text": True, "timeout": 30}
+    assert options == {"capture_output": True, "text": True, "encoding": "utf-8",
+                       "errors": "replace", "timeout": 30}
     many = json.dumps([{}] * MAX_ISSUES)
     with pytest.raises(GitHubTruncationError):
         list_all_open_issues("o/r", run_subprocess=lambda *a, **k: completed(many))
+
+
+def test_gh_read_decodes_utf8_not_system_cp1252():
+    """S7b (#482): gh output must be decoded explicitly as UTF-8, never the
+    system cp1252 locale, so non-cp1252 UTF-8 Issue content (U+03A9, emoji)
+    round-trips without mojibake and PYTHONUTF8 is not required."""
+    payload = {"number": 7, "title": "Förändrings Ω issue",
+               "body": "Scope med Ω-tecken 💡 (ej cp1252)",
+               "labels": [{"name": "workflow:ready"}], "state": "open",
+               "milestone": None, "url": "https://example.invalid/issues/7"}
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    calls = []
+
+    def runner(command, **kw):
+        calls.append(kw)
+        # Simulate subprocess text=True: decode the raw UTF-8 bytes with the
+        # encoding the adapter requested. If it requested cp1252, the Greek
+        # omega / emoji would be mojibake (or replacement chars).
+        return SimpleNamespace(stdout=raw.decode(kw["encoding"], errors=kw.get("errors", "strict")),
+                               stderr="", returncode=0)
+
+    issue = read_issue_detail("o/r", 7, run_subprocess=runner)
+    assert calls and calls[0]["encoding"] == "utf-8"
+    assert calls[0]["errors"] == "replace"
+    assert issue["title"] == "Förändrings Ω issue"
+    assert "Ω" in issue["body"] and "💡" in issue["body"]
+    assert issue["labels"] == [{"name": "workflow:ready"}]
 
 
 @pytest.mark.parametrize(("runner", "error"), [

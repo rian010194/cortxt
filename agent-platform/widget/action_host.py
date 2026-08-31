@@ -20,6 +20,7 @@ import re
 import secrets
 import time
 from collections import deque
+from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Deque, Mapping
@@ -32,7 +33,11 @@ from widget_contract.adapters.github_ports import (
     LastGoodIssues, TransitionDenied, gh_inbox_to_ready, gh_issue_workflow_labels, gh_review_to_done,
     read_issue_detail,
 )
-from widget_contract.adapters.store_reads import read_run_summaries_v1, read_workstream_detail_v1
+from widget_contract.adapters.store_reads import (
+    read_dispatch_request_v1,
+    read_run_summaries_v1,
+    read_workstream_detail_v1,
+)
 from widget_contract.run_authority import correlate_run_summaries, summaries_from_sessions
 from widget_contract.workstreams import build_workstream_projection
 from widget_contract.generation import generate_widget_spec
@@ -57,6 +62,7 @@ ACTION_REQUEST_SCHEMA = {
         "action_id": {"type": "string"},
         "issue_id": {"type": "string"},
         "approval_ref": {"type": "string"},
+        "request_id": {"type": "string"},
         "confirm": {"type": "boolean"},
     },
 }
@@ -79,6 +85,14 @@ _WIDGET_VERSION_ID = re.compile(r"^[a-z0-9][a-z0-9.-]{0,31}$")
 class ActionHostError(RuntimeError):
     http_status = 500
     kind = "action_error"
+    category = None
+    recovery = None
+
+    def __init__(self, message: str | None = None, *, code: str | None = None,
+                 errors: list[dict[str, str]] | None = None) -> None:
+        super().__init__(message or self.kind)
+        self.code = code
+        self.errors = errors
 
 
 class InvalidRequest(ActionHostError):
@@ -96,13 +110,31 @@ class ActionDenied(ActionHostError):
     kind = "action_denied"
 
 
+class DispatchDenied(ActionHostError):
+    """The authoritative dispatch request is not eligible (missing mandate fields)."""
+
+    http_status = 409
+    kind = "dispatch_request_denied"
+
+
+class StaleDispatchDenied(ActionHostError):
+    """The confirmed request snapshot no longer matches the current Issue."""
+
+    http_status = 409
+    kind = "stale_dispatch_request"
+    category = "mandate"
+    recovery = "Re-fetch the dispatch request and confirm the current snapshot before launching."
+
+
 class GateDenied(ActionHostError):
     http_status = 409
     kind = "execution_map_gate"
 
     def __init__(self, code: str, message: str | None = None) -> None:
-        super().__init__(message or code)
-        self.code = code
+        super().__init__(message or code, code=code)
+        category, recovery = GATE_RECOVERY.get(code, ("execution_map", "Re-run the execution-map gate and retry."))
+        self.category = category
+        self.recovery = recovery
 
 
 class RateLimited(ActionHostError):
@@ -118,6 +150,45 @@ class NotFound(ActionHostError):
 class StoreUnavailable(ActionHostError):
     http_status = 503
     kind = "store_unavailable"
+
+
+class AdapterStartFailure(ActionHostError):
+    """Adapter-start failure with a stable category and recovery guidance (AC5)."""
+
+    http_status = 503
+    kind = "adapter_start_failed"
+    category = "adapter"
+
+    def __init__(self, code: str, message: str | None = None,
+                 recovery: str | None = None) -> None:
+        super().__init__(message or code, code=code)
+        self.recovery = recovery or "Inspect the launcher/worker log and retry with a fresh run."
+
+
+# Stable recovery guidance per execution-map gate code (AC5).
+GATE_RECOVERY = {
+    "resource_collision": ("claim_conflict",
+                           "Another active Run owns this issue or its resources; wait for it to finish or cancel it."),
+    "stale_receipt": ("execution_map",
+                      "The execution-map receipt is stale; refresh it and retry."),
+    "stale_issue_generation": ("execution_map",
+                               "The issue changed between preview and launch; re-confirm the current mandate."),
+    "issue_not_ready": ("workflow",
+                        "The issue is not workflow:ready; the operator must approve and mark it ready first."),
+    "inventory_unavailable": ("execution_map",
+                              "Execution-map inventory is unavailable; retry when the store is reachable."),
+    "execution_map_store_required": ("execution_map",
+                                     "The execution-map claim store is not configured; start the launcher with a store."),
+    "claim_not_active": ("execution_map",
+                         "The claim is no longer active; re-run the execution-map gate."),
+    "claim_release_conflict": ("execution_map",
+                               "The claim release conflicted; reconcile the claim store manually."),
+    "max_parallel_workers_reached": ("limits",
+                                     "The approved max parallel workers ceiling is reached; wait for a slot or amend the issue."),
+    "runtime_not_configured": ("engine",
+                               "The routed engine is registered but missing required provider/model/auth "
+                               "configuration; set it and retry with a fresh dispatch request."),
+}
 
 
 class ActionHost:
@@ -137,12 +208,15 @@ class ActionHost:
         self._labels_reader = labels_reader
         self._transition_writer = transition_writer
         self._review_transition_writer = review_transition_writer
-        self._scripts_dir = Path(scripts_dir) if scripts_dir else (AGENT_PLATFORM_DIR / "scripts")
+        # Launcher modules live in the repository-level scripts directory,
+        # alongside agent-platform, not inside the Python package tree.
+        self._scripts_dir = Path(scripts_dir) if scripts_dir else (AGENT_PLATFORM_DIR.parent / "scripts")
         self._registry = Path(registry) if registry else (AGENT_PLATFORM_DIR / ".dispatch" / "runs.json")
         self._session_store = Path(session_store) if session_store else (AGENT_PLATFORM_DIR / ".sessions")
         self._issue_reader = issue_reader or read_issue_detail
-        self._resume = resume or (lambda issue_id: gh_claim_run_resume(
-            issue_id, registry=self._registry, scripts_dir=self._scripts_dir))
+        self._resume = resume or (lambda issue_id, *, approval_ref=None, request_id=None: gh_claim_run_resume(
+            issue_id, registry=self._registry, scripts_dir=self._scripts_dir,
+            approval_ref=approval_ref, request_id=request_id))
         self.token = token or secrets.token_urlsafe(32)
         self._clock = clock
         self._max_requests = max_requests
@@ -223,6 +297,65 @@ class ActionHost:
         issue_ref = f"{repo}#{number}"
         return read_run_summaries_v1(issue_ref, self._read_dispatcher_runs(), self._read_session_docs())
 
+    def _build_dispatch_request(self, repo: str, number: int, *, issue: Mapping[str, Any] | None = None) -> dict:
+        """Build the authoritative dispatch request for an issue (shared by the
+        read endpoint and the claim-run confirmation binding)."""
+        import sys
+
+        from routing.engine_manifest import DEFAULT_FALLBACK_ENGINE, DEFAULT_MANIFESTS
+        from widget_contract.dispatch_request import route_for_issue
+
+        issue = issue if issue is not None else self._issue_reader(repo, number)
+        choice, tags = route_for_issue(issue, DEFAULT_MANIFESTS, fallback=DEFAULT_FALLBACK_ENGINE)
+        # Authoritative dispatchability: eligibility must match what the
+        # WorkLauncher can actually dispatch. `runtime_launch_config_ok` (not
+        # the weaker registry-only `is_runtime_dispatchable`) is the same
+        # function WorkLauncher._launch consults before creating any claim,
+        # so a runtime missing required provider/model/auth config is
+        # reported ineligible here -- never approved for display and then
+        # rejected only after a claim exists (S7b #482 follow-on).
+        if str(self._scripts_dir) not in sys.path:
+            sys.path.insert(0, str(self._scripts_dir))
+        from worker_adapters import runtime_launch_config_ok
+        engine_registered = bool(choice and runtime_launch_config_ok(choice.engine_id))
+        return read_dispatch_request_v1(
+            issue, choice, repo=repo, engine_registered=engine_registered, routable_tags=tags)
+
+    def dispatch_request(self, repo: str, number: int) -> dict:
+        """The authoritative dispatch request a confirmation view must render."""
+        return self._build_dispatch_request(repo, number)
+
+    def _bind_claim_run(self, issue_id: str, approval_ref: str, request_id: str) -> dict:
+        """Re-read the Issue and bind the confirmed action to the current request.
+
+        The authoritative dispatch request is rebuilt from the live Issue at
+        execution time (never from the browser): an ineligible request, a stale
+        request snapshot (`request_id` mismatch -- the Issue changed between
+        preview and confirmation), or a mismatched approval reference all fail
+        closed with stable categories before any launch effect.
+        """
+        repo, number = self._issue_ref(issue_id)
+        request = self._build_dispatch_request(repo, number)
+        if not request["eligible"]:
+            raise DispatchDenied(
+                "dispatch request is not eligible; missing: " + ", ".join(request["missing"]),
+                code="dispatch_request_not_eligible", errors=request["errors"])
+        if request_id != request["request_id"]:
+            raise StaleDispatchDenied(
+                "dispatch request snapshot has changed; re-fetch and confirm the current request")
+        if approval_ref != request["approval_reference"]:
+            raise AuthorizationFailure("approval reference does not match the approved issue mandate")
+        return request
+
+    @staticmethod
+    def _issue_ref(issue_id: str) -> tuple[str, int]:
+        if not isinstance(issue_id, str) or "#" not in issue_id:
+            raise InvalidRequest("issue_id must be owner/repo#N")
+        repo, number = issue_id.rsplit("#", 1)
+        if not repo or not number.isdigit():
+            raise InvalidRequest("issue_id must be owner/repo#N")
+        return repo, int(number)
+
     def _widget_for_action(self, action_id: str):
         if any(action.id == action_id for action in self.widget.actions):
             return self.widget
@@ -241,12 +374,19 @@ class ActionHost:
             raise RateLimited("too many action requests; wait and retry")
 
     def execute(self, *, action_id: str, issue_id: str, approval_ref: str,
-                confirm: bool, token: str) -> dict:
+                confirm: bool, token: str, request_id: str | None = None) -> dict:
         """Validate, re-authorize, and dispatch one action request.
 
         Raises ActionHostError subclasses on every failure; nothing executes
         unless the operator gate (approval reference + confirm) and the
         registered adapters' own state checks all pass.
+
+        For `workflow.claim-run.v1` the confirmed action is bound to the
+        authoritative server-derived dispatch request (AC8): the request
+        snapshot id from the confirmation view must match the live Issue's
+        digest, the approval reference must match the issue-derived reference,
+        and the executor context carries that authoritative reference so a
+        caller-supplied value that does not match fails closed.
         """
         if not token or token != self.token:
             raise AuthorizationFailure("missing or invalid session token")
@@ -260,21 +400,41 @@ class ActionHost:
             action = build_action(widget, action_id, issue_id, approval_ref, confirm)
         except UnknownAction as exc:
             raise NotFound(f"unknown action {action_id}") from exc
+        authoritative_reference = None
+        if action.operation == "workflow.claim-run.v1":
+            if not isinstance(request_id, str) or not request_id:
+                raise InvalidRequest(
+                    "request_id is required for claim-run; confirm the current dispatch request snapshot")
+            request = self._bind_claim_run(issue_id, approval_ref, request_id)
+            authoritative_reference = request["approval_reference"]
         executor, context = build_executor(
             widget, action_id=action_id, approval_ref=approval_ref, confirm=confirm,
             labels_reader=self._labels_reader, transition_writer=self._transition_writer,
-            resume=self._resume, review_transition_writer=self._review_transition_writer)
+            resume=partial(self._resume, approval_ref=approval_ref, request_id=request_id),
+            review_transition_writer=self._review_transition_writer,
+            authoritative_reference=authoritative_reference)
         try:
             result = executor.execute(action, context)
         except AuthorizationDenied as exc:
             raise AuthorizationFailure(str(exc)) from exc
         except (TransitionDenied, ClaimRunDenied) as exc:
+            if exc.__class__.__name__ == "DispatchNotEligible" and hasattr(exc, "errors"):
+                raise DispatchDenied(
+                    str(exc), code="dispatch_request_not_eligible", errors=exc.errors) from exc
+            if exc.__class__.__name__ == "ApprovalMismatch":
+                raise AuthorizationFailure(str(exc)) from exc
+            if exc.__class__.__name__ == "StaleDispatchRequest":
+                raise StaleDispatchDenied(str(exc)) from exc
             raise ActionDenied(str(exc)) from exc
         except ValidationError as exc:
             raise InvalidRequest(str(exc)) from exc
         except Exception as exc:
             if exc.__class__.__name__ == "ExecutionGateError" and hasattr(exc, "code"):
                 raise GateDenied(exc.code) from exc
+            if exc.__class__.__name__ == "LauncherDispatchError" and hasattr(exc, "code"):
+                raise AdapterStartFailure(
+                    exc.code, message=str(exc),
+                    recovery=getattr(exc, "recovery", None)) from exc
             raise
         return {"status": "ok", "operation": action.operation, "result": result}
 
@@ -354,6 +514,9 @@ class ActionHandler(SimpleHTTPRequestHandler):
         if path in ("/api/runs", "/api/runs/"):
             self._handle_read("runs")
             return
+        if path in ("/api/dispatch-request", "/api/dispatch-request/"):
+            self._handle_read("dispatch-request")
+            return
         super().do_GET()
 
     def _issue_ref_from_query(self) -> tuple[str, int] | None:
@@ -377,8 +540,10 @@ class ActionHandler(SimpleHTTPRequestHandler):
         try:
             if kind == "workstream-detail":
                 self._json(200, self.host.workstream_detail(repo, number))
-            else:
+            elif kind == "runs":
                 self._json(200, self.host.run_summaries(repo, number))
+            else:
+                self._json(200, self.host.dispatch_request(repo, number))
         except Exception as exc:
             self._json(503, {"schema_version": 1, "status": "unavailable",
                              "error": {"kind": getattr(exc, "kind", "read_error"), "message": str(exc)}})
@@ -436,13 +601,19 @@ class ActionHandler(SimpleHTTPRequestHandler):
         try:
             result = self.host.execute(action_id=payload["action_id"], issue_id=payload["issue_id"],
                                        approval_ref=payload["approval_ref"], confirm=payload["confirm"],
-                                       token=token)
+                                       token=token, request_id=payload.get("request_id"))
             self._json(200, {"status": "ok", "action_id": payload["action_id"],
                              "issue_id": payload["issue_id"], **result})
         except ActionHostError as exc:
             body = {"status": "error", "error": {"kind": exc.kind, "message": str(exc)}}
-            if isinstance(exc, GateDenied):
+            if getattr(exc, "code", None):
                 body["error"]["code"] = exc.code
+            if getattr(exc, "category", None):
+                body["error"]["category"] = exc.category
+            if getattr(exc, "recovery", None):
+                body["error"]["recovery"] = exc.recovery
+            if getattr(exc, "errors", None):
+                body["error"]["errors"] = exc.errors
             self._json(exc.http_status, body)
         except Exception as exc:  # fail closed, never surface internals as success
             self._json(500, {"status": "error",
@@ -471,7 +642,130 @@ class _ReusableThreadingHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
-def main(*, port: int = PORT, spec_path: Path | None = None) -> int:
+# Paths (repo-root-relative, forward-slash form) that `--require-clean`
+# ignores when deciding clean/dirty, but ONLY when the git status code for
+# that line is exactly "??" (untracked). These are known audit-evidence
+# files written by a previous proof run (#482) and intentionally left
+# untracked in this worktree -- their presence as untracked runtime state is
+# not a signal that the worktree is actually unpredictable, so a
+# source-integrity check that flagged them would be reporting a false
+# positive, not a real risk. A staged (e.g. `A `) or tracked-and-modified
+# (e.g. ` M`, `MM`) copy of one of these paths is NOT exempted -- that is a
+# real change to tracked/staged content, not the intentional untracked case,
+# and still makes the worktree dirty. Matching is exact (repo-root-relative
+# path only): a same-named file elsewhere, or a file that merely starts with
+# one of these names (e.g. a `.bak` sibling), is NOT exempted and still
+# makes the worktree dirty.
+_KNOWN_AUDIT_EVIDENCE_PATHS = frozenset({
+    "scripts/runs.json",
+    "scripts/runs.claims.sqlite3",
+    "scripts/runs.claims.sqlite3-shm",
+    "scripts/runs.claims.sqlite3-wal",
+})
+
+
+def _git_status_path(status_line: str) -> str:
+    """Extract the path from one `git status --porcelain` line.
+
+    Porcelain v1 format is `XY PATH` (or `XY ORIG -> PATH` for renames);
+    the path starts at column 4. Normalizes backslashes to forward slashes
+    so the comparison is stable across Windows/POSIX.
+    """
+    path = status_line[3:] if len(status_line) > 3 else status_line.strip()
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1]
+    path = path.strip().strip('"')
+    return path.replace("\\", "/")
+
+
+def source_signature(*, run_subprocess: Callable = None, repo_dir: Path | None = None) -> dict:
+    """The running code's actual identity: file path plus git commit/branch.
+
+    Documented launcher check for "which code is this host actually running"
+    (S7b dogfood defect: a previous session started via the installed
+    `cortxt.exe` and silently ran stale/wrong code -- a cp1252 encoding bug
+    that had already been fixed reappeared). Reads git metadata from
+    `repo_dir` (default: the repo containing this file); `commit`/`branch`
+    are "unknown" (never guessed) when git is unavailable or the directory
+    isn't a repo -- an operator comparing this against the worktree they
+    expect can then see a real mismatch instead of a false match.
+    """
+    import subprocess as _subprocess
+    run_subprocess = run_subprocess or _subprocess.run
+    repo_dir = repo_dir or AGENT_PLATFORM_DIR.parent
+
+    def _git(*args: str) -> str | None:
+        try:
+            proc = run_subprocess(["git", *args], cwd=str(repo_dir), capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", timeout=10)
+        except (OSError, _subprocess.SubprocessError):
+            return None
+        if proc.returncode != 0:
+            return None
+        return proc.stdout.strip() or None
+
+    status_output = _git("status", "--porcelain")
+    # `git status --porcelain` prints nothing (None here, since our helper
+    # maps empty stdout to None) exactly when the worktree is clean;
+    # "unknown" (never guessed clean) when git itself is unavailable, so a
+    # --require-clean caller fails closed instead of trusting a clean
+    # reading it never actually got.
+    if status_output is None and _git("rev-parse", "--is-inside-work-tree") != "true":
+        clean_status = "unknown"
+    else:
+        status_lines = status_output.splitlines() if status_output else []
+        relevant_lines = []
+        allowed_untracked_count = 0
+        for line in status_lines:
+            path = _git_status_path(line)
+            # The allowlist exempts these four known audit-evidence paths
+            # ONLY when the status code for that line is exactly "??"
+            # (untracked). A staged or tracked-and-modified copy of one of
+            # these paths is NOT exempted -- the allowlist covers the
+            # intentional untracked-runtime-state case only, not any git
+            # state a same-named path happens to be in.
+            status_code = line[:2] if len(line) >= 2 else ""
+            if path in _KNOWN_AUDIT_EVIDENCE_PATHS and status_code == "??":
+                allowed_untracked_count += 1
+                continue
+            relevant_lines.append(line)
+        if relevant_lines:
+            clean_status = "dirty"
+        elif allowed_untracked_count:
+            clean_status = "clean_with_allowed_runtime_state"
+        else:
+            clean_status = "clean"
+
+    return {
+        "module_file": str(Path(__file__).resolve()),
+        "repo_dir": str(repo_dir),
+        "git_commit": _git("rev-parse", "HEAD") or "unknown",
+        "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD") or "unknown",
+        "clean_status": clean_status,
+    }
+
+
+def main(*, port: int = PORT, spec_path: Path | None = None,
+         require_commit: str | None = None, require_clean: bool = False) -> int:
+    signature = source_signature()
+    clean_status = signature.get("clean_status", "unknown")
+    print(f"Cortxt widget action host source: file={signature['module_file']} "
+          f"commit={signature['git_commit']} branch={signature['git_branch']} "
+          f"clean_status={clean_status}")
+    if require_commit is not None and signature["git_commit"] != require_commit:
+        print(f"[action_host] refusing to start: running commit {signature['git_commit']!r} "
+              f"does not match required commit {require_commit!r}. This usually means an "
+              f"installed cortxt.exe or a stale checkout is running instead of the intended "
+              f"worktree; start with `python agent-platform/cli/unified_cli.py widget "
+              f"--enable-actions` from the intended worktree instead.")
+        return 1
+    if require_clean and clean_status not in ("clean", "clean_with_allowed_runtime_state"):
+        print(f"[action_host] refusing to start: worktree clean_status="
+              f"{clean_status!r} (required: 'clean' or "
+              f"'clean_with_allowed_runtime_state'). A dirty or unknown "
+              f"worktree means the running commit does not fully describe what's on disk -- "
+              f"commit, stage, or discard the uncommitted changes before starting a proof host.")
+        return 1
     host = ActionHost(spec_path=spec_path) if spec_path else ActionHost()
     with _ReusableThreadingHTTPServer((HOST, port), _make_handler(host)) as httpd:
         print(f"Cortxt widget action host: http://{HOST}:{port}/index.html "
@@ -489,5 +783,15 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--spec", type=Path, default=None,
                         help="Widget spec to serve actions for (default: candidates-0.1.yaml)")
+    parser.add_argument("--require-commit", default=None,
+                        help="Fail closed at startup unless the running git commit matches "
+                             "exactly (operator source-integrity check, S7b dogfood defect)")
+    parser.add_argument("--require-clean", action="store_true",
+                        help="Fail closed at startup unless the worktree is clean (no "
+                             "uncommitted changes) -- --require-commit alone only proves which "
+                             "commit HEAD is at, not that the working tree matches it exactly; "
+                             "proof/gated-launch tooling should pass both. Ordinary local "
+                             "widget use omits this and is unaffected.")
     args = parser.parse_args()
-    raise SystemExit(main(port=args.port, spec_path=args.spec))
+    raise SystemExit(main(port=args.port, spec_path=args.spec, require_commit=args.require_commit,
+                          require_clean=args.require_clean))

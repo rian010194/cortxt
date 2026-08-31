@@ -18,16 +18,23 @@ Every approved dispatch must define:
 | Field | Requirement |
 |---|---|
 | `issue_id` | Stable GitHub owner/repository/issue reference |
-| `workflow` | Versioned workflow or vertical capability identifier |
+| `workflow` | Versioned workflow or vertical capability identifier (declared as `Workflow:` in the issue's `Worker role and limits` section; distinct from the `workflow:ready` state label) |
 | `worker_role` | Allowed role such as `researcher` or `builder` |
 | `scope` | Immutable task statement derived from the approved issue |
-| `acceptance_criteria` | Deterministic completion conditions |
+| `acceptance_criteria` | Deterministic completion conditions (ordered `1.` or bulleted `-` Markdown list items under `Deterministic acceptance criteria`) |
 | `max_runtime_seconds` | Hard execution deadline |
 | `max_cost_usd` | Approved cost ceiling or explicit `unknown-not-allowed` |
 | `max_parallel_workers` | No fixed ceiling (operator decision 2026-08-15); still required per request |
 | `delegation_depth` | No fixed ceiling (operator decision 2026-08-15); still required per request |
 | `artifact_policy` | Allowed output locations and content restrictions |
-| `approval_ref` | Evidence that the issue was approved for dispatch |
+| `approval_ref` | Positive evidence that the issue was approved for this exact dispatch. A negated statement (e.g. "Implementation start is not approved") is not approval |
+| `engine_policy` | Explicit approval of the routed engine and/or its minimum reliability class, declared as `## Engine policy` (or `## Routing policy`) with `Reliability:` and/or `Engine:` lines. Routing may select a cheap engine only when the approved policy permits its reliability/task shape |
+
+The dispatch-request projection (`dispatch.request.v1`, S7b #471) renders every
+field above plus a server-derived `request_id` digest of the immutable request
+snapshot. A confirmation binds to that digest and to the issue-derived approval
+reference; a changed Issue between preview and confirmation requires a fresh
+confirmation and is never silently launched as a different mandate.
 
 Secrets, customer content, prompts, and model reasoning must not be embedded in
 the request or copied into GitHub comments.

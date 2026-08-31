@@ -11,6 +11,7 @@ from ..run_authority import (
     summaries_from_sessions,
 )
 from ..detail import build_workstream_detail_v1
+from ..dispatch_request import build_dispatch_request_v1
 
 
 class ReadAdapterError(ValueError):
@@ -573,6 +574,23 @@ def read_workstream_detail_v1(issue: Mapping[str, Any],
         age_seconds=age_seconds, synthetic=synthetic)
     try:
         validate(result, TYPES["workstream.detail.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_dispatch_request_v1(issue: Mapping[str, Any],
+                             choice: Any,
+                             *,
+                             repo: str,
+                             engine_registered: bool = True,
+                             routable_tags: Sequence[str] | None = None) -> dict[str, Any]:
+    """Build and validate the versioned dispatch-request projection."""
+    result = build_dispatch_request_v1(
+        issue, choice, repo=repo, engine_registered=engine_registered,
+        routable_tags=routable_tags)
+    try:
+        validate(result, TYPES["dispatch.request.v1"].schema)
     except Exception as exc:
         raise ReadAdapterError(str(exc)) from exc
     return result

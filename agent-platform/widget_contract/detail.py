@@ -18,7 +18,10 @@ from typing import Any, Mapping, Sequence
 
 WORKFLOW = re.compile(r"^workflow:(inbox|ready|in-progress|review|blocked|done)$", re.I)
 SECTION = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.M)
-BULLET = re.compile(r"^[-*]\s+(.+?)\s*$", re.M)
+# Markdown unordered (-, *) and ordered (1., 1)) list items (issue #471 uses
+# ordered acceptance criteria; the dispatch-contract limits are bulleted).
+BULLET = re.compile(r"^(?:[-*]|\d+[.)])\s+(.+?)\s*$", re.M)
+LIST_MARKER = re.compile(r"^(?:[-*]|\d+[.)])\s+")
 
 RELATION_PART_OF = "part-of"
 RELATION_BLOCKED_BY = "blocked-by"
@@ -45,16 +48,26 @@ def _section(body: str, names: Sequence[str]) -> str | None:
             continue
         end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
         value = body[match.end():end].strip()
-        value = re.sub(r"^[-*]\s+", "", value, flags=re.M).strip()
+        value = re.sub(r"^(?:[-*]|\d+[.)])\s+", "", value, flags=re.M).strip()
         return value or None
     return None
 
 
 def _bullets(body: str, names: Sequence[str]) -> list[str]:
-    section = _section(body, names)
-    if not section:
-        return []
-    return [match.group(1).strip() for match in BULLET.finditer(section) if match.group(1).strip()]
+    """Extract explicit bullet items from the named section.
+
+    Reads the raw section so bullet markers are preserved; independent of
+    `_section`'s bullet-stripping (which serves plain-text section fields).
+    """
+    matches = list(SECTION.finditer(body))
+    wanted = {name.casefold() for name in names}
+    for index, match in enumerate(matches):
+        if match.group(1).strip().casefold() not in wanted:
+            continue
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
+        section = body[match.end():end]
+        return [m.group(1).strip() for m in BULLET.finditer(section) if m.group(1).strip()]
+    return []
 
 
 def parse_relations(body: str) -> list[dict[str, Any]]:
@@ -90,12 +103,17 @@ def _first_usd(value: str) -> float | None:
 
 
 def parse_dispatch_limits(body: str) -> dict[str, Any]:
-    """Parse explicit dispatch-limit fields; a missing field is simply absent."""
+    """Parse explicit dispatch-limit fields; a missing field is simply absent.
+
+    The real issue format (#471) writes these as Markdown list items
+    (``- Worker role: builder.``, ``- Max cost: USD 8.00 ...``), so each line's
+    leading list marker is stripped before the field prefix is matched.
+    """
     limits: dict[str, Any] = {}
     worker_role = None
     workflow = None
     for line in (body or "").splitlines():
-        stripped = line.strip()
+        stripped = LIST_MARKER.sub("", line.strip(), count=1).strip()
         lowered = stripped.casefold()
         if lowered.startswith("worker role:"):
             worker_role = stripped.split(":", 1)[1].strip().rstrip(".")

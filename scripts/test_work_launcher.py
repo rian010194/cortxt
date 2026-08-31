@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import dispatcher as d
 import work_launcher as w
+import worker_adapters as wa
 
 fail = []
 
@@ -51,6 +52,13 @@ def real_worktree_add(seen_cwd=None):
 
 
 def main():
+    # These offline tests dispatch through an injected fake `dispatch`
+    # callable, not the real ADAPTER_REGISTRY -- but WorkLauncher._launch now
+    # consults `runtime_launch_config_ok` (registry membership) before any
+    # claim (S7b #482 follow-on), so the synthetic "fake" runtime must be
+    # registered for these fixtures to reach that far.
+    wa.register_adapter("fake", SimpleNamespace(invoke=lambda *a, **k: {}))
+
     root = Path(tempfile.mkdtemp(prefix="launcher-test-"))
     gh = FakeGitHub()
     disp = d.Dispatcher(d.RunRegistry(root / "runs.json"), gh)
@@ -95,6 +103,29 @@ def main():
     bound = dispatched and dispatched[0]
     check("worker dispatched with the created worktree", bound and bound[1] == Path(res2["worktree"]))
     check("worktree path reported by create() exists", Path(res2["worktree"]).is_dir())
+
+    print("== S7b #482 follow-on: unconfigured runtime is rejected BEFORE any claim ==")
+    root3 = Path(tempfile.mkdtemp(prefix="launcher-cfg-"))
+    gh3 = FakeGitHub()
+    gh3.labels["o/r#9"] = ["workflow:ready"]
+    disp3 = d.Dispatcher(d.RunRegistry(root3 / "runs.json"), gh3)
+    dispatched3 = []
+    launcher3 = w.WorkLauncher(
+        disp3, gh3, dispatch=lambda dispatcher, run, prompt, worktree=None: dispatched3.append(run.run_id),
+        worktree_root=root3 / "trees",
+        run_worktree=lambda *a, **k: SimpleNamespace(returncode=0),
+    )
+    try:
+        launcher3.resume("o/r#9", runtime="no-such-runtime", worker_role="builder", workflow="v1",
+                         max_runtime_seconds=60, prompt="do it")
+        check("unregistered/unconfigured runtime raises ExecutionGateError", False)
+    except w.ExecutionGateError as exc:
+        check("unregistered/unconfigured runtime raises ExecutionGateError", exc.code == "runtime_not_configured")
+    check("no Dispatcher claim was ever created for the rejected runtime",
+          disp3.registry.active_issue_ids() == set() and not disp3.registry._runs)
+    check("issue label untouched (still workflow:ready, never in-progress)",
+          gh3.labels["o/r#9"] == ["workflow:ready"])
+    check("no worker was ever dispatched", dispatched3 == [])
 
     print(f"\n{'PASS' if not fail else 'FAIL'}: {len(fail)} failure(s)")
     raise SystemExit(1 if fail else 0)
