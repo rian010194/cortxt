@@ -96,7 +96,7 @@ def test_tier0_tool_never_needs_any_flag():
     result = tools.call_tool(
         "route_engine", {"task_tags": ["widget-ui"]}, allow_dispatch=False, allow_credentials=False,
     )
-    assert result["engine_id"] == "claude-direct"
+    assert result["engine_id"] == "claude"
 
 
 @pytest.mark.parametrize("name", ["cortxt_dispatch", "cortxt_addons_submit", "cortxt_daemon_status"])

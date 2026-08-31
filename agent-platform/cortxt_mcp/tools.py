@@ -74,7 +74,7 @@ def _tool_route_engine(arguments: dict[str, Any]) -> dict[str, Any]:
     task_tags = arguments.get("task_tags")
     if not task_tags:
         raise ValueError("task_tags is required and must be a non-empty list of strings")
-    fallback = arguments.get("fallback", "claude-direct")
+    fallback = arguments.get("fallback", "claude")
     choice = route(list(task_tags), DEFAULT_MANIFESTS, fallback=fallback)
     return {
         "engine_id": choice.engine_id,

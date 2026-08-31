@@ -556,7 +556,7 @@ def test_ac9_tier0_tool_works_with_no_mandate_argument_at_all():
     result = tools.call_tool(
         "route_engine", {"task_tags": ["general"]}, allow_dispatch=False, allow_credentials=False,
     )
-    assert result["engine_id"] == "claude-direct"
+    assert result["engine_id"] == "claude"
 
 
 def test_ac9_tier0_tool_ignores_a_present_mandate_key_instead_of_erroring():
@@ -564,7 +564,7 @@ def test_ac9_tier0_tool_ignores_a_present_mandate_key_instead_of_erroring():
         "route_engine", {"task_tags": ["general"]}, allow_dispatch=False, allow_credentials=False,
         mandate={"garbage": "not a real envelope"},
     )
-    assert result["engine_id"] == "claude-direct"
+    assert result["engine_id"] == "claude"
 
 
 # --- AC 5: ledger carries mandate_id/mandate_decision on every row -------

@@ -49,7 +49,7 @@ def test_tools_call_route_engine_returns_text_content():
     assert "result" in response
     content = response["result"]["content"]
     assert content[0]["type"] == "text"
-    assert "claude-direct" in content[0]["text"]
+    assert "claude" in content[0]["text"]
 
 
 def test_tools_call_locked_tier_returns_error():

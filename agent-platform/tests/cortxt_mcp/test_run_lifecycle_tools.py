@@ -664,4 +664,4 @@ def test_tier0_tools_regression(tmp_path):
     result = tools.call_tool(
         "route_engine", {"task_tags": ["general"]}, allow_dispatch=False, allow_credentials=False,
     )
-    assert result["engine_id"] == "claude-direct"
+    assert result["engine_id"] == "claude"
