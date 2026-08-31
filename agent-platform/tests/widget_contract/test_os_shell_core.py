@@ -156,7 +156,7 @@ def test_state_separates_surfaces_ui_context_and_app_local_view():
     assert 'primary:"home"' in JS
     assert 'deepApp:null' in JS and 'deepRec:null' in JS and 'multiMode:false' in JS
     assert 'ui:{open:{}' in JS and 'zTop:' in JS and 'mobileApp:' in JS
-    assert 'context:{workstreamId:null,activeWorkstreamId:null}' in JS
+    assert 'context:{workstreamId:null,activeWorkstreamId:null,runId:null}' in JS
     assert 'apps:{}' in JS
     assert 'windows:[]' in JS
 

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "issue_ref": "example/demo#42",
+  "runs": [
+    {
+      "run_id": "run-02",
+      "issue_ref": "example/demo#42",
+      "status": "succeeded",
+      "engine": "codex",
+      "worker_role": "builder",
+      "started_at": "2026-08-28T13:00:00+00:00",
+      "finished_at": "2026-08-28T13:41:00+00:00",
+      "heartbeat_at": "2026-08-28T13:41:00+00:00",
+      "sources": ["dispatcher.runs", "session.events"],
+      "conflict": null
+    },
+    {
+      "run_id": "run-01",
+      "issue_ref": "example/demo#42",
+      "status": "conflict",
+      "engine": "hermes",
+      "worker_role": "builder",
+      "started_at": "2026-08-27T09:00:00+00:00",
+      "finished_at": "2026-08-27T09:52:00+00:00",
+      "heartbeat_at": "2026-08-27T09:52:00+00:00",
+      "sources": ["dispatcher.runs", "session.events"],
+      "conflict": {
+        "field": "status",
+        "values": ["succeeded", "failed"]
+      }
+    }
+  ]
+}

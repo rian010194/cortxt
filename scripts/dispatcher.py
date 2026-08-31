@@ -153,6 +153,14 @@ class Run:
     delegation_depth: Optional[int] = None
     artifact_policy: Optional[str] = None
     request_id: Optional[str] = None
+    # How the worker's working directory was provided (S7d #473, from the #472
+    # dogfood): "worktree" when this run got its own isolated linked git
+    # worktree and branch, "shared-checkout" when it ran in the launcher's own
+    # repository checkout. Recorded on the durable Run so a reviewer reads the
+    # isolation that actually happened instead of inferring one from a branch
+    # name constructed out of the run_id.
+    isolation: Optional[str] = None
+    branch: Optional[str] = None
 
     def gh_sync_claim_stale(self, now: Optional[float] = None) -> bool:
         """A claim older than GH_SYNC_CLAIM_LEASE_SECONDS is treated as

@@ -333,6 +333,47 @@ class WorkLauncher:
                 recovery=f"No adapter is registered for runtime {run.runtime!r}; register an adapter, or "
                          f"approve an issue Engine policy that routes to a registered engine.") from exc
 
+    ISOLATION_WORKTREE = "worktree"
+    ISOLATION_SHARED = "shared-checkout"
+
+    def _isolation_result(self, run_id: str, worktree: Path, created: bool) -> dict:
+        """Describe the working directory the worker was actually given.
+
+        S7d (#473), from the #472 dogfood finding 8: this used to return
+        ``branch: f"work/{run_id}"`` and the worktree path unconditionally,
+        including on the resume path that never creates either. The reported
+        branch was constructed from the run_id rather than projected from
+        durable state, so a reviewer saw a plausible `work/<run_id>` branch
+        that had never existed and no signal that the change had landed in
+        the launcher's own checkout instead. A launch result now describes
+        only what exists: an isolated run reports its real branch/worktree, a
+        shared-checkout run reports ``None`` for both plus the repository
+        directory the worker actually ran in.
+        """
+        if created:
+            return {"worktree": str(worktree), "branch": f"work/{run_id}",
+                    "isolation": self.ISOLATION_WORKTREE, "working_dir": str(worktree)}
+        return {"worktree": None, "branch": None,
+                "isolation": self.ISOLATION_SHARED, "working_dir": str(self.repo_path)}
+
+    def _record_isolation(self, run_id: str, created: bool) -> None:
+        """Carry the isolation mode onto the durable Run record.
+
+        Best-effort: a registry without `update` (older/injected fakes) simply
+        keeps no isolation field, and recording it must never fail a launch
+        that has otherwise succeeded.
+        """
+        registry = getattr(self.dispatcher, "registry", None)
+        if registry is None or not hasattr(registry, "update"):
+            return
+        fields = {"isolation": self.ISOLATION_WORKTREE if created else self.ISOLATION_SHARED,
+                  "branch": f"work/{run_id}" if created else None}
+        try:
+            registry.update(run_id, **fields)
+        except Exception as exc:  # noqa: BLE001 - provenance metadata, never fatal
+            print(f"[work_launcher] could not record isolation for {run_id}: {exc}",
+                  file=sys.stderr)
+
     def _launch(self, issue_id: str, prompt: str, *, runtime: str, worker_role: str,
                 workflow: str, max_runtime_seconds: int, create_worktree: bool,
                 max_cost_usd: float | None = None,
@@ -369,9 +410,10 @@ class WorkLauncher:
                     raise LauncherDispatchError(
                         "worktree_creation_failed",
                         recovery="Ensure the worktree root is writable and retry with a fresh run.")
+            self._record_isolation(run_id, create_worktree)
             self._dispatch(run, prompt, worktree)
-            return {"issue_id": issue_id, "run_id": run_id, "worktree": str(worktree),
-                    "branch": f"work/{run_id}"}
+            return {"issue_id": issue_id, "run_id": run_id,
+                    **self._isolation_result(run_id, worktree, create_worktree)}
 
         # Per-request worker ceiling, carried from the approved dispatch request
         # and enforced before any claim is acquired (issue #471 AC2/AC4).
@@ -412,10 +454,12 @@ class WorkLauncher:
                         recovery="Ensure the worktree root is writable and retry with a fresh run.")
                     self._fail_launch(run_id, claim, failure)
                     raise failure
+            self._record_isolation(run_id, create_worktree)
             self._claims_by_run[run_id] = claim
             self._dispatch(run, prompt, worktree)
-            return {"issue_id": issue_id, "run_id": run_id, "worktree": str(worktree),
-                    "branch": f"work/{run_id}", "claim_id": claim.claim_id,
+            return {"issue_id": issue_id, "run_id": run_id,
+                    **self._isolation_result(run_id, worktree, create_worktree),
+                    "claim_id": claim.claim_id,
                     "claim_generation": claim.claim_generation,
                     "receipt_id": receipt.receipt_id, "store_session_id": claim.store_session_id,
                     "engine_session_id": claim.engine_session_id}
@@ -447,7 +491,8 @@ class WorkLauncher:
                max_parallel_workers: int | None = None,
                delegation_depth: int | None = None,
                artifact_policy: str | None = None,
-               request_id: str | None = None) -> dict:
+               request_id: str | None = None,
+               isolate: bool = False) -> dict:
         """Resume a ready issue with the full approved dispatch request.
 
         The dispatch-contract fields (cost ceiling, parallel-worker ceiling,
@@ -457,10 +502,19 @@ class WorkLauncher:
         (a reported cost above the ceiling is recorded as budget_exceeded,
         never silently accepted as success), and delegation depth is enforced
         per run by `Dispatcher.spawn_child`.
+
+        `isolate` requests one isolated linked git worktree plus a
+        `work/<run_id>` branch for this run, the same physical isolation
+        `create()` uses. It defaults to False because that is the behavior the
+        UI launch path has today (#472 finding 6/8); an approved mandate whose
+        artifact policy requires the change to stay inside the run's own
+        worktree must pass `isolate=True`, and a worktree that cannot be
+        created then fails the launch closed rather than silently downgrading
+        to the shared checkout.
         """
         return self._launch(issue_id, prompt, runtime=runtime, worker_role=worker_role,
                             workflow=workflow, max_runtime_seconds=max_runtime_seconds,
-                            create_worktree=False, max_cost_usd=max_cost_usd,
+                            create_worktree=isolate, max_cost_usd=max_cost_usd,
                             max_parallel_workers=max_parallel_workers,
                             delegation_depth=delegation_depth,
                             artifact_policy=artifact_policy, request_id=request_id)

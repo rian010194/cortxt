@@ -33,7 +33,7 @@ var state={
   model:null,token:null,capabilities:[],registry:[],
   primary:"home",deepApp:null,deepRec:null,multiMode:false,
   ui:{open:{},min:{},max:{},z:{},zTop:10,geom:{},mobileApp:"home"},
-  context:{workstreamId:null,activeWorkstreamId:null},
+  context:{workstreamId:null,activeWorkstreamId:null,runId:null},
   apps:{},
   windows:[],
   dockFavorites:[],
@@ -129,6 +129,7 @@ function restore(){
   }
   if(saved.context&&typeof saved.context.workstreamId==="string")state.context.workstreamId=saved.context.workstreamId;
   if(saved.context&&typeof saved.context.activeWorkstreamId==="string")state.context.activeWorkstreamId=saved.context.activeWorkstreamId;
+  if(saved.context&&typeof saved.context.runId==="string")state.context.runId=saved.context.runId;
   if(saved.apps&&typeof saved.apps==="object")state.apps=Object.assign(state.apps,saved.apps);
   if(saved.activity&&typeof saved.activity==="object")state.activity=Object.assign(state.activity,saved.activity);
   if(saved.v===2||saved.v===3||saved.v===4){
@@ -227,9 +228,19 @@ function currentItem(){
 function selectWorkstream(id){
   /* id: a workstream id, "all", or null (no selection). */
   if(id!==activeContextId()&&hasPendingMutation()&&!window.confirm("Switch Workstream? Any unsaved approval reference will be discarded."))return;
+  if(id!==activeContextId())state.context.runId=null;
   state.context.activeWorkstreamId=(id==="all")?"all":id;
   state.context.workstreamId=(id==="all")?null:id;
   persist();renderSwitcher();renderAll();
+  pushShellState();
+}
+function selectRun(runId){
+  /* The focused Run is shell context, exactly like the selected Workstream:
+     every app that renders run-scoped authority reads it from here, so
+     Decisions, Evidence, and the Execution Inspector cannot disagree about
+     which Run the operator is looking at. */
+  state.context.runId=runId||null;
+  persist();renderAll();
   pushShellState();
 }
 function activeContextId(){return state.context.activeWorkstreamId||state.context.workstreamId||null}
@@ -518,6 +529,25 @@ async function load(){
   var fixture=await fetch("fixtures/workstreams.json",{cache:"no-store"});if(!fixture.ok)throw new Error("Demo Workstream data is unavailable");return fixture.json();
 }
 async function loadBoundary(){try{var cap=await fetch("api/capabilities",{cache:"no-store"});if(cap.ok)state.capabilities=(await cap.json()).actions||[];var tok=await fetch("api/token",{cache:"no-store"});if(tok.ok)state.token=(await tok.json()).token}catch(_e){state.capabilities=[];state.token=null}}
+function refreshAuthority(){
+  /* Re-read the authoritative Workstream projection in place (#472: Work had
+     no refresh path, so an operator who changed workflow state elsewhere --
+     or whose Run moved the label -- had to reload the whole shell to see it).
+     Read-only: this re-reads GitHub authority through the same endpoint the
+     initial load uses and never mutates anything. */
+  var button=q("[data-work-refresh]");
+  if(button){button.disabled=true;button.textContent="Refreshing…"}
+  return load().then(function(model){
+    state.model=model;
+    setMode();renderSwitcher();renderAll();
+  }).catch(function(error){
+    var note=q("[data-work-refresh-note]");
+    if(note)note.textContent="Refresh failed: "+(error&&error.message?error.message:"authority unavailable");
+  }).then(function(){
+    var b=q("[data-work-refresh]");
+    if(b){b.disabled=false;b.textContent="Refresh authority"}
+  });
+}
 function setMode(){var banner=q("[data-mode-banner]"),demo=state.model.synthetic;banner.innerHTML=demo?"<strong>Interactive preview</strong><span>Synthetic data · no external mutation</span>":"<strong>Local mode</strong><span>Live projection of "+esc(state.model.repo)+(state.model.status!=="fresh"?" · stale data":"")+"</span>"}
 
 /* ---- Activity Center projection contract (ADR-044; S5.5c) ------------ */
@@ -782,6 +812,17 @@ function launchAvailable(s, x) {
     (s.capabilities || []).some(function (a) { return a && a.id === "claim-run"; }) &&
     !!x && x.workflow === "ready";
 }
+function recoveryAvailable(s, x) {
+  /* S7d (#472 finding 2): the ONE sanctioned way back from a stranded
+     workflow:in-progress Issue. Gated on the registered recover-to-ready
+     action exactly like launch is gated on claim-run, so a host without the
+     action port shows no affordance at all, and never offered in
+     synthetic/demo mode. Returning to ready re-opens the dispatch gate; it
+     approves, closes and completes nothing. */
+  return !!s && !!s.model && !s.model.synthetic &&
+    (s.capabilities || []).some(function (a) { return a && a.id === "recover-to-ready"; }) &&
+    !!x && x.workflow === "in-progress";
+}
 function renderWork(winEl,ctx){
   var s=(ctx&&ctx.state)||state,x=(ctx&&ctx.workstream)||null;
   if(!x){
@@ -814,7 +855,9 @@ function renderWork(winEl,ctx){
         '<h1 class="wh-title">'+esc(x.title)+'</h1>'+
         '<p class="wh-outcome">'+esc(x.outcome)+'</p>'+
       '</div>'+
-      '<div class="wh-status"><span class="work-phase '+phaseClass+'">'+esc(phase)+'</span><small style="color:var(--dim);font-size:11px">'+esc(x.workflow||"")+'</small></div>'+
+      '<div class="wh-status"><span class="work-phase '+phaseClass+'">'+esc(phase)+'</span><small style="color:var(--dim);font-size:11px">'+esc(x.workflow||"")+'</small>'+
+        '<button type="button" class="chrome-button" data-work-refresh>Refresh authority</button>'+
+        '<small data-work-refresh-note style="color:var(--dim);font-size:11px">Source '+esc((s.model&&s.model.status)||"unknown")+'</small></div>'+
     '</div>'+
     '<p class="work-mandate"><b>Mandate:</b> '+esc(x.mandate||x.acceptance_criteria||"No mandate recorded.")+'</p>'+
     '<div class="work-layout">'+
@@ -824,6 +867,7 @@ function renderWork(winEl,ctx){
           (decision?'<p class="wc-sub">'+esc(decision.summary)+'</p>':'')+
           '<div class="work-actions">'+
             (launchAvailable(s,x)?'<button type="button" class="primary-action" data-launch-run>Review and start Run →</button>':'')+
+            (recoveryAvailable(s,x)?'<button type="button" class="chrome-button" data-recover-ready>Return to ready (recover)</button>':'')+
             '<button type="button" class="primary-action" data-deep-open="decisions">Open Decisions →</button>'+
             '<button type="button" class="chrome-button" data-deep-open="evidence">Open Evidence</button>'+
             '<button type="button" class="chrome-button" data-deep-open="execution">Execution Inspector</button>'+
@@ -873,6 +917,14 @@ function renderWork(winEl,ctx){
   qa("[data-launch-run]",winEl).forEach(function(b){
     b.addEventListener("click",function(){openDeep("launch")});
   });
+  qa("[data-work-refresh]",winEl).forEach(function(b){
+    b.addEventListener("click",function(){refreshAuthority()});
+  });
+  qa("[data-recover-ready]",winEl).forEach(function(b){
+    /* The shell never calls an action port: it hands off to the app that owns
+       `recover-to-ready` (Decisions), which runs the operator gate. */
+    b.addEventListener("click",function(){openDeep("decisions","#"+String(x.number||x.id))});
+  });
   qa("[data-win-open]",winEl).forEach(function(b){
     b.addEventListener("click",function(){openWindow(b.dataset.winOpen)});
   });
@@ -890,17 +942,60 @@ function renderPolicies(body,ctx){
     '</div>';
 }
 if(typeof OSRenderer!=="undefined"){OSRenderer.register("policies",renderPolicies)}
-function renderExecution(body,ctx){
-  var x=(ctx&&ctx.workstream)||null;
-  var runs=(x&&x.runs&&x.runs.length)?x.runs:[];
-  body.innerHTML='<span class="eyebrow">Execution Inspector · '+esc(x?x.id:"")+'</span><h3>Runs and execution detail</h3>'+
-    '<p style="color:var(--muted);font-size:12px;max-width:640px">Execution is replaceable: a new run may use a different engine, provider, or model without redefining the Workstream or losing accepted evidence.</p>'+
-    '<div class="projection-list">'+
-    (runs.length?runs.map(function(r){
-      return '<article><span class="eyebrow">'+esc(r.status)+' · '+esc(r.engine)+'</span><strong>'+esc(r.id)+'</strong><p>Provider: '+esc(r.provider)+' · Model: '+esc(r.model)+' · Evidence: '+esc(String(r.evidence))+' · Cost: $'+esc(String(r.cost_usd))+'</p></article>';
-    }).join(""):'<article><p>No runs recorded for this Workstream.</p></article>')+
+function runsEndpoint(x){
+  /* The authoritative correlated Run projection for the EXACT selected
+     Workstream (run.summaries.v1). Before S7d this read ctx.workstream.runs,
+     a field the workstreams projection has never carried, so every Workstream
+     rendered "No runs recorded" and a real `conflict` run stayed invisible. */
+  var issue=x&&x.issue_id;
+  if(!issue)return null;
+  return "api/runs?issue="+encodeURIComponent(issue);
+}
+function execHeader(x){
+  return '<span class="eyebrow">Execution Inspector · '+esc(x?x.id:"")+'</span><h3>Runs and execution detail</h3>'+
+    '<p style="color:var(--muted);font-size:12px;max-width:640px">Execution is replaceable: a new run may use a different engine, provider, or model without redefining the Workstream or losing accepted evidence.</p>';
+}
+function execRunArticle(r,selected){
+  /* Content-free: identity, correlated status, provenance and conflict only —
+     never a prompt, reasoning, log body, or artifact content. */
+  var conflict=r.conflict?('<p class="run-live-warn">Sources disagree on '+esc(r.conflict.field)+': '+esc((r.conflict.values||[]).join(" vs "))+'. Not resolved.</p>'):"";
+  return '<article data-exec-run="'+esc(r.run_id)+'"'+(selected?' class="selected"':'')+'>'+
+    '<span class="eyebrow">'+esc(r.status)+(r.engine?' · '+esc(r.engine):'')+'</span>'+
+    '<strong>'+esc(r.run_id)+'</strong>'+
+    '<p>Worker role: '+esc(r.worker_role==null?"unknown":r.worker_role)+
+    ' · Started: '+esc(r.started_at==null?"unknown":r.started_at)+
+    ' · Finished: '+esc(r.finished_at==null?"not yet":r.finished_at)+
+    ' · Sources: '+esc((r.sources||[]).join(", ")||"none")+'</p>'+
+    conflict+'</article>';
+}
+function renderExecutionRuns(body,x,runs,note){
+  var selected=state.context.runId||null;
+  body.innerHTML=execHeader(x)+
+    '<div class="projection-list" data-exec-runs>'+
+    (runs.length?runs.map(function(r){return execRunArticle(r,r.run_id===selected)}).join("")
+                :'<article><p>'+esc(note||"No runs are correlated to this Workstream.")+'</p></article>')+
     '</div>'+
     '<p class="exec-sub">Sessions, terminals, and logs remain available under each run on demand.</p>';
+  qa("[data-exec-run]",body).forEach(function(el){
+    el.addEventListener("click",function(){selectRun(el.dataset.execRun)});
+  });
+}
+function renderExecution(body,ctx){
+  var x=(ctx&&ctx.workstream)||null;
+  if(!x){body.innerHTML=execHeader(null)+empty("Select a Workstream to project its runs.");return}
+  var url=runsEndpoint(x);
+  body.innerHTML=execHeader(x)+'<div class="projection-list" data-exec-runs><article><p>Loading correlated runs…</p></article></div>';
+  if(!url||(state.model&&state.model.synthetic)){
+    fetch("fixtures/runs.json",{cache:"no-store"})
+      .then(function(r){return r.ok?r.json():{runs:[]}})
+      .then(function(d){renderExecutionRuns(body,x,(d&&d.runs)||[],"No runs are correlated to this Workstream.")})
+      .catch(function(){renderExecutionRuns(body,x,[],"Run projection is unavailable.")});
+    return;
+  }
+  fetch(url,{cache:"no-store"})
+    .then(function(r){if(!r.ok)throw new Error("run projection unavailable ("+r.status+")");return r.json()})
+    .then(function(d){renderExecutionRuns(body,x,(d&&d.runs)||[],"No runs are correlated to this Workstream.")})
+    .catch(function(e){renderExecutionRuns(body,x,[],e&&e.message?e.message:"Run projection is unavailable.")});
 }
 if(typeof OSRenderer!=="undefined"){OSRenderer.register("execution",renderExecution)}
 function renderAtlas(body){
@@ -1026,6 +1121,11 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
       "return-primary":function(){returnToPrimary()},
     };
     window.ShellCommandHandlers=commandHandlers;
+    /* Read-only shell services an app renderer may call after its own
+       operator-gated action completes. Not an action port and not a mutation:
+       `refreshAuthority` re-reads the same authoritative projection the shell
+       loads, `selectRun` moves the focused-Run shell context. */
+    window.CortxtShell={refreshAuthority:refreshAuthority,selectRun:selectRun};
     window.addEventListener("hashchange",function(){
       if(typeof ShellCommands!=="undefined"&&ShellCommands.applyDeepLink){
         ShellCommands.applyDeepLink(location.hash,commandHandlers);

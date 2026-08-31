@@ -607,6 +607,12 @@ ACTIONS: dict[str, ActionEntry] = {
                                          "run-dispatch", frozenset({"operator"}), "act:claim-run", True),
     "workflow.record-decision.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",
                                                 "workflow-transition", frozenset({"operator"}), "act:record-decision", True),
+    # S7d (#473, #472 finding 2): the operator recovery the execution model
+    # assumes. Exactly one fixed label pair (in-progress -> ready) so a Run
+    # that failed or stranded its Issue has a sanctioned way back without a
+    # manual `gh issue edit` and without a general label editor.
+    "workflow.recover-to-ready.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",
+                                                "workflow-transition", frozenset({"operator"}), "act:recover-to-ready", True),
 }
 
 _LAYOUT = ("stack", "row", "grid", "tabs", "panel")

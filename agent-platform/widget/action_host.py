@@ -31,7 +31,8 @@ from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
 from widget_contract.adapters.cli_ports import ClaimRunDenied, gh_claim_run_resume
 from widget_contract.adapters.github_ports import (
-    LastGoodIssues, TransitionDenied, gh_inbox_to_ready, gh_issue_workflow_labels, gh_review_to_done,
+    LastGoodIssues, TransitionDenied, gh_in_progress_to_ready, gh_inbox_to_ready,
+    gh_issue_workflow_labels, gh_review_to_done,
     read_issue_detail,
 )
 from widget_contract.adapters.store_reads import (
@@ -207,6 +208,7 @@ class ActionHost:
                  labels_reader: Callable[[str], list[str]] = gh_issue_workflow_labels,
                  transition_writer: Callable[[str], Mapping[str, Any]] = gh_inbox_to_ready,
                  review_transition_writer: Callable[[str], Mapping[str, Any]] = gh_review_to_done,
+                 recover_transition_writer: Callable[[str], Mapping[str, Any]] = gh_in_progress_to_ready,
                  resume: Callable[[str], Any] | None = None,
                  registry: Path | None = None, scripts_dir: Path | None = None,
                  session_store: Path | None = None,
@@ -218,6 +220,7 @@ class ActionHost:
         self._labels_reader = labels_reader
         self._transition_writer = transition_writer
         self._review_transition_writer = review_transition_writer
+        self._recover_transition_writer = recover_transition_writer
         # Launcher modules live in the repository-level scripts directory,
         # alongside agent-platform, not inside the Python package tree.
         self._scripts_dir = Path(scripts_dir) if scripts_dir else (AGENT_PLATFORM_DIR.parent / "scripts")
@@ -450,6 +453,7 @@ class ActionHost:
             labels_reader=self._labels_reader, transition_writer=self._transition_writer,
             resume=partial(self._resume, approval_ref=approval_ref, request_id=request_id),
             review_transition_writer=self._review_transition_writer,
+            recover_transition_writer=self._recover_transition_writer,
             authoritative_reference=authoritative_reference)
         try:
             result = executor.execute(action, context)
@@ -723,23 +727,31 @@ class _ReusableThreadingHTTPServer(ThreadingHTTPServer):
 
 # Paths (repo-root-relative, forward-slash form) that `--require-clean`
 # ignores when deciding clean/dirty, but ONLY when the git status code for
-# that line is exactly "??" (untracked). These are known audit-evidence
-# files written by a previous proof run (#482) and intentionally left
-# untracked in this worktree -- their presence as untracked runtime state is
-# not a signal that the worktree is actually unpredictable, so a
+# that line is exactly "??" (untracked). These are the dispatch execution
+# ledger written by a real Run -- runtime state, not a source change, so a
 # source-integrity check that flagged them would be reporting a false
-# positive, not a real risk. A staged (e.g. `A `) or tracked-and-modified
-# (e.g. ` M`, `MM`) copy of one of these paths is NOT exempted -- that is a
-# real change to tracked/staged content, not the intentional untracked case,
-# and still makes the worktree dirty. Matching is exact (repo-root-relative
-# path only): a same-named file elsewhere, or a file that merely starts with
-# one of these names (e.g. a `.bak` sibling), is NOT exempted and still
-# makes the worktree dirty.
+# positive rather than a real risk. A staged (e.g. `A `) or
+# tracked-and-modified (e.g. ` M`, `MM`) copy of one of these paths is NOT
+# exempted -- that is a real change to tracked/staged content, not the
+# intentional untracked case, and still makes the worktree dirty. Matching
+# is exact (repo-root-relative path only): a same-named file elsewhere, or a
+# file that merely starts with one of these names (e.g. a `.bak` sibling), is
+# NOT exempted and still makes the worktree dirty.
+#
+# S7d (#473, from the #472 dogfood): these previously named `scripts/runs.json`,
+# which no writer has ever produced -- the registry default is
+# `agent-platform/.dispatch/runs.json` (action_host.ActionHost._registry,
+# unified_cli) and the claim store is that path with a `.claims.sqlite3`
+# suffix (work_launcher.default_launcher). The allowlist was therefore dead:
+# it exempted a path that never exists and did not cover the one that does.
+# `agent-platform/.dispatch/` is also gitignored today, so these entries are a
+# belt-and-braces guard for a checkout whose ignore rules differ, not the only
+# thing keeping a proof host startable.
 _KNOWN_AUDIT_EVIDENCE_PATHS = frozenset({
-    "scripts/runs.json",
-    "scripts/runs.claims.sqlite3",
-    "scripts/runs.claims.sqlite3-shm",
-    "scripts/runs.claims.sqlite3-wal",
+    "agent-platform/.dispatch/runs.json",
+    "agent-platform/.dispatch/runs.claims.sqlite3",
+    "agent-platform/.dispatch/runs.claims.sqlite3-shm",
+    "agent-platform/.dispatch/runs.claims.sqlite3-wal",
 })
 
 

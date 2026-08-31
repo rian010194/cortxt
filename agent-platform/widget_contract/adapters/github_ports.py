@@ -63,6 +63,18 @@ def gh_review_to_done(issue_id: str) -> dict:
     return {"issue_id": issue_id, "status": "ok"}
 
 
+def gh_in_progress_to_ready(issue_id: str) -> dict:
+    """Perform exactly the in-progress -> ready label swap via gh (injectable for tests)."""
+    repo, number = issue_id.rsplit("#", 1)
+    proc = subprocess.run(["gh", "issue", "edit", number, "-R", repo,
+                           "--remove-label", "workflow:in-progress", "--add-label", "workflow:ready"],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=20)
+    if proc.returncode:
+        raise RuntimeError(proc.stderr.strip())
+    return {"issue_id": issue_id, "status": "ok"}
+
+
 def mark_ready_transition(operation: str, request: Mapping[str, Any], *,
                           issue_reader: Callable[[str], Mapping[str, Any]],
                           transition: Callable[[str, Mapping[str, Any]], Any]) -> dict[str, Any]:
@@ -99,6 +111,34 @@ def record_decision_transition(operation: str, request: Mapping[str, Any], *,
     workflow = [x for x in labels if str(x).lower().startswith("workflow:")]
     if workflow != ["workflow:review"]:
         raise TransitionDenied(f"issue is not exactly workflow:review: {workflow}")
+    result = transition(operation, {"issue_id": request["issue_id"]})
+    if not isinstance(result, dict):
+        raise TransitionDenied("transition result must be an object")
+    return result
+
+
+def return_to_ready_transition(operation: str, request: Mapping[str, Any], *,
+                               issue_reader: Callable[[str], Mapping[str, Any]],
+                               transition: Callable[[str, Mapping[str, Any]], Any]) -> dict[str, Any]:
+    """Exactly one authorized label transition: workflow:in-progress -> workflow:ready.
+
+    The operator recovery the execution model already assumes but had no
+    implementation for (#472 finding 2): a Run that fails, is stranded, or is
+    abandoned leaves its Issue at ``workflow:in-progress`` with no sanctioned
+    way back, so recovery required a manual ``gh issue edit`` outside the
+    action ports. Mirrors the other two transitions exactly -- re-reads the
+    issue immediately before the write and refuses any target that is not
+    exactly ``workflow:in-progress`` (fail closed, no write).
+
+    Returning to ``ready`` re-opens the dispatch gate; it does not approve,
+    close, or complete anything, and it never chains to a new run: a fresh
+    launch remains a separate operator decision through the claim-run action.
+    """
+    issue = issue_reader(request["issue_id"])
+    labels = [x.get("name", "") if isinstance(x, dict) else str(x) for x in issue.get("labels") or []]
+    workflow = [x for x in labels if str(x).lower().startswith("workflow:")]
+    if workflow != ["workflow:in-progress"]:
+        raise TransitionDenied(f"issue is not exactly workflow:in-progress: {workflow}")
     result = transition(operation, {"issue_id": request["issue_id"]})
     if not isinstance(result, dict):
         raise TransitionDenied("transition result must be an object")

@@ -45,4 +45,18 @@ actions:
       required: true
     result_type: action.status.v1
     idempotency_key: "record-decision"
-capabilities: [read:decision-pending, act:record-decision]
+  - id: recover-to-ready
+    port: github-transition
+    operation: workflow.recover-to-ready.v1
+    input:
+      issue_id: "owner/repo#0"
+    authorization:
+      mode: operator
+      reference: "operator-approval"
+    confirm:
+      summary: "Return a stranded workflow:in-progress issue to workflow:ready for a fresh operator decision"
+      effect_class: workflow-transition
+      required: true
+    result_type: action.status.v1
+    idempotency_key: "recover-to-ready"
+capabilities: [read:decision-pending, act:record-decision, act:recover-to-ready]

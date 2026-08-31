@@ -133,28 +133,32 @@ def _init_repo(repo: Path) -> None:
     subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, capture_output=True, check=True)
     subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
     (repo / "f.txt").write_text("x")
-    # `scripts/` must already be a tracked directory (as it is in the real
-    # repo) so `git status --porcelain` lists the untracked audit-evidence
-    # files individually, not the whole new directory collapsed to one line.
-    (repo / "scripts").mkdir()
-    (repo / "scripts" / "dispatcher.py").write_text("# placeholder")
-    subprocess.run(["git", "add", "f.txt", "scripts/dispatcher.py"], cwd=repo, capture_output=True, check=True)
+    # The dispatch ledger directory must already be a tracked directory so
+    # `git status --porcelain` lists the untracked audit-evidence files
+    # individually, not the whole new directory collapsed to one line. (In the
+    # real repository `agent-platform/.dispatch/` is gitignored, so the
+    # allowlist is a belt-and-braces guard for a checkout whose ignore rules
+    # differ -- these tests exercise that guard directly.)
+    (repo / "agent-platform" / ".dispatch").mkdir(parents=True)
+    (repo / "agent-platform" / ".dispatch" / "README").write_text("# placeholder")
+    subprocess.run(["git", "add", "f.txt", "agent-platform/.dispatch/README"],
+                   cwd=repo, capture_output=True, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
 
 
 def test_source_signature_ignores_known_audit_evidence_files_when_untracked(tmp_path):
     """Only the four known audit-evidence paths, all untracked (`??`) and
     nothing else changed, must read as the dedicated
-    'clean_with_allowed_runtime_state' status -- they are proof-run artifacts
-    left deliberately untracked (#482), not a sign the worktree is dirty."""
+    'clean_with_allowed_runtime_state' status -- they are the dispatch execution
+    ledger a real Run writes, not a sign the worktree is dirty."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
-    scripts_dir = repo / "scripts"
-    (scripts_dir / "runs.json").write_text("{}")
-    (scripts_dir / "runs.claims.sqlite3").write_bytes(b"")
-    (scripts_dir / "runs.claims.sqlite3-shm").write_bytes(b"")
-    (scripts_dir / "runs.claims.sqlite3-wal").write_bytes(b"")
+    ledger_dir = repo / "agent-platform" / ".dispatch"
+    (ledger_dir / "runs.json").write_text("{}")
+    (ledger_dir / "runs.claims.sqlite3").write_bytes(b"")
+    (ledger_dir / "runs.claims.sqlite3-shm").write_bytes(b"")
+    (ledger_dir / "runs.claims.sqlite3-wal").write_bytes(b"")
 
     sig = source_signature(repo_dir=repo)
     assert sig["clean_status"] == "clean_with_allowed_runtime_state"
@@ -179,9 +183,9 @@ def test_source_signature_dirty_when_known_path_is_staged(tmp_path):
     repo = tmp_path / "repo"
     _init_repo(repo)
 
-    scripts_dir = repo / "scripts"
-    (scripts_dir / "runs.json").write_text("{}")
-    subprocess.run(["git", "add", "scripts/runs.json"], cwd=repo, capture_output=True, check=True)
+    ledger_dir = repo / "agent-platform" / ".dispatch"
+    (ledger_dir / "runs.json").write_text("{}")
+    subprocess.run(["git", "add", "agent-platform/.dispatch/runs.json"], cwd=repo, capture_output=True, check=True)
 
     sig = source_signature(repo_dir=repo)
     assert sig["clean_status"] == "dirty"
@@ -197,11 +201,11 @@ def test_source_signature_dirty_when_known_path_is_tracked_and_modified(tmp_path
     repo = tmp_path / "repo"
     _init_repo(repo)
 
-    scripts_dir = repo / "scripts"
-    (scripts_dir / "runs.json").write_text("{}")
-    subprocess.run(["git", "add", "scripts/runs.json"], cwd=repo, capture_output=True, check=True)
+    ledger_dir = repo / "agent-platform" / ".dispatch"
+    (ledger_dir / "runs.json").write_text("{}")
+    subprocess.run(["git", "add", "agent-platform/.dispatch/runs.json"], cwd=repo, capture_output=True, check=True)
     subprocess.run(["git", "commit", "-m", "add runs.json"], cwd=repo, capture_output=True, check=True)
-    (scripts_dir / "runs.json").write_text('{"changed": true}')
+    (ledger_dir / "runs.json").write_text('{"changed": true}')
 
     sig = source_signature(repo_dir=repo)
     assert sig["clean_status"] == "dirty"
@@ -214,9 +218,9 @@ def test_source_signature_dirty_with_extra_untracked_file_alongside_known(tmp_pa
     repo = tmp_path / "repo"
     _init_repo(repo)
 
-    scripts_dir = repo / "scripts"
-    (scripts_dir / "runs.json").write_text("{}")
-    (scripts_dir / "other_untracked.txt").write_text("surprise")
+    ledger_dir = repo / "agent-platform" / ".dispatch"
+    (ledger_dir / "runs.json").write_text("{}")
+    (ledger_dir / "other_untracked.txt").write_text("surprise")
 
     sig = source_signature(repo_dir=repo)
     assert sig["clean_status"] == "dirty"
@@ -242,16 +246,16 @@ def test_source_signature_path_match_is_exact_not_prefix(tmp_path):
     repo = tmp_path / "repo"
     _init_repo(repo)
 
-    scripts_dir = repo / "scripts"
-    (scripts_dir / "runs.json.bak").write_text("{}")
+    ledger_dir = repo / "agent-platform" / ".dispatch"
+    (ledger_dir / "runs.json.bak").write_text("{}")
 
     sig = source_signature(repo_dir=repo)
     assert sig["clean_status"] == "dirty"
 
-    other_dir = repo / "other" / "scripts"
+    other_dir = repo / "other" / ".dispatch"
     other_dir.mkdir(parents=True)
     (other_dir / "runs.json").write_text("{}")
-    (scripts_dir / "runs.json.bak").unlink()
+    (ledger_dir / "runs.json.bak").unlink()
 
     sig2 = source_signature(repo_dir=repo)
     assert sig2["clean_status"] == "dirty"

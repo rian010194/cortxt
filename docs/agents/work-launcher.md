@@ -17,6 +17,44 @@ identity for a ready issue; retry never overwrites an earlier attempt. `cortxt
 work submit` records a terminal result and moves the issue to independent
 review. No launcher command approves, merges, closes, or cleans a worktree.
 
+## Working-directory isolation per launch path
+
+The two launch paths differ, and the launch result now says which one ran:
+
+| Path | Isolation | Reported |
+| --- | --- | --- |
+| `cortxt work new` / `WorkLauncher.create` | one linked git worktree plus a `work/<run_id>` branch | `isolation: "worktree"`, real `branch` and `worktree` |
+| `cortxt work resume` / `WorkLauncher.resume` (the Work app launch path, through `workflow.claim-run.v1`) | none by default: the worker runs in the launcher's own repository checkout | `isolation: "shared-checkout"`, `branch: null`, `worktree: null`, `working_dir` = the repository directory |
+
+`resume(..., isolate=True)` requests the same physical isolation `create`
+uses; a worktree that cannot be created then fails the launch closed
+(`worktree_creation_failed`) rather than silently downgrading to the shared
+checkout. The isolation mode is written onto the durable Run record, so a
+reviewer reads what actually happened instead of inferring it from a branch
+name.
+
+This is the correction to the #472 dogfood finding: `resume` previously
+returned `branch: work/<run_id>` unconditionally, a name constructed from the
+run_id rather than projected from durable state, so a reviewer saw a
+plausible branch that had never existed while the change had landed in the
+shared checkout. **A mandate whose artifact policy requires the change to stay
+inside the run's own isolated worktree is only enforceable on a launch that
+asked for isolation** -- on the default resume path that clause is
+unenforceable, and the launch result says so instead of implying otherwise.
+
+## Recovery out of a stranded claim
+
+`workflow.recover-to-ready.v1` is the one sanctioned actuator for
+`workflow:in-progress -> workflow:ready`. It exists because a Run that failed
+or stranded previously left its Issue at `workflow:in-progress` with no way
+back through the action ports, so recovery meant a manual `gh issue edit`
+outside the contract (#472 finding 2). Like the other two transitions it
+re-reads the Issue immediately before the write and refuses any state that is
+not exactly `workflow:in-progress`; it is not a general label editor. It
+approves, merges, closes, and completes nothing, and it starts no Run --
+returning to `ready` re-opens the dispatch gate so a fresh Run stays a
+separate operator decision through `workflow.claim-run.v1`.
+
 The worker handoff contains only approved scope, acceptance criteria, dispatch
 limits, and artifact policy. Inputs containing prohibited diacritics are
 rejected. Secrets, raw runtime output, full prompts, and model reasoning must
