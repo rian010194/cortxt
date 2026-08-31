@@ -580,7 +580,8 @@ def read_run_terminal_v1(issue_ref: str,
     sessions = list(session_docs) if session_docs is not None else []
     summaries = correlate_run_summaries(
         issue_ref, dispatcher_runs, summaries_from_sessions(sessions, issue_ref))
-    result = run_terminal_projection(issue_ref, run_id, summaries, sessions)
+    result = run_terminal_projection(
+        issue_ref, run_id, summaries, sessions, dispatcher_store=dispatcher_runs)
     if result is None:
         raise RunNotCorrelated(f"no run {run_id!r} correlated for {issue_ref!r}")
     try:

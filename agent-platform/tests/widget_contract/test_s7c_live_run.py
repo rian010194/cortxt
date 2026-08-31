@@ -206,11 +206,20 @@ def test_terminal_returns_none_when_issue_run_pair_not_correlated():
 
 def test_terminal_dispatcher_only_run_has_unknown_cost_and_is_incomplete():
     dispatcher = {"run_1": _dispatcher_run(status="failed", finished_at=1756641600.0)}
+    dispatcher["run_1"]["result"] = {
+        "runtime": "hermes-free", "provider": "nous", "model": "free-model",
+        "usage": "unknown (not reported)", "cost": "unknown (not measured)",
+        "artifacts": ["run-log:run_1", r"C:\\private\\raw.log"],
+        "evidence": "free text must not be projected", "error": None,
+    }
     runs = _summaries(dispatcher)
-    term = run_terminal_projection(ISSUE_REF, "run_1", runs, [])
+    term = run_terminal_projection(
+        ISSUE_REF, "run_1", runs, [], dispatcher_store=dispatcher)
     validate(term, TYPES["run.terminal.v1"].schema)
     assert term["cost"] is None and term["cost_status"] == "unknown"
-    assert term["artifacts"] == [] and term["evidence"] == []
+    assert term["provider"] == "nous" and term["model"] == "free-model"
+    assert term["artifacts"] == [{"ref": "run-log:run_1", "sha256": None}]
+    assert term["evidence"] == []
     assert term["incomplete"] is True
 
 

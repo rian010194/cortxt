@@ -503,6 +503,7 @@ def run_terminal_projection(
     run_id: str,
     summaries: Sequence[Mapping[str, Any]],
     session_docs: Sequence[Mapping[str, Any]],
+    dispatcher_store: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Content-free ``run.terminal.v1`` for one exact issue+run (AC4).
 
@@ -521,7 +522,13 @@ def run_terminal_projection(
         return None
 
     doc = _find_session_doc(session_docs, issue_ref, run_id)
-    turn = _last_event_payload(doc, "run.engine_turn") if doc else {}
+    dispatcher_run = (dispatcher_store or {}).get(run_id)
+    if not (isinstance(dispatcher_run, Mapping)
+            and str(dispatcher_run.get("issue_id")) == issue_ref):
+        dispatcher_run = {}
+    dispatcher_result = dispatcher_run.get("result") if isinstance(
+        dispatcher_run.get("result"), Mapping) else {}
+    turn = _last_event_payload(doc, "run.engine_turn") if doc else dict(dispatcher_result)
     created = _last_event_payload(doc, "run.created") if doc else {}
 
     cost_status = turn.get("cost_status")
@@ -534,11 +541,14 @@ def run_terminal_projection(
         cost, cost_status = None, "unknown"
 
     artifacts = []
-    for item in turn.get("artifacts") or []:
+    raw_artifacts = turn.get("artifacts")
+    for item in raw_artifacts if isinstance(raw_artifacts, list) else []:
         entry = _safe_artifact_entry(item)
         if entry is not None:
             artifacts.append(entry)
-    evidence = [_safe_evidence_entry(item) for item in turn.get("evidence") or []]
+    raw_evidence = turn.get("evidence")
+    evidence = [_safe_evidence_entry(item)
+                for item in (raw_evidence if isinstance(raw_evidence, list) else [])]
     error = _safe_error(turn.get("error"))
 
     return {
@@ -546,7 +556,8 @@ def run_terminal_projection(
         "issue_ref": issue_ref,
         "run_id": run_id,
         "status": str(summary.get("status")),
-        "engine": summary.get("engine") or _iso(turn.get("engine_id")) or _iso(created.get("engine_id")),
+        "engine": summary.get("engine") or _iso(turn.get("engine_id")) or _iso(
+            turn.get("runtime")) or _iso(created.get("engine_id")),
         "worker_role": summary.get("worker_role"),
         "started_at": summary.get("started_at"),
         "finished_at": summary.get("finished_at") or _iso(turn.get("finished_at")),
