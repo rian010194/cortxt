@@ -412,3 +412,11 @@ def test_live_renderer_asset_is_versioned_for_host_restart_cache_safety():
     site_html = (root.parent / "site" / "public" / "widgets" / "index.html").read_text(encoding="utf-8")
     marker = 'app-renderer-work-launch.js?v=20260831-s7c'
     assert marker in host_html and marker in site_html
+
+
+def test_live_renderer_replaces_prior_panel_and_stops_prior_poller():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "widget" / "app-renderer-work-launch.js").read_text(encoding="utf-8")
+    assert 'winEl._cortxtStopLiveRun()' in source
+    assert 'winEl.querySelector("[data-run-live]")' in source
+    assert 'winEl._cortxtStopLiveRun = stop' in source

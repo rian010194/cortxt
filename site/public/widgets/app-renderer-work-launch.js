@@ -193,12 +193,16 @@
   /* ---- S7c live Run panel: bounded poll, stop at terminal ----------- */
   function attachLiveRun(winEl, ctx, issue, runId) {
     if (!winEl || !issue) return;
+    if (typeof winEl._cortxtStopLiveRun === "function") winEl._cortxtStopLiveRun();
+    var prior = winEl.querySelector("[data-run-live]");
+    if (prior) prior.remove();
     var panel = document.createElement("section");
     panel.className = "launch-block run-live";
     panel.setAttribute("data-run-live", issue);
     winEl.appendChild(panel);
     var timer = null, stopped = false;
     function stop() { stopped = true; if (timer) { clearTimeout(timer); timer = null; } }
+    winEl._cortxtStopLiveRun = stop;
     function schedule() { if (!stopped) timer = setTimeout(tick, 5000); }
     function renderFreshness(fx) {
       panel.innerHTML = "<h4>Live Run</h4>" +
