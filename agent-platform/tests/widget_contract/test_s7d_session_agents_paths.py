@@ -98,3 +98,17 @@ def test_the_emitted_path_reads_live_state_not_its_own_rendered_output(tmp_path)
                                         agents_reader=reader))
     assert result.status == "succeeded", result.error
     assert calls, "the live session-agents reader was never consulted"
+
+
+def test_no_session_agents_branch_keeps_the_unsafe_implicit_default():
+    """The first fix landed on the emit branch only, leaving the identical
+    default alive on the compose (`child_data`) branch, where it kept the live
+    reader unreachable in exactly the same way (#473 review).
+
+    This is asserted over the source because the invariant is "no branch here
+    has an implicit input default", including branches added later -- a test
+    bound to today's two call sites would not catch the third.
+    """
+    source = (REPO_ROOT / "agent-platform" / "cli" / "unified_cli.py").read_text(encoding="utf-8")
+    assert 'agents_input = getattr(args, "agents_input", None) or' not in source
+    assert source.count('agents_input = getattr(args, "agents_input", None)') == 2

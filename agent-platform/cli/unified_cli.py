@@ -1330,8 +1330,13 @@ def _run_widget_compose(args: argparse.Namespace) -> ResultEnvelope:
                             child_data[read.id] = read_usage_cost_v1(reader())
                     elif read.operation == "session-agents.v1":
                         from widget_contract.adapters.store_reads import read_session_agents_v1
-                        agents_input = getattr(args, "agents_input", None) or (ap_path / "widget" / "session-agents.json")
-                        if Path(agents_input).is_file():
+                        # Same rule as the emit path above (S7d #473): no
+                        # implicit file default. The old default was this
+                        # view's own rendered OUTPUT, so this branch raised on
+                        # its committed artifact and the live reader below was
+                        # unreachable because that file always exists.
+                        agents_input = getattr(args, "agents_input", None)
+                        if agents_input and Path(agents_input).is_file():
                             child_data[read.id] = read_session_agents_v1(json.loads(Path(agents_input).read_text(encoding="utf-8")))
                         else:
                             reader = getattr(args, "agents_reader", None) or _default_session_agents_reader
@@ -1577,8 +1582,17 @@ def _default_usage_reader() -> dict[str, Any]:
 
 # Live widget snapshots are runtime state, not committed artifacts. Writing a
 # rendered live view over a tracked fixture in a public repository is how local
-# session state leaks into git history, so the default target is a gitignored
-# runtime directory and the tracked fixtures stay fixtures (S7d #473).
+# session state leaks into git history, so this gitignored runtime directory is
+# the safe default target (S7d #473).
+#
+# Scope, stated honestly: only the `session-agents` view uses it today, because
+# that view is the one #473 found reading its own committed output. The other
+# live views (session-pulse, execution-map, docker-status, webhooks,
+# pages-deploys, usage-cost, attention-queue, work-console, evidence,
+# decisions, candidates, and the generic emit/compose targets) still default to
+# tracked paths under `widget/`. Several of them also carry local session
+# state, so moving them here is the remaining half of this fix -- not something
+# this constant already accomplishes.
 WIDGET_SNAPSHOT_DIR = _get_agent_platform_path() / ".widget-snapshots"
 
 

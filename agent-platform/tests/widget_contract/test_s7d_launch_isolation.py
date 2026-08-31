@@ -72,9 +72,29 @@ def _ready_issue(number=473, *, artifact_policy=ISOLATED_POLICY):
     ("No isolated worktree is required for this documentation change.", "shared-checkout"),
     ("", "worktree"),
     (None, "worktree"),
+    # A *tightening* mandate contains the same phrases as a waiver. Reading
+    # phrase presence as permission inverted the boundary: the strictest
+    # policies an operator can write dropped isolation entirely (#473 review).
+    ("The worker must not use a shared checkout.", "worktree"),
+    ("Never work without an isolated worktree.", "worktree"),
+    ("Do not commit from the shared checkout; use the run's own worktree.", "worktree"),
+    ("No secrets. The run may not work in the shared checkout.", "worktree"),
+    ("Nothing is committed outside the isolated worktree.", "worktree"),
+    # An affirmative waiver still waives, including alongside other clauses.
+    ("Docs only; work in the shared checkout on a feature branch.", "shared-checkout"),
+    ("No secrets or customer data. This run works in the shared checkout.", "shared-checkout"),
 ])
 def test_isolation_defaults_closed_for_every_policy_shape(policy, expected):
     assert isolation_for_artifact_policy(policy) == expected
+
+
+def test_a_tightening_mandate_is_never_read_as_a_waiver_end_to_end():
+    """The regression that matters: an operator writing the strictest possible
+    artifact policy must not thereby hand the run a shared checkout."""
+    request = build_dispatch_request_v1(
+        _ready_issue(artifact_policy="The worker must not use a shared checkout."),
+        None, repo="owner/repo")
+    assert request["isolation"] == "worktree"
 
 
 def test_dispatch_request_declares_isolation_and_defaults_to_a_worktree():
@@ -85,6 +105,38 @@ def test_an_artifact_policy_that_waives_isolation_is_explicit_and_honoured():
     request = build_dispatch_request_v1(
         _ready_issue(artifact_policy=SHARED_POLICY), None, repo="owner/repo")
     assert request["isolation"] == "shared-checkout"
+
+
+def test_the_confirmation_view_shows_the_operator_the_isolation_it_binds():
+    """Isolation is part of the mandate being confirmed, so it must be visible
+    before confirm -- not merely covered by the digest (#473 review)."""
+    from pathlib import Path
+
+    widget = Path(__file__).resolve().parents[2] / "widget"
+    launch = (widget / "app-renderer-work-launch.js").read_text(encoding="utf-8")
+    assert "req.isolation" in launch
+    assert 'row("Isolation"' in launch
+    mirror = (Path(__file__).resolve().parents[3] / "site" / "public" / "widgets"
+              / "app-renderer-work-launch.js").read_text(encoding="utf-8")
+    assert mirror == launch, "the site mirror must carry the same confirmation view"
+
+
+def test_the_synthetic_fixture_declares_isolation_like_a_real_request():
+    """The fixture is validated against DISPATCH_REQUEST_SCHEMA, where
+    `isolation` is required and additionalProperties is closed."""
+    import json
+    from pathlib import Path
+
+    from widget_contract.registry import DISPATCH_REQUEST_SCHEMA
+    from jsonschema import validate
+
+    widget = Path(__file__).resolve().parents[2] / "widget"
+    fixture = json.loads((widget / "fixtures" / "dispatch-request.json").read_text(encoding="utf-8"))
+    validate(fixture, DISPATCH_REQUEST_SCHEMA)
+    assert fixture["isolation"] == "worktree"
+    # And its request_id is the digest of its own snapshot, not a stale one.
+    from widget_contract.dispatch_request import _request_id
+    assert fixture["request_id"] == _request_id(fixture)
 
 
 def test_isolation_is_covered_by_the_request_digest():

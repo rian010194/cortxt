@@ -67,6 +67,14 @@
       row("Max cost", money(req.max_cost_usd)) +
       row("Max parallel workers", req.max_parallel_workers == null ? "—" : String(req.max_parallel_workers)) +
       row("Delegation depth", req.delegation_depth == null ? "—" : String(req.delegation_depth)) +
+      // Isolation is part of the mandate the operator confirms: it decides
+      // whether the worker gets its own worktree and work/<run_id> branch or
+      // works in the shared checkout. It is server-derived from the approved
+      // artifact policy and covered by request_id, so it is displayed, never
+      // chosen here (#473).
+      row("Isolation", req.isolation === "shared-checkout"
+        ? "shared checkout (waived by the approved artifact policy)"
+        : "own worktree and work/<run_id> branch") +
       "</div>" +
       '<section class="launch-block"><h4>Scope</h4><p class="launch-scope">' + esc(req.scope) + "</p></section>" +
       '<section class="launch-block"><h4>Acceptance criteria</h4><ol class="launch-ac">' +

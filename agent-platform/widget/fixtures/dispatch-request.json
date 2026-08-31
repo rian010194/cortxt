@@ -1,10 +1,12 @@
 {
   "schema_version": 1,
-  "request_id": "sha256:8267a537b8a237c13b073803c4e3af7dcdfb0d25f8e14cca248f50375eae2d9c",
+  "request_id": "sha256:b195e62d3e7c4cd9e903a5db69a61ab1d27491ce69237ebf233c41af0d119e03",
   "issue_id": "owner/repo#471",
   "eligible": true,
   "workflow": "ready",
-  "workflow_labels": ["workflow:ready"],
+  "workflow_labels": [
+    "workflow:ready"
+  ],
   "scope": "Make a real `workflow:ready` Workstream launchable from the Work app without widening UI authority or creating a new dispatch path.",
   "acceptance_criteria": [
     "Work exposes launch only for an eligible real Workstream whose complete mandate is authoritatively `workflow:ready`.",
@@ -22,13 +24,19 @@
   "workflow_id": "work-launcher/v1",
   "engine": "hermes-free",
   "routing_reason": "matched tag 'background-task', cheapest of 3 candidate(s)",
-  "routable_task_tags": ["background-task"],
-  "engine_policy": {"approved_reliability": "unverified", "approved_engine": "hermes-free"},
+  "routable_task_tags": [
+    "background-task"
+  ],
+  "engine_policy": {
+    "approved_reliability": "unverified",
+    "approved_engine": "hermes-free"
+  },
   "max_runtime_seconds": 5400,
   "max_cost_usd": 8.0,
   "max_parallel_workers": 2,
   "delegation_depth": 1,
   "artifact_policy": "Isolated worktree; approved source/tests/docs and widget mirrors; no secrets, customer data, prompts, or reasoning; protected runtime state untouched.",
+  "isolation": "worktree",
   "missing": [],
   "errors": []
 }

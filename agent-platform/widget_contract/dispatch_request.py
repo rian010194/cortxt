@@ -59,9 +59,9 @@ ISOLATION_WORKTREE = "worktree"
 ISOLATION_SHARED = "shared-checkout"
 
 # An approved artifact policy waives the run's own isolated worktree only when
-# it says so explicitly. Everything else -- including a policy that demands
-# isolation, the default policy, and an issue with no artifact policy section
-# at all -- gets an isolated worktree.
+# it says so explicitly and affirmatively. Everything else -- including a policy
+# that demands isolation, the default policy, and an issue with no artifact
+# policy section at all -- gets an isolated worktree.
 #
 # S7d (#473), closing the #472 dogfood findings 6 and 8: the UI launch path
 # (workflow.claim-run.v1 -> gh_claim_run_resume -> WorkLauncher.resume) created
@@ -70,7 +70,7 @@ ISOLATION_SHARED = "shared-checkout"
 # Making this a field of the immutable dispatch request means the decision is
 # derived on the server from the approved mandate, is covered by `request_id`
 # (a browser cannot choose it -- a tampered value changes the digest and the
-# confirmation is rejected as stale), and is visible in the confirmation view
+# confirmation is rejected as stale), and is rendered in the confirmation view
 # before the operator confirms.
 _ISOLATION_WAIVED = re.compile(
     r"\bshared\s+checkout\b"
@@ -78,10 +78,41 @@ _ISOLATION_WAIVED = re.compile(
     r"|\bwithout\s+(?:an\s+)?isolated\s+worktree\b",
     re.I)
 
+# Phrase presence is not permission. A *tightening* mandate contains the very
+# same phrases as a waiver -- "the worker must not use a shared checkout",
+# "never work without an isolated worktree" -- so matching on presence alone
+# read the strictest mandates an operator can write as permission to drop
+# isolation entirely, the exact inversion of the boundary this field exists to
+# carry. A clause waives isolation only when nothing negates it first.
+# Deliberately only unambiguous negation: a bare modal ("the run must use the
+# shared checkout") is an affirmative waiver, and treating it as negation would
+# override an explicit operator mandate in the other direction.
+_NEGATION_BEFORE_WAIVER = re.compile(
+    r"\b(?:not|never|cannot|can't|don't|doesn't|without|outside|avoid|"
+    r"forbidden|prohibited|disallowed)\b",
+    re.I)
+
+# Sentence/clause boundaries. A long policy states many things; the negation
+# that governs a waiver phrase is the one in its own clause, not one three
+# sentences earlier.
+_CLAUSE_SPLIT = re.compile(r"[.;\n]")
+
 
 def isolation_for_artifact_policy(policy: str | None) -> str:
-    """The isolation the approved artifact policy requires (fails closed)."""
-    if isinstance(policy, str) and _ISOLATION_WAIVED.search(policy):
+    """The isolation the approved artifact policy requires (fails closed).
+
+    Returns ``shared-checkout`` only for a clause that affirmatively waives the
+    run's own worktree. A negated clause -- a mandate *requiring* isolation --
+    is not a waiver, and neither is a policy that never mentions the subject.
+    """
+    if not isinstance(policy, str):
+        return ISOLATION_WORKTREE
+    for clause in _CLAUSE_SPLIT.split(policy):
+        match = _ISOLATION_WAIVED.search(clause)
+        if match is None:
+            continue
+        if _NEGATION_BEFORE_WAIVER.search(clause[:match.start()]):
+            continue
         return ISOLATION_SHARED
     return ISOLATION_WORKTREE
 
@@ -89,11 +120,8 @@ def isolation_for_artifact_policy(policy: str | None) -> str:
 # Approval resolution lives in `widget_contract.approval`, the single durable
 # home every reader shares (S7d #473, from the #472 dogfood finding 3 -- the
 # dispatch request and the Workstream projection used to disagree about the
-# same issue's approval). These names are re-exported so existing importers of
-# the dispatch-request module keep working.
-from .approval import (APPROVAL_SECTIONS, NEGATED_APPROVAL as _NEGATED_APPROVAL,
-                       latest_retry_authorization as _latest_retry_authorization,
-                       resolve_approval)
+# same issue's approval).
+from .approval import resolve_approval
 
 ENGINE_POLICY_SECTIONS = ("Engine policy", "Routing policy")
 

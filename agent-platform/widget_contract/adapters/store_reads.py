@@ -622,7 +622,8 @@ def read_run_review_v1(issue_ref: str,
     submission for the launcher path (#472 findings 4 and 5).
     """
     sessions = list(session_docs) if session_docs is not None else []
-    result = run_review_projection(issue_ref, sessions, dispatcher_store=dispatcher_store)
+    store = dispatcher_store if isinstance(dispatcher_store, Mapping) else None
+    result = run_review_projection(issue_ref, sessions, dispatcher_store=store)
     try:
         validate(result, TYPES["run.review.v1"].schema)
     except Exception as exc:
