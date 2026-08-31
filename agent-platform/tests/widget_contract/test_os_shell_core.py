@@ -913,8 +913,8 @@ def test_launch_ineligible_renders_structured_errors_with_recovery():
 
 def test_launch_renderer_loaded_before_shell_boot():
     # The renderer registers before the shell's renderAll() at boot.
-    assert HTML.index('src="os-renderer.js"') < HTML.index('src="app-renderer-work-launch.js"')
-    assert HTML.index('src="app-renderer-work-launch.js"') < HTML.index('src="work-console.js"')
+    assert HTML.index('src="os-renderer.js"') < HTML.index('src="app-renderer-work-launch.js')
+    assert HTML.index('src="app-renderer-work-launch.js') < HTML.index('src="work-console.js"')
 
 
 # --- S1a: Studio navigation boundary (issue #435) -----------------

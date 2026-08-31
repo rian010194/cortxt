@@ -20,6 +20,7 @@ import re
 import secrets
 import time
 from collections import deque
+from datetime import datetime, timezone
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -34,11 +35,19 @@ from widget_contract.adapters.github_ports import (
     read_issue_detail,
 )
 from widget_contract.adapters.store_reads import (
+    RunNotCorrelated,
     read_dispatch_request_v1,
+    read_run_activity_v1,
+    read_run_review_v1,
     read_run_summaries_v1,
+    read_run_terminal_v1,
     read_workstream_detail_v1,
 )
-from widget_contract.run_authority import correlate_run_summaries, summaries_from_sessions
+from widget_contract.run_authority import (
+    compute_run_freshness,
+    correlate_run_summaries,
+    summaries_from_sessions,
+)
 from widget_contract.workstreams import build_workstream_projection
 from widget_contract.generation import generate_widget_spec
 from widget_contract.loader import load_widget_file
@@ -203,6 +212,7 @@ class ActionHost:
                  session_store: Path | None = None,
                  issue_reader: Callable[..., Mapping[str, Any]] | None = None,
                  token: str | None = None, clock: Callable[[], float] = time.monotonic,
+                 wall_clock: Callable[[], str] | None = None,
                  max_requests: int = MAX_REQUESTS_PER_MINUTE) -> None:
         self._spec_path = Path(spec_path)
         self._labels_reader = labels_reader
@@ -219,6 +229,7 @@ class ActionHost:
             approval_ref=approval_ref, request_id=request_id))
         self.token = token or secrets.token_urlsafe(32)
         self._clock = clock
+        self._wall_clock = wall_clock or (lambda: datetime.now(timezone.utc).isoformat())
         self._max_requests = max_requests
         self._calls: Deque[float] = deque()
         self._widget = None
@@ -291,11 +302,38 @@ class ActionHost:
         runs = correlate_run_summaries(
             issue_ref, self._read_dispatcher_runs(),
             summaries_from_sessions(self._read_session_docs(), issue_ref))
-        return read_workstream_detail_v1(issue, runs, repo=repo, status="fresh", age_seconds=0)
+        freshness = compute_run_freshness(runs, now_iso=self._wall_clock())
+        return read_workstream_detail_v1(
+            issue, runs, repo=repo,
+            status=freshness["status"], age_seconds=freshness["age_seconds"])
 
     def run_summaries(self, repo: str, number: int) -> dict:
         issue_ref = f"{repo}#{number}"
         return read_run_summaries_v1(issue_ref, self._read_dispatcher_runs(), self._read_session_docs())
+
+    def run_freshness(self, repo: str, number: int) -> dict:
+        """The freshness classification alone (fresh/stale/stranded/terminal),
+        for a bounded poll that only needs to know whether to keep polling."""
+        issue_ref = f"{repo}#{number}"
+        runs = correlate_run_summaries(
+            issue_ref, self._read_dispatcher_runs(),
+            summaries_from_sessions(self._read_session_docs(), issue_ref))
+        return {"schema_version": 1, "issue_ref": issue_ref,
+                **compute_run_freshness(runs, now_iso=self._wall_clock())}
+
+    def run_activity(self, repo: str, number: int, run_id: str) -> dict:
+        issue_ref = f"{repo}#{number}"
+        return read_run_activity_v1(
+            issue_ref, self._read_dispatcher_runs(), self._read_session_docs(), run_id=run_id)
+
+    def run_terminal(self, repo: str, number: int, run_id: str) -> dict:
+        issue_ref = f"{repo}#{number}"
+        return read_run_terminal_v1(
+            issue_ref, self._read_dispatcher_runs(), self._read_session_docs(), run_id=run_id)
+
+    def run_review(self, repo: str, number: int) -> dict:
+        issue_ref = f"{repo}#{number}"
+        return read_run_review_v1(issue_ref, self._read_session_docs())
 
     def _build_dispatch_request(self, repo: str, number: int, *, issue: Mapping[str, Any] | None = None) -> dict:
         """Build the authoritative dispatch request for an issue (shared by the
@@ -483,12 +521,18 @@ class ActionHandler(SimpleHTTPRequestHandler):
 
     host: ActionHost
 
+    def end_headers(self) -> None:
+        # The loopback action host is a live worktree surface. Static app
+        # resources must not survive a host/commit restart in browser cache;
+        # otherwise an old renderer can consume new authoritative APIs (AC9).
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def _json(self, code: int, payload: Mapping[str, Any]) -> None:
         data = json.dumps(payload).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 
@@ -517,6 +561,18 @@ class ActionHandler(SimpleHTTPRequestHandler):
         if path in ("/api/dispatch-request", "/api/dispatch-request/"):
             self._handle_read("dispatch-request")
             return
+        if path in ("/api/run-freshness", "/api/run-freshness/"):
+            self._handle_read("run-freshness")
+            return
+        if path in ("/api/run-activity", "/api/run-activity/"):
+            self._handle_read("run-activity")
+            return
+        if path in ("/api/run-terminal", "/api/run-terminal/"):
+            self._handle_read("run-terminal")
+            return
+        if path in ("/api/run-review", "/api/run-review/"):
+            self._handle_read("run-review")
+            return
         super().do_GET()
 
     def _issue_ref_from_query(self) -> tuple[str, int] | None:
@@ -529,6 +585,10 @@ class ActionHandler(SimpleHTTPRequestHandler):
             return None
         return repo, int(num)
 
+    def _query_value(self, name: str) -> str:
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        return parse_qs(query).get(name, [""])[0]
+
     def _handle_read(self, kind: str) -> None:
         parsed = self._issue_ref_from_query()
         if parsed is None:
@@ -537,13 +597,32 @@ class ActionHandler(SimpleHTTPRequestHandler):
                                        "message": "issue query parameter must be owner/repo#N"}})
             return
         repo, number = parsed
+        run_id = self._query_value("run")
+        if kind in ("run-activity", "run-terminal") and not run_id:
+            self._json(400, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": "validation_error",
+                                       "message": "run query parameter is required"}})
+            return
         try:
             if kind == "workstream-detail":
                 self._json(200, self.host.workstream_detail(repo, number))
             elif kind == "runs":
                 self._json(200, self.host.run_summaries(repo, number))
+            elif kind == "run-freshness":
+                self._json(200, self.host.run_freshness(repo, number))
+            elif kind == "run-activity":
+                self._json(200, self.host.run_activity(repo, number, run_id))
+            elif kind == "run-terminal":
+                self._json(200, self.host.run_terminal(repo, number, run_id))
+            elif kind == "run-review":
+                self._json(200, self.host.run_review(repo, number))
             else:
                 self._json(200, self.host.dispatch_request(repo, number))
+        except RunNotCorrelated as exc:
+            # Exact issue+run correlation failed: fail closed with 404, never
+            # fall back to an unrelated run (AC2).
+            self._json(404, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": "not_correlated", "message": str(exc)}})
         except Exception as exc:
             self._json(503, {"schema_version": 1, "status": "unavailable",
                              "error": {"kind": getattr(exc, "kind", "read_error"), "message": str(exc)}})

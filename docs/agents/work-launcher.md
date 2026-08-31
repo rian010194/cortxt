@@ -61,3 +61,18 @@ physical isolation -- two builders cannot collide, and the coordinator
 verifies and commits per worktree. The check-style tests
 (`scripts/test_parallel_dispatch.py`) cover all four commands with a fake
 runner; run them with `python scripts/test_parallel_dispatch.py`.
+
+## S7c live Run status source
+
+The S7c live Run status surface reads its terminal facts (`engine`,
+`provider`, `model`, `usage`, `cost`, `cost_status`, `artifacts`, `evidence`,
+`error`, `incomplete`, `conflicting`) from ``run.terminal.v1`` as projected by
+``agent-platform/widget_contract/run_authority.py`` and served through
+``read_run_terminal_v1`` in ``agent-platform/widget_contract/adapters/store_reads.py``.
+It never reads those fields from browser state. When a correlated MCP session
+document exists, the projection draws the ``run.engine_turn`` payload from that
+session; when it does not, it falls back to the exact dispatcher result stored
+for the run (commit cf22288). Free-text evidence, filesystem paths, and
+unstructured usage are dropped before projection; only content-free fields
+defined in the ``run.terminal.v1`` schema in ``agent-platform/widget_contract/registry.py``
+are returned.
