@@ -170,7 +170,7 @@ def test_cli_action_claim_run_reports_execution_map_gate_code(monkeypatch):
             self.code = code
             super().__init__(code)
 
-    def gated(issue_id, *, registry):
+    def gated(issue_id, *, registry, approval_ref=None):
         raise ExecutionGateError("issue_not_ready")
 
     monkeypatch.setattr("cli.unified_cli._claim_run_resume", gated)

@@ -52,6 +52,7 @@ retries just that step for terminal runs where it didn't, giving that split
 an actual recovery path instead of only a stderr print from the caller.
 """
 import json
+import os
 import subprocess
 import threading
 import time
@@ -62,6 +63,26 @@ from typing import Optional
 
 DEFAULT_MAX_PARALLEL_WORKERS = None  # None = no ceiling (operator decision 2026-08-15, see #136)
 DEFAULT_DELEGATION_DEPTH = None  # None = no ceiling (operator decision 2026-08-15, see #136)
+
+# Set by worker_adapters._bounded_worker_env() on every bounded-worker
+# subprocess (HermesAdapter, HermesFreeAdapter, DshWorkerAdapter's hermes
+# CLI calls). Dispatcher.claim() checks this at the single choke point every
+# launch path (WorkLauncher and any legacy caller) goes through: a process
+# that inherited this marker is itself a bounded worker, and must not be
+# able to claim a second Run. This is a technical guard enforced in code,
+# not a prompt instruction -- a Hermes worker that shells out to
+# `cortxt work resume` or imports this module directly inherits the marker
+# from its parent subprocess env and is rejected before any registry write
+# (S7b nested-dispatch dogfood defect: an unauthorized second Run was
+# created from a separate, cwd-relative registry/store).
+NESTED_DISPATCH_ENV = "CORTXT_BOUNDED_WORKER"
+
+
+class NestedDispatchForbidden(RuntimeError):
+    """Raised when a process already running as a bounded worker attempts
+    to claim another Run through the sanctioned dispatcher entry point."""
+
+    code = "nested_dispatch_forbidden"
 GH_SYNC_CLAIM_LEASE_SECONDS = 30  # generous headroom over a real swap_label+comment round trip
 GH_CLI_TIMEOUT_SECONDS = 20  # strictly less than the lease above, so a gh call can never outlive its own claim
 
@@ -86,7 +107,9 @@ class GitHubOps:
 
     def _gh(self, *args: str) -> str:
         try:
-            result = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=GH_CLI_TIMEOUT_SECONDS)
+            result = subprocess.run(["gh", *args], capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace",
+                                    timeout=GH_CLI_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired as exc:
             raise GitHubError(f"gh {' '.join(args)} timed out after {GH_CLI_TIMEOUT_SECONDS}s") from exc
         if result.returncode != 0:
@@ -121,6 +144,15 @@ class Run:
     result: Optional[dict] = None
     gh_synced: bool = False  # set True once complete()'s GitHub label/comment step actually succeeds
     gh_sync_claimed_at: Optional[float] = None  # set while a _sync_github() call owns this run's GitHub step
+    # The approved dispatch request carried onto the claim/run record (S7b #471):
+    # the executed mandate must match the confirmed request, and these are
+    # enforced at the launcher boundary (worker ceiling before claim, cost
+    # ceiling on submit, delegation depth per run in spawn_child).
+    max_cost_usd: Optional[float] = None
+    max_parallel_workers: Optional[int] = None
+    delegation_depth: Optional[int] = None
+    artifact_policy: Optional[str] = None
+    request_id: Optional[str] = None
 
     def gh_sync_claim_stale(self, now: Optional[float] = None) -> bool:
         """A claim older than GH_SYNC_CLAIM_LEASE_SECONDS is treated as
@@ -194,6 +226,11 @@ class Dispatcher:
         self.delegation_depth = delegation_depth
 
     def claim(self, issue_id: str, workflow: str, worker_role: str, runtime: str, lease_seconds: int, run_id: Optional[str] = None) -> Run:
+        if os.environ.get(NESTED_DISPATCH_ENV):
+            raise NestedDispatchForbidden(
+                "refusing claim(): this process is running inside a bounded worker "
+                f"({NESTED_DISPATCH_ENV} is set) and must not dispatch a nested Run"
+            )
         repo, num = issue_id.split("#")
         with self._lock:
             active = self.registry.active_issue_ids()
@@ -225,13 +262,18 @@ class Dispatcher:
 
     def spawn_child(self, parent_run_id: str, n: int) -> Run:
         """delegation_depth is configurable (default: unbounded, see #136); a
-        child's depth is parent.depth + 1, same issue_id as the root."""
+        child's depth is parent.depth + 1, same issue_id as the root. The
+        per-run approved delegation depth (carried from the dispatch request)
+        takes precedence over the dispatcher's instance default."""
         with self._lock:
             parent = self.registry.get(parent_run_id)
             if parent is None:
                 raise RuntimeError(f"unknown parent run_id {parent_run_id}")
-            if self.delegation_depth is not None and parent.depth >= self.delegation_depth:
-                raise RuntimeError(f"delegation_depth={self.delegation_depth} exceeded: parent already at max depth")
+            depth_limit = (parent.delegation_depth
+                           if getattr(parent, "delegation_depth", None) is not None
+                           else self.delegation_depth)
+            if depth_limit is not None and parent.depth >= depth_limit:
+                raise RuntimeError(f"delegation_depth={depth_limit} exceeded: parent already at max depth")
             child = Run(
                 run_id=f"{parent_run_id}.{n}",
                 issue_id=parent.issue_id,
@@ -390,15 +432,24 @@ class Dispatcher:
 
     @staticmethod
     def _claim_comment(run: Run) -> str:
-        return (
-            "Claimed by dispatcher.\n"
-            f"run_id: `{run.run_id}`\n"
-            f"runtime: {run.runtime}\n"
-            f"worker_role: {run.worker_role}\n"
-            f"claimed_at: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(run.claimed_at))}\n"
-            f"lease_seconds: {run.lease_seconds}\n"
-            "status: workflow:ready -> workflow:in-progress (dispatch-contract.md)."
-        )
+        lines = [
+            "Claimed by dispatcher.",
+            f"run_id: `{run.run_id}`",
+            f"runtime: {run.runtime}",
+            f"worker_role: {run.worker_role}",
+            f"claimed_at: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(run.claimed_at))}",
+            f"lease_seconds: {run.lease_seconds}",
+        ]
+        if run.max_cost_usd is not None:
+            lines.append(f"max_cost_usd: {run.max_cost_usd}")
+        if run.max_parallel_workers is not None:
+            lines.append(f"max_parallel_workers: {run.max_parallel_workers}")
+        if run.delegation_depth is not None:
+            lines.append(f"delegation_depth: {run.delegation_depth}")
+        if run.request_id:
+            lines.append(f"request_id: `{run.request_id}`")
+        lines.append("status: workflow:ready -> workflow:in-progress (dispatch-contract.md).")
+        return "\n".join(lines)
 
     @staticmethod
     def _result_comment(run_id: str, status: str, envelope: dict) -> str:

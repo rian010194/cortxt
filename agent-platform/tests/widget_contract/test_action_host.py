@@ -14,12 +14,47 @@ from pathlib import Path
 import pytest
 
 from widget.action_host import (
-    ActionDenied, ActionHost, AuthorizationFailure, GateDenied, InvalidRequest,
-    NotFound, RateLimited, _make_handler, _ReusableThreadingHTTPServer,
+    ActionDenied, ActionHost, AdapterStartFailure, AuthorizationFailure,
+    DispatchDenied, GateDenied, InvalidRequest, NotFound, RateLimited,
+    StaleDispatchDenied, _make_handler, _ReusableThreadingHTTPServer,
 )
 
 SPEC_PATH = Path(__file__).resolve().parents[2] / "widget_contract" / "specs" / "candidates-0.1.yaml"
 DECISIONS_SPEC_PATH = Path(__file__).resolve().parents[2] / "widget_contract" / "specs" / "decisions-0.1.yaml"
+
+CLAIM_APPROVAL = (
+    "Operator approved this exact scope, route, and limits on 2026-08-30. "
+    "Implementation start is approved for the worker in the isolated worktree."
+)
+
+
+def _claim_issue(number=2, **overrides):
+    issue = {
+        "number": number,
+        "title": "Claimable workstream",
+        "body": (
+            "## Scope\n\nBuild the thing.\n\n"
+            "## Deterministic acceptance criteria\n\n"
+            "1. Launch only when the mandate is complete.\n"
+            "2. No browser widening.\n\n"
+            "## Approval status\n\n" + CLAIM_APPROVAL + "\n\n"
+            "## Worker role and limits\n\n"
+            "- Workflow: work-launcher/v1\n"
+            "- Worker role: builder.\n"
+            "- Max runtime: 5400 seconds.\n"
+            "- Max cost: USD 8.00 hard ceiling.\n"
+            "- Max parallel workers: 2.\n"
+            "- Delegation depth: 1.\n\n"
+            "## Artifact policy\n\nIsolated worktree only.\n\n"
+            "## Engine policy\n\nReliability: unverified\nEngine: hermes-free\n"
+        ),
+        "state": "open",
+        "labels": [{"name": "workflow:ready"}, {"name": "background-task"}],
+        "url": f"https://github.com/owner/repo/issues/{number}",
+        "milestone": None,
+    }
+    issue.update(overrides)
+    return issue
 
 
 def _host(**overrides):
@@ -28,11 +63,30 @@ def _host(**overrides):
         "labels_reader": lambda issue_id: ["workflow:inbox"],
         "transition_writer": lambda issue_id: {"issue_id": issue_id, "status": "ok"},
         "review_transition_writer": lambda issue_id: {"issue_id": issue_id, "status": "ok"},
-        "resume": lambda issue_id: {"run_id": "run-1", "issue_id": issue_id},
+        "resume": lambda issue_id, **kw: {"run_id": "run-1", "issue_id": issue_id},
         "token": "test-token",
     }
     kwargs.update(overrides)
     return ActionHost(**kwargs)
+
+
+def _claim_host(number=2, **overrides):
+    """Host whose issue_reader serves an eligible claim-run fixture."""
+    kwargs = {"issue_reader": lambda repo, n: _claim_issue(number=n)}
+    kwargs.update(overrides)
+    return _host(**kwargs)
+
+
+def _claim_request(host, number=2):
+    request = host.dispatch_request("owner/repo", number)
+    assert request["eligible"] is True, request["missing"]
+    return request
+
+
+def test_default_launcher_scripts_directory_is_repository_level():
+    host = _host()
+    assert host._scripts_dir == Path(__file__).resolve().parents[3] / "scripts"
+    assert (host._scripts_dir / "work_launcher.py").is_file()
 
 
 class _ExecutionGateError(RuntimeError):
@@ -129,11 +183,122 @@ def test_host_record_decision_fails_closed_without_review_writer():
 
 
 def test_host_claim_run_succeeds_through_injected_launcher():
-    host = _host(resume=lambda issue_id: {"run_id": "run-9", "issue_id": issue_id})
+    calls = []
+
+    def resume(issue_id, **kw):
+        calls.append((issue_id, kw))
+        return {"run_id": "run-9", "issue_id": issue_id}
+
+    host = _claim_host(resume=resume)
+    req = _claim_request(host)
     result = host.execute(action_id="claim-run", issue_id="owner/repo#2",
-                          approval_ref="approval-1", confirm=True, token="test-token")
+                          approval_ref=req["approval_reference"], request_id=req["request_id"],
+                          confirm=True, token="test-token")
     assert result["status"] == "ok"
     assert result["result"]["run_id"] == "run-9"
+    assert calls[0][0] == "owner/repo#2"
+    assert calls[0][1]["approval_ref"] == req["approval_reference"]
+    assert calls[0][1]["request_id"] == req["request_id"]
+
+
+def test_host_claim_run_requires_request_id_snapshot():
+    host = _claim_host()
+    req = _claim_request(host)
+    with pytest.raises(InvalidRequest, match="request_id"):
+        host.execute(action_id="claim-run", issue_id="owner/repo#2",
+                     approval_ref=req["approval_reference"], request_id="",
+                     confirm=True, token="test-token")
+
+
+def test_host_claim_run_rejects_stale_request_snapshot():
+    host = _claim_host()
+    req = _claim_request(host)
+    with pytest.raises(StaleDispatchDenied):
+        host.execute(action_id="claim-run", issue_id="owner/repo#2",
+                     approval_ref=req["approval_reference"],
+                     request_id="sha256:" + "0" * 64,
+                     confirm=True, token="test-token")
+
+
+def test_host_claim_run_rejects_approval_mismatch_without_launching():
+    calls = []
+
+    def resume(issue_id, **kw):
+        calls.append(issue_id)
+        return {"run_id": "x"}
+
+    host = _claim_host(resume=resume)
+    req = _claim_request(host)
+    with pytest.raises(AuthorizationFailure, match="approval reference"):
+        host.execute(action_id="claim-run", issue_id="owner/repo#2",
+                     approval_ref="someone-else-approves", request_id=req["request_id"],
+                     confirm=True, token="test-token")
+    assert calls == []
+
+
+def test_host_claim_run_rejects_label_drift_before_launching():
+    """The Issue changed between preview and confirmation (workflow left ready):
+    the confirmation must fail closed with the structured eligibility errors."""
+    state = {"ready": True}
+    calls = []
+
+    def reader(repo, number):
+        return _claim_issue(number=number,
+                            labels=[{"name": "workflow:ready" if state["ready"] else "workflow:in-progress"},
+                                    {"name": "background-task"}])
+
+    def resume(issue_id, **kw):
+        calls.append(issue_id)
+        return {"run_id": "x"}
+
+    host = _claim_host(issue_reader=reader, resume=resume)
+    req = host.dispatch_request("owner/repo", 2)  # preview while ready
+    state["ready"] = False  # label drift before confirmation
+    with pytest.raises(DispatchDenied) as exc:
+        host.execute(action_id="claim-run", issue_id="owner/repo#2",
+                     approval_ref=req["approval_reference"], request_id=req["request_id"],
+                     confirm=True, token="test-token")
+    assert exc.value.code == "dispatch_request_not_eligible"
+    assert any(e["code"] == "workflow_ready" for e in exc.value.errors)
+    assert calls == []
+
+
+def test_host_claim_run_gate_error_propagates_stable_code_with_recovery():
+    def gated(issue_id, **kw):
+        raise ExecutionGateError("resource_collision")
+
+    host = _claim_host(resume=gated)
+    req = _claim_request(host)
+    with pytest.raises(GateDenied) as exc:
+        host.execute(action_id="claim-run", issue_id="owner/repo#2",
+                     approval_ref=req["approval_reference"], request_id=req["request_id"],
+                     confirm=True, token="test-token")
+    assert exc.value.code == "resource_collision"
+    assert exc.value.category == "claim_conflict"
+    assert exc.value.recovery
+
+
+def test_host_claim_run_adapter_start_failure_is_stable_with_recovery():
+    class LauncherDispatchError(RuntimeError):
+        category = "adapter_start_failed"
+
+        def __init__(self, code, recovery=None):
+            self.code = code
+            self.recovery = recovery or "default recovery"
+            super().__init__(code)
+
+    def failing(issue_id, **kw):
+        raise LauncherDispatchError("adapter_not_registered", recovery="register an adapter")
+
+    host = _claim_host(resume=failing)
+    req = _claim_request(host)
+    with pytest.raises(AdapterStartFailure) as exc:
+        host.execute(action_id="claim-run", issue_id="owner/repo#2",
+                     approval_ref=req["approval_reference"], request_id=req["request_id"],
+                     confirm=True, token="test-token")
+    assert exc.value.code == "adapter_not_registered"
+    assert exc.value.category == "adapter"
+    assert exc.value.recovery == "register an adapter"
 
 
 def test_host_unknown_action_is_not_found():
@@ -186,17 +351,6 @@ def test_host_transition_denied_maps_to_action_denied():
     with pytest.raises(ActionDenied):
         host.execute(action_id="mark-ready", issue_id="owner/repo#3",
                      approval_ref="approval-1", confirm=True, token="test-token")
-
-
-def test_host_claim_run_gate_error_propagates_stable_code():
-    def gated(issue_id):
-        raise ExecutionGateError("resource_collision")
-
-    host = _host(resume=gated)
-    with pytest.raises(GateDenied) as exc:
-        host.execute(action_id="claim-run", issue_id="owner/repo#4",
-                     approval_ref="approval-1", confirm=True, token="test-token")
-    assert exc.value.code == "resource_collision"
 
 
 def test_host_rate_limit_enforced():
@@ -255,8 +409,10 @@ def test_http_token_and_capabilities_served_same_origin(server):
 
 
 def test_http_static_get_surface_preserved(server):
-    status, body = _request(f"{server}/index.html")
-    assert status == 200 and "Cortxt" in body
+    with urllib.request.urlopen(f"{server}/index.html", timeout=10) as response:
+        body = response.read().decode("utf-8")
+        assert response.status == 200 and "Cortxt" in body
+        assert response.headers["Cache-Control"] == "no-store"
 
 
 def test_http_mark_ready_success_end_to_end(server):

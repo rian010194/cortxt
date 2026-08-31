@@ -1,10 +1,20 @@
 """Read and normalize injected operational stores."""
 
 from copy import deepcopy
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from ..registry import TYPES
 from ..validation import validate
+from ..run_authority import (
+    correlate_run_summaries,
+    run_activity_projection,
+    run_review_projection,
+    run_summaries_projection,
+    run_terminal_projection,
+    summaries_from_sessions,
+)
+from ..detail import build_workstream_detail_v1
+from ..dispatch_request import build_dispatch_request_v1
 
 
 class ReadAdapterError(ValueError):
@@ -527,6 +537,123 @@ def read_decision_pending_v1(store: Mapping[str, Any]) -> dict[str, Any]:
     }
     try:
         validate(result, TYPES["decision.pending.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_run_summaries_v1(issue_ref: str,
+                          dispatcher_store: Mapping[str, Any] | None,
+                          session_docs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Correlate Runs from the dispatcher runs.json and the session-event store.
+
+    Provenance-preserving (S7a #470): conflicting statuses on the same run_id
+    are rendered as a ``conflict`` record, never silently merged. Validates the
+    result against ``run.summaries.v1``.
+    """
+    dispatcher_runs = dispatcher_store if isinstance(dispatcher_store, Mapping) else {}
+    sessions = list(session_docs) if session_docs is not None else []
+    summaries = correlate_run_summaries(
+        issue_ref, dispatcher_runs, summaries_from_sessions(sessions, issue_ref))
+    result = run_summaries_projection(issue_ref, summaries)
+    try:
+        validate(result, TYPES["run.summaries.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+class RunNotCorrelated(ReadAdapterError):
+    """No run matches the exact issue_ref + run_id pair (fail closed, AC2)."""
+
+
+def read_run_terminal_v1(issue_ref: str,
+                         dispatcher_store: Mapping[str, Any] | None,
+                         session_docs: Sequence[Mapping[str, Any]],
+                         *, run_id: str) -> dict[str, Any]:
+    """Content-free ``run.terminal.v1`` for one exact issue+run (S7c #472).
+
+    Raises ``RunNotCorrelated`` when no summary matches ``issue_ref``+``run_id``
+    exactly, so a mismatch never renders an unrelated run's result.
+    """
+    dispatcher_runs = dispatcher_store if isinstance(dispatcher_store, Mapping) else {}
+    sessions = list(session_docs) if session_docs is not None else []
+    summaries = correlate_run_summaries(
+        issue_ref, dispatcher_runs, summaries_from_sessions(sessions, issue_ref))
+    result = run_terminal_projection(
+        issue_ref, run_id, summaries, sessions, dispatcher_store=dispatcher_runs)
+    if result is None:
+        raise RunNotCorrelated(f"no run {run_id!r} correlated for {issue_ref!r}")
+    try:
+        validate(result, TYPES["run.terminal.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_run_activity_v1(issue_ref: str,
+                         dispatcher_store: Mapping[str, Any] | None,
+                         session_docs: Sequence[Mapping[str, Any]],
+                         *, run_id: str) -> dict[str, Any]:
+    """Content-free ``run.activity.v1`` timeline for one exact issue+run."""
+    dispatcher_runs = dispatcher_store if isinstance(dispatcher_store, Mapping) else {}
+    sessions = list(session_docs) if session_docs is not None else []
+    summaries = correlate_run_summaries(
+        issue_ref, dispatcher_runs, summaries_from_sessions(sessions, issue_ref))
+    if not any(str(s.get("run_id")) == run_id and str(s.get("issue_ref")) == issue_ref
+               for s in summaries):
+        raise RunNotCorrelated(f"no run {run_id!r} correlated for {issue_ref!r}")
+    result = run_activity_projection(issue_ref, run_id, sessions)
+    try:
+        validate(result, TYPES["run.activity.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_run_review_v1(issue_ref: str,
+                       session_docs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Content-free ``run.review.v1`` view of durable review submissions."""
+    sessions = list(session_docs) if session_docs is not None else []
+    result = run_review_projection(issue_ref, sessions)
+    try:
+        validate(result, TYPES["run.review.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_workstream_detail_v1(issue: Mapping[str, Any],
+                              runs: Sequence[Mapping[str, Any]],
+                              *,
+                              repo: str,
+                              status: str = "fresh",
+                              error: Mapping[str, Any] | None = None,
+                              age_seconds: int = 0,
+                              synthetic: bool = False) -> dict[str, Any]:
+    """Build and validate the versioned Workstream detail projection."""
+    result = build_workstream_detail_v1(
+        issue, runs, repo=repo, status=status, error=error,
+        age_seconds=age_seconds, synthetic=synthetic)
+    try:
+        validate(result, TYPES["workstream.detail.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_dispatch_request_v1(issue: Mapping[str, Any],
+                             choice: Any,
+                             *,
+                             repo: str,
+                             engine_registered: bool = True,
+                             routable_tags: Sequence[str] | None = None) -> dict[str, Any]:
+    """Build and validate the versioned dispatch-request projection."""
+    result = build_dispatch_request_v1(
+        issue, choice, repo=repo, engine_registered=engine_registered,
+        routable_tags=routable_tags)
+    try:
+        validate(result, TYPES["dispatch.request.v1"].schema)
     except Exception as exc:
         raise ReadAdapterError(str(exc)) from exc
     return result

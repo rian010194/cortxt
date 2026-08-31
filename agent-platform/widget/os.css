@@ -215,3 +215,40 @@ button,input{font:inherit}button{color:inherit}
    panel/window surfaces); activity panel z-order above the multi-mode bar. */
 .activity-panel{z-index:60}
 .window-bar:focus-within,.activity-panel:focus-within{outline:1px solid var(--accent);outline-offset:-1px}
+
+/* S7b (#471): Review-and-start-Run surface (canonical tokens only). */
+.launch-banner{border:1px solid var(--stroke);background:var(--layer);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--muted);margin:0 0 14px}
+.launch-banner.warn{border-color:var(--warn);color:var(--warn)}
+.launch-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;background:var(--stroke);border:1px solid var(--stroke);border-radius:10px;overflow:hidden;margin:0 0 14px}
+.launch-row{display:flex;flex-direction:column;gap:2px;background:var(--layer);padding:9px 12px}
+.launch-key{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);font-weight:650}
+.launch-value{font-size:12.5px;color:var(--text);word-break:break-word}
+.launch-block{margin:0 0 14px}
+.launch-block h4{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--dim);margin:0 0 8px;font-weight:650}
+.launch-scope{font-size:13px;line-height:1.55;color:var(--text);margin:0}
+.launch-ac{margin:0;padding-left:20px;display:grid;gap:6px}
+.launch-ac li{font-size:12.5px;line-height:1.5;color:var(--muted)}
+.launch-ref{font-size:12px;color:var(--muted);line-height:1.55;margin:6px 0;word-break:break-word}
+.launch-ref code{color:var(--text);background:var(--layer);border:1px solid var(--stroke);border-radius:6px;padding:1px 6px;font-size:11px}
+.launch-errors{display:grid;gap:10px;margin:0 0 12px}
+.launch-error{border:1px solid var(--stroke);border-left:3px solid var(--warn);background:var(--layer);border-radius:10px;padding:10px 14px}
+.launch-error strong{display:block;font-size:13px;margin:2px 0 4px;font-family:ui-monospace,Consolas,monospace}
+.launch-error p{margin:0;font-size:12px;color:var(--muted);line-height:1.5}
+.launch-check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--text);line-height:1.5;margin:10px 0}
+.launch-check input{min-width:18px;min-height:18px;margin-top:1px;accent-color:var(--accent)}
+.launch-check input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.launch-check input:disabled{opacity:.5}
+.launch-banner+.review-actions{margin-top:4px}
+@media(max-width:720px){.launch-grid{grid-template-columns:1fr}}
+
+/* S7c (#472): live Run panel (canonical tokens only). */
+.run-live{border:1px solid var(--stroke);border-radius:10px;padding:12px 14px;background:var(--layer)}
+.run-live-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.run-badge{font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:650;border:1px solid var(--stroke);border-radius:999px;padding:2px 8px;color:var(--text)}
+.run-badge[data-run-freshness="stranded_running"],.run-badge[data-run-freshness="stale"]{border-color:var(--warn);color:var(--warn)}
+.run-badge[data-run-freshness="terminal"]{border-color:var(--accent);color:var(--accent)}
+.run-live-age{font-size:11px;color:var(--dim)}
+.run-live-warn{font-size:12px;color:var(--warn);line-height:1.5;margin:8px 0 0}
+.run-live-error{font-size:12px;color:var(--warn);line-height:1.5}
+.run-activity{margin:10px 0 0;padding-left:18px;display:grid;gap:4px}
+.run-activity li{font-size:11.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}

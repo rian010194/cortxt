@@ -92,13 +92,23 @@ def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm
                    labels_reader: Callable[[str], list[str]],
                    transition_writer: Callable[[str], Mapping[str, Any]],
                    resume: Callable[[str], Any],
-                   review_transition_writer: Callable[[str], Mapping[str, Any]] | None = None
+                   review_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
+                   authoritative_reference: str | None = None
                    ) -> tuple[ActionExecutor, ActionContext]:
     """Assemble the shared executor + per-action context for one execution.
 
     The approve/confirm semantics and the adapter set are identical to what
     `cortxt widget action` uses; callers only differ in where the injected
     GitHub/launcher ports come from (CLI defaults vs. the host's defaults).
+
+    `authoritative_reference` is the server-derived approval reference (e.g. the
+    issue-derived dispatch-request approval). When provided, the ActionContext
+    carries it while the Action carries the caller-supplied `approval_ref`, so
+    the executor's reference comparison is non-circular: a caller-supplied
+    reference that does not match the authoritative one fails closed. When
+    omitted (CLI path), both sides keep the caller-supplied value and the
+    authoritative check happens in the claim-run adapter itself
+    (`gh_claim_run_resume`).
 
     `review_transition_writer` must be passed by every caller wiring a
     `workflow.record-decision.v1` action: without it, `github_transition_adapter`
@@ -112,5 +122,6 @@ def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm
          "cli": cli_claim_adapter(resume)},
         operator_authorize(confirm),
     )
-    context = ActionContext(approval_ref, frozenset({declared.operation}))
+    context_reference = authoritative_reference if authoritative_reference is not None else approval_ref
+    context = ActionContext(context_reference, frozenset({declared.operation}))
     return executor, context

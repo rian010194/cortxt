@@ -15,8 +15,11 @@ from dataclasses import dataclass, field
 COST_ORDER = {"free": 0, "cheap": 1, "metered": 2}
 VALID_COST_CLASSES = frozenset(COST_ORDER)
 VALID_RELIABILITY_CLASSES = frozenset({"verified", "unverified", "degraded"})
+# Lower rank = stricter/more reliable. A mandate that approves a minimum
+# reliability class only admits candidates at or above that rank.
+RELIABILITY_ORDER = {"verified": 0, "unverified": 1, "degraded": 2}
 
-DEFAULT_FALLBACK_ENGINE = "claude-direct"
+DEFAULT_FALLBACK_ENGINE = "claude"
 
 
 class InvalidManifestError(ValueError):
@@ -70,12 +73,14 @@ class EngineChoice:
 
 DEFAULT_MANIFESTS: tuple[EngineManifest, ...] = (
     EngineManifest(
-        engine_id="claude-direct",
+        engine_id="claude",
         task_shapes=("general", "review", "adr-drafting", "widget-ui", "cli", "security-sensitive"),
         cost_class="metered",
         reliability_class="verified",
-        notes="Phase 2/ADR-022 bootstrap fallback: the only engine that finished "
-        "Phase 2 (issue #166) without an off-track dispatch or a wasted iteration budget.",
+        notes="Verified headless Claude Code CLI (`claude -p`, ClaudeAdapter, live-verified "
+        "2026-08-20). Carries the Phase 2/ADR-022 bootstrap-fallback record: the only "
+        "engine that finished Phase 2 (issue #166) without an off-track dispatch or a "
+        "wasted iteration budget.",
     ),
     EngineManifest(
         engine_id="hermes",
@@ -117,6 +122,8 @@ def route(
     task_tags: list[str],
     manifests: list[EngineManifest] | tuple[EngineManifest, ...],
     fallback: str = DEFAULT_FALLBACK_ENGINE,
+    *,
+    min_reliability: str | None = None,
 ) -> EngineChoice:
     """Pick an engine for a task tagged with `task_tags`.
 
@@ -126,9 +133,16 @@ def route(
     `degraded` engine that would otherwise have matched is reported in
     `excluded`, not silently dropped. No candidate -> deterministic fallback,
     reason logged rather than assumed.
+
+    `min_reliability` is the mandate-approved minimum reliability class
+    (``verified`` or ``unverified``): when set, candidates below that class
+    are removed before the cost sort, so a cheap engine is never selected
+    unless the approved dispatch request permits its reliability class.
     """
     if not task_tags:
         raise ValueError("task_tags must be non-empty")
+    if min_reliability is not None and min_reliability not in RELIABILITY_ORDER:
+        raise ValueError(f"min_reliability must be one of {sorted(RELIABILITY_ORDER)}, got {min_reliability!r}")
 
     tag_set = set(task_tags)
     candidates: list[tuple[EngineManifest, str]] = []
@@ -143,10 +157,17 @@ def route(
             continue
         candidates.append((manifest, sorted(matched)[0]))
 
+    if min_reliability is not None:
+        min_rank = RELIABILITY_ORDER[min_reliability]
+        candidates = [pair for pair in candidates
+                      if RELIABILITY_ORDER[pair[0].reliability_class] <= min_rank]
+
     if not candidates:
         return EngineChoice(
             engine_id=fallback,
-            reason=f"no engine matched task_tags={sorted(tag_set)}; falling back to default",
+            reason=f"no engine matched task_tags={sorted(tag_set)}"
+                   + (f" within reliability >= {min_reliability}" if min_reliability else "")
+                   + "; falling back to default",
             matched_tag=None,
             excluded=tuple(excluded),
             checkpoint_required=True,

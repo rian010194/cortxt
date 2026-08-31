@@ -235,13 +235,10 @@ class DaemonLoop:
 
             broker = self.engine_context.get(choice.engine_id)
             if not broker.has_provider:
-                # No adapter registered for this engine_id (ADR-026/027) --
-                # e.g. route() chose "claude-direct", which this v1 daemon
-                # has no invoker for (routing.hermes_invoker's own docstring:
-                # "claude-direct has no headless invocation here"). Silently
-                # dispatching to whatever IS registered instead is exactly
-                # the "wrong surface" failure mode behind #165/#166 -- refuse
-                # instead of guessing.
+                # No adapter registered for this engine_id (ADR-026/027).
+                # Silently dispatching to whatever IS registered instead is
+                # exactly the "wrong surface" failure mode behind #165/#166
+                # -- refuse instead of guessing.
                 continue
 
             # Persist the claim BEFORE dispatching: a crash between a
@@ -270,15 +267,21 @@ class DaemonLoop:
 
             head_before = self.git_head(worktree_path)
             try:
+                # The "researcher"/"builder" profile is a Hermes concept.
+                # Forward it only to the Hermes-family adapters; claude and
+                # dsh take no profile (ClaudeAdapter would otherwise emit a
+                # bogus `claude --agent builder` for a non-Hermes route).
+                profile = (
+                    ("researcher" if "research" in task_tags else "builder")
+                    if choice.engine_id in ("hermes", "hermes-free")
+                    else None
+                )
                 invoke_result = broker.invoke(
-                    "researcher" if "research" in task_tags else "builder",
-                    prompt, timeout_seconds=300, cwd=worktree_path,
+                    profile, prompt, timeout_seconds=300, cwd=worktree_path,
                 )
             # ADR-026 Review Trigger: a second adapter (dsh) widened this
             # except from Hermes-specific to the two invocation errors that
-            # exist today -- the "researcher"/"builder" profile strings above
-            # are the EngineAdapter-protocol shape, not hermes-specific
-            # (dsh_adapter ignores profile for its own routing).
+            # exist today. dsh_adapter ignores profile for its own routing.
             except (HermesInvocationError, DshInvocationError) as error:
                 gate_outcome = GateOutcome("freeze", f"worker invocation failed to start: {error}")
                 self.autonomy.record_pass(choice.engine_id, choice.matched_tag, clean=False)

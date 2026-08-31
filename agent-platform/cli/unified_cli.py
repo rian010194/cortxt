@@ -2226,7 +2226,15 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
             # ADR-038 host boundary: the operator-gated mutation endpoint lives in
             # action_host.py, not the read-only serve.py surface.
             from widget import action_host
-            action_host.main()
+            # --require-commit is opt-in (default None): ordinary local
+            # `cortxt widget --enable-actions` usage is unaffected. Proof/
+            # gated-launch tooling passes it explicitly to fail closed
+            # against a stale checkout or wrong worktree/commit (S7b dogfood
+            # defect: an installed cortxt.exe silently ran stale code) --
+            # this is a proof-tooling-set flag, not a blanket requirement on
+            # every widget start.
+            action_host.main(require_commit=getattr(args, "require_commit", None),
+                             require_clean=getattr(args, "require_clean", False))
         else:
             from widget import serve as widget_serve
             widget_serve.main()
@@ -2253,11 +2261,16 @@ def _gh_review_to_done(issue_id: str) -> dict:
     return gh_review_to_done(issue_id)
 
 
-def _claim_run_resume(issue_id: str, *, registry: Path) -> dict:
-    """Resume a ready issue through the execution-map-gated launcher (shared default, injectable for tests)."""
+def _claim_run_resume(issue_id: str, *, registry: Path, approval_ref: str | None = None) -> dict:
+    """Resume a ready issue through the execution-map-gated launcher (shared default, injectable for tests).
+
+    `approval_ref` is the operator-provided approval reference; the launcher
+    binds it to the issue-derived dispatch-request approval reference (AC8).
+    """
     from widget_contract.adapters.cli_ports import gh_claim_run_resume
     return gh_claim_run_resume(issue_id, registry=registry,
-                               scripts_dir=_get_agent_platform_path().parent / "scripts")
+                               scripts_dir=_get_agent_platform_path().parent / "scripts",
+                               approval_ref=approval_ref)
 
 
 def _gh_webhooks_reader(repo: str) -> list[dict]:
@@ -2380,7 +2393,8 @@ def _run_widget_action(args: argparse.Namespace) -> ResultEnvelope:
             widget, action_id=args.action_id, approval_ref=args.approval_ref, confirm=args.confirm,
             labels_reader=_gh_issue_workflow_labels, transition_writer=_gh_inbox_to_ready,
             review_transition_writer=_gh_review_to_done,
-            resume=lambda issue_id: _claim_run_resume(issue_id, registry=registry))
+            resume=lambda issue_id: _claim_run_resume(issue_id, registry=registry,
+                                                      approval_ref=args.approval_ref))
         result = executor.execute(action, context)
         print(json.dumps(result, indent=2))
         return ResultEnvelope(status="succeeded", issue_id=issue_id, evidence=[{"action": result}])
@@ -2413,13 +2427,10 @@ def _run_dispatch(
     tracks. See .hermes/plans/2026-08-19-orchestrator-dispatch-v01.md.
 
     Invocation goes through an EngineContext broker (ADR-026/027) instead of
-    a hardcoded if/elif on engine_id -- "claude-direct" has no adapter
-    registered (no confirmed one-shot Claude Code CLI entry point exists;
-    guessing one would repeat the exact mistake ADR-022 was written to
-    avoid), so its broker has no provider and the task is recorded as
-    "blocked" -- picked up by a human/Claude Code session, not auto-executed.
-    Any other engine_id with no registered adapter gets the same treatment,
-    not a silent fallback to whatever IS registered.
+    a hardcoded if/elif on engine_id. The verified engine id is `claude`,
+    backed by the live-verified headless `claude -p` ClaudeAdapter
+    (2026-08-20). Any engine_id with no registered adapter is recorded as
+    "blocked" -- never silently dispatched to whatever IS registered.
 
     `engine_context` is None in every real CLI invocation (build_default_
     engine_context() is used); tests inject a fake one directly.
@@ -2480,8 +2491,13 @@ def _run_dispatch(
                 (profile for tag, profile in _HERMES_PROFILE_BY_TAG.items() if tag in tags),
                 "builder",
             )
+            # The profile string is a Hermes concept. Forward it only to the
+            # Hermes-family adapters; claude/dsh take no profile, so passing
+            # "builder" would reach ClaudeAdapter's --agent mapping and emit a
+            # bogus `claude --agent builder`.
+            profile = hermes_profile if choice.engine_id in ("hermes", "hermes-free") else None
             result = broker.invoke(
-                hermes_profile, args.prompt, timeout_seconds=args.timeout,
+                profile, args.prompt, timeout_seconds=args.timeout,
                 model=args.model, provider=args.provider,
             )
             state.append(store, session_id, 0, "session.terminal", {"status": result["status"]})
@@ -2493,10 +2509,7 @@ def _run_dispatch(
             evidence["hermes_result"] = {k: v for k, v in result.items() if k != "stdout"}
             status = "succeeded" if result["status"] == "succeeded" else "failed"
         else:
-            if choice.engine_id == "claude-direct":
-                reason = "routed to claude-direct: pick this up in a Claude Code session"
-            else:
-                reason = f"routed to {choice.engine_id}: no invoker wired for this engine yet"
+            reason = f"routed to {choice.engine_id}: no invoker wired for this engine yet"
             state.append(store, session_id, 0, "session.terminal", {"status": "blocked", "reason": reason})
             status = "succeeded"  # dispatch itself succeeded: routing + recording worked
 
@@ -3023,6 +3036,10 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
             return ResultEnvelope(status="failed", error={"category": "execution_map_gate",
                                                            "code": exc.code,
                                                            "message": exc.code})
+        if exc.__class__.__name__ == "NestedDispatchForbidden":
+            return ResultEnvelope(status="failed", error={"category": "nested_dispatch_forbidden",
+                                                           "code": "nested_dispatch_forbidden",
+                                                           "message": "refusing to dispatch a nested Run from inside a bounded worker"})
         return ResultEnvelope(status="failed", error={"category": "work_error", "message": str(exc)})
 
 
@@ -3216,6 +3233,14 @@ def main(argv: list[str] | None = None) -> int:
     widget_parser.add_argument("--plan-input", type=Path, help="Execution-map plan input JSON for the execution-map view")
     widget_parser.add_argument("--enable-actions", action="store_true",
                                help="Mount the operator-gated mutation endpoint (POST /api/action) on the loopback host (ADR-038 host boundary); default remains read-only")
+    widget_parser.add_argument("--require-commit", default=None,
+                               help="With --enable-actions: fail closed at startup unless the running git commit "
+                                    "matches exactly (opt-in source-integrity check for proof/gated-launch "
+                                    "tooling; ordinary local widget use omits this and is unaffected)")
+    widget_parser.add_argument("--require-clean", action="store_true",
+                               help="With --enable-actions: fail closed at startup unless the worktree has no "
+                                    "uncommitted changes (opt-in, pairs with --require-commit for proof/gated-"
+                                    "launch tooling; ordinary local widget use omits this and is unaffected)")
     widget_parser.add_argument("--tui", action="store_true", help="Render token-styled TUI output (forces ANSI even if piped)")
     widget_parser.add_argument("--tui-truecolor", action="store_true",
                                help="With --tui: derive 24-bit ANSI colors directly from tokens.json hex values (requires a 24-bit-capable terminal)")

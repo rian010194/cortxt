@@ -11,6 +11,7 @@ pytest's own path setup again.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -44,7 +45,12 @@ def test_dispatch_does_not_modulenotfounderror_as_a_bare_script(tmp_path):
     )
     assert "ModuleNotFoundError" not in result.stdout
     assert "ModuleNotFoundError" not in result.stderr
-    assert result.returncode == 0, result.stdout + result.stderr
+    # The dispatch CLI must boot and emit a structured ResultEnvelope rather
+    # than an import traceback. widget-ui now routes to the verified claude
+    # engine, whose real CLI may or may not be present/authenticated in this
+    # environment, so the process exit code is not asserted here -- an import
+    # failure is exactly what this regression guard exists to catch.
+    json.loads(result.stdout)
 
 
 def test_sessions_does_not_modulenotfounderror_as_a_bare_script(tmp_path):

@@ -32,7 +32,8 @@ def gh_issue_workflow_labels(issue_id: str) -> list[str]:
     """Read an issue's workflow labels via gh (injectable for tests)."""
     repo, number = issue_id.rsplit("#", 1)
     proc = subprocess.run(["gh", "issue", "view", number, "-R", repo, "--json", "labels"],
-                          capture_output=True, text=True, timeout=20)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=20)
     if proc.returncode:
         raise RuntimeError(proc.stderr.strip())
     return [x.get("name", "") for x in json.loads(proc.stdout).get("labels", [])]
@@ -43,7 +44,8 @@ def gh_inbox_to_ready(issue_id: str) -> dict:
     repo, number = issue_id.rsplit("#", 1)
     proc = subprocess.run(["gh", "issue", "edit", number, "-R", repo,
                            "--remove-label", "workflow:inbox", "--add-label", "workflow:ready"],
-                          capture_output=True, text=True, timeout=20)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=20)
     if proc.returncode:
         raise RuntimeError(proc.stderr.strip())
     return {"issue_id": issue_id, "status": "ok"}
@@ -54,7 +56,8 @@ def gh_review_to_done(issue_id: str) -> dict:
     repo, number = issue_id.rsplit("#", 1)
     proc = subprocess.run(["gh", "issue", "edit", number, "-R", repo,
                            "--remove-label", "workflow:review", "--add-label", "workflow:done"],
-                          capture_output=True, text=True, timeout=20)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=20)
     if proc.returncode:
         raise RuntimeError(proc.stderr.strip())
     return {"issue_id": issue_id, "status": "ok"}
@@ -119,7 +122,8 @@ class BlockerLookupError(GitHubReadError): kind = "blocker_lookup"
 
 def _run(runner: Callable[..., Any], command: list[str], timeout_seconds: int) -> Any:
     try:
-        result = runner(command, capture_output=True, text=True, timeout=timeout_seconds)
+        result = runner(command, capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=timeout_seconds)
     except (subprocess.TimeoutExpired, TimeoutError) as exc:
         raise GitHubTimeoutError("GitHub read timed out") from exc
     if result.returncode:
@@ -155,6 +159,33 @@ def resolve_blocker_status(repo: str, number: int, *, run_subprocess: Callable[.
         raise BlockerLookupError(f"blocker #{number} lookup failed: {exc}") from exc
     if not isinstance(value, dict) or value.get("number") != number:
         raise BlockerLookupError(f"blocker #{number} lookup returned invalid data")
+    return value
+
+
+ISSUE_DETAIL_FIELDS = "number,title,body,labels,state,milestone,url,comments"
+
+
+def read_issue_detail(repo: str, number: int, *, run_subprocess: Callable[..., Any] = subprocess.run,
+                      timeout_seconds: int = 20) -> dict[str, Any]:
+    """Read one issue with the fields the detail projection needs, fail-closed.
+
+    ``comments`` is included so approval-resolution (S7b #482) can consider a
+    later operator retry authorization comment, not only the issue body's
+    ``## Approval status`` section -- the dispatch request is always built
+    from a fresh read, so a comment posted after a prior snapshot was built is
+    picked up on the next read and changes the request digest.
+
+    Malformed/truncated reads raise the same GitHubReadError subclasses as the
+    list path, so a caller can render an explicit unavailable state instead of
+    guessing a partial issue.
+    """
+    value = _run(run_subprocess, ["gh", "issue", "view", str(number), "--repo", repo,
+                 "--json", ISSUE_DETAIL_FIELDS], timeout_seconds)
+    if not isinstance(value, dict) or value.get("number") != number:
+        raise GitHubJSONError(f"issue #{number} lookup returned invalid data")
+    required = {"number", "title", "body", "labels", "state", "milestone", "url"}
+    if not required <= set(value):
+        raise GitHubJSONError(f"issue #{number} record has malformed fields")
     return value
 
 

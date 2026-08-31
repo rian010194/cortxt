@@ -51,5 +51,8 @@ Avancerade
 .worktrees/
 agent-platform-worktrees/
 
+# ---- Local dispatch execution ledger (runs registry + claim store) ----
+agent-platform/.dispatch/
+
 # ---- Runtime sync bookkeeping (theme_resolver.sync_widget_tokens) ----
 agent-platform/widget/tokens.json.sync-marker.json
