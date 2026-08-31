@@ -333,6 +333,23 @@ class WorkLauncher:
                 recovery=f"No adapter is registered for runtime {run.runtime!r}; register an adapter, or "
                          f"approve an issue Engine policy that routes to a registered engine.") from exc
 
+    def _create_worktree(self, run_id: str, worktree: Path) -> None:
+        """Create the run's isolated worktree and branch, or raise.
+
+        Verifies the directory afterwards: `_dispatch` binds the worker only to
+        a worktree that actually exists, so a zero exit code that produced no
+        directory would otherwise leave the run reporting an isolation it never
+        had while the worker ran in the launcher's own checkout.
+        """
+        self.worktree_root.mkdir(parents=True, exist_ok=True)
+        proc = self.run_worktree(["git", "worktree", "add", "-b", f"work/{run_id}",
+                                  str(worktree), "HEAD"], capture_output=True, text=True,
+                                 cwd=str(self.repo_path))
+        if getattr(proc, "returncode", 0) or not worktree.is_dir():
+            raise LauncherDispatchError(
+                "worktree_creation_failed",
+                recovery="Ensure the worktree root is writable and retry with a fresh run.")
+
     ISOLATION_WORKTREE = "worktree"
     ISOLATION_SHARED = "shared-checkout"
 
@@ -399,17 +416,12 @@ class WorkLauncher:
             run_id = run.run_id
             worktree = self.worktree_root / run_id
             if create_worktree:
-                branch = f"work/{run_id}"
-                self.worktree_root.mkdir(parents=True, exist_ok=True)
-                proc = self.run_worktree(["git", "worktree", "add", "-b", branch,
-                                          str(worktree), "HEAD"], capture_output=True, text=True,
-                                         cwd=str(self.repo_path))
-                if getattr(proc, "returncode", 0):
+                try:
+                    self._create_worktree(run_id, worktree)
+                except LauncherDispatchError:
                     self.dispatcher.complete(run_id, "blocked",
                                              {"error": "isolated worktree creation failed"})
-                    raise LauncherDispatchError(
-                        "worktree_creation_failed",
-                        recovery="Ensure the worktree root is writable and retry with a fresh run.")
+                    raise
             self._record_isolation(run_id, create_worktree)
             self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id,
@@ -443,17 +455,11 @@ class WorkLauncher:
             if limit_fields and hasattr(self.dispatcher.registry, "update"):
                 self.dispatcher.registry.update(run_id, **limit_fields)
             if create_worktree:
-                branch = f"work/{run_id}"
-                self.worktree_root.mkdir(parents=True, exist_ok=True)
-                proc = self.run_worktree(["git", "worktree", "add", "-b", branch,
-                                          str(worktree), "HEAD"], capture_output=True, text=True,
-                                         cwd=str(self.repo_path))
-                if getattr(proc, "returncode", 0):
-                    failure = LauncherDispatchError(
-                        "worktree_creation_failed",
-                        recovery="Ensure the worktree root is writable and retry with a fresh run.")
+                try:
+                    self._create_worktree(run_id, worktree)
+                except LauncherDispatchError as failure:
                     self._fail_launch(run_id, claim, failure)
-                    raise failure
+                    raise
             self._record_isolation(run_id, create_worktree)
             self._claims_by_run[run_id] = claim
             self._dispatch(run, prompt, worktree)

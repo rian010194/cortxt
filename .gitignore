@@ -59,3 +59,6 @@ agent-platform/.dispatch/
 
 # ---- Runtime sync bookkeeping (theme_resolver.sync_widget_tokens) ----
 agent-platform/widget/tokens.json.sync-marker.json
+
+# ---- Rendered live widget snapshots (never tracked artifacts) ----
+agent-platform/.widget-snapshots/

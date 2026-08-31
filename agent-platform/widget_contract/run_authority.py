@@ -575,12 +575,68 @@ def run_terminal_projection(
     }
 
 
+def _dispatcher_run(dispatcher_store: Mapping[str, Any] | None, issue_ref: str,
+                    run_id: str) -> Mapping[str, Any] | None:
+    """The dispatcher record for this EXACT issue+run, or None."""
+    run = (dispatcher_store or {}).get(run_id)
+    if not isinstance(run, Mapping) or str(run.get("issue_id")) != issue_ref:
+        return None
+    return run
+
+
+def _dispatcher_activity_items(run: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Derive the activity timeline from a durable dispatcher Run record.
+
+    S7d (#473), closing #472 finding 5: the timeline used to read the
+    MCP/session-event store only, while the launcher path writes exclusively to
+    the dispatcher registry -- so every Run started from Work produced an empty
+    activity feed even when it had committed code. These items are DERIVED, not
+    durable events, and say so through ``source``; the claim/finish timestamps
+    and the terminal result's own counts are the only facts read.
+    """
+    engine = _safe_token(run.get("runtime"))
+    items: list[dict[str, Any]] = [{
+        "seq": 0,
+        "event_type": "run.created",
+        "timestamp": _timestamp(run.get("claimed_at")),
+        "detail": {"engine": engine} if engine else {},
+        "source": STORE_DISPATCHER,
+    }]
+    status = str(run.get("status") or RUNNING_STATUS)
+    if status not in TERMINAL_RUN_STATUSES:
+        return items
+    result = run.get("result") if isinstance(run.get("result"), Mapping) else {}
+    detail: dict[str, Any] = {"status": status if status in KNOWN_STATUSES else "unknown"}
+    cost_status = result.get("cost_status")
+    if isinstance(cost_status, str):
+        detail["cost_status"] = cost_status
+    artifacts, evidence = result.get("artifacts"), result.get("evidence")
+    detail["artifact_count"] = len(artifacts) if isinstance(artifacts, list) else 0
+    detail["evidence_count"] = len(evidence) if isinstance(evidence, list) else 0
+    if engine:
+        detail["engine"] = engine
+    items.append({
+        "seq": 1,
+        "event_type": "run.engine_turn",
+        "timestamp": _timestamp(run.get("finished_at")),
+        "detail": detail,
+        "source": STORE_DISPATCHER,
+    })
+    return items
+
+
 def run_activity_projection(
     issue_ref: str,
     run_id: str,
     session_docs: Sequence[Mapping[str, Any]],
+    dispatcher_store: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Content-free ``run.activity.v1`` timeline from durable events (AC5).
+    """Content-free ``run.activity.v1`` timeline from durable state (AC5).
+
+    Durable session events are preferred when they exist. When they do not --
+    the launcher path never writes them -- the timeline is derived from the
+    dispatcher Run record instead, so a real Run is never rendered as "nothing
+    happened" (#472 finding 5). Every item names the store it came from.
 
     Only the four durable run event types appear; each item carries an event
     type, a timestamp, and a small whitelist of structural counts/labels.
@@ -619,9 +675,15 @@ def run_activity_projection(
                 "event_type": etype,
                 "timestamp": _iso(event.get("timestamp")),
                 "detail": detail,
+                "source": STORE_SESSION,
             })
-    return {"schema_version": 1, "issue_ref": issue_ref, "run_id": run_id if doc is not None else None,
-            "items": items}
+        return {"schema_version": 1, "issue_ref": issue_ref, "run_id": run_id, "items": items}
+
+    run = _dispatcher_run(dispatcher_store, issue_ref, run_id)
+    if run is None:
+        return {"schema_version": 1, "issue_ref": issue_ref, "run_id": None, "items": []}
+    return {"schema_version": 1, "issue_ref": issue_ref, "run_id": run_id,
+            "items": _dispatcher_activity_items(run)}
 
 
 def review_submissions_from_sessions(
@@ -658,9 +720,65 @@ def review_submissions_from_sessions(
     return out
 
 
-def run_review_projection(issue_ref: str, session_docs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+# The dispatcher moves a top-level Run's issue to `workflow:review` on exactly
+# these terminal statuses (scripts/dispatcher.py `_sync_github`: cancelled goes
+# back to ready, FAILING_STATUSES go to blocked, everything else goes to
+# review). `gh_synced` is set only once that label swap actually landed.
+_DISPATCHER_REVIEW_STATUSES = frozenset({"succeeded", "review_submitted"})
+
+
+def review_submissions_from_dispatcher(
+    dispatcher_store: Mapping[str, Any] | None, issue_ref: str,
+) -> list[dict[str, Any]]:
+    """Review submissions the dispatcher's own label sync actually performed.
+
+    S7d (#473), closing #472 findings 4 and 5: `run.review.v1` read the
+    session-event store only, so an Issue the dispatcher had genuinely moved to
+    `workflow:review` projected zero submissions and the label looked like it
+    had moved outside the contract. The dispatcher's label swap IS the
+    submission for the launcher path, and `gh_synced` is the durable proof it
+    landed -- a run whose swap never happened is not claimed as submitted.
+    """
+    out: list[dict[str, Any]] = []
+    for run in (dispatcher_store or {}).values():
+        if not isinstance(run, Mapping) or str(run.get("issue_id")) != issue_ref:
+            continue
+        if str(run.get("status")) not in _DISPATCHER_REVIEW_STATUSES:
+            continue
+        if not run.get("gh_synced"):
+            continue
+        run_id = str(run.get("run_id") or "")
+        out.append({
+            "review_submission_id": f"dispatcher-sync:{run_id}",
+            "review_kind": "dispatcher-label-sync",
+            "result_status": str(run.get("status")),
+            "submitted_at": _timestamp(run.get("finished_at")),
+            "run_id": run_id or None,
+            # The swap is guarded by the run's own gh-sync claim lease, which is
+            # what makes it single-shot; there is no caller-supplied key.
+            "idempotency_key_present": False,
+            "source": STORE_DISPATCHER,
+        })
+    return sorted(out, key=lambda item: str(item["run_id"]))
+
+
+def run_review_projection(issue_ref: str, session_docs: Sequence[Mapping[str, Any]],
+                          dispatcher_store: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Content-free ``run.review.v1`` across every store that can hold one.
+
+    ``sources`` names the stores actually consulted, so an empty result reads
+    as "no submission recorded in these stores" rather than "unavailable" --
+    the #472 report could not tell those two apart.
+    """
+    submissions = [dict(item, source=STORE_SESSION)
+                   for item in review_submissions_from_sessions(session_docs, issue_ref)]
+    sources = [STORE_SESSION]
+    if dispatcher_store is not None:
+        submissions = review_submissions_from_dispatcher(dispatcher_store, issue_ref) + submissions
+        sources = sorted({STORE_DISPATCHER, STORE_SESSION})
     return {
         "schema_version": 1,
         "issue_ref": issue_ref,
-        "submissions": review_submissions_from_sessions(session_docs, issue_ref),
+        "sources": sources,
+        "submissions": submissions,
     }

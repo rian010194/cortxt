@@ -17,30 +17,42 @@ identity for a ready issue; retry never overwrites an earlier attempt. `cortxt
 work submit` records a terminal result and moves the issue to independent
 review. No launcher command approves, merges, closes, or cleans a worktree.
 
-## Working-directory isolation per launch path
+## Working-directory isolation
 
-The two launch paths differ, and the launch result now says which one ran:
+Isolation is decided on the server, from the approved mandate, and the launch
+result reports what actually happened:
 
 | Path | Isolation | Reported |
 | --- | --- | --- |
-| `cortxt work new` / `WorkLauncher.create` | one linked git worktree plus a `work/<run_id>` branch | `isolation: "worktree"`, real `branch` and `worktree` |
-| `cortxt work resume` / `WorkLauncher.resume` (the Work app launch path, through `workflow.claim-run.v1`) | none by default: the worker runs in the launcher's own repository checkout | `isolation: "shared-checkout"`, `branch: null`, `worktree: null`, `working_dir` = the repository directory |
+| `cortxt work new` / `WorkLauncher.create` | always one linked git worktree plus a `work/<run_id>` branch | `isolation: "worktree"`, real `branch` and `worktree` |
+| Work app launch (`workflow.claim-run.v1` -> `gh_claim_run_resume`) | `dispatch.request.v1`'s `isolation` field, derived from the approved `## Artifact policy` | whichever it derived |
+| `cortxt work resume` | `--isolate` (default off; the CLI is the local/power-user surface) | whichever was asked for |
 
-`resume(..., isolate=True)` requests the same physical isolation `create`
-uses; a worktree that cannot be created then fails the launch closed
-(`worktree_creation_failed`) rather than silently downgrading to the shared
-checkout. The isolation mode is written onto the durable Run record, so a
-reviewer reads what actually happened instead of inferring it from a branch
-name.
+`isolation` is a field of the immutable dispatch request, so it is covered by
+`request_id`: the browser supplies nothing that can choose it, a tampered
+value changes the digest and the confirmation is rejected as stale, and the
+confirmation view can show the operator which isolation they are approving.
 
-This is the correction to the #472 dogfood finding: `resume` previously
-returned `branch: work/<run_id>` unconditionally, a name constructed from the
-run_id rather than projected from durable state, so a reviewer saw a
-plausible branch that had never existed while the change had landed in the
-shared checkout. **A mandate whose artifact policy requires the change to stay
-inside the run's own isolated worktree is only enforceable on a launch that
-asked for isolation** -- on the default resume path that clause is
-unenforceable, and the launch result says so instead of implying otherwise.
+It **fails closed**. `isolation_for_artifact_policy` returns `worktree` for
+every policy -- including the default one and an issue with no artifact-policy
+section at all -- and returns `shared-checkout` only when the approved policy
+explicitly waives isolation ("shared checkout", "no isolated worktree",
+"without an isolated worktree"). A worktree that cannot be created fails the
+launch with `worktree_creation_failed` rather than silently downgrading, and
+the launcher verifies the directory exists before reporting `isolation:
+"worktree"` -- a zero exit code that produced no directory is not proof, and
+`_dispatch` binds the worker only to a worktree that is really there.
+
+The isolation mode is written onto the durable Run record, so a reviewer reads
+what actually happened instead of inferring it from a branch name.
+
+This closes the #472 dogfood findings 6 and 8. `resume` previously created no
+worktree on the Work launch path yet returned `branch: work/<run_id>`
+regardless -- a name constructed from the run_id rather than projected from
+durable state -- so a reviewer saw a plausible branch that had never existed
+while the change had landed in the shared checkout, and a mandate requiring
+the change to stay "inside the run's isolated worktree" was unenforceable
+rather than merely unenforced.
 
 ## Recovery out of a stranded claim
 

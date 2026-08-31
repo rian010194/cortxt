@@ -74,6 +74,10 @@ def _launcher(tmp_path, *, worktree_returncode=0, ids=("run-1", "run-2")):
 
     def _run_worktree(argv, **kwargs):
         created.append(("git", tuple(argv)))
+        if not worktree_returncode:
+            # a real `git worktree add` creates the directory; the launcher
+            # verifies it before reporting isolation
+            Path(argv[-2]).mkdir(parents=True, exist_ok=True)
         return SimpleNamespace(returncode=worktree_returncode)
 
     app = WorkLauncher(

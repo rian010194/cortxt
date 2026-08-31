@@ -336,7 +336,8 @@ class ActionHost:
 
     def run_review(self, repo: str, number: int) -> dict:
         issue_ref = f"{repo}#{number}"
-        return read_run_review_v1(issue_ref, self._read_session_docs())
+        return read_run_review_v1(issue_ref, self._read_session_docs(),
+                                  self._read_dispatcher_runs())
 
     def _build_dispatch_request(self, repo: str, number: int, *, issue: Mapping[str, Any] | None = None) -> dict:
         """Build the authoritative dispatch request for an issue (shared by the
