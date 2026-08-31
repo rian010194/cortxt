@@ -171,6 +171,23 @@ def test_terminal_evidence_is_redacted_to_kind_and_ref_only():
         assert marker not in blob, marker
 
 
+def test_terminal_drops_filesystem_paths_and_unstructured_error_text():
+    doc = _session_doc(turn=_engine_turn(
+        "failed", artifacts=[r"C:\\secret\\run.log", "/tmp/raw.log", "run-log:run_1"],
+        evidence=[{"kind": "log", "path": r"C:\\secret\\evidence.log"},
+                  {"kind": "secret free text", "ref": "evidence:opaque"}],
+        error={"category": "failed", "code": "adapter_timeout",
+               "message": "secret raw provider response"}))
+    doc["events"][-1]["payload"]["usage"] = {
+        "tokens_in": 10, "provider_note": "secret prompt", "nested": {"cached": 2}}
+    term = run_terminal_projection(ISSUE_REF, "run_1", _summaries({}, [doc]), [doc])
+    assert term["artifacts"] == [{"ref": "run-log:run_1", "sha256": None}]
+    assert term["evidence"] == [{"kind": "log"}, {"ref": "evidence:opaque"}]
+    assert term["error"] == {"category": "failed", "message": "adapter_timeout"}
+    assert term["usage"] == {"tokens_in": 10, "nested": {"cached": 2}}
+    assert "secret" not in json.dumps(term)
+
+
 def test_terminal_conflict_is_flagged_not_resolved():
     doc = _session_doc(turn=_engine_turn("failed", ts="2026-08-31T14:00:00Z"))
     dispatcher = {"run_1": _dispatcher_run(status="in_progress")}
@@ -230,6 +247,16 @@ def test_activity_read_adapter_fails_closed_on_mismatch():
     doc = _session_doc(turn=_engine_turn("succeeded"))
     with pytest.raises(RunNotCorrelated):
         read_run_activity_v1(ISSUE_REF, {}, [doc], run_id="run_NOPE")
+
+
+def test_same_run_id_from_other_issue_cannot_supply_session_content():
+    foreign = _session_doc(issue_id=f"{REPO}#999", turn=_engine_turn("succeeded"))
+    local = _dispatcher_run(status="failed", finished_at=_epoch(NOW) - 10)
+    term = read_run_terminal_v1(ISSUE_REF, {"run_1": local}, [foreign], run_id="run_1")
+    assert term["provider"] is None and term["model"] is None
+    assert term["artifacts"] == [] and term["evidence"] == []
+    activity = read_run_activity_v1(ISSUE_REF, {"run_1": local}, [foreign], run_id="run_1")
+    assert activity["run_id"] is None and activity["items"] == []
 
 
 # --------------------------------------------------------------------------- #

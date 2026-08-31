@@ -399,7 +399,9 @@ def compute_run_freshness(
     return {"status": FRESHNESS_TERMINAL, "age_seconds": age, "complete": True}
 
 
-def _find_session_doc(session_docs: Sequence[Mapping[str, Any]], run_id: str) -> Mapping[str, Any] | None:
+def _find_session_doc(
+    session_docs: Sequence[Mapping[str, Any]], issue_ref: str, run_id: str,
+) -> Mapping[str, Any] | None:
     for doc in session_docs or []:
         if not isinstance(doc, Mapping):
             continue
@@ -408,7 +410,8 @@ def _find_session_doc(session_docs: Sequence[Mapping[str, Any]], run_id: str) ->
             continue
         created = events[0] if isinstance(events[0], Mapping) else {}
         payload = created.get("payload") if isinstance(created.get("payload"), Mapping) else {}
-        if str(payload.get("run_id")) == run_id:
+        if (str(payload.get("run_id")) == run_id
+                and str(_pick(payload, "issue_id", "issue_ref")) == issue_ref):
             return doc
     return None
 
@@ -421,17 +424,51 @@ def _last_event_payload(doc: Mapping[str, Any], event_type: str) -> dict[str, An
     return {}
 
 
+def _safe_reference(value: Any) -> str | None:
+    """Accept opaque/stable identifiers, never filesystem-looking paths."""
+    if not isinstance(value, str) or not value:
+        return None
+    if "\\" in value or value.startswith(("/", "./", "../")) or "/../" in value:
+        return None
+    if len(value) >= 3 and value[1:3] in (":/", ":\\"):
+        return None
+    return value
+
+
+def _safe_token(value: Any, fallback: str | None = None) -> str | None:
+    if isinstance(value, str) and value and all(
+            char.isalnum() or char in "._:-" for char in value):
+        return value
+    return fallback
+
+
+def _safe_usage(value: Any) -> dict[str, Any]:
+    """Usage is structural numeric telemetry, never provider text."""
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        safe_key = _safe_token(key)
+        if safe_key is None:
+            continue
+        if isinstance(item, (int, float)) and not isinstance(item, bool):
+            result[safe_key] = item
+        elif isinstance(item, Mapping):
+            result[safe_key] = _safe_usage(item)
+    return result
+
+
 def _safe_evidence_entry(item: Any) -> dict[str, Any]:
     """A content-free projection of one evidence entry: only a kind label and
     an opaque reference/hash survive; free text, log bodies, and reasoning are
     dropped entirely (AC5)."""
     out: dict[str, Any] = {}
     if isinstance(item, Mapping):
-        kind = item.get("kind") or item.get("type")
-        if isinstance(kind, str) and kind:
+        kind = _safe_token(item.get("kind") or item.get("type"))
+        if kind is not None:
             out["kind"] = kind
-        ref = item.get("ref") or item.get("path") or item.get("name") or item.get("id")
-        if isinstance(ref, str) and ref:
+        ref = _safe_reference(item.get("ref") or item.get("id"))
+        if ref is not None:
             out["ref"] = ref
         sha = item.get("sha256")
         if isinstance(sha, str) and sha:
@@ -440,9 +477,10 @@ def _safe_evidence_entry(item: Any) -> dict[str, Any]:
 
 
 def _safe_artifact_entry(item: Any) -> dict[str, Any] | None:
-    if isinstance(item, str) and item:
-        return {"ref": item, "sha256": None}
-    if isinstance(item, Mapping) and isinstance(item.get("ref"), str) and item["ref"]:
+    ref = _safe_reference(item)
+    if ref is not None:
+        return {"ref": ref, "sha256": None}
+    if isinstance(item, Mapping) and _safe_reference(item.get("ref")) is not None:
         sha = item.get("sha256")
         return {"ref": item["ref"], "sha256": sha if isinstance(sha, str) and sha else None}
     return None
@@ -451,8 +489,10 @@ def _safe_artifact_entry(item: Any) -> dict[str, Any] | None:
 def _safe_error(value: Any) -> dict[str, str] | None:
     if not isinstance(value, Mapping):
         return None
-    category = value.get("category") or value.get("kind") or "error"
-    message = value.get("message") or value.get("detail") or ""
+    category = _safe_token(value.get("category") or value.get("kind"), "error")
+    code = value.get("code")
+    message = str(code) if isinstance(code, str) and code and all(
+        char.isalnum() or char in "._:-" for char in code) else ""
     if not message and not value.get("category") and not value.get("kind"):
         return None
     return {"category": str(category), "message": str(message)}
@@ -480,7 +520,7 @@ def run_terminal_projection(
     if summary is None:
         return None
 
-    doc = _find_session_doc(session_docs, run_id)
+    doc = _find_session_doc(session_docs, issue_ref, run_id)
     turn = _last_event_payload(doc, "run.engine_turn") if doc else {}
     created = _last_event_payload(doc, "run.created") if doc else {}
 
@@ -512,7 +552,7 @@ def run_terminal_projection(
         "finished_at": summary.get("finished_at") or _iso(turn.get("finished_at")),
         "provider": _iso(turn.get("provider")) or _iso(created.get("provider")),
         "model": _iso(turn.get("model")) or _iso(created.get("model")),
-        "usage": turn.get("usage") if isinstance(turn.get("usage"), Mapping) else {},
+        "usage": _safe_usage(turn.get("usage")),
         "cost": cost,
         "cost_currency": "USD",
         "cost_status": cost_status,
@@ -535,7 +575,7 @@ def run_activity_projection(
     type, a timestamp, and a small whitelist of structural counts/labels.
     Prompts, scope text, reasoning, result bodies, and logs are never read.
     """
-    doc = _find_session_doc(session_docs, run_id)
+    doc = _find_session_doc(session_docs, issue_ref, run_id)
     items: list[dict[str, Any]] = []
     if doc is not None:
         for index, event in enumerate(doc.get("events") or []):

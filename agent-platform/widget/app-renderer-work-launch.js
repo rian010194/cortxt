@@ -228,7 +228,14 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (d) {
           var runs = (d && d.runs) || [];
-          if (runs.length) runId = runs[0].run_id;
+          if (runs.length) {
+            runs = runs.slice().sort(function (a, b) {
+              var at = Date.parse(a.finished_at || a.heartbeat_at || a.started_at || 0) || 0;
+              var bt = Date.parse(b.finished_at || b.heartbeat_at || b.started_at || 0) || 0;
+              return bt - at;
+            });
+            runId = runs[0].run_id;
+          }
           terminalAndActivity();
         })
         .catch(function () { terminalAndActivity(); });
