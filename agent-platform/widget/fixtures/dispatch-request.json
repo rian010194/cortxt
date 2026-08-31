@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "request_id": "sha256:b195e62d3e7c4cd9e903a5db69a61ab1d27491ce69237ebf233c41af0d119e03",
-  "issue_id": "owner/repo#471",
+  "request_id": "sha256:970325490a55afa0980cb1d3d2aedcfddbdda9b1278010052bbd7a939bb70682",
+  "issue_id": "owner/repo#48",
   "eligible": true,
   "workflow": "ready",
   "workflow_labels": [

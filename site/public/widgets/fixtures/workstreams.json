@@ -1,6 +1,314 @@
-{"schema_version":1,"mode":"demo","synthetic":true,"repo":null,"status":"fresh","error":null,"workstreams":[
-  {"id":"WS-048","issue_id":null,"number":48,"title":"Operator launch from Work through the gated launcher","outcome":"Launch a real workflow:ready Workstream from Work through the gated launcher","workflow":"ready","url":null,"attention":null,"phase":"Ready to launch","nextAction":"Review and start the approved Run","decision":null,"authority":{"source":"Synthetic demonstration","workflow_label":"workflow:ready","approval_recorded":true},"evidence":[],"acceptance_criteria":["Launch only when the mandate is complete.","No browser widening.","Exactly one durable run and claim."],"mandate":"Approved dispatch request with explicit Engine policy and limits.","milestones":[],"runs":[],"related":[],"blockers":[]},
-  {"id":"WS-042","issue_id":null,"number":42,"title":"Municipal AI Act gap analysis","outcome":"Deliver a reviewed gap analysis for the procurement board","workflow":"review","url":null,"attention":"decision","phase":"Evidence review","nextAction":"Approve the reviewed evidence as the durable record","decision":{"summary":"Accept this reviewed evidence as the durable record?","actionable":true,"action_id":null},"authority":{"source":"Synthetic demonstration","workflow_label":"workflow:review","approval_recorded":true},"evidence":[{"title":"Coverage report","detail":"47 applicable controls mapped to 12 attributable source records.","status":"complete"},{"title":"Independent review","detail":"A separate policy-review role checked citations and scope.","status":"passed"}],"acceptance_criteria":"All applicable controls have cited sources; independent review passes; no unresolved exception remains.","mandate":"Scope and budget fixed by operator approval 2026-08-27; provider policy fails closed on uncited evidence; no external publication without an explicit decision.","milestones":[{"title":"M1 Scope agreed","done":true},{"title":"M2 Evidence collection run","done":true},{"title":"M3 Independent review","done":true},{"title":"M4 Board decision","done":false}],"related":[{"title":"AI Act coverage policy","kind":"policies"},{"title":"Evidence retention policy","kind":"evidence"}],"runs":[{"id":"run-01","status":"done","started":"2026-08-27T09:00:00Z","engine":"hermes","provider":"inferx","model":"claude-3.7-sonnet","evidence":12,"cost_usd":3.1},{"id":"run-02","status":"done","started":"2026-08-28T13:00:00Z","engine":"codex","provider":"inferx","model":"gpt-5.2","evidence":0,"cost_usd":1.9}]},
-  {"id":"WS-039","issue_id":null,"number":39,"title":"Provider portability review","outcome":"Verify that work can continue on an approved provider","workflow":"in-progress","url":null,"attention":"blocked","phase":"Blocked","nextAction":"Unblock provider quota or switch to an approved provider","decision":null,"authority":{"source":"Synthetic demonstration","workflow_label":"workflow:in-progress","approval_recorded":true},"evidence":[],"acceptance_criteria":null,"mandate":"Provider-neutral continuity proof on the approved inference path.","blockers":[{"reason":"Provider quota exceeded on the approved inference path","recovery":"Restore tenant quota or switch to an approved provider, then resume with a fresh run."}],"milestones":[{"title":"M1 Routing matrix","done":true},{"title":"M2 Portability run","done":false}],"related":[],"runs":[{"id":"run-01","status":"blocked","started":"2026-08-28T08:00:00Z","engine":"hermes","provider":"inferx","model":"claude-3.7-sonnet","evidence":0,"cost_usd":0.4}]},
-  {"id":"WS-031","issue_id":null,"number":31,"title":"Evidence retention policy","outcome":"Establish an attributable retention policy","workflow":"done","url":null,"attention":null,"phase":"Accepted","nextAction":null,"decision":null,"authority":{"source":"Synthetic demonstration","workflow_label":"workflow:done","approval_recorded":true},"evidence":[{"title":"Accepted verification","detail":"Eight attributable records; independent review passed.","status":"accepted"}],"acceptance_criteria":"Retention rules are attributable and reviewed.","mandate":"Retention rules must be attributable and independently reviewed.","milestones":[{"title":"M1 Policy draft","done":true},{"title":"M2 Review","done":true}],"related":[],"runs":[{"id":"run-01","status":"done","started":"2026-08-25T10:00:00Z","engine":"dsh","provider":"inferx","model":"deepseek-v4","evidence":8,"cost_usd":2.2}]}
-]}
+{
+  "schema_version": 1,
+  "mode": "demo",
+  "synthetic": true,
+  "repo": null,
+  "status": "fresh",
+  "error": null,
+  "workstreams": [
+    {
+      "id": "WS-048",
+      "issue_id": "owner/repo#48",
+      "number": 48,
+      "title": "Operator launch from Work through the gated launcher",
+      "outcome": "Launch a real workflow:ready Workstream from Work through the gated launcher",
+      "workflow": "ready",
+      "url": null,
+      "attention": null,
+      "phase": "Ready to launch",
+      "nextAction": "Review and start the approved Run",
+      "decision": null,
+      "authority": {
+        "source": "Synthetic demonstration",
+        "workflow_label": "workflow:ready",
+        "approval_recorded": true
+      },
+      "evidence": [],
+      "acceptance_criteria": [
+        "Launch only when the mandate is complete.",
+        "No browser widening.",
+        "Exactly one durable run and claim."
+      ],
+      "mandate": "Approved dispatch request with explicit Engine policy and limits.",
+      "milestones": [],
+      "runs": [],
+      "related": [],
+      "blockers": [],
+      "next_action": {
+        "kind": "launch",
+        "label": "Review and start Run →",
+        "reason": "Approved mandate is authoritatively workflow:ready."
+      },
+      "view_capabilities": [
+        "view:launch"
+      ]
+    },
+    {
+      "id": "WS-042",
+      "issue_id": "owner/repo#42",
+      "number": 42,
+      "title": "Municipal AI Act gap analysis",
+      "outcome": "Deliver a reviewed gap analysis for the procurement board",
+      "workflow": "review",
+      "url": null,
+      "attention": "decision",
+      "phase": "Evidence review",
+      "nextAction": "Approve the reviewed evidence as the durable record",
+      "decision": {
+        "summary": "Accept this reviewed evidence as the durable record?",
+        "actionable": true,
+        "action_id": null
+      },
+      "authority": {
+        "source": "Synthetic demonstration",
+        "workflow_label": "workflow:review",
+        "approval_recorded": true
+      },
+      "evidence": [
+        {
+          "title": "Coverage report",
+          "detail": "47 applicable controls mapped to 12 attributable source records.",
+          "status": "complete",
+          "issue_id": "owner/repo#42"
+        },
+        {
+          "title": "Independent review",
+          "detail": "A separate policy-review role checked citations and scope.",
+          "status": "passed",
+          "issue_id": "owner/repo#42"
+        }
+      ],
+      "acceptance_criteria": "All applicable controls have cited sources; independent review passes; no unresolved exception remains.",
+      "mandate": "Scope and budget fixed by operator approval 2026-08-27; provider policy fails closed on uncited evidence; no external publication without an explicit decision.",
+      "milestones": [
+        {
+          "title": "M1 Scope agreed",
+          "done": true
+        },
+        {
+          "title": "M2 Evidence collection run",
+          "done": true
+        },
+        {
+          "title": "M3 Independent review",
+          "done": true
+        },
+        {
+          "title": "M4 Board decision",
+          "done": false
+        }
+      ],
+      "related": [
+        {
+          "title": "AI Act coverage policy",
+          "kind": "policies"
+        },
+        {
+          "title": "Evidence retention policy",
+          "kind": "evidence"
+        }
+      ],
+      "runs": [
+        {
+          "id": "run-01",
+          "status": "done",
+          "started": "2026-08-27T09:00:00Z",
+          "engine": "hermes",
+          "provider": "inferx",
+          "model": "claude-3.7-sonnet",
+          "evidence": 12,
+          "cost_usd": 3.1,
+          "issue_id": "owner/repo#42"
+        },
+        {
+          "id": "run-02",
+          "status": "done",
+          "started": "2026-08-28T13:00:00Z",
+          "engine": "codex",
+          "provider": "inferx",
+          "model": "gpt-5.2",
+          "evidence": 0,
+          "cost_usd": 1.9,
+          "issue_id": "owner/repo#42"
+        }
+      ],
+      "next_action": {
+        "kind": "decision",
+        "label": "Open Decisions →",
+        "reason": "Reviewed evidence awaits a durable operator record."
+      },
+      "view_capabilities": [
+        "view:decision"
+      ]
+    },
+    {
+      "id": "WS-051",
+      "issue_id": "owner/repo#51",
+      "number": 51,
+      "title": "Stranded Run recovery back to ready",
+      "outcome": "Return a stranded workflow:in-progress Issue to ready so a fresh Run can be approved",
+      "workflow": "in-progress",
+      "url": null,
+      "attention": "Run conflicted; Issue is stranded at in-progress",
+      "phase": "Stranded",
+      "nextAction": "Return this Workstream to ready",
+      "next_action": {
+        "kind": "recover",
+        "label": "Return to ready (recover) →",
+        "reason": "The claimed Run reached a terminal conflict and left no worker."
+      },
+      "view_capabilities": [
+        "view:recovery"
+      ],
+      "decision": null,
+      "authority": {
+        "source": "Synthetic demonstration",
+        "workflow_label": "workflow:in-progress",
+        "approval_recorded": true
+      },
+      "evidence": [],
+      "acceptance_criteria": [
+        "Recovery re-opens the dispatch gate only.",
+        "No approval, close, or completion happens.",
+        "No Run is started by recovery."
+      ],
+      "mandate": "Recovery returns workflow:in-progress to workflow:ready and starts nothing.",
+      "milestones": [],
+      "runs": [
+        {
+          "id": "run-51a",
+          "issue_id": "owner/repo#51",
+          "status": "conflict",
+          "started": "2026-08-31T11:52:38Z",
+          "engine": "dsh",
+          "provider": "inferx",
+          "model": "unknown",
+          "evidence": 0,
+          "cost_usd": 0.0
+        }
+      ],
+      "related": [],
+      "blockers": [
+        {
+          "reason": "The claimed Run terminated in conflict and the Issue stayed at workflow:in-progress.",
+          "recovery": "Return the Workstream to ready, then approve a fresh Run as a separate decision."
+        }
+      ]
+    },
+    {
+      "id": "WS-039",
+      "issue_id": "owner/repo#39",
+      "number": 39,
+      "title": "Provider portability review",
+      "outcome": "Verify that work can continue on an approved provider",
+      "workflow": "in-progress",
+      "url": null,
+      "attention": "blocked",
+      "phase": "Blocked",
+      "nextAction": "Unblock provider quota or switch to an approved provider",
+      "decision": null,
+      "authority": {
+        "source": "Synthetic demonstration",
+        "workflow_label": "workflow:in-progress",
+        "approval_recorded": true
+      },
+      "evidence": [],
+      "acceptance_criteria": null,
+      "mandate": "Provider-neutral continuity proof on the approved inference path.",
+      "blockers": [
+        {
+          "reason": "Provider quota exceeded on the approved inference path",
+          "recovery": "Restore tenant quota or switch to an approved provider, then resume with a fresh run."
+        }
+      ],
+      "milestones": [
+        {
+          "title": "M1 Routing matrix",
+          "done": true
+        },
+        {
+          "title": "M2 Portability run",
+          "done": false
+        }
+      ],
+      "related": [],
+      "runs": [
+        {
+          "id": "run-01",
+          "status": "blocked",
+          "started": "2026-08-28T08:00:00Z",
+          "engine": "hermes",
+          "provider": "inferx",
+          "model": "claude-3.7-sonnet",
+          "evidence": 0,
+          "cost_usd": 0.4,
+          "issue_id": "owner/repo#39"
+        }
+      ],
+      "next_action": {
+        "kind": null,
+        "label": null,
+        "reason": "Blocked on provider quota; no operator action is authorized here."
+      },
+      "view_capabilities": []
+    },
+    {
+      "id": "WS-031",
+      "issue_id": "owner/repo#31",
+      "number": 31,
+      "title": "Evidence retention policy",
+      "outcome": "Establish an attributable retention policy",
+      "workflow": "done",
+      "url": null,
+      "attention": null,
+      "phase": "Accepted",
+      "nextAction": null,
+      "decision": null,
+      "authority": {
+        "source": "Synthetic demonstration",
+        "workflow_label": "workflow:done",
+        "approval_recorded": true
+      },
+      "evidence": [
+        {
+          "title": "Accepted verification",
+          "detail": "Eight attributable records; independent review passed.",
+          "status": "accepted",
+          "issue_id": "owner/repo#31"
+        }
+      ],
+      "acceptance_criteria": "Retention rules are attributable and reviewed.",
+      "mandate": "Retention rules must be attributable and independently reviewed.",
+      "milestones": [
+        {
+          "title": "M1 Policy draft",
+          "done": true
+        },
+        {
+          "title": "M2 Review",
+          "done": true
+        }
+      ],
+      "related": [],
+      "runs": [
+        {
+          "id": "run-01",
+          "status": "done",
+          "started": "2026-08-25T10:00:00Z",
+          "engine": "dsh",
+          "provider": "inferx",
+          "model": "deepseek-v4",
+          "evidence": 8,
+          "cost_usd": 2.2,
+          "issue_id": "owner/repo#31"
+        }
+      ],
+      "next_action": {
+        "kind": null,
+        "label": null,
+        "reason": "Workstream is complete."
+      },
+      "view_capabilities": []
+    }
+  ]
+}

@@ -278,9 +278,18 @@ def test_work_surface_offers_an_authoritative_refresh():
 
 
 def test_work_recovery_affordance_is_gated_on_the_registered_action():
+    # S7d browser acceptance: the registered-action check now lives in
+    # actAuthorized(), which requires a non-synthetic shell AND the registered
+    # recover-to-ready capability before the executable affordance appears.
+    # Synthetic mode reaches only the non-mutating recovery explanation via the
+    # fixture's view:recovery grant (test_s7d_preview_navigation_authority.py).
     js = _js("work-console.js")
-    assert 'a.id === "recover-to-ready"' in js or "a.id==='recover-to-ready'" in js \
-        or 'a.id==="recover-to-ready"' in js
+    assert 'actAuthorized(s, "recover-to-ready")' in js
+    assert "function actAuthorized(s, actionId)" in js
+    assert "!s.model.synthetic" in js
+    assert 'a.id === actionId' in js
+    assert 'x.workflow !== "in-progress"' in js
+    assert 'nextActionKind(x) !== "recover"' in js
     assert "data-recover-ready" in js
 
 

@@ -803,25 +803,68 @@ function renderHome(winEl,ctx){
 if(typeof OSRenderer!=="undefined"){OSRenderer.register("home",renderHome)}
 
 /* ---- Work app (S5.5b/ADR-044 + S6a surface routing) ------------------ */
-function launchAvailable(s, x) {
-  /* AC1: Work exposes launch only for an eligible REAL Workstream whose
-     complete mandate is authoritatively workflow:ready. Synthetic/demo mode
-     has no action capability (AC7), so the affordance is never shown there;
-     the launch app itself re-checks the server eligibility fail-closed. */
+
+/* Preview navigation authority is NOT mutation authority (S7d browser
+   acceptance). A synthetic fixture may authorize *viewing* a non-mutating
+   preview through a typed per-Workstream `view_capabilities` entry
+   (view:launch / view:recovery). It may never authorize an act:* capability,
+   and it carries no action token and no action endpoint -- those exist only
+   on a live action host. Keeping the two apart is what makes the journey
+   Home -> Resume -> Work -> preview navigable for acceptance while the
+   mutation boundary stays fail-closed. */
+function viewAuthorized(x, capability) {
+  return !!x && ((x && x.view_capabilities) || []).indexOf(capability) !== -1;
+}
+function actAuthorized(s, actionId) {
   return !!s && !!s.model && !s.model.synthetic &&
-    (s.capabilities || []).some(function (a) { return a && a.id === "claim-run"; }) &&
-    !!x && x.workflow === "ready";
+    (s.capabilities || []).some(function (a) { return a && a.id === actionId; });
+}
+
+/* Every projection a surface renders must belong to the selected Workstream.
+   A fixture (or a server response) that carries another Workstream's Issue,
+   Run, or evidence is a correlation failure and must fail closed rather than
+   be relabelled with the selected Workstream's id. */
+function correlated(x) {
+  if (!x || !x.issue_id) return false;
+  var runs = x.runs || [], evidence = x.evidence || [];
+  for (var i = 0; i < runs.length; i++) {
+    if (runs[i] && runs[i].issue_id && runs[i].issue_id !== x.issue_id) return false;
+  }
+  for (var j = 0; j < evidence.length; j++) {
+    if (evidence[j] && evidence[j].issue_id && evidence[j].issue_id !== x.issue_id) return false;
+  }
+  return true;
+}
+
+/* The typed next action is the single authority for Work's primary
+   affordance. It is never inferred from prose and never defaults to a
+   mutation-oriented control. */
+function nextActionKind(x) {
+  var n = x && x.next_action;
+  return (n && n.kind) || null;
+}
+
+function launchAvailable(s, x) {
+  /* AC1: launch is offered only for a correlated Workstream whose complete
+     mandate is authoritatively workflow:ready and whose typed next action is
+     `launch`. On a live host that additionally requires the registered
+     claim-run action; in synthetic mode it requires the fixture's own
+     view:launch grant, and the preview it opens has no executable mutation
+     boundary. The launch app re-checks eligibility fail-closed either way. */
+  if (!s || !s.model || !x) return false;
+  if (!correlated(x) || x.workflow !== "ready" || nextActionKind(x) !== "launch") return false;
+  return s.model.synthetic ? viewAuthorized(x, "view:launch") : actAuthorized(s, "claim-run");
 }
 function recoveryAvailable(s, x) {
   /* S7d (#472 finding 2): the ONE sanctioned way back from a stranded
-     workflow:in-progress Issue. Gated on the registered recover-to-ready
-     action exactly like launch is gated on claim-run, so a host without the
-     action port shows no affordance at all, and never offered in
-     synthetic/demo mode. Returning to ready re-opens the dispatch gate; it
-     approves, closes and completes nothing. */
-  return !!s && !!s.model && !s.model.synthetic &&
-    (s.capabilities || []).some(function (a) { return a && a.id === "recover-to-ready"; }) &&
-    !!x && x.workflow === "in-progress";
+     workflow:in-progress Issue. Same split as launch -- a live host needs the
+     registered recover-to-ready action, synthetic needs the fixture's
+     view:recovery grant and reaches only the explanation, never the
+     mutation. Returning to ready re-opens the dispatch gate; it approves,
+     closes and completes nothing, and starts no Run. */
+  if (!s || !s.model || !x) return false;
+  if (!correlated(x) || x.workflow !== "in-progress" || nextActionKind(x) !== "recover") return false;
+  return s.model.synthetic ? viewAuthorized(x, "view:recovery") : actAuthorized(s, "recover-to-ready");
 }
 function renderWork(winEl,ctx){
   var s=(ctx&&ctx.state)||state,x=(ctx&&ctx.workstream)||null;
@@ -840,7 +883,23 @@ function renderWork(winEl,ctx){
     });
     return;
   }
+  if(!correlated(x)){
+    /* Fail closed: the projection does not belong to this Workstream. */
+    winEl.innerHTML='<div class="home-inner"><span class="eyebrow">'+esc(x.id||"Workstream")+'</span>'+
+      '<h1 class="home-heading">Correlation failed</h1>'+
+      '<p class="home-sub">This Workstream’s Issue, Run, and evidence references do not correlate. '+
+      'No decision, launch, or recovery affordance is offered.</p></div>';
+    return;
+  }
   var decision=x.decision||null,evidence=x.evidence||[];
+  /* The primary affordance follows the typed next action AND its authority:
+     an unauthorized kind degrades to no primary control, never to a
+     different mutation. */
+  var primaryKind=nextActionKind(x);
+  if(primaryKind==="launch"&&!launchAvailable(s,x))primaryKind=null;
+  if(primaryKind==="recover"&&!recoveryAvailable(s,x))primaryKind=null;
+  if(primaryKind==="decision"&&!decision)primaryKind=null;
+  var nextLabel=(x.next_action&&x.next_action.label)||null;
   var phase=x.phase||x.workflow||"in-progress";
   var milestones=(x.milestones&&x.milestones.length)?x.milestones:[];
   var blockers=(x.blockers&&x.blockers.length)?x.blockers:[];
@@ -866,9 +925,19 @@ function renderWork(winEl,ctx){
           '<p class="wc-main">'+(x.nextAction?esc(x.nextAction):(decision?esc(decision.summary):"No next action pending."))+'</p>'+
           (decision?'<p class="wc-sub">'+esc(decision.summary)+'</p>':'')+
           '<div class="work-actions">'+
-            (launchAvailable(s,x)?'<button type="button" class="primary-action" data-launch-run>Review and start Run →</button>':'')+
-            (recoveryAvailable(s,x)?'<button type="button" class="chrome-button" data-recover-ready>Return to ready (recover)</button>':'')+
-            '<button type="button" class="primary-action" data-deep-open="decisions">Open Decisions →</button>'+
+            /* Exactly one primary affordance, derived from the typed next
+               action: launch -> the launch preview, recover -> the recovery
+               preview, decision -> Decisions. A Workstream with no authorized
+               next action gets no mutation-oriented primary control at all;
+               the read-only surfaces below stay available. */
+            (primaryKind==="launch"
+              ?'<button type="button" class="primary-action" data-launch-run>'+esc(nextLabel||"Review and start Run →")+'</button>'
+              :(primaryKind==="recover"
+                ?'<button type="button" class="primary-action" data-recover-ready>'+esc(nextLabel||"Return to ready (recover) →")+'</button>'
+                :(primaryKind==="decision"
+                  ?'<button type="button" class="primary-action" data-deep-open="decisions">'+esc(nextLabel||"Open Decisions →")+'</button>'
+                  :'')))+
+            (primaryKind==="decision"?'':'<button type="button" class="chrome-button" data-deep-open="decisions">Open Decisions</button>')+
             '<button type="button" class="chrome-button" data-deep-open="evidence">Open Evidence</button>'+
             '<button type="button" class="chrome-button" data-deep-open="execution">Execution Inspector</button>'+
           '</div>'+

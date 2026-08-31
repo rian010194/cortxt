@@ -36,9 +36,37 @@
      before the port is called), bound to the exact selected Workstream. It
      approves, closes, and completes nothing, and it starts no Run: it
      re-opens the dispatch gate so a fresh Run is a separate decision. */
-  function recoveryAvailable(s, x) {
-    return !!s && !!s.model && !s.model.synthetic && hasAction(s, "recover-to-ready") &&
-      !!x && x.workflow === "in-progress";
+  /* Preview navigation authority is not mutation authority (S7d browser
+     acceptance): a synthetic fixture may grant `view:recovery` so the
+     explanation is reachable, but it never grants act:recover-to-ready, a
+     token, or an endpoint. */
+  function viewAuthorized(x, capability) {
+    return !!x && ((x && x.view_capabilities) || []).indexOf(capability) !== -1;
+  }
+  function isSynthetic(s) { return !!(s && s.model && s.model.synthetic); }
+
+  /* Every projection must belong to the selected Workstream: its Run and
+     evidence references must carry the same Issue, or the surface fails
+     closed rather than relabelling another Workstream's data. */
+  function correlated(x) {
+    if (!x || !x.issue_id) return false;
+    var runs = x.runs || [], evidence = x.evidence || [];
+    for (var i = 0; i < runs.length; i++) {
+      if (runs[i] && runs[i].issue_id && runs[i].issue_id !== x.issue_id) return false;
+    }
+    for (var j = 0; j < evidence.length; j++) {
+      if (evidence[j] && evidence[j].issue_id && evidence[j].issue_id !== x.issue_id) return false;
+    }
+    return true;
+  }
+
+  function recoveryVisible(s, x) {
+    if (!s || !s.model || !x) return false;
+    if (!correlated(x) || x.workflow !== "in-progress") return false;
+    return isSynthetic(s) ? viewAuthorized(x, "view:recovery") : hasAction(s, "recover-to-ready");
+  }
+  function recoveryExecutable(s, x) {
+    return recoveryVisible(s, x) && !isSynthetic(s) && hasAction(s, "recover-to-ready");
   }
 
   function beginRecovery(winEl, ctx) {
@@ -76,10 +104,17 @@
   }
 
   function recoverySection(s, x) {
-    if (!recoveryAvailable(s, x)) return "";
-    return '<section class="review-actions" data-recover-section>' +
-      "<p>This Workstream holds a <b>workflow:in-progress</b> claim. If its Run failed or stranded, return it to ready so a fresh Run can be approved.</p>" +
-      '<button data-r-recover class="chrome-button">Return to ready (recover)</button></section>';
+    if (!recoveryVisible(s, x)) return "";
+    var intro = '<section class="review-actions" data-recover-section>' +
+      "<p>This Workstream holds a <b>workflow:in-progress</b> claim. If its Run failed or stranded, return it to ready so a fresh Run can be approved. " +
+      "Recovery re-opens the dispatch gate only: it approves, closes and completes nothing, and starts no Run.</p>";
+    if (!recoveryExecutable(s, x)) {
+      /* Reachable explanation, inert control: no handler is bound and the
+         static host has no /api/action route to call. */
+      return intro + '<button data-r-recover-disabled class="chrome-button" disabled aria-disabled="true">Requires live action host</button>' +
+        "<small>This preview is non-mutating. Returning the Issue to ready requires a live action host with the registered recover-to-ready capability.</small></section>";
+    }
+    return intro + '<button data-r-recover class="chrome-button">Return to ready (recover)</button></section>';
   }
 
   /* ---- Decisions ----------------------------------------------------- */
@@ -87,6 +122,12 @@
     if (!winEl) return;
     var s = (ctx && ctx.state) || {}, x = (ctx && ctx.workstream) || null;
     if (!x) { winEl.innerHTML = empty("Select a Workstream to project its pending decision."); return; }
+    if (!correlated(x)) {
+      winEl.innerHTML = empty(
+        "This Workstream's Issue, Run, and evidence references do not correlate. " +
+        "No decision candidate is rendered and no action is offered.");
+      return;
+    }
     var decision = x.decision;
     winEl.innerHTML =
       '<span class="eyebrow">' + esc(x.id) + " · human decision</span><h3>" + esc(x.title) + "</h3>" +
@@ -158,6 +199,11 @@
     if (!winEl) return;
     var x = (ctx && ctx.workstream) || null;
     if (!x) { winEl.innerHTML = empty("Select a Workstream to project its evidence."); return; }
+    if (!correlated(x)) {
+      winEl.innerHTML = empty(
+        "This Workstream's evidence references do not correlate with its Issue. Nothing is rendered.");
+      return;
+    }
     if (!x.evidence || !x.evidence.length) { winEl.innerHTML = empty("No authoritative evidence is attached."); return; }
     winEl.innerHTML =
       '<span class="eyebrow">' + esc(x.id) + "</span><h3>Evidence</h3>" +
