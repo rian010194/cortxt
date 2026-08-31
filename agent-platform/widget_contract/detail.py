@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping, Sequence
 
+from .approval import resolve_approval
+
 WORKFLOW = re.compile(r"^workflow:(inbox|ready|in-progress|review|blocked|done)$", re.I)
 SECTION = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.M)
 # Markdown unordered (-, *) and ordered (1., 1)) list items (issue #471 uses
@@ -170,7 +172,11 @@ def build_workstream_detail_v1(
     has_evidence = bool(evidence)
     acceptance = _bullets(body, ("Acceptance criteria", "Acceptance Criteria",
                                  "Deterministic acceptance criteria"))
-    approval = _section(body, ("Approval status", "Approval", "Human approval", "Operator approval"))
+    # One approval authority for every reader (S7d #473 / #472 finding 3): the
+    # same resolution the dispatch gate uses, including the negation rule and a
+    # later operator retry authorization comment when the issue record carries
+    # comments. `approval_source` names which of the two is binding.
+    approval = resolve_approval(body, issue.get("comments"))
     outcome = _section(body, ("Outcome", "Objective", "Destination"))
     scope = _section(body, ("Scope",))
 
@@ -192,7 +198,8 @@ def build_workstream_detail_v1(
             "outcome": outcome,
             "scope": scope,
             "acceptance_criteria": acceptance,
-            "approval_reference": approval,
+            "approval_reference": approval["reference"],
+            "approval_source": approval["source"],
             "dispatch_limits": parse_dispatch_limits(body),
         },
         "relations": parse_relations(body),

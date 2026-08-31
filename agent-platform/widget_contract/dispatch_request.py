@@ -55,60 +55,75 @@ DEFAULT_ARTIFACT_POLICY = (
     "close issues, expose secrets, copy full prompts, or record model reasoning."
 )
 
-APPROVAL_SECTIONS = ("Approval status", "Approval", "Human approval", "Operator approval")
-ENGINE_POLICY_SECTIONS = ("Engine policy", "Routing policy")
+ISOLATION_WORKTREE = "worktree"
+ISOLATION_SHARED = "shared-checkout"
 
-# Positive approval only: any explicit negation means the issue is not approved
-# for dispatch (issue #471 records "Implementation start is not approved").
-_NEGATED_APPROVAL = re.compile(
-    r"\bnot\s+(?:yet\s+)?(?:approved|authorized|permitted|allowed|sanctioned|granted)\b"
-    r"|\bpending\b",
+# An approved artifact policy waives the run's own isolated worktree only when
+# it says so explicitly and affirmatively. Everything else -- including a policy
+# that demands isolation, the default policy, and an issue with no artifact
+# policy section at all -- gets an isolated worktree.
+#
+# S7d (#473), closing the #472 dogfood findings 6 and 8: the UI launch path
+# (workflow.claim-run.v1 -> gh_claim_run_resume -> WorkLauncher.resume) created
+# no worktree at all, so a mandate requiring the change to stay "inside the
+# run's isolated worktree" was unenforceable rather than merely unenforced.
+# Making this a field of the immutable dispatch request means the decision is
+# derived on the server from the approved mandate, is covered by `request_id`
+# (a browser cannot choose it -- a tampered value changes the digest and the
+# confirmation is rejected as stale), and is rendered in the confirmation view
+# before the operator confirms.
+_ISOLATION_WAIVED = re.compile(
+    r"\bshared\s+checkout\b"
+    r"|\bno\s+isolated\s+worktree\b"
+    r"|\bwithout\s+(?:an\s+)?isolated\s+worktree\b",
     re.I)
 
-# A retry/authorization comment is only ever treated as the operator's current
-# authorization when it carries one of these explicit markers -- an ordinary
-# status update (dispatch notice, claim record, run result) never qualifies,
-# so routine automation comments can never be mistaken for a fresh approval.
-_RETRY_AUTH_MARKERS = re.compile(
-    r"\bretry\s+approved\b|\boperator\s+retry\s+decision\b|\bretry\s+authoriz(?:ed|ation)\b",
+# Phrase presence is not permission. A *tightening* mandate contains the very
+# same phrases as a waiver -- "the worker must not use a shared checkout",
+# "never work without an isolated worktree" -- so matching on presence alone
+# read the strictest mandates an operator can write as permission to drop
+# isolation entirely, the exact inversion of the boundary this field exists to
+# carry. A clause waives isolation only when nothing negates it first.
+# Deliberately only unambiguous negation: a bare modal ("the run must use the
+# shared checkout") is an affirmative waiver, and treating it as negation would
+# override an explicit operator mandate in the other direction.
+_NEGATION_BEFORE_WAIVER = re.compile(
+    r"\b(?:not|never|cannot|can't|don't|doesn't|without|outside|avoid|"
+    r"forbidden|prohibited|disallowed)\b",
     re.I)
 
-# Comment authors whose comments are never eligible authorizations, regardless
-# of wording -- automation posts status, never operator authorization.
-_NON_OPERATOR_AUTHORS = {"github-actions", "github-actions[bot]"}
+# Sentence/clause boundaries. A long policy states many things; the negation
+# that governs a waiver phrase is the one in its own clause, not one three
+# sentences earlier.
+_CLAUSE_SPLIT = re.compile(r"[.;\n]")
 
 
-def _latest_retry_authorization(comments: Sequence[Any] | None) -> str | None:
-    """The most recent explicit operator retry authorization comment, or None.
+def isolation_for_artifact_policy(policy: str | None) -> str:
+    """The isolation the approved artifact policy requires (fails closed).
 
-    Resolution is deterministic and time-ordered by the comment's own
-    ``createdAt`` (ties broken by comment id) -- never by list position, and
-    never a fixed/first match -- so a later retry authorization always
-    supersedes an earlier one, and a stale one is never picked merely because
-    it appears first. Bot comments and non-matching status comments are not
-    candidates; a negated candidate ("retry ... not approved") is dropped.
+    Returns ``shared-checkout`` only for a clause that affirmatively waives the
+    run's own worktree. A negated clause -- a mandate *requiring* isolation --
+    is not a waiver, and neither is a policy that never mentions the subject.
     """
-    if not comments:
-        return None
-    candidates: list[tuple[str, str, str]] = []
-    for comment in comments:
-        if not isinstance(comment, Mapping):
+    if not isinstance(policy, str):
+        return ISOLATION_WORKTREE
+    for clause in _CLAUSE_SPLIT.split(policy):
+        match = _ISOLATION_WAIVED.search(clause)
+        if match is None:
             continue
-        author = comment.get("author")
-        login = (author.get("login") if isinstance(author, Mapping) else author) or ""
-        if str(login) in _NON_OPERATOR_AUTHORS:
+        if _NEGATION_BEFORE_WAIVER.search(clause[:match.start()]):
             continue
-        body = str(comment.get("body") or "")
-        if not _RETRY_AUTH_MARKERS.search(body) or _NEGATED_APPROVAL.search(body):
-            continue
-        created_at = str(comment.get("createdAt") or "")
-        if not created_at:
-            continue
-        candidates.append((created_at, str(comment.get("id") or ""), body))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda item: (item[0], item[1]))
-    return candidates[-1][2]
+        return ISOLATION_SHARED
+    return ISOLATION_WORKTREE
+
+
+# Approval resolution lives in `widget_contract.approval`, the single durable
+# home every reader shares (S7d #473, from the #472 dogfood finding 3 -- the
+# dispatch request and the Workstream projection used to disagree about the
+# same issue's approval).
+from .approval import resolve_approval
+
+ENGINE_POLICY_SECTIONS = ("Engine policy", "Routing policy")
 
 # Fields that constitute the immutable dispatch-request snapshot. Anything
 # environment-derived (eligibility, missing, engine registration availability)
@@ -116,6 +131,7 @@ def _latest_retry_authorization(comments: Sequence[Any] | None) -> str | None:
 # mandate -- but a changed Issue always does.
 REQUEST_DIGEST_FIELDS = (
     "issue_id", "workflow", "scope", "acceptance_criteria", "approval_reference",
+    "isolation",
     "worker_role", "workflow_id", "engine", "routing_reason", "routable_task_tags",
     "engine_policy", "max_runtime_seconds", "max_cost_usd", "max_parallel_workers",
     "delegation_depth", "artifact_policy",
@@ -207,20 +223,10 @@ def parse_engine_policy(body: str) -> dict[str, str | None] | None:
 def _approval_reference(body: str, comments: Sequence[Any] | None = None) -> str | None:
     """The issue's current approval reference, only when it is positively approved.
 
-    A later explicit operator retry authorization comment always supersedes
-    the issue-body ``## Approval status`` section (issue #482: an operator
-    retry authorization posted after a prior approval must be the mandate
-    that binds, not the earlier text) -- resolution is time-ordered, not a
-    hardcoded "first" or "body always wins" pick. When no retry authorization
-    comment is present, the body section is used unchanged.
+    Delegates to `widget_contract.approval.resolve_approval` so this reader and
+    the Workstream projections cannot drift apart again.
     """
-    retry = _latest_retry_authorization(comments)
-    if retry is not None:
-        return retry
-    value = _section(body, APPROVAL_SECTIONS)
-    if value is None or _NEGATED_APPROVAL.search(value):
-        return None
-    return value
+    return resolve_approval(body, comments)["reference"]
 
 
 def route_for_issue(issue: Mapping[str, Any], manifests: Sequence[Any],
@@ -342,6 +348,7 @@ def build_dispatch_request_v1(
         "max_parallel_workers": limits.get("max_parallel_workers"),
         "delegation_depth": limits.get("delegation_depth"),
         "artifact_policy": artifact_policy,
+        "isolation": isolation_for_artifact_policy(artifact_policy),
         "missing": missing,
         "errors": _failures(missing),
     }

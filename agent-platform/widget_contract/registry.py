@@ -361,12 +361,17 @@ DISPATCH_LIMITS_SCHEMA = {"type": "object", "additionalProperties": False,
                            }}
 MANDATE_DETAIL_SCHEMA = {"type": "object", "additionalProperties": False,
                           "required": ["outcome", "scope", "acceptance_criteria",
-                                       "approval_reference", "dispatch_limits"],
+                                       "approval_reference", "approval_source",
+                                       "dispatch_limits"],
                           "properties": {
                               "outcome": {"type": ["string", "null"]},
                               "scope": {"type": ["string", "null"]},
                               "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
                               "approval_reference": {"type": ["string", "null"]},
+                              "approval_source": {"type": ["string", "null"],
+                                                  "enum": ["issue-body-approval-status",
+                                                           "issue-comment-retry-authorization",
+                                                           None]},
                               "dispatch_limits": DISPATCH_LIMITS_SCHEMA,
                           }}
 RELATION_SCHEMA = {"type": "object", "additionalProperties": False,
@@ -453,7 +458,7 @@ RUN_TERMINAL_SCHEMA = {"type": "object", "additionalProperties": False,
                            "conflicting": {"type": "boolean"},
                        }}
 RUN_ACTIVITY_ITEM_SCHEMA = {"type": "object", "additionalProperties": False,
-                            "required": ["seq", "event_type", "timestamp", "detail"],
+                            "required": ["seq", "event_type", "timestamp", "detail", "source"],
                             "properties": {
                                 "seq": {"type": "integer", "minimum": 0},
                                 "event_type": {"type": "string",
@@ -470,6 +475,8 @@ RUN_ACTIVITY_ITEM_SCHEMA = {"type": "object", "additionalProperties": False,
                                                "result_status": {"type": "string"},
                                                "engine": {"type": ["string", "null"]},
                                            }},
+                                "source": {"type": "string",
+                                           "enum": ["dispatcher.runs", "session.events"]},
                             }}
 RUN_ACTIVITY_SCHEMA = {"type": "object", "additionalProperties": False,
                        "required": ["schema_version", "issue_ref", "run_id", "items"],
@@ -479,7 +486,8 @@ RUN_ACTIVITY_SCHEMA = {"type": "object", "additionalProperties": False,
                                       "items": {"type": "array", "items": RUN_ACTIVITY_ITEM_SCHEMA}}}
 RUN_REVIEW_SUBMISSION_SCHEMA = {"type": "object", "additionalProperties": False,
                                 "required": ["review_submission_id", "review_kind", "result_status",
-                                             "submitted_at", "run_id", "idempotency_key_present"],
+                                             "submitted_at", "run_id", "idempotency_key_present",
+                                             "source"],
                                 "properties": {
                                     "review_submission_id": {"type": "string"},
                                     "review_kind": {"type": "string"},
@@ -487,11 +495,17 @@ RUN_REVIEW_SUBMISSION_SCHEMA = {"type": "object", "additionalProperties": False,
                                     "submitted_at": {"type": ["string", "null"]},
                                     "run_id": {"type": ["string", "null"]},
                                     "idempotency_key_present": {"type": "boolean"},
+                                    "source": {"type": "string",
+                                               "enum": ["dispatcher.runs", "session.events"]},
                                 }}
 RUN_REVIEW_SCHEMA = {"type": "object", "additionalProperties": False,
-                     "required": ["schema_version", "issue_ref", "submissions"],
+                     "required": ["schema_version", "issue_ref", "sources", "submissions"],
                      "properties": {"schema_version": {"const": 1},
                                     "issue_ref": {"type": "string"},
+                                    # The stores consulted: an empty submissions
+                                    # list means "none recorded in these", not
+                                    # "unavailable".
+                                    "sources": {"type": "array", "items": {"type": "string"}},
                                     "submissions": {"type": "array",
                                                     "items": RUN_REVIEW_SUBMISSION_SCHEMA}}}
 
@@ -512,7 +526,7 @@ DISPATCH_REQUEST_SCHEMA = {"type": "object", "additionalProperties": False,
                                         "engine", "routing_reason", "routable_task_tags",
                                         "engine_policy", "max_runtime_seconds", "max_cost_usd",
                                         "max_parallel_workers", "delegation_depth",
-                                        "artifact_policy", "missing", "errors"],
+                                        "artifact_policy", "isolation", "missing", "errors"],
                            "properties": {
                                "schema_version": {"const": 1},
                                "request_id": {"type": "string"},
@@ -536,6 +550,8 @@ DISPATCH_REQUEST_SCHEMA = {"type": "object", "additionalProperties": False,
                                "max_parallel_workers": {"type": ["integer", "null"], "minimum": 0},
                                "delegation_depth": {"type": ["integer", "null"], "minimum": 0},
                                "artifact_policy": {"type": "string"},
+                               "isolation": {"type": "string",
+                                             "enum": ["worktree", "shared-checkout"]},
                                "missing": {"type": "array", "items": {"type": "string"}},
                                "errors": {"type": "array", "items": ERROR_ENTRY_SCHEMA},
                            }}
@@ -607,6 +623,12 @@ ACTIONS: dict[str, ActionEntry] = {
                                          "run-dispatch", frozenset({"operator"}), "act:claim-run", True),
     "workflow.record-decision.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",
                                                 "workflow-transition", frozenset({"operator"}), "act:record-decision", True),
+    # S7d (#473, #472 finding 2): the operator recovery the execution model
+    # assumes. Exactly one fixed label pair (in-progress -> ready) so a Run
+    # that failed or stranded its Issue has a sanctioned way back without a
+    # manual `gh issue edit` and without a general label editor.
+    "workflow.recover-to-ready.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",
+                                                "workflow-transition", frozenset({"operator"}), "act:recover-to-ready", True),
 }
 
 _LAYOUT = ("stack", "row", "grid", "tabs", "panel")

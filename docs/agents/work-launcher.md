@@ -17,6 +17,56 @@ identity for a ready issue; retry never overwrites an earlier attempt. `cortxt
 work submit` records a terminal result and moves the issue to independent
 review. No launcher command approves, merges, closes, or cleans a worktree.
 
+## Working-directory isolation
+
+Isolation is decided on the server, from the approved mandate, and the launch
+result reports what actually happened:
+
+| Path | Isolation | Reported |
+| --- | --- | --- |
+| `cortxt work new` / `WorkLauncher.create` | always one linked git worktree plus a `work/<run_id>` branch | `isolation: "worktree"`, real `branch` and `worktree` |
+| Work app launch (`workflow.claim-run.v1` -> `gh_claim_run_resume`) | `dispatch.request.v1`'s `isolation` field, derived from the approved `## Artifact policy` | whichever it derived |
+| `cortxt work resume` | `--isolate` (default off; the CLI is the local/power-user surface) | whichever was asked for |
+
+`isolation` is a field of the immutable dispatch request, so it is covered by
+`request_id`: the browser supplies nothing that can choose it, a tampered
+value changes the digest and the confirmation is rejected as stale, and the
+confirmation view can show the operator which isolation they are approving.
+
+It **fails closed**. `isolation_for_artifact_policy` returns `worktree` for
+every policy -- including the default one and an issue with no artifact-policy
+section at all -- and returns `shared-checkout` only when the approved policy
+explicitly waives isolation ("shared checkout", "no isolated worktree",
+"without an isolated worktree"). A worktree that cannot be created fails the
+launch with `worktree_creation_failed` rather than silently downgrading, and
+the launcher verifies the directory exists before reporting `isolation:
+"worktree"` -- a zero exit code that produced no directory is not proof, and
+`_dispatch` binds the worker only to a worktree that is really there.
+
+The isolation mode is written onto the durable Run record, so a reviewer reads
+what actually happened instead of inferring it from a branch name.
+
+This closes the #472 dogfood findings 6 and 8. `resume` previously created no
+worktree on the Work launch path yet returned `branch: work/<run_id>`
+regardless -- a name constructed from the run_id rather than projected from
+durable state -- so a reviewer saw a plausible branch that had never existed
+while the change had landed in the shared checkout, and a mandate requiring
+the change to stay "inside the run's isolated worktree" was unenforceable
+rather than merely unenforced.
+
+## Recovery out of a stranded claim
+
+`workflow.recover-to-ready.v1` is the one sanctioned actuator for
+`workflow:in-progress -> workflow:ready`. It exists because a Run that failed
+or stranded previously left its Issue at `workflow:in-progress` with no way
+back through the action ports, so recovery meant a manual `gh issue edit`
+outside the contract (#472 finding 2). Like the other two transitions it
+re-reads the Issue immediately before the write and refuses any state that is
+not exactly `workflow:in-progress`; it is not a general label editor. It
+approves, merges, closes, and completes nothing, and it starts no Run --
+returning to `ready` re-opens the dispatch gate so a fresh Run stays a
+separate operator decision through `workflow.claim-run.v1`.
+
 The worker handoff contains only approved scope, acceptance criteria, dispatch
 limits, and artifact policy. Inputs containing prohibited diacritics are
 rejected. Secrets, raw runtime output, full prompts, and model reasoning must

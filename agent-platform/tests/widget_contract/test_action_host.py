@@ -368,7 +368,8 @@ def test_host_capabilities_declare_actions():
     host = _host()
     caps = host.capabilities()
     assert caps["actions_enabled"] is True
-    assert {a["id"] for a in caps["actions"]} == {"mark-ready", "claim-run", "record-decision"}
+    assert {a["id"] for a in caps["actions"]} == {
+        "mark-ready", "claim-run", "record-decision", "recover-to-ready"}
     assert all(a["confirm"]["required"] for a in caps["actions"])
 
 

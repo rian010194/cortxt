@@ -64,6 +64,11 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
     a fresh receipt and durable claim before any launch side effect, and raises
     a stable `ExecutionGateError` code on rejection.
 
+    Isolation is part of that projection too: `request["isolation"]` decides
+    whether the run gets its own linked worktree and `work/<run_id>` branch.
+    It defaults closed (isolated) and is waived only by an approved artifact
+    policy that explicitly says the run works in the shared checkout.
+
     Approval binding (AC8): when `approval_ref` is provided it must equal the
     issue-derived approval reference, and when `request_id` is provided it must
     equal the server-derived digest of the current request snapshot -- a changed
@@ -126,4 +131,9 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
         delegation_depth=int(request["delegation_depth"]),
         artifact_policy=request["artifact_policy"],
         request_id=request["request_id"],
+        # The isolation decision is the request's, never the caller's: it is
+        # derived on the server from the approved artifact policy and covered
+        # by `request_id`, so the browser cannot choose whether the worker gets
+        # its own worktree (#472 findings 6/8).
+        isolate=request["isolation"] == "worktree",
         prompt=f"Execute the approved dispatch request for {issue_id} per the issue body.")

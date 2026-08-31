@@ -51,6 +51,16 @@ def real_worktree_add(seen_cwd=None):
     return _run
 
 
+def fake_worktree_add(*args, **kwargs):
+    """Stand-in for `git worktree add` that creates the directory like the real
+    command does. S7d: the launcher verifies the worktree exists before it
+    reports `isolation: "worktree"`, so a stand-in that creates nothing would
+    (correctly) fail the launch closed."""
+    argv = args[0] if args else kwargs.get("args")
+    Path(argv[-2]).mkdir(parents=True, exist_ok=True)
+    return SimpleNamespace(returncode=0)
+
+
 def main():
     # These offline tests dispatch through an injected fake `dispatch`
     # callable, not the real ADAPTER_REGISTRY -- but WorkLauncher._launch now
@@ -64,9 +74,10 @@ def main():
     disp = d.Dispatcher(d.RunRegistry(root / "runs.json"), gh)
     prompts = []
     launcher = w.WorkLauncher(
-        disp, gh, dispatch=lambda dispatcher, run, prompt: prompts.append(prompt),
+        disp, gh,
+        dispatch=lambda dispatcher, run, prompt, worktree=None: prompts.append(prompt),
         worktree_root=root / "trees",
-        run_worktree=lambda *a, **k: SimpleNamespace(returncode=0),
+        run_worktree=fake_worktree_add,
     )
     result = launcher.create("o/r", "Task", "Build a safe launcher", ["Tests pass"],
                              runtime="fake", worker_role="builder", workflow="v1",
@@ -113,7 +124,7 @@ def main():
     launcher3 = w.WorkLauncher(
         disp3, gh3, dispatch=lambda dispatcher, run, prompt, worktree=None: dispatched3.append(run.run_id),
         worktree_root=root3 / "trees",
-        run_worktree=lambda *a, **k: SimpleNamespace(returncode=0),
+        run_worktree=fake_worktree_add,
     )
     try:
         launcher3.resume("o/r#9", runtime="no-such-runtime", worker_role="builder", workflow="v1",

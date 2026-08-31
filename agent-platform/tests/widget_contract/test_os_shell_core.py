@@ -156,7 +156,7 @@ def test_state_separates_surfaces_ui_context_and_app_local_view():
     assert 'primary:"home"' in JS
     assert 'deepApp:null' in JS and 'deepRec:null' in JS and 'multiMode:false' in JS
     assert 'ui:{open:{}' in JS and 'zTop:' in JS and 'mobileApp:' in JS
-    assert 'context:{workstreamId:null,activeWorkstreamId:null}' in JS
+    assert 'context:{workstreamId:null,activeWorkstreamId:null,runId:null}' in JS
     assert 'apps:{}' in JS
     assert 'windows:[]' in JS
 
@@ -849,15 +849,23 @@ def test_launch_app_registered_in_registry_and_renderer():
 
 
 def test_work_exposes_launch_only_for_eligible_real_ready_workstream_ac1():
-    # AC1: launch is exposed from Work only when the shell is real (not
-    # synthetic), the claim-run action capability is present, and the selected
-    # Workstream is authoritatively workflow:ready.
+    # AC1: on a LIVE shell, launch is exposed only when the claim-run action
+    # capability is present and the selected Workstream is authoritatively
+    # workflow:ready with a typed `launch` next action.
+    #
+    # S7d browser acceptance: the capability check moved into actAuthorized(),
+    # which is the single place that requires a non-synthetic shell AND the
+    # registered action. Synthetic mode may authorize *navigating* to the
+    # non-mutating preview via the fixture's own view:launch grant, but never
+    # a mutation -- see test_s7d_preview_navigation_authority.py.
     assert "function launchAvailable(s, x)" in JS
+    assert "function actAuthorized(s, actionId)" in JS
     assert "!s.model.synthetic" in JS
-    assert 'a.id === "claim-run"' in JS
-    assert 'x.workflow === "ready"' in JS
+    assert 'a.id === actionId' in JS
+    assert 'actAuthorized(s, "claim-run")' in JS
+    assert 'x.workflow !== "ready"' in JS
+    assert 'nextActionKind(x) !== "launch"' in JS
     assert 'data-launch-run' in JS
-    # Synthetic mode has no action capability, so the affordance is never shown.
     assert 'launchAvailable(s,x)' in JS
 
 

@@ -92,10 +92,18 @@ def _real_launcher(tmp_path, *, dispatch=None, issue_id="owner/repo#482"):
     registry = RunRegistry(tmp_path / "runs.json")
     dispatcher = Dispatcher(registry, gh)
     kwargs = {} if dispatch is None else {"dispatch": dispatch}
+
+    def _run_worktree(argv, **_kwargs):
+        # S7d: the UI launch path now isolates by default, and the launcher
+        # verifies the directory exists before reporting that isolation, so a
+        # stand-in for `git worktree add` has to create it like the real one.
+        Path(argv[-2]).mkdir(parents=True, exist_ok=True)
+        return SimpleNamespace(returncode=0)
+
     app = WorkLauncher(
         dispatcher, gh,
         worktree_root=tmp_path / "trees",
-        run_worktree=lambda *a, **k: SimpleNamespace(returncode=0),
+        run_worktree=_run_worktree,
         claim_store=store,
         issue_reader=lambda issue_id: _issue(issue_id),
         inventory_readers={name: (lambda: ()) for name in WorkLauncher.INVENTORY_NAMES},

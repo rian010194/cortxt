@@ -603,7 +603,8 @@ def read_run_activity_v1(issue_ref: str,
     if not any(str(s.get("run_id")) == run_id and str(s.get("issue_ref")) == issue_ref
                for s in summaries):
         raise RunNotCorrelated(f"no run {run_id!r} correlated for {issue_ref!r}")
-    result = run_activity_projection(issue_ref, run_id, sessions)
+    result = run_activity_projection(issue_ref, run_id, sessions,
+                                     dispatcher_store=dispatcher_runs)
     try:
         validate(result, TYPES["run.activity.v1"].schema)
     except Exception as exc:
@@ -612,10 +613,17 @@ def read_run_activity_v1(issue_ref: str,
 
 
 def read_run_review_v1(issue_ref: str,
-                       session_docs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Content-free ``run.review.v1`` view of durable review submissions."""
+                       session_docs: Sequence[Mapping[str, Any]],
+                       dispatcher_store: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Content-free ``run.review.v1`` view of durable review submissions.
+
+    Reads both stores that can hold one: the MCP/session-event store and the
+    dispatcher registry, whose own `workflow:review` label sync is the
+    submission for the launcher path (#472 findings 4 and 5).
+    """
     sessions = list(session_docs) if session_docs is not None else []
-    result = run_review_projection(issue_ref, sessions)
+    store = dispatcher_store if isinstance(dispatcher_store, Mapping) else None
+    result = run_review_projection(issue_ref, sessions, dispatcher_store=store)
     try:
         validate(result, TYPES["run.review.v1"].schema)
     except Exception as exc:

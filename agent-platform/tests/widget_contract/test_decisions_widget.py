@@ -80,10 +80,16 @@ def test_spec_loads_and_declares_decision_pending_read_and_action():
     (read,) = widget.reads
     assert (read.id, read.source, read.operation, read.output_type) == (
         "pending", "store", "decision.pending.v1", "decision.pending.v1")
-    (action,) = widget.actions
-    assert (action.id, action.port, action.operation) == (
+    decide, recover = widget.actions
+    assert (decide.id, decide.port, decide.operation) == (
         "record-decision", "github-transition", "workflow.record-decision.v1")
-    assert set(widget.capabilities) == {"read:decision-pending", "act:record-decision"}
+    # S7d (#472 finding 2): the one sanctioned recovery out of a stranded
+    # workflow:in-progress claim lives beside the decision action, not as a
+    # general label editor.
+    assert (recover.id, recover.port, recover.operation) == (
+        "recover-to-ready", "github-transition", "workflow.recover-to-ready.v1")
+    assert set(widget.capabilities) == {
+        "read:decision-pending", "act:record-decision", "act:recover-to-ready"}
 
 
 def test_render_shows_summary_and_actionable_flag():

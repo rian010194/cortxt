@@ -206,13 +206,13 @@ class _FakeLauncher:
 
     def resume(self, issue_id, *, runtime, worker_role, workflow, max_runtime_seconds,
                max_cost_usd, max_parallel_workers, delegation_depth, artifact_policy,
-               request_id, prompt):
+               request_id, prompt, isolate):
         self.calls.append({
             "issue_id": issue_id, "runtime": runtime, "worker_role": worker_role,
             "workflow": workflow, "max_runtime_seconds": max_runtime_seconds,
             "max_cost_usd": max_cost_usd, "max_parallel_workers": max_parallel_workers,
             "delegation_depth": delegation_depth, "artifact_policy": artifact_policy,
-            "request_id": request_id, "prompt": prompt,
+            "request_id": request_id, "prompt": prompt, "isolate": isolate,
         })
         return {"issue_id": issue_id, "run_id": "run_1"}
 

@@ -46,7 +46,20 @@
   function renderRequest(winEl, ctx, req, live) {
     var s = (ctx && ctx.state) || {}, x = (ctx && ctx.workstream) || {};
     var synthetic = !!live === false;
-    var html = '<span class="eyebrow">' + esc(x.id || req.issue_id) + " · review and start Run</span><h3>Approved dispatch request</h3>";
+    /* Correlation before rendering: the request must belong to the selected
+       Workstream's Issue. The eyebrow used to read `x.id || req.issue_id`,
+       which relabelled a global fixture with whatever Workstream happened to
+       be selected -- a WS-042 heading over a #471 request. A mismatch now
+       fails closed instead. */
+    if (!x.issue_id || !req.issue_id || x.issue_id !== req.issue_id) {
+      winEl.innerHTML = empty(
+        "This dispatch request does not belong to the selected Workstream (" +
+        String(x.id || "unknown") + " expects " + String(x.issue_id || "no Issue") +
+        ", request carries " + String(req.issue_id || "no Issue") +
+        "). Nothing is rendered and no launch is offered.");
+      return;
+    }
+    var html = '<span class="eyebrow">' + esc(x.id) + " · review and start Run</span><h3>Approved dispatch request</h3>";
     if (synthetic) {
       html += '<div class="launch-banner">Preview · deterministic synthetic data · no action capability · nothing is dispatched</div>';
     } else if (!req.eligible) {
@@ -67,6 +80,14 @@
       row("Max cost", money(req.max_cost_usd)) +
       row("Max parallel workers", req.max_parallel_workers == null ? "—" : String(req.max_parallel_workers)) +
       row("Delegation depth", req.delegation_depth == null ? "—" : String(req.delegation_depth)) +
+      // Isolation is part of the mandate the operator confirms: it decides
+      // whether the worker gets its own worktree and work/<run_id> branch or
+      // works in the shared checkout. It is server-derived from the approved
+      // artifact policy and covered by request_id, so it is displayed, never
+      // chosen here (#473).
+      row("Isolation", req.isolation === "shared-checkout"
+        ? "shared checkout (waived by the approved artifact policy)"
+        : "own worktree and work/<run_id> branch") +
       "</div>" +
       '<section class="launch-block"><h4>Scope</h4><p class="launch-scope">' + esc(req.scope) + "</p></section>" +
       '<section class="launch-block"><h4>Acceptance criteria</h4><ol class="launch-ac">' +
@@ -88,7 +109,12 @@
           : (req.missing || []).map(function (m) { return '<article class="launch-error"><strong>' + esc(m) + "</strong></article>"; }).join("")) +
         "</section><small>Launch is not available until the authoritative Issue mandate is complete.</small>";
     } else if (synthetic) {
-      html += "<small>This preview is deterministic and non-mutating; the demo host has no action port.</small>";
+      /* The preview is navigable and shows where the mutation boundary sits,
+         but the control is inert: disabled, never wired to a handler, and the
+         static host has no /api/action route to reach even if it were. */
+      html += '<div class="review-actions"><button type="button" class="primary-action" data-launch-start-disabled disabled aria-disabled="true">Requires live action host</button></div>' +
+        "<small>This preview is deterministic and non-mutating; the demo host has no action port. " +
+        "Starting a Run requires a live action host with the registered claim-run capability.</small>";
     }
     winEl.innerHTML = html;
     var start = winEl.querySelector("[data-launch-start]");
@@ -304,9 +330,21 @@
     if (!winEl) return;
     var s = (ctx && ctx.state) || {}, x = (ctx && ctx.workstream) || null;
     if (!x) { winEl.innerHTML = empty("Select a Workstream to review and start a Run."); return; }
+    /* An ineligible Workstream cannot reach the launch view even by deep
+       link: without an Issue, a `launch` next action, or (in preview mode)
+       its own view:launch grant, nothing is fetched at all. */
+    var syntheticMode = !!(s.model && s.model.synthetic);
+    var typed = (x.next_action && x.next_action.kind) || null;
+    if (!x.issue_id || typed !== "launch" ||
+        (syntheticMode && ((x.view_capabilities || []).indexOf("view:launch") === -1))) {
+      winEl.innerHTML = empty(
+        "This Workstream has no authorized launch. Its typed next action is " +
+        String(typed || "none") + ", so no dispatch request is requested or rendered.");
+      return;
+    }
     winEl.innerHTML = '<span class="eyebrow">' + esc(x.id) + '</span><h3>Loading the approved dispatch request…</h3>';
-    var issue = x.issue_id || ("owner/repo#" + (x.number || ""));
-    if (s.model && s.model.synthetic) {
+    var issue = x.issue_id;
+    if (syntheticMode) {
       loadSynthetic(winEl, ctx, issue);
     } else {
       loadLive(winEl, ctx, issue);

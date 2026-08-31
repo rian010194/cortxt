@@ -266,7 +266,13 @@ def test_same_run_id_from_other_issue_cannot_supply_session_content():
     assert term["provider"] is None and term["model"] is None
     assert term["artifacts"] == [] and term["evidence"] == []
     activity = read_run_activity_v1(ISSUE_REF, {"run_1": local}, [foreign], run_id="run_1")
-    assert activity["run_id"] is None and activity["items"] == []
+    # S7d: with no correlated session doc the timeline is derived from THIS
+    # issue's dispatcher record instead of rendering "nothing happened"
+    # (#472 finding 5) -- but the foreign session's content still supplies
+    # nothing, and every item names the store it came from.
+    assert activity["run_id"] == "run_1"
+    assert {item["source"] for item in activity["items"]} == {"dispatcher.runs"}
+    assert "secret prompt text" not in json.dumps(activity)
 
 
 # --------------------------------------------------------------------------- #

@@ -976,7 +976,15 @@ def _run_widget_load(args: argparse.Namespace) -> ResultEnvelope:
                         data[read.id] = read_usage_cost_v1(reader())
                 elif read.operation == "session-agents.v1":
                     from widget_contract.adapters.store_reads import read_session_agents_v1
-                    agents_input = getattr(args, "agents_input", None) or (ap_path / "widget" / "session-agents.json")
+                    # No implicit file default (S7d #473): the previous default
+                    # was `widget/session-agents.json`, which is this view's own
+                    # OUTPUT -- a rendered widget tree, not the
+                    # `{"agents": [...]}` shape this read requires. The emit
+                    # path therefore raised on its own committed artifact and
+                    # the live-reader branch below was unreachable, because the
+                    # default input file always existed. A file is read only
+                    # when the caller explicitly names one.
+                    agents_input = getattr(args, "agents_input", None)
                     if agents_input and Path(agents_input).is_file():
                         data[read.id] = read_session_agents_v1(json.loads(Path(agents_input).read_text(encoding="utf-8")))
                     else:
@@ -1322,8 +1330,13 @@ def _run_widget_compose(args: argparse.Namespace) -> ResultEnvelope:
                             child_data[read.id] = read_usage_cost_v1(reader())
                     elif read.operation == "session-agents.v1":
                         from widget_contract.adapters.store_reads import read_session_agents_v1
-                        agents_input = getattr(args, "agents_input", None) or (ap_path / "widget" / "session-agents.json")
-                        if Path(agents_input).is_file():
+                        # Same rule as the emit path above (S7d #473): no
+                        # implicit file default. The old default was this
+                        # view's own rendered OUTPUT, so this branch raised on
+                        # its committed artifact and the live reader below was
+                        # unreachable because that file always exists.
+                        agents_input = getattr(args, "agents_input", None)
+                        if agents_input and Path(agents_input).is_file():
                             child_data[read.id] = read_session_agents_v1(json.loads(Path(agents_input).read_text(encoding="utf-8")))
                         else:
                             reader = getattr(args, "agents_reader", None) or _default_session_agents_reader
@@ -1565,6 +1578,27 @@ def _default_usage_reader() -> dict[str, Any]:
             {"at": "11:00", "tokens": 24800, "cost_usd": 0.42},
         ],
     }
+
+
+# Live widget snapshots are runtime state, not committed artifacts. Writing a
+# rendered live view over a tracked fixture in a public repository is how local
+# session state leaks into git history, so this gitignored runtime directory is
+# the safe default target (S7d #473).
+#
+# Scope, stated honestly: only the `session-agents` view uses it today, because
+# that view is the one #473 found reading its own committed output. The other
+# live views (session-pulse, execution-map, docker-status, webhooks,
+# pages-deploys, usage-cost, attention-queue, work-console, evidence,
+# decisions, candidates, and the generic emit/compose targets) still default to
+# tracked paths under `widget/`. Several of them also carry local session
+# state, so moving them here is the remaining half of this fix -- not something
+# this constant already accomplishes.
+WIDGET_SNAPSHOT_DIR = _get_agent_platform_path() / ".widget-snapshots"
+
+
+def default_widget_snapshot_path(view: str) -> Path:
+    """The default runtime target for a rendered live widget view."""
+    return WIDGET_SNAPSHOT_DIR / f"{view}.json"
 
 
 def _default_session_agents_reader() -> dict[str, Any]:
@@ -1983,7 +2017,10 @@ def _run_widget(args: argparse.Namespace, docker_reader: Any = None, usage_reade
                         "render": render_primitive("error-state",
                                                    {"message": f"Session agents read failed: {error['message']}"},
                                                    [], "error")}
-            output_path = getattr(args, "snapshot", None) or (ap_path / "widget" / "session-agents.json")
+            # Never the tracked `widget/session-agents.json` fixture: this
+            # renders LIVE local session state, and the repository is public
+            # (S7d #473).
+            output_path = getattr(args, "snapshot", None) or default_widget_snapshot_path("session-agents")
             artifact = {**tree, "repo": None, "error": error}
             _write_widget_artifact(artifact, output_path)
             if is_tui:
@@ -3024,7 +3061,7 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
             data = launcher.resume(
                 args.issue_id, runtime=args.runtime, worker_role=args.worker_role,
                 workflow=args.workflow, max_runtime_seconds=args.max_runtime_seconds,
-                prompt=args.prompt,
+                prompt=args.prompt, isolate=getattr(args, "isolate", False),
             )
         else:
             data = launcher.submit(args.run_id, json.loads(args.result_file.read_text(encoding="utf-8")))
@@ -3077,6 +3114,11 @@ def main(argv: list[str] | None = None) -> int:
     work_resume.add_argument("--worker-role", default="builder")
     work_resume.add_argument("--workflow", default="work-launcher/v1")
     work_resume.add_argument("--max-runtime-seconds", type=int, default=3600)
+    work_resume.add_argument("--isolate", action="store_true",
+                             help="Give the run its own linked git worktree and work/<run_id> "
+                                  "branch (what the Work app launch path derives from the "
+                                  "approved artifact policy). Without it the worker runs in "
+                                  "this repository checkout and the launch result says so.")
     work_resume.add_argument("--registry", type=Path)
     work_resume.set_defaults(func=_run_work)
     work_submit = work_sub.add_parser("submit", help="Submit a terminal result for review")
