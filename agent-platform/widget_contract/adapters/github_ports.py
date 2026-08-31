@@ -162,12 +162,18 @@ def resolve_blocker_status(repo: str, number: int, *, run_subprocess: Callable[.
     return value
 
 
-ISSUE_DETAIL_FIELDS = "number,title,body,labels,state,milestone,url"
+ISSUE_DETAIL_FIELDS = "number,title,body,labels,state,milestone,url,comments"
 
 
 def read_issue_detail(repo: str, number: int, *, run_subprocess: Callable[..., Any] = subprocess.run,
                       timeout_seconds: int = 20) -> dict[str, Any]:
     """Read one issue with the fields the detail projection needs, fail-closed.
+
+    ``comments`` is included so approval-resolution (S7b #482) can consider a
+    later operator retry authorization comment, not only the issue body's
+    ``## Approval status`` section -- the dispatch request is always built
+    from a fresh read, so a comment posted after a prior snapshot was built is
+    picked up on the next read and changes the request digest.
 
     Malformed/truncated reads raise the same GitHubReadError subclasses as the
     list path, so a caller can render an explicit unavailable state instead of

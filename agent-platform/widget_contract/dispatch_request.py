@@ -65,6 +65,51 @@ _NEGATED_APPROVAL = re.compile(
     r"|\bpending\b",
     re.I)
 
+# A retry/authorization comment is only ever treated as the operator's current
+# authorization when it carries one of these explicit markers -- an ordinary
+# status update (dispatch notice, claim record, run result) never qualifies,
+# so routine automation comments can never be mistaken for a fresh approval.
+_RETRY_AUTH_MARKERS = re.compile(
+    r"\bretry\s+approved\b|\boperator\s+retry\s+decision\b|\bretry\s+authoriz(?:ed|ation)\b",
+    re.I)
+
+# Comment authors whose comments are never eligible authorizations, regardless
+# of wording -- automation posts status, never operator authorization.
+_NON_OPERATOR_AUTHORS = {"github-actions", "github-actions[bot]"}
+
+
+def _latest_retry_authorization(comments: Sequence[Any] | None) -> str | None:
+    """The most recent explicit operator retry authorization comment, or None.
+
+    Resolution is deterministic and time-ordered by the comment's own
+    ``createdAt`` (ties broken by comment id) -- never by list position, and
+    never a fixed/first match -- so a later retry authorization always
+    supersedes an earlier one, and a stale one is never picked merely because
+    it appears first. Bot comments and non-matching status comments are not
+    candidates; a negated candidate ("retry ... not approved") is dropped.
+    """
+    if not comments:
+        return None
+    candidates: list[tuple[str, str, str]] = []
+    for comment in comments:
+        if not isinstance(comment, Mapping):
+            continue
+        author = comment.get("author")
+        login = (author.get("login") if isinstance(author, Mapping) else author) or ""
+        if str(login) in _NON_OPERATOR_AUTHORS:
+            continue
+        body = str(comment.get("body") or "")
+        if not _RETRY_AUTH_MARKERS.search(body) or _NEGATED_APPROVAL.search(body):
+            continue
+        created_at = str(comment.get("createdAt") or "")
+        if not created_at:
+            continue
+        candidates.append((created_at, str(comment.get("id") or ""), body))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[-1][2]
+
 # Fields that constitute the immutable dispatch-request snapshot. Anything
 # environment-derived (eligibility, missing, engine registration availability)
 # is deliberately excluded so a runtime change does not invalidate an approved
@@ -159,8 +204,19 @@ def parse_engine_policy(body: str) -> dict[str, str | None] | None:
     return {"approved_reliability": approved_reliability, "approved_engine": approved_engine}
 
 
-def _approval_reference(body: str) -> str | None:
-    """The issue's approval reference, only when it is positively approved."""
+def _approval_reference(body: str, comments: Sequence[Any] | None = None) -> str | None:
+    """The issue's current approval reference, only when it is positively approved.
+
+    A later explicit operator retry authorization comment always supersedes
+    the issue-body ``## Approval status`` section (issue #482: an operator
+    retry authorization posted after a prior approval must be the mandate
+    that binds, not the earlier text) -- resolution is time-ordered, not a
+    hardcoded "first" or "body always wins" pick. When no retry authorization
+    comment is present, the body section is used unchanged.
+    """
+    retry = _latest_retry_authorization(comments)
+    if retry is not None:
+        return retry
     value = _section(body, APPROVAL_SECTIONS)
     if value is None or _NEGATED_APPROVAL.search(value):
         return None
@@ -239,7 +295,7 @@ def build_dispatch_request_v1(
     scope = _section(body, ("Scope",))
     acceptance = _bullets(body, ("Acceptance criteria", "Acceptance Criteria",
                                  "Deterministic acceptance criteria"))
-    approval = _approval_reference(body)
+    approval = _approval_reference(body, issue.get("comments"))
     artifact_policy = _section(body, ("Artifact policy",)) or DEFAULT_ARTIFACT_POLICY
     engine_policy = parse_engine_policy(body)
 
