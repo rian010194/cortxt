@@ -240,3 +240,15 @@ button,input{font:inherit}button{color:inherit}
 .launch-check input:disabled{opacity:.5}
 .launch-banner+.review-actions{margin-top:4px}
 @media(max-width:720px){.launch-grid{grid-template-columns:1fr}}
+
+/* S7c (#472): live Run panel (canonical tokens only). */
+.run-live{border:1px solid var(--stroke);border-radius:10px;padding:12px 14px;background:var(--layer)}
+.run-live-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.run-badge{font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:650;border:1px solid var(--stroke);border-radius:999px;padding:2px 8px;color:var(--text)}
+.run-badge[data-run-freshness="stranded_running"],.run-badge[data-run-freshness="stale"]{border-color:var(--warn);color:var(--warn)}
+.run-badge[data-run-freshness="terminal"]{border-color:var(--accent);color:var(--accent)}
+.run-live-age{font-size:11px;color:var(--dim)}
+.run-live-warn{font-size:12px;color:var(--warn);line-height:1.5;margin:8px 0 0}
+.run-live-error{font-size:12px;color:var(--warn);line-height:1.5}
+.run-activity{margin:10px 0 0;padding-left:18px;display:grid;gap:4px}
+.run-activity li{font-size:11.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}

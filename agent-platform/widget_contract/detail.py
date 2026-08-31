@@ -207,7 +207,9 @@ def build_workstream_detail_v1(
         "source": {
             "status": status,
             "age_seconds": int(age_seconds),
-            "complete": status == "fresh",
+            # A terminal read is as complete as a fresh one: every run has
+            # reached a terminal state and nothing more is expected.
+            "complete": status in ("fresh", "terminal"),
             "error": dict(error) if error else None,
         },
     }

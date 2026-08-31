@@ -7,7 +7,10 @@ from ..registry import TYPES
 from ..validation import validate
 from ..run_authority import (
     correlate_run_summaries,
+    run_activity_projection,
+    run_review_projection,
     run_summaries_projection,
+    run_terminal_projection,
     summaries_from_sessions,
 )
 from ..detail import build_workstream_detail_v1
@@ -555,6 +558,65 @@ def read_run_summaries_v1(issue_ref: str,
     result = run_summaries_projection(issue_ref, summaries)
     try:
         validate(result, TYPES["run.summaries.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+class RunNotCorrelated(ReadAdapterError):
+    """No run matches the exact issue_ref + run_id pair (fail closed, AC2)."""
+
+
+def read_run_terminal_v1(issue_ref: str,
+                         dispatcher_store: Mapping[str, Any] | None,
+                         session_docs: Sequence[Mapping[str, Any]],
+                         *, run_id: str) -> dict[str, Any]:
+    """Content-free ``run.terminal.v1`` for one exact issue+run (S7c #472).
+
+    Raises ``RunNotCorrelated`` when no summary matches ``issue_ref``+``run_id``
+    exactly, so a mismatch never renders an unrelated run's result.
+    """
+    dispatcher_runs = dispatcher_store if isinstance(dispatcher_store, Mapping) else {}
+    sessions = list(session_docs) if session_docs is not None else []
+    summaries = correlate_run_summaries(
+        issue_ref, dispatcher_runs, summaries_from_sessions(sessions, issue_ref))
+    result = run_terminal_projection(issue_ref, run_id, summaries, sessions)
+    if result is None:
+        raise RunNotCorrelated(f"no run {run_id!r} correlated for {issue_ref!r}")
+    try:
+        validate(result, TYPES["run.terminal.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_run_activity_v1(issue_ref: str,
+                         dispatcher_store: Mapping[str, Any] | None,
+                         session_docs: Sequence[Mapping[str, Any]],
+                         *, run_id: str) -> dict[str, Any]:
+    """Content-free ``run.activity.v1`` timeline for one exact issue+run."""
+    dispatcher_runs = dispatcher_store if isinstance(dispatcher_store, Mapping) else {}
+    sessions = list(session_docs) if session_docs is not None else []
+    summaries = correlate_run_summaries(
+        issue_ref, dispatcher_runs, summaries_from_sessions(sessions, issue_ref))
+    if not any(str(s.get("run_id")) == run_id and str(s.get("issue_ref")) == issue_ref
+               for s in summaries):
+        raise RunNotCorrelated(f"no run {run_id!r} correlated for {issue_ref!r}")
+    result = run_activity_projection(issue_ref, run_id, sessions)
+    try:
+        validate(result, TYPES["run.activity.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_run_review_v1(issue_ref: str,
+                       session_docs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Content-free ``run.review.v1`` view of durable review submissions."""
+    sessions = list(session_docs) if session_docs is not None else []
+    result = run_review_projection(issue_ref, sessions)
+    try:
+        validate(result, TYPES["run.review.v1"].schema)
     except Exception as exc:
         raise ReadAdapterError(str(exc)) from exc
     return result

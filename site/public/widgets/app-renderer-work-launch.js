@@ -15,6 +15,19 @@
      the static host has no /api/action route at all (AC7).
    - An ineligible request renders the server's structured errors with
      recovery guidance and no launch affordance (AC1/AC5).
+
+   S7c (#472) live Run panel:
+   - After a Run is started (or when a live host is attached), a panel polls
+     GET /api/run-freshness?issue=owner/repo#N every 5s while the Run is
+     fresh/stale/stranded and STOPS at terminal (bounded frequency, AC1/AC3).
+   - On terminal it reads GET /api/run-terminal and GET /api/run-activity for
+     the exact run_id; both are content-free server projections (no prompts,
+     reasoning, secrets, raw logs, or artifact bodies -- AC4/AC5). Missing
+     cost renders as "unknown", never $0.
+   - Reload re-attaches and restores state from the server projections, not
+     from browser cache (every fetch is cache:"no-store", AC9).
+   - Browser-evidence hooks: [data-run-live], [data-run-freshness],
+     [data-run-status], [data-run-terminal], [data-run-activity].
 */
 (function () {
   "use strict";
@@ -80,6 +93,10 @@
     winEl.innerHTML = html;
     var start = winEl.querySelector("[data-launch-start]");
     if (start) start.addEventListener("click", function () { beginLaunch(winEl, ctx, req); });
+    // AC9: on reload during a running or terminal Run, restore live state from
+    // the server projections (never browser cache). Harmless when no Run
+    // exists yet: freshness simply reports "fresh" with nothing to show.
+    if (live) attachLiveRun(winEl, ctx, req.issue_id, null);
   }
 
   function row(key, value) {
@@ -163,6 +180,7 @@
           '<p class="launch-ref">claim_id: <code>' + esc(run.claim_id) + "</code></p>" +
           '<p class="launch-ref">request snapshot: <code data-launch-request-id>' + esc(req.request_id) + "</code></p>" +
           "<small>The Issue moved to workflow:in-progress through the gated launcher.</small>";
+        attachLiveRun(winEl, ctx, req.issue_id, run.run_id || null);
       } catch (error) {
         dlg.querySelector("[data-launch-error]").textContent = error.message;
         dlg.showModal();
@@ -170,6 +188,90 @@
       }
       dlg.remove();
     });
+  }
+
+  /* ---- S7c live Run panel: bounded poll, stop at terminal ----------- */
+  function attachLiveRun(winEl, ctx, issue, runId) {
+    if (!winEl || !issue) return;
+    var panel = document.createElement("section");
+    panel.className = "launch-block run-live";
+    panel.setAttribute("data-run-live", issue);
+    winEl.appendChild(panel);
+    var timer = null, stopped = false;
+    function stop() { stopped = true; if (timer) { clearTimeout(timer); timer = null; } }
+    function schedule() { if (!stopped) timer = setTimeout(tick, 5000); }
+    function renderFreshness(fx) {
+      panel.innerHTML = "<h4>Live Run</h4>" +
+        '<div class="run-live-row" data-run-status="' + esc(fx.status) + '">' +
+        '<span class="run-badge" data-run-freshness="' + esc(fx.status) + '">' + esc(fx.status) + "</span>" +
+        '<span class="run-live-age">signal age ' + esc(fx.age_seconds) + "s</span></div>" +
+        (fx.status === "stranded_running"
+          ? '<p class="run-live-warn">This claim reports running but has produced no signal. It may be stranded.</p>'
+          : "");
+    }
+    function tick() {
+      fetch("api/run-freshness?issue=" + encodeURIComponent(issue), { cache: "no-store" })
+        .then(function (r) { if (!r.ok) throw new Error("freshness unavailable (" + r.status + ")"); return r.json(); })
+        .then(function (fx) {
+          renderFreshness(fx);
+          if (fx.status === "terminal") { stop(); loadTerminal(); }
+          else schedule();
+        })
+        .catch(function (e) {
+          panel.innerHTML = '<h4>Live Run</h4><div class="run-live-error" data-run-status="error">' + esc(e.message) + "</div>";
+          schedule();
+        });
+    }
+    function loadTerminal() {
+      if (runId) { terminalAndActivity(); return; }
+      fetch("api/runs?issue=" + encodeURIComponent(issue), { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          var runs = (d && d.runs) || [];
+          if (runs.length) runId = runs[0].run_id;
+          terminalAndActivity();
+        })
+        .catch(function () { terminalAndActivity(); });
+    }
+    function terminalAndActivity() {
+      if (!runId) { panel.innerHTML = '<h4>Live Run · terminal</h4><div class="run-live-error">no correlated run</div>'; return; }
+      var q = "issue=" + encodeURIComponent(issue) + "&run=" + encodeURIComponent(runId);
+      Promise.all([
+        fetch("api/run-terminal?" + q, { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }),
+        fetch("api/run-activity?" + q, { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }),
+      ]).then(function (res) { renderTerminal(res[0], res[1]); });
+    }
+    function renderTerminal(term, act) {
+      var html = "<h4>Live Run · terminal</h4>";
+      if (term) {
+        var costText = term.cost_status === "unknown"
+          ? "unknown"
+          : money(term.cost) + " (" + esc(term.cost_status) + ")";
+        html += '<div data-run-terminal="' + esc(term.run_id) + '" data-run-status="' + esc(term.status) + '">' +
+          row("Status", term.status) + row("Engine", term.engine) +
+          row("Provider", term.provider) + row("Model", term.model) +
+          row("Cost", costText) +
+          row("Artifacts", (term.artifacts || []).length) +
+          row("Evidence", (term.evidence || []).length) +
+          (term.incomplete ? '<p class="run-live-warn">Incomplete or unverified evidence.</p>' : "") +
+          (term.conflicting ? '<p class="run-live-warn">Sources disagree on this run; not resolved.</p>' : "") +
+          (term.error ? '<p class="run-live-warn">' + esc(term.error.category) + ": " + esc(term.error.message) + "</p>" : "") +
+          "</div>";
+      } else {
+        html += '<div class="run-live-error">terminal result unavailable</div>';
+      }
+      if (act && act.items) {
+        html += '<ol class="run-activity" data-run-activity="' + esc(act.run_id || "") + '">' +
+          act.items.map(function (i) {
+            var d = i.detail || {};
+            return "<li>" + esc(i.event_type) + (d.status ? " · " + esc(d.status) : "") +
+              (d.cost_status ? " · cost " + esc(d.cost_status) : "") + "</li>";
+          }).join("") + "</ol>";
+      }
+      panel.innerHTML = html;
+    }
+    renderFreshness({ status: "fresh", age_seconds: 0 });
+    tick();
   }
 
   function renderLaunch(winEl, ctx) {
