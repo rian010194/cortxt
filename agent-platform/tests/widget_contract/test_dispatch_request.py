@@ -276,6 +276,110 @@ def test_claim_run_resume_rejects_not_eligible_without_launching():
     assert fake.calls == []
 
 
+OLD_RETRY_COMMENT = {
+    "id": "IC_old_retry",
+    "author": {"login": "rian010194"},
+    "createdAt": "2026-08-30T23:49:43Z",
+    "body": "Operator retry decision (2026-08-30): after verifying prior Runs are terminal, "
+            "retry approved for the existing scope/route/limits.",
+}
+
+NEW_RETRY_COMMENT = {
+    "id": "IC_new_retry",
+    "author": {"login": "rian010194"},
+    "createdAt": "2026-08-31T02:10:00Z",
+    "body": "Retry approved: fresh operator retry authorization posted after commit "
+            "18002ff4a2206a4ca25cc07710d0d7c7e50bd38c for the same approved scope/route/limits.",
+}
+
+NON_OPERATOR_STATUS_COMMENT = {
+    "id": "IC_bot",
+    "author": {"login": "github-actions"},
+    "createdAt": "2026-08-31T02:20:00Z",
+    "body": "Retry approved by automation.",  # matches the marker but must never count
+}
+
+
+def test_old_retry_comment_alone_resolves_deterministically_by_time():
+    """AC1: a single old retry-authorization comment is picked up as the
+    current approval reference when it is the only/latest candidate -- proves
+    resolution is time-ordered (reads the comment's own timestamp), not a
+    hardcoded skip of comments."""
+    issue = _issue(comments=[OLD_RETRY_COMMENT])
+    request = build_dispatch_request_v1(issue, _choice(), repo=REPO,
+                                        engine_registered=True, routable_tags=["background-task"])
+    assert request["approval_reference"] == OLD_RETRY_COMMENT["body"]
+    old_request_id = request["request_id"]
+
+    # Same single old comment, read again: deterministic, same digest.
+    again = build_dispatch_request_v1(_issue(comments=[OLD_RETRY_COMMENT]), _choice(), repo=REPO,
+                                      engine_registered=True, routable_tags=["background-task"])
+    assert again["request_id"] == old_request_id
+
+
+def test_new_retry_comment_supersedes_old_when_both_present():
+    """AC2: with both the old and new retry-authorization comments present,
+    the newer explicit retry decision is the one that resolves as the current
+    approval reference -- never the older one, regardless of list order."""
+    issue = _issue(comments=[NEW_RETRY_COMMENT, OLD_RETRY_COMMENT, NON_OPERATOR_STATUS_COMMENT])
+    request = build_dispatch_request_v1(issue, _choice(), repo=REPO,
+                                        engine_registered=True, routable_tags=["background-task"])
+    assert request["approval_reference"] == NEW_RETRY_COMMENT["body"]
+    assert request["approval_reference"] != OLD_RETRY_COMMENT["body"]
+
+
+def test_new_retry_authorization_changes_request_id_from_stale_old_digest():
+    """AC3: the new retry decision yields a new request_id that differs from
+    the old snapshot's digest -- proves approval-reference is bound into
+    request-id canonicalization, so a stale snapshot's id never survives a
+    fresh retry authorization."""
+    old_request = build_dispatch_request_v1(_issue(comments=[OLD_RETRY_COMMENT]), _choice(), repo=REPO,
+                                             engine_registered=True, routable_tags=["background-task"])
+    new_request = build_dispatch_request_v1(
+        _issue(comments=[OLD_RETRY_COMMENT, NEW_RETRY_COMMENT]), _choice(), repo=REPO,
+        engine_registered=True, routable_tags=["background-task"])
+    assert new_request["request_id"] != old_request["request_id"]
+    assert old_request["request_id"].startswith("sha256:")
+    assert new_request["approval_reference"] == NEW_RETRY_COMMENT["body"]
+
+
+def test_stale_snapshot_rejected_at_launch_creates_no_claim():
+    """AC4 + AC5: a snapshot built while only the old retry comment existed is
+    presented at launch time after the new retry comment has landed. The
+    launch path re-reads the issue fresh, resolves the newer approval
+    reference, recomputes request_id, sees the mismatch, and rejects the
+    stale snapshot -- and because rejection happens before `resume` is
+    invoked, no execution-map/dispatcher claim is created."""
+    from routing.engine_manifest import EngineManifest
+    from widget_contract.adapters.cli_ports import StaleDispatchRequest
+
+    manifests = (EngineManifest(engine_id="hermes-free", task_shapes=("background-task",),
+                                cost_class="free", reliability_class="unverified"),)
+    fake = _FakeLauncher()
+    scripts_dir = Path(__file__).resolve().parents[3] / "scripts"
+
+    # The stale snapshot the confirming client is holding: built earlier,
+    # when only the old retry comment existed.
+    stale_request = build_dispatch_request_v1(
+        _issue(comments=[OLD_RETRY_COMMENT]), _choice(), repo=REPO,
+        engine_registered=True, routable_tags=["background-task"])
+
+    # Current live issue state now also carries the newer retry comment.
+    current_issue = _issue(comments=[OLD_RETRY_COMMENT, NEW_RETRY_COMMENT])
+
+    with pytest.raises(StaleDispatchRequest):
+        gh_claim_run_resume(
+            "owner/repo#471", registry=Path("unused-runs.json"), scripts_dir=scripts_dir,
+            issue_reader=lambda repo, number: current_issue, manifests=manifests,
+            engine_has_provider=lambda engine_id: engine_id == "hermes-free",
+            launcher=fake,
+            request_id=stale_request["request_id"])
+
+    # No claim/launch side effect happened: the fake launcher (standing in for
+    # the execution-map-gated Work Launcher) was never invoked.
+    assert fake.calls == []
+
+
 def test_claim_run_resume_rejects_mismatched_approval_and_stale_request():
     from routing.engine_manifest import EngineManifest
     from widget_contract.adapters.cli_ports import ApprovalMismatch, StaleDispatchRequest
