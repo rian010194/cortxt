@@ -521,12 +521,18 @@ class ActionHandler(SimpleHTTPRequestHandler):
 
     host: ActionHost
 
+    def end_headers(self) -> None:
+        # The loopback action host is a live worktree surface. Static app
+        # resources must not survive a host/commit restart in browser cache;
+        # otherwise an old renderer can consume new authoritative APIs (AC9).
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def _json(self, code: int, payload: Mapping[str, Any]) -> None:
         data = json.dumps(payload).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 

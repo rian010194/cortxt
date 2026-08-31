@@ -409,8 +409,10 @@ def test_http_token_and_capabilities_served_same_origin(server):
 
 
 def test_http_static_get_surface_preserved(server):
-    status, body = _request(f"{server}/index.html")
-    assert status == 200 and "Cortxt" in body
+    with urllib.request.urlopen(f"{server}/index.html", timeout=10) as response:
+        body = response.read().decode("utf-8")
+        assert response.status == 200 and "Cortxt" in body
+        assert response.headers["Cache-Control"] == "no-store"
 
 
 def test_http_mark_ready_success_end_to_end(server):

@@ -383,11 +383,12 @@ def test_read_endpoints_send_no_store_cache_header(tmp_path):
             pass
         def send_response(self, code): captured["code"] = code
         def send_header(self, k, v): captured.setdefault("headers", {})[k] = v
-        def end_headers(self): pass
         def wfile_write(self, *_): pass
 
     h = _H()
     h.wfile = type("W", (), {"write": lambda self, b: None})()
+    h._headers_buffer = []
+    h.request_version = "HTTP/1.1"
     h.host = host
     h.path = "/api/run-freshness?issue=" + ISSUE_REF
     h.do_GET()
