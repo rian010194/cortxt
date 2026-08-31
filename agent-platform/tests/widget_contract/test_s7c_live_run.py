@@ -3,6 +3,7 @@ projection, immutable history, exact correlation, freshness/staleness,
 terminal envelopes, and the sanctioned idempotent review path."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -403,3 +404,11 @@ def test_read_endpoints_send_no_store_cache_header(tmp_path):
     h.do_GET()
     assert captured["headers"]["Cache-Control"] == "no-store"
     assert captured["code"] == 200
+
+
+def test_live_renderer_asset_is_versioned_for_host_restart_cache_safety():
+    root = Path(__file__).resolve().parents[2]
+    host_html = (root / "widget" / "index.html").read_text(encoding="utf-8")
+    site_html = (root.parent / "site" / "public" / "widgets" / "index.html").read_text(encoding="utf-8")
+    marker = 'app-renderer-work-launch.js?v=20260831-s7c'
+    assert marker in host_html and marker in site_html
