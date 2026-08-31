@@ -14,9 +14,12 @@ re-exposes them, unchanged, so the OS never grows a second path:
   ``daemon.review_sync.sync_review_submissions``, which is idempotent by its
   own persisted markers (AC8).
 
-``submit_run_for_review`` and ``sync_run_review_submissions`` are the SAME
-objects those modules expose; ``is`` identity is asserted in the S7c tests so
-a future divergent copy fails loudly.
+``sync_run_review_submissions`` **is** the object ``daemon.review_sync``
+exposes; ``is`` identity is asserted in the S7c tests so a future divergent
+copy fails loudly. ``submit_run_for_review`` is a thin wrapper that delegates
+verbatim to the lifecycle service's own method -- it adds no authorization
+surface and no payload shaping, but it is not the same object, so no identity
+assertion covers it.
 """
 from __future__ import annotations
 
