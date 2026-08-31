@@ -200,7 +200,8 @@
     panel.className = "launch-block run-live";
     panel.setAttribute("data-run-live", issue);
     winEl.appendChild(panel);
-    var timer = null, stopped = false;
+    var timer = null, stopped = false, failures = 0;
+    var MAX_POLL_FAILURES = 3;
     function stop() { stopped = true; if (timer) { clearTimeout(timer); timer = null; } }
     winEl._cortxtStopLiveRun = stop;
     function schedule() { if (!stopped) timer = setTimeout(tick, 5000); }
@@ -217,13 +218,23 @@
       fetch("api/run-freshness?issue=" + encodeURIComponent(issue), { cache: "no-store" })
         .then(function (r) { if (!r.ok) throw new Error("freshness unavailable (" + r.status + ")"); return r.json(); })
         .then(function (fx) {
+          failures = 0;
           renderFreshness(fx);
+          /* Stop on any complete reading, not only `terminal`: an issue with
+             no correlated Runs is reported `fresh` + `complete` and would
+             otherwise be polled forever (it never becomes terminal). */
           if (fx.status === "terminal") { stop(); loadTerminal(); }
+          else if (fx.complete === true) stop();
           else schedule();
         })
         .catch(function (e) {
-          panel.innerHTML = '<h4>Live Run</h4><div class="run-live-error" data-run-status="error">' + esc(e.message) + "</div>";
-          schedule();
+          /* A permanent failure (missing route, host gone) must not be retried
+             forever; give up after MAX_POLL_FAILURES and say so. */
+          failures += 1;
+          var giveUp = failures >= MAX_POLL_FAILURES;
+          panel.innerHTML = '<h4>Live Run</h4><div class="run-live-error" data-run-status="error">' +
+            esc(e.message) + (giveUp ? " — stopped after " + failures + " attempts" : "") + "</div>";
+          if (giveUp) stop(); else schedule();
         });
     }
     function loadTerminal() {
@@ -250,7 +261,11 @@
       Promise.all([
         fetch("api/run-terminal?" + q, { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }),
         fetch("api/run-activity?" + q, { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }),
-      ]).then(function (res) { renderTerminal(res[0], res[1]); });
+      ]).then(function (res) { renderTerminal(res[0], res[1]); })
+        .catch(function (e) {
+          panel.innerHTML = '<h4>Live Run · terminal</h4><div class="run-live-error" data-run-status="error">' +
+            esc(e && e.message ? e.message : "terminal projection unavailable") + "</div>";
+        });
     }
     function renderTerminal(term, act) {
       var html = "<h4>Live Run · terminal</h4>";
