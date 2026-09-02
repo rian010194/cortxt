@@ -4,11 +4,12 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-08-28 (ADR-044 accepted by operator approval: distinguish Cortxt OS system surfaces,
+Updated: 2026-09-02 (ADR-045 proposed: named, versioned execution policy
+profiles bind eligible work shapes to effects and evidence contracts; unknown
+or contradictory combinations fail closed). Previously updated 2026-08-28
+(ADR-044 accepted by operator approval: distinguish Cortxt OS system surfaces,
 first-party apps, and Core authority; retire Work Console in favor of the Work
-app while preserving Workspace as an execution-resource term). Previously
-updated 2026-08-27 (ADR-043 accepted by operator approval: one global
-design-system source and explicit consumer contract).
+app while preserving Workspace as an execution-resource term).
 
 | # | Title | Status | Notes |
 | --- | --- | --- | --- |
@@ -46,6 +47,7 @@ design-system source and explicit consumer contract).
 | 042 | Work- and Mandate-First Product Surface with Replaceable Secure Execution | **Accepted** (2026-08-26; app-default clauses superseded by ADR-044) | Product hierarchy: durable Workstream authority above replaceable engines/providers/runtimes, expressed inside the Cortxt OS canvas/window/app-shell model; ADR-044 replaces Work Console as the required default with Work as the first principal app; cockpit reframed as Execution Inspector (not "Run Inspector"); retain CLI/MCP/widgets; evaluate OpenShell as optional execution backend; require a continuity proof before broad UI change. |
 | 043 | Global design-system source and consumer contract | **Accepted** (2026-08-27) | Platform-owned preset source, generated web artifact, consumer adapters, shared authority/execution grammar, compatibility, and CI conformance. |
 | 044 | Cortxt OS system surfaces and first-party app boundary | **Accepted** (2026-08-28) | Cortxt OS is a general first-party app runtime; Work is its first principal app; Home and Activity Center are system surfaces; Work Console retires through a compatibility alias; Workspace keeps its execution-resource meaning. Supersedes only ADR-042 amendment B/C where they require Work Console as the automatically opened default app. |
+| 045 | Execution policy profiles and evidence contracts | **Proposed** | Resolve every dispatch to a named, versioned effect/evidence contract; labels constrain but never grant authority, and unsupported combinations fail closed. |
 
 ## Decisions and Authority
 

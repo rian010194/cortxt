@@ -58,6 +58,22 @@ _Avoid_: Kanban column (execution ledger only)
 The required claim/run identity, result envelope, and state transitions defined in `docs/architecture/dispatch-contract.md` and executed by `scripts/dispatcher.py` and `cortxt work`.
 _Avoid_: Informal "launch"
 
+**Work kind**:
+The intended outcome category of an Issue used for planning and rendering. Its current vocabularies are not execution-policy authority and must be reconciled before strict machine use.
+_Avoid_: Issue type (when it implies authorization), workflow state
+
+**Execution policy profile**:
+A named, versioned contract that binds an eligible work shape to permitted effects, isolation, limits, artifact scope, and required evidence. It must be resolved before dispatch and recorded on the Run.
+_Avoid_: Label combination, agent preset
+
+**Evidence contract**:
+The minimum independently verifiable proof required for a Run's claimed outcome under its execution policy profile. The worker produces evidence but does not choose or weaken this contract.
+_Avoid_: Success message, agent report
+
+**Risk modifier**:
+A typed constraint that can strengthen an execution policy profile's isolation, assurance, evidence, review, or operator-decision gates for a hazardous effect. It never grants authority or weakens the base profile.
+_Avoid_: Priority, severity label
+
 **Delivery path**:
 One of the three sanctioned execution paths (dispatched runtime build, coordinator-direct fast fix, docs/ADR materialization; ADR-040). Every path upholds the label invariant: a merged delivery pull request never leaves its issue at `workflow:inbox`.
 _Avoid_: Ad-hoc execution route
