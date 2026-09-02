@@ -13,6 +13,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from commit_evidence import make_commit_gate
 from dispatcher import Dispatcher, RunRegistry
 from execution_map import (ClaimConflict, ClaimRecord, ClaimStore, Issue,
                            SqliteClaimStore, collision_keys, derive_graph,
@@ -391,13 +392,32 @@ class WorkLauncher:
             print(f"[work_launcher] could not record isolation for {run_id}: {exc}",
                   file=sys.stderr)
 
+    def _record_mutating(self, run_id: str) -> None:
+        """Mark the Run as mutating on the durable record, or fail the launch.
+
+        Deliberately not best-effort, unlike `_record_isolation`. This flag is
+        what makes `Dispatcher.complete()` demand a verified, correlated commit
+        before recording `succeeded` (#490); a launch that could not record it
+        would run a mutating worker under no Evidence Gate at all, which is the
+        exact failure mode #490 exists to close. So a registry that cannot
+        carry the flag fails the launch closed instead.
+        """
+        registry = getattr(self.dispatcher, "registry", None)
+        if registry is None or not hasattr(registry, "update"):
+            raise ExecutionGateError("mutating_run_not_recordable")
+        try:
+            registry.update(run_id, mutating=True)
+        except Exception as exc:  # noqa: BLE001 - a silent gate bypass is worse than a failed launch
+            raise ExecutionGateError("mutating_run_not_recordable") from exc
+
     def _launch(self, issue_id: str, prompt: str, *, runtime: str, worker_role: str,
                 workflow: str, max_runtime_seconds: int, create_worktree: bool,
                 max_cost_usd: float | None = None,
                 max_parallel_workers: int | None = None,
                 delegation_depth: int | None = None,
                 artifact_policy: str | None = None,
-                request_id: str | None = None) -> dict:
+                request_id: str | None = None,
+                mutating: bool = False) -> dict:
         # Single authoritative pre-claim config gate (S7b #482 follow-on):
         # `runtime_launch_config_ok` is the same function the eligibility
         # projection consults (action_host._build_dispatch_request,
@@ -414,6 +434,8 @@ class WorkLauncher:
             run = self.dispatcher.claim(issue_id, workflow, worker_role, runtime,
                                         max_runtime_seconds)
             run_id = run.run_id
+            if mutating:
+                self._record_mutating(run_id)
             worktree = self.worktree_root / run_id
             if create_worktree:
                 try:
@@ -454,6 +476,8 @@ class WorkLauncher:
                 limit_fields["request_id"] = request_id
             if limit_fields and hasattr(self.dispatcher.registry, "update"):
                 self.dispatcher.registry.update(run_id, **limit_fields)
+            if mutating:
+                self._record_mutating(run_id)
             if create_worktree:
                 try:
                     self._create_worktree(run_id, worktree)
@@ -489,7 +513,7 @@ class WorkLauncher:
         self.github.approve(issue_id)
         return self._launch(issue_id, prompt, runtime=runtime, worker_role=worker_role,
                             workflow=workflow, max_runtime_seconds=max_runtime_seconds,
-                            create_worktree=True)
+                            create_worktree=True, mutating=True)
 
     def resume(self, issue_id: str, *, runtime: str, worker_role: str, workflow: str,
                max_runtime_seconds: int, prompt: str,
@@ -498,7 +522,8 @@ class WorkLauncher:
                delegation_depth: int | None = None,
                artifact_policy: str | None = None,
                request_id: str | None = None,
-               isolate: bool = False) -> dict:
+               isolate: bool = False,
+               mutating: bool | None = None) -> dict:
         """Resume a ready issue with the full approved dispatch request.
 
         The dispatch-contract fields (cost ceiling, parallel-worker ceiling,
@@ -517,13 +542,23 @@ class WorkLauncher:
         worktree must pass `isolate=True`, and a worktree that cannot be
         created then fails the launch closed rather than silently downgrading
         to the shared checkout.
+
+        `mutating` declares that this Run is expected to change the repository,
+        which subjects its claimed success to the commit-correlation Evidence
+        Gate (#490). It defaults to "the mandate carries an artifact policy":
+        a policy describes the artifacts the Run may produce, so a Run that has
+        one is a Run an operator expects to produce them. Pass it explicitly to
+        override that reading in either direction.
         """
+        if mutating is None:
+            mutating = artifact_policy is not None
         return self._launch(issue_id, prompt, runtime=runtime, worker_role=worker_role,
                             workflow=workflow, max_runtime_seconds=max_runtime_seconds,
                             create_worktree=isolate, max_cost_usd=max_cost_usd,
                             max_parallel_workers=max_parallel_workers,
                             delegation_depth=delegation_depth,
-                            artifact_policy=artifact_policy, request_id=request_id)
+                            artifact_policy=artifact_policy, request_id=request_id,
+                            mutating=mutating)
 
     def submit(self, run_id: str, result: dict) -> dict:
         """Record a terminal result, enforcing the approved cost ceiling.
@@ -579,11 +614,35 @@ class WorkLauncher:
     combined_status = list_active
 
 
+def make_review_submitter(lifecycle_store: Path):
+    """The sanctioned durable review-submission writer, bound to a store (#493).
+
+    Imported lazily: `scripts/` is a flat module directory and the writer lives
+    beside its reader in `agent-platform/daemon/`, which is only importable once
+    the platform directory is on `sys.path`.
+    """
+    platform_dir = Path(__file__).resolve().parents[1] / "agent-platform"
+    if str(platform_dir) not in sys.path:
+        sys.path.insert(0, str(platform_dir))
+    from daemon.review_submission import make_review_submitter as _make  # noqa: PLC0415
+    return _make(Path(lifecycle_store))
+
+
 def default_launcher(registry_path: Path, *, daemon_state_dir: Path | None = None,
                      lifecycle_store: Path | None = None,
                      repo_path: Path | None = None) -> WorkLauncher:
     store = SqliteClaimStore(registry_path.with_suffix(".claims.sqlite3"))
-    dispatcher = Dispatcher(RunRegistry(registry_path))
+    dispatcher = Dispatcher(
+        RunRegistry(registry_path),
+        # #490: the gate reads git in the repository the launcher operates on,
+        # never the CLI's cwd -- the run branch it verifies lives there.
+        commit_gate=make_commit_gate(repo_path or Path.cwd()),
+        # #493: the durable review submission review-sync reads. Without a
+        # lifecycle store there is nowhere to write one, and a completed run
+        # then stays workflow:in-progress instead of advancing on a worker's
+        # word -- fail closed, not fall back.
+        review_submitter=make_review_submitter(lifecycle_store) if lifecycle_store else None,
+    )
     github = LauncherGitHub()
     return WorkLauncher(
         dispatcher, github, claim_store=store,

@@ -185,8 +185,23 @@ def test_eligible_engine_is_actually_dispatchable_through_real_registry(tmp_path
     run_id = result["run_id"]
     assert run_id == "run-1"
     run = _wait_terminal(dispatcher, run_id)
-    assert run.status == "succeeded"
-    assert gh.labels["owner/repo#482"] == ["workflow:review"]
+    # Routing still agrees end-to-end: the run reached the registered
+    # hermes-free adapter and came back terminal through dispatch_async.
+    # What it does NOT do any more is pass as success. This worker reports
+    # "succeeded" with no commit -- exactly the #485 shape -- and the
+    # Evidence Gate (#490) converts that claim into a structured block,
+    # because the mandate carries an artifact policy and the run is therefore
+    # mutating. Before #490 this assertion read `succeeded` on a run that had
+    # landed nothing.
+    assert run.status == "blocked"
+    assert run.result["evidence_gate"] == "commit_correlation_failed"
+    assert run.result["error"]["category"] == "commit_missing"
+    assert run.commit_evidence is None
+    # And the issue goes to blocked, not review: a failing terminal status is
+    # still the dispatcher's to sync, while `workflow:review` is review-sync's
+    # alone and needs a durable review submission this run never earned (#493).
+    assert gh.labels["owner/repo#482"] == ["workflow:blocked"]
+    assert run.review_submission_id is None
     # Terminal claim release (S7b dogfood fix): dispatch_async's background
     # thread completes the run directly through Dispatcher.complete(),
     # bypassing WorkLauncher.submit(); the launcher's on_terminal hook must
