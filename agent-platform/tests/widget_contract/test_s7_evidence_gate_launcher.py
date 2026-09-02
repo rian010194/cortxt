@@ -157,6 +157,19 @@ def test_a_registry_that_cannot_carry_the_scope_fails_the_launch():
     assert exc.value.code == "approved_scope_not_recordable"
 
 
+def test_mutating_isolation_metadata_is_mandatory_before_dispatch():
+    class BrokenRegistry(_Registry):
+        def update(self, run_id, **fields):
+            if "isolation" in fields:
+                raise OSError("store unavailable")
+            return super().update(run_id, **fields)
+
+    app = _launcher(_dispatcherish(BrokenRegistry(_run())))
+    with pytest.raises(ExecutionGateError) as exc:
+        app._record_isolation("run-1", True, required=True)
+    assert exc.value.code == "isolation_not_recordable"
+
+
 def test_the_scope_file_carries_the_approved_paths(tmp_path):
     """`cortxt work new` reads the concrete scope from the issue text, so the
     operator states the paths and no parser stands between that approval and
@@ -282,6 +295,24 @@ def test_a_failing_cleanup_never_masks_the_original_error():
     assert "the original failure" in str(exc.value)
 
 
+def test_a_cleanup_baseexception_never_masks_the_primary_baseexception():
+    class ExplodingStore(_ClaimStore):
+        def release(self, *args, **kwargs):
+            raise SystemExit("cleanup")
+
+    store = ExplodingStore()
+    claim = store.hold("run-1")
+
+    def complete(run_id, status, envelope):
+        raise KeyboardInterrupt("primary")
+
+    app = _launcher(_dispatcherish(_Registry(_run(status="succeeded")), complete),
+                    claim_store=store)
+    app._claims_by_run["run-1"] = claim
+    with pytest.raises(KeyboardInterrupt, match="primary"):
+        app.submit("run-1", {"status": "succeeded"})
+
+
 def test_the_release_reason_records_what_actually_happened():
     """On the failure path the status is read back from the registry, so the
     release reason states the Run's real terminal status rather than a guess."""
@@ -358,6 +389,12 @@ def test_the_review_sync_workflow_can_import_the_cli_it_invokes():
             "running from the repository root requires agent-platform on PYTHONPATH")
     else:
         assert working_dir == "agent-platform"
+
+
+def test_review_sync_has_an_explicit_manual_recovery_trigger():
+    workflow = _workflow()
+    triggers = workflow.get("on", workflow.get(True, {}))
+    assert "workflow_dispatch" in triggers
 
 
 def test_the_workflow_fails_loudly_if_the_import_path_regresses():

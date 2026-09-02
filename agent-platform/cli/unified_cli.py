@@ -3037,7 +3037,7 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
             print(json.dumps(projection, indent=2, sort_keys=True))
             return ResultEnvelope(status="succeeded", evidence=[{"execution_map": projection}])
 
-        from work_launcher import default_launcher, parse_scope_file
+        from work_launcher import default_launcher, generate_worker_prompt, parse_scope_file
 
         registry = args.registry or (_get_agent_platform_path() / ".dispatch" / "runs.json")
         registry.parent.mkdir(parents=True, exist_ok=True)
@@ -3062,10 +3062,46 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
                 artifact_paths=block["artifact_paths"],
             )
         elif args.work_command == "resume":
+            request = None
+            if getattr(args, "request_file", None) is not None:
+                request = json.loads(args.request_file.read_text(encoding="utf-8"))
+                from widget_contract.dispatch_request import _request_id
+                claimed_id = request.get("request_id")
+                unsigned = {k: v for k, v in request.items() if k != "request_id"}
+                if not isinstance(claimed_id, str) or _request_id(unsigned) != claimed_id:
+                    raise ValueError("dispatch request digest does not match its snapshot")
+                if request.get("issue_id") != args.issue_id or request.get("eligible") is not True:
+                    raise ValueError("dispatch request is not eligible for this issue")
+            if getattr(args, "isolate", False) and request is None:
+                raise ValueError("--isolate requires --request-file with the approved dispatch snapshot")
+            policy = request.get("artifact_policy") if request else None
+            if request and request.get("isolation") != "worktree":
+                raise ValueError("approved dispatch request does not authorize worktree isolation")
+            if request:
+                from commit_evidence import policy_paths
+                paths = list(policy_paths(policy or ""))
+                if not paths:
+                    raise ValueError("approved dispatch request has no concrete artifact scope")
+                limits = {key: request.get(key) for key in (
+                    "max_runtime_seconds", "max_cost_usd", "max_parallel_workers",
+                    "delegation_depth")}
+                prompt = generate_worker_prompt(
+                    request.get("scope") or "", request.get("acceptance_criteria") or [],
+                    limits, artifact_policy=policy)
+            else:
+                paths = None
+                prompt = args.prompt
             data = launcher.resume(
-                args.issue_id, runtime=args.runtime, worker_role=args.worker_role,
-                workflow=args.workflow, max_runtime_seconds=args.max_runtime_seconds,
-                prompt=args.prompt, isolate=getattr(args, "isolate", False),
+                args.issue_id, runtime=request.get("engine") if request else args.runtime,
+                worker_role=request.get("worker_role") if request else args.worker_role,
+                workflow=request.get("workflow_id") if request else args.workflow,
+                max_runtime_seconds=request.get("max_runtime_seconds") if request else args.max_runtime_seconds,
+                prompt=prompt, isolate=getattr(args, "isolate", False),
+                artifact_policy=policy, artifact_paths=paths,
+                request_id=request.get("request_id") if request else None,
+                max_cost_usd=request.get("max_cost_usd") if request else None,
+                max_parallel_workers=request.get("max_parallel_workers") if request else None,
+                delegation_depth=request.get("delegation_depth") if request else None,
             )
         else:
             data = launcher.submit(args.run_id, json.loads(args.result_file.read_text(encoding="utf-8")))
@@ -3123,6 +3159,8 @@ def main(argv: list[str] | None = None) -> int:
                                   "branch (what the Work app launch path derives from the "
                                   "approved artifact policy). Without it the worker runs in "
                                   "this repository checkout and the launch result says so.")
+    work_resume.add_argument("--request-file", type=Path,
+                             help="Server-derived approved dispatch-request JSON; required with --isolate")
     work_resume.add_argument("--registry", type=Path)
     work_resume.set_defaults(func=_run_work)
     work_submit = work_sub.add_parser("submit", help="Submit a terminal result for review")

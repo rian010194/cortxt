@@ -382,7 +382,7 @@ class WorkLauncher:
         return {"worktree": None, "branch": None,
                 "isolation": self.ISOLATION_SHARED, "working_dir": str(self.repo_path)}
 
-    def _record_isolation(self, run_id: str, created: bool) -> None:
+    def _record_isolation(self, run_id: str, created: bool, *, required: bool = False) -> None:
         """Carry the isolation mode onto the durable Run record.
 
         Best-effort: a registry without `update` (older/injected fakes) simply
@@ -391,12 +391,16 @@ class WorkLauncher:
         """
         registry = getattr(self.dispatcher, "registry", None)
         if registry is None or not hasattr(registry, "update"):
+            if required:
+                raise ExecutionGateError("isolation_not_recordable")
             return
         fields = {"isolation": self.ISOLATION_WORKTREE if created else self.ISOLATION_SHARED,
                   "branch": f"work/{run_id}" if created else None}
         try:
             registry.update(run_id, **fields)
         except Exception as exc:  # noqa: BLE001 - provenance metadata, never fatal
+            if required:
+                raise ExecutionGateError("isolation_not_recordable") from exc
             print(f"[work_launcher] could not record isolation for {run_id}: {exc}",
                   file=sys.stderr)
 
@@ -488,7 +492,12 @@ class WorkLauncher:
                     self.dispatcher.complete(run_id, "blocked",
                                              {"error": "isolated worktree creation failed"})
                     raise
-            self._record_isolation(run_id, create_worktree)
+            try:
+                self._record_isolation(run_id, create_worktree, required=mutating)
+            except ExecutionGateError:
+                self.dispatcher.complete(run_id, "blocked",
+                                         {"error": "isolation metadata could not be recorded"})
+                raise
             self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id,
                     **self._isolation_result(run_id, worktree, create_worktree)}
@@ -530,7 +539,7 @@ class WorkLauncher:
                 except LauncherDispatchError as failure:
                     self._fail_launch(run_id, claim, failure)
                     raise
-            self._record_isolation(run_id, create_worktree)
+            self._record_isolation(run_id, create_worktree, required=mutating)
             self._claims_by_run[run_id] = claim
             self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id,
@@ -684,7 +693,7 @@ class WorkLauncher:
         except BaseException:
             try:
                 self._release_terminal_claim(run_id)
-            except Exception as cleanup_error:  # noqa: BLE001 - never mask the original
+            except BaseException as cleanup_error:  # noqa: BLE001 - never mask the original
                 print(f"[work_launcher] claim release after failed complete() for "
                       f"{run_id}: {cleanup_error}", file=sys.stderr)
             raise
