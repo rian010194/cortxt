@@ -628,8 +628,27 @@ def make_review_submitter(lifecycle_store: Path):
     return _make(Path(lifecycle_store))
 
 
+def default_review_store(registry_path: Path) -> Path:
+    """The audited session store, resolved the way every other default is (#493).
+
+    `agent-platform/.dispatch/runs.json` -> `agent-platform/.sessions`, the same
+    store `cortxt sessions`, `cortxt daemon sync-review` and the CLI's own
+    defaults use. Resolved from the registry rather than the process cwd, for
+    the reason `action_host.py` resolves the registry that way: a cwd-relative
+    store is how #485's records ended up in a second, unaudited registry root.
+
+    This is deliberately a default and not an option to omit. `_sync_github()`
+    no longer moves an Issue to `workflow:review` itself, so a launcher with no
+    review store would fail closed on every successful run -- correct, but
+    unfinishable. The sanctioned path must actually be wired for the loop to
+    close.
+    """
+    return registry_path.parent.parent / ".sessions"
+
+
 def default_launcher(registry_path: Path, *, daemon_state_dir: Path | None = None,
                      lifecycle_store: Path | None = None,
+                     review_store: Path | None = None,
                      repo_path: Path | None = None) -> WorkLauncher:
     store = SqliteClaimStore(registry_path.with_suffix(".claims.sqlite3"))
     dispatcher = Dispatcher(
@@ -637,11 +656,12 @@ def default_launcher(registry_path: Path, *, daemon_state_dir: Path | None = Non
         # #490: the gate reads git in the repository the launcher operates on,
         # never the CLI's cwd -- the run branch it verifies lives there.
         commit_gate=make_commit_gate(repo_path or Path.cwd()),
-        # #493: the durable review submission review-sync reads. Without a
-        # lifecycle store there is nowhere to write one, and a completed run
-        # then stays workflow:in-progress instead of advancing on a worker's
-        # word -- fail closed, not fall back.
-        review_submitter=make_review_submitter(lifecycle_store) if lifecycle_store else None,
+        # #493: the durable review submission review-sync reads, written to the
+        # audited session store. `review_store=None` is the default resolution,
+        # not "no submitter" -- an unwired launcher would fail closed on every
+        # successful run and never reach review at all.
+        review_submitter=make_review_submitter(
+            review_store or lifecycle_store or default_review_store(registry_path)),
     )
     github = LauncherGitHub()
     return WorkLauncher(

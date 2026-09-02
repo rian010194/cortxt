@@ -109,6 +109,14 @@ the Issue forward. With no session store configured there is no submission
 path, so a completed run stays `workflow:in-progress`: the transition is
 withheld rather than taken on a worker's word.
 
+Because that failure mode is silent-but-terminal, `default_launcher` always
+wires the submitter. The store resolves from the registry —
+`agent-platform/.dispatch/runs.json` -> `agent-platform/.sessions`, the same
+store `cortxt sessions` and `cortxt daemon sync-review` use — and never from
+the process cwd, for the reason `action_host.py` resolves the registry that
+way: a cwd-relative store is how #485's Run records ended up in a second,
+unaudited registry root. Pass `review_store` to override it.
+
 On #485 the label moved `in-progress -> review` at 12:16:38 and the result
 comment landed at 12:16:40 — the ordered pair `_sync_github()` emits — while
 no `run.review_submitted` event existed in any store.

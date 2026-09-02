@@ -533,3 +533,33 @@ def test_review_sync_replays_a_submission_only_once(tmp_path, repo):
     assert second["synced"] == []
     assert second["skipped"][0]["reason"] == "already_synced"
     assert len(edits) == 1
+
+
+def test_the_default_launcher_is_wired_to_the_audited_session_store(tmp_path):
+    """#493 fails closed without a submitter, so the sanctioned path must
+    actually be wired -- otherwise no real run could ever reach review.
+
+    The store resolves from the registry, the way `action_host.py` resolves the
+    registry itself: a cwd-relative store is how #485's records ended up in a
+    second, unaudited registry root.
+    """
+    from work_launcher import default_launcher, default_review_store
+
+    registry = tmp_path / "agent-platform" / ".dispatch" / "runs.json"
+    registry.parent.mkdir(parents=True)
+    assert default_review_store(registry) == tmp_path / "agent-platform" / ".sessions"
+
+    launcher = default_launcher(registry, repo_path=tmp_path)
+    assert launcher.dispatcher.review_submitter is not None
+    assert launcher.dispatcher.commit_gate is not None
+
+    # And it writes where it says it does.
+    launcher.dispatcher.registry.add(_run(status="succeeded"))
+    submission = launcher.dispatcher.review_submitter(
+        launcher.dispatcher.registry.get("run-1"), {"status": "succeeded"}, None)
+    assert submission == review_submission_id("run-1")
+    store = default_review_store(registry)
+    assert [event["payload"]["review_submission_id"]
+            for path in store.glob("session_*/session.json")
+            for event in session_state.load(store, path.parent.name)["events"]
+            if event["event_type"] == REVIEW_EVENT] == [submission]
