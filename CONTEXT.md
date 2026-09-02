@@ -59,7 +59,7 @@ The required claim/run identity, result envelope, and state transitions defined 
 _Avoid_: Informal "launch"
 
 **Work kind**:
-The intended outcome category of an Issue, such as delivery, research, review, decision, prototype, or diagnosis. It is planning and policy input, never workflow state or dispatch authority by itself.
+The intended outcome category of an Issue used for planning and rendering. Its current vocabularies are not execution-policy authority and must be reconciled before strict machine use.
 _Avoid_: Issue type (when it implies authorization), workflow state
 
 **Execution policy profile**:

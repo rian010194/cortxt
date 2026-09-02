@@ -34,7 +34,9 @@ it is not inferred after execution.
 The following classifications remain separate:
 
 - `workflow:*` is lifecycle state only.
-- `Work kind` describes the intended outcome for planning and policy input.
+- `Work kind` describes the intended outcome for planning and rendering. Its
+  current vocabularies are not sufficiently reconciled to serve as policy
+  input or authority.
 - descriptive labels such as `bug`, area labels, and `atlas:map` are metadata
   and constraints, never sufficient dispatch authority.
 - task-shape tags select a compatible engine capability; they do not select an
@@ -42,8 +44,9 @@ The following classifications remain separate:
 - a risk modifier strengthens gates for effects such as authority/workflow
   mutation, security-sensitive code, secrets or customer data, schema changes,
   deployment, publication, and destructive or irreversible operations.
-- the approved Issue mandate supplies the concrete scope, limits, artifact
-  policy, worker role, and human approval.
+- the approved Issue mandate supplies one explicit `Execution profile:
+  <profile-id>/<version>` together with concrete scope, limits, artifact
+  policy, worker role, risk modifiers, and human approval.
 - the execution policy profile is the versioned platform rule that combines
   those inputs into permitted execution and required evidence.
 
@@ -59,25 +62,38 @@ invalid values, unknown versions, multiple profile declarations, a task-shape/
 worker-role mismatch, and a mutation request that conflicts with the profile
 all deny dispatch before claim acquisition.
 
-Issue-specific requirements may strengthen a profile but may not weaken its
-minimum isolation, evidence, data-class, provider, budget, or human-decision
-gates. The resolved profile identifier and version are recorded on the durable
-Run so a later reviewer can evaluate the Run against the policy that authorized
-it.
+The server-side resolver constructs the effective policy as the intersection of
+the base profile, mandate constraints, and risk modifiers. Constraints may
+remove capabilities or strengthen gates; they never add a capability absent
+from the base profile. Any requested effect outside that intersection, parse
+failure, or conflict denies dispatch. Legacy isolation waivers are unsupported
+for profiles that require isolation.
+
+The profile identifier/version, risk modifiers, and canonical effective-policy
+fingerprint are included in the immutable dispatch request and its `request_id`
+digest. Pre-flight receipt, claim, and durable Run all carry the same binding.
+Any policy change after confirmation produces a new request and requires new
+operator confirmation; recording policy only after launch is forbidden.
 
 The initial profile catalog is deliberately bounded:
 
 | Profile family | Eligible outcome | Minimum execution/evidence rule |
 | --- | --- | --- |
-| `code-change/v1` | Bounded code or configuration change | Isolated worktree; concrete allowed paths; correlated landed commit; DCO; profile-required tests; Evidence Gate; durable review submission |
-| `docs-change/v1` | Bounded tracked-document change | Isolated worktree; docs-only allowed paths; correlated landed commit; documentation checks; Evidence Gate; durable review submission |
-| `research-report/v1` | Research or diagnosis with no repository mutation | No mutation capability; durable structured report with declared sources/assertions and retention policy; no fabricated commit requirement |
-| Controlled proof fixture | Explicit platform/CI proof | Named fixture environment, assertions, cleanup and correlation requirements; never inferred from a general Issue label |
+| `code-change/v1` | Bounded code or configuration change | Isolated worktree; concrete allowed paths; new correlated commit on the Run branch/worktree; DCO; profile-required tests; Evidence Gate; durable review submission |
+| `docs-change/v1` | Bounded tracked-document change | Isolated worktree; docs-only allowed paths; new correlated commit on the Run branch/worktree; documentation checks; Evidence Gate; durable review submission |
+| `research-report/v1` | Research or diagnosis without workspace, repository, or arbitrary external mutation | One profile-named append-only evidence-output port; durable structured report with declared sources/assertions, schema, redaction/data-class, and retention enforcement; no fabricated commit requirement |
+| `controlled-proof/v1` | Explicit platform/CI proof | Named fixture environment, assertions, cleanup and correlation requirements; never inferred from a general Issue label |
 
 Only a profile that has its own positive, negative, replay, cleanup, and
 end-to-end proof may be enabled for real dispatch. S7 may enable its proven
 mutating-delivery profile first. Other families remain unavailable until their
 contracts and proofs exist.
+
+`research-report/v1` remains disabled until its authoritative evidence-output
+port and storage are selected. The port is the only permitted write capability:
+it accepts the versioned report schema and enforces redaction, data class, and
+retention. It does not grant filesystem, repository, Issue-edit, comment, or
+other general external mutation rights.
 
 Atlas maps, epics, decision-only Issues, and unknown combinations are
 non-dispatchable by default. They must be decomposed into or explicitly
@@ -111,8 +127,8 @@ may lower the base profile's risk requirements. A conflict denies dispatch.
 ### Negative
 
 - Existing Issue metadata is not yet sufficient to resolve every profile;
-  templates and validation will need a versioned profile reference or enough
-  typed mandate data to derive one deterministically.
+  templates and validation need an explicit versioned profile reference and
+  typed mandate constraints.
 - Research, diagnosis, Atlas, and specialized CI work remain unavailable from
   the general launcher until their profiles are implemented and proven.
 - Profile versioning and migration become part of the durable Run contract.
@@ -148,11 +164,14 @@ may lower the base profile's risk requirements. A conflict denies dispatch.
 - [ ] Pre-flight rejects absent, unknown, contradictory, and unsupported
       profile inputs before acquiring a claim or invoking a worker.
 - [ ] Durable Run records contain the resolved profile identifier and version.
+- [ ] Dispatch request, `request_id`, pre-flight receipt, claim, and Run bind
+      the same profile/version, risk modifiers, and effective-policy fingerprint;
+      any change requires operator reconfirmation.
 - [ ] Mutating-delivery tests cover a `bug` fix and prove that the `bug` label
       alone grants no authority.
 - [ ] Documentation tests reject changes outside the approved docs paths.
 - [ ] Evidence-only tests accept a valid durable report without a commit and
-      reject repository mutation.
+      reject every write except the named evidence-output port.
 - [ ] Atlas maps, epics, decision-only Issues, and unknown combinations expose
       no launch action.
 - [ ] Each enabled profile has positive, negative, replay, cleanup, and real
