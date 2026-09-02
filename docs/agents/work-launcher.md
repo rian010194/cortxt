@@ -68,14 +68,33 @@ A mutating run may not be recorded `succeeded` unless
 `scripts/commit_evidence.py` verifies a landed commit that:
 
 - exists in the repository;
-- correlates to this run's `run_id`, `issue_id` and approved `request_id`;
+- correlates to this run's `run_id`, `issue_id` and approved `request_id`. All
+  three are **required** in the result envelope — an omitted field is not a
+  passed check — and a Run record missing any of them cannot be correlated at
+  all;
 - is reachable from the run's registered `work/<run_id>` branch — a run that
   recorded no isolation has no branch to correlate against and fails closed;
-- was committed after the claim;
+- was committed **strictly after** the second in which the run was claimed.
+  Git timestamps have one-second resolution, so a commit inside the claim's own
+  second cannot be ordered against it and is refused;
 - carries a `Signed-off-by:` DCO trailer;
-- touches only what the approved artifact policy permits (the paths the policy
-  names in backticks, or an explicit `artifact_paths` set; an unscoped policy
-  restricts no path but still requires a non-empty change).
+- touches only what the approved artifact scope permits.
+
+The approved scope resolves fail-closed, with no unrestricted outcome. An
+explicit `artifact_paths` set on the Run wins; otherwise the gate uses the paths
+named in backticks in the artifact policy, including single-segment
+repository-relative paths such as `LICENSE`. A Run carrying neither is blocked
+(`artifact_policy_missing`), and a policy naming no readable path is blocked
+(`artifact_policy_unparsable`) rather than treated as permitting everything.
+Every path on both sides must be repository-relative: an absolute path, a drive
+letter or a `..` segment is refused, never silently skipped.
+
+A mutating run is always isolated. `resume` derives "is this run mutating?" from
+whether it was given its own worktree, and a mutating launch without isolation
+is refused before any claim exists (`mutating_run_requires_isolation`) — the
+Evidence Gate would refuse the result anyway, but only after the worker had
+already run in the launcher's shared checkout. `create` states its approved
+paths outright and the launcher persists them on the Run before dispatch.
 
 The verified correlation is written onto the Run as `commit_evidence` and into
 the result envelope. Anything else — a missing SHA, a foreign commit, a policy

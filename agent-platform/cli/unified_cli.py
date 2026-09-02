@@ -3056,6 +3056,10 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
                 runtime=args.runtime, worker_role=args.worker_role, workflow=args.workflow,
                 max_runtime_seconds=args.max_runtime_seconds, max_cost_usd=args.max_cost_usd,
                 approved=args.approve,
+                # The concrete approved artifact scope, read from the scope
+                # file's `## Artifact policy` section. Required: `create`
+                # always dispatches a mutating worker (#490).
+                artifact_paths=block["artifact_paths"],
             )
         elif args.work_command == "resume":
             data = launcher.resume(

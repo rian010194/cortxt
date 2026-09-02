@@ -83,9 +83,11 @@ A **mutating run** — one whose approved mandate expects it to change the
 repository — must return `commit`. Self-reported status is not evidence: the
 Evidence Gate (`scripts/commit_evidence.py`, applied in
 `Dispatcher.complete()`) verifies that the commit exists, correlates to this
-`run_id`, `issue_id` and `request_id`, sits on the run's registered isolated
-worktree branch, was made after the claim, carries a DCO trailer, and stays
-inside the approved artifact policy. It then writes that correlation onto the
+`run_id`, `issue_id` and `request_id` — all three required in the envelope, so
+a worker cannot skip a check by omitting a field — sits on the run's registered
+isolated worktree branch, was made **strictly after** the second the run was
+claimed, carries a DCO trailer, and stays inside the approved artifact scope,
+which resolves fail-closed and never to "unrestricted". It then writes that correlation onto the
 durable Run record as `commit_evidence`. A missing, unverifiable or
 non-correlating commit converts the claimed `succeeded` into a structured
 `blocked` — it is never relayed onward as success (#490).

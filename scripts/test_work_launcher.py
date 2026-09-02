@@ -81,7 +81,8 @@ def main():
     )
     result = launcher.create("o/r", "Task", "Build a safe launcher", ["Tests pass"],
                              runtime="fake", worker_role="builder", workflow="v1",
-                             max_runtime_seconds=60, max_cost_usd=1.0, approved=True)
+                             max_runtime_seconds=60, max_cost_usd=1.0, approved=True,
+                             artifact_paths=["docs/agents/work-launcher.md"])
     check("new returns generated run id", bool(result["run_id"]))
     check("issue moved through claim to in-progress", gh.labels["o/r#7"] == ["workflow:in-progress"])
     check("worker prompt includes scope, AC, limits, and policy", all(x in prompts[0] for x in
@@ -108,7 +109,8 @@ def main():
     )
     res2 = launcher2.create("o/r", "Task", "Bound worker", ["Tests pass"],
                             runtime="fake", worker_role="builder", workflow="v1",
-                            max_runtime_seconds=60, max_cost_usd=1.0, approved=True)
+                            max_runtime_seconds=60, max_cost_usd=1.0, approved=True,
+                            artifact_paths=["docs/agents/work-launcher.md"])
     check("worktree created from repo_path, not the process cwd",
           seen_cwd and seen_cwd[0] == str(repo2))
     bound = dispatched and dispatched[0]

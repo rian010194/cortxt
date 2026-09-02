@@ -142,9 +142,14 @@ class DeterministicCommitAdapter:
     in for are fixed at construction.
     """
 
-    def __init__(self, worktree: Path, issue_id: str, log_dir: Path, engine_id: str) -> None:
+    def __init__(self, worktree: Path, issue_id: str, log_dir: Path, engine_id: str,
+                 request_id: str | None = None) -> None:
         self.worktree = worktree
         self.issue_id = issue_id
+        # The approved request this run executes. The Evidence Gate requires a
+        # mutating result to state run_id, issue_id AND request_id, and to have
+        # all three match the durable Run record exactly (#490).
+        self.request_id = request_id
         self.log_dir = log_dir
         self.engine_id = engine_id
         self.runtime = f"ci-deterministic/{engine_id}-route-v1"
@@ -230,6 +235,7 @@ class DeterministicCommitAdapter:
                 # The commit-correlation Evidence Gate (#490) reads this field.
                 # A mutating run that omits it is blocked, not succeeded.
                 "commit": head_after,
+                "request_id": self.request_id,
                 "runtime": self.runtime,
                 "worker_role": run.worker_role,
                 "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
@@ -467,16 +473,25 @@ def run_proof(args: argparse.Namespace) -> dict:
     # mutating. This proof creates its own worktree rather than going through
     # WorkLauncher, so it records the same three fields the launcher would --
     # otherwise the fixture would exercise a weaker path than production.
+    # The approved scope is persisted before dispatch and is the same data the
+    # gate enforces: one marker path under MARKER_DIR, plus the request the run
+    # executes. The worker supplies none of it.
+    approved_paths = [MARKER_DIR]
+    request_id = "sha256:" + hashlib.sha256(
+        f"{issue_id}|{run.run_id}|{MARKER_DIR}".encode("utf-8")).hexdigest()
     registry.update(run.run_id, mutating=True, isolation="worktree",
-                    branch=proof_branch(issue_num, run.run_id))
+                    branch=proof_branch(issue_num, run.run_id),
+                    artifact_paths=approved_paths, request_id=request_id)
     run = registry.get(run.run_id)
+    evidence["approved_scope"] = {"artifact_paths": approved_paths, "request_id": request_id}
     head_before = run_cmd(["git", "-C", str(worktree), "rev-parse", "HEAD"], timeout=30).stdout.strip()
     if not head_before:
         raise ProofError("could not read head_before from worktree")
 
     # 6. Replace only the routed engine's registry entry with the
     #    deterministic worker.
-    adapter = DeterministicCommitAdapter(worktree, issue_id, run_log_dir, engine_id)
+    adapter = DeterministicCommitAdapter(worktree, issue_id, run_log_dir, engine_id,
+                                        request_id=request_id)
     register_adapter(engine_id, adapter)
     assert ADAPTER_REGISTRY[engine_id] is adapter
 
@@ -518,11 +533,23 @@ def run_proof(args: argparse.Namespace) -> dict:
         raise ProofError(f"gate evidence branch mismatch: {gate_evidence.get('branch')!r}")
     if gate_evidence.get("run_id") != run.run_id or gate_evidence.get("issue_id") != issue_id:
         raise ProofError("gate evidence does not correlate to this run/issue")
+    if gate_evidence.get("policy_paths") != approved_paths:
+        raise ProofError(
+            f"gate enforced {gate_evidence.get('policy_paths')!r}, not the approved "
+            f"artifact paths {approved_paths!r}")
+    if gate_evidence.get("request_id") != request_id:
+        raise ProofError("gate evidence does not carry the approved request_id")
+    outside = [f for f in gate_evidence.get("files", [])
+               if not f.replace(chr(92), "/").startswith(MARKER_DIR + "/")]
+    if outside:
+        raise ProofError(f"commit touched paths outside the approved scope: {outside}")
     evidence["evidence_gate"] = {
         "verdict": "commit_correlated",
         "commit": gate_evidence["commit"],
         "branch": gate_evidence["branch"],
         "files": gate_evidence.get("files", []),
+        "policy_paths": gate_evidence.get("policy_paths", []),
+        "request_id": gate_evidence.get("request_id"),
     }
     log(f"evidence gate: commit correlated on {gate_evidence['branch']}")
 

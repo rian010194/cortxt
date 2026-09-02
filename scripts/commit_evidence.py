@@ -32,7 +32,17 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DCO_RE = re.compile(r"^Signed-off-by:\s*\S.*<[^>@\s]+@[^>\s]+>\s*$", re.MULTILINE)
 # Path tokens as an operator writes them in an artifact policy, e.g.
 # "Only `docs/agents/work-launcher.md` inside the run's isolated worktree".
-POLICY_PATH_RE = re.compile(r"`([A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9](?:/|\.[A-Za-z0-9]+))`")
+#
+# Deliberately permissive about shape: a repository-relative path may be a
+# single segment with no separator and no extension (`LICENSE`, `Makefile`,
+# `Dockerfile`), and the earlier pattern -- which required a `/` or a `.ext` --
+# silently dropped those. Dropping a path is the dangerous direction: it turned
+# a scoped policy into an empty set, and an empty set used to mean
+# *unrestricted*. Over-matching is the safe direction: an extra token only ever
+# narrows what a commit may touch, and a policy whose wording confuses the
+# parser fails closed with `artifact_policy_violation` for the operator to see
+# and reword, rather than quietly permitting everything.
+POLICY_PATH_RE = re.compile(r"`([A-Za-z0-9][A-Za-z0-9._/-]*)`")
 
 GitRunner = Callable[[Sequence[str]], "tuple[int, str]"]
 
@@ -89,22 +99,56 @@ def _subprocess_git(repo_path: Optional[Path]) -> GitRunner:
 def policy_paths(artifact_policy: Optional[str]) -> tuple:
     """The path set a scoped artifact policy names, in prose, in backticks.
 
-    A policy that names no path is *unscoped*, not invalid: it restricts what a
-    commit may say (see the launcher's default policy), not which files it may
-    touch. An unscoped policy therefore yields an empty set and the gate falls
-    back to requiring a real, non-empty change -- it never silently widens a
-    scoped policy, and never rejects an unscoped one for saying nothing.
+    An empty result means the policy named nothing the parser could read. That
+    is **not** "unrestricted" -- callers must treat it as a fail-closed
+    condition. An earlier version returned an empty set for an unscoped policy
+    and let the gate permit any path; combined with a pattern that could not
+    see single-segment paths like `LICENSE`, a real scoped policy could be
+    downgraded to no restriction at all.
     """
     if not artifact_policy:
         return ()
     return tuple(dict.fromkeys(POLICY_PATH_RE.findall(artifact_policy)))
 
 
+def normalize_repo_path(path: str) -> Optional[str]:
+    """A repository-relative POSIX path, or None if it is not one.
+
+    Rejects what must never be compared as if it were inside the repository:
+    absolute paths, Windows drive letters, UNC paths, and any `..` segment that
+    could walk out of the permitted subtree. Returns None rather than a
+    best-effort string, so a caller cannot accidentally treat an unsafe path as
+    merely non-matching -- the gate turns None into an explicit failure.
+    """
+    if not isinstance(path, str) or not path.strip():
+        return None
+    candidate = path.strip().replace("\\", "/")
+    if candidate.startswith("/") or re.match(r"^[A-Za-z]:", candidate):
+        return None
+    segments = []
+    for segment in candidate.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            return None
+        segments.append(segment)
+    return "/".join(segments) or None
+
+
 def _within(path: str, permitted: Sequence[str]) -> bool:
-    normalized = path.replace("\\", "/")
+    """True when `path` is exactly a permitted entry or inside a permitted one.
+
+    Both sides are normalized first, so `docs/./agents/x.md` matches
+    `docs/agents/` and no unsafe path can match anything at all.
+    """
+    normalized = normalize_repo_path(path)
+    if normalized is None:
+        return False
     for allowed in permitted:
-        allowed = allowed.replace("\\", "/").rstrip("/")
-        if normalized == allowed or normalized.startswith(allowed + "/"):
+        allowed_norm = normalize_repo_path(allowed)
+        if allowed_norm is None:
+            continue
+        if normalized == allowed_norm or normalized.startswith(allowed_norm + "/"):
             return True
     return False
 
@@ -129,25 +173,35 @@ def verify_commit_correlation(
     git = git or _subprocess_git(repo_path)
     envelope = result_envelope or {}
 
-    claimed_run = envelope.get("run_id")
-    if claimed_run is not None and claimed_run != run.run_id:
-        return CorrelationFailure(
-            "run_correlation_mismatch",
-            f"result envelope reports run_id {claimed_run!r}, Run record is {run.run_id!r}",
-            "The worker returned a result for a different Run; discard it and re-run this Run.")
-    claimed_issue = envelope.get("issue_id")
-    if claimed_issue is not None and claimed_issue != run.issue_id:
-        return CorrelationFailure(
-            "issue_correlation_mismatch",
-            f"result envelope reports issue_id {claimed_issue!r}, Run record is {run.issue_id!r}",
-            "The worker returned a result for a different Issue; discard it and re-run this Run.")
-    claimed_request = envelope.get("request_id")
-    if (claimed_request is not None and getattr(run, "request_id", None) is not None
-            and claimed_request != run.request_id):
-        return CorrelationFailure(
-            "request_correlation_mismatch",
-            "result envelope reports a request_id other than the approved dispatch request",
-            "Re-read the live dispatch request and approve exactly that request before running.")
+    # Correlation is mandatory, not opportunistic. Previously each of these was
+    # checked only when the worker happened to supply it, so a result envelope
+    # that simply omitted `run_id` skipped its own correlation check -- the
+    # worker chose whether to be checked. All three must now be present and
+    # match the approved Run record exactly.
+    for field, expected, code in (
+        ("run_id", run.run_id, "run_correlation_mismatch"),
+        ("issue_id", run.issue_id, "issue_correlation_mismatch"),
+        ("request_id", getattr(run, "request_id", None), "request_correlation_mismatch"),
+    ):
+        if expected is None:
+            return CorrelationFailure(
+                f"{field}_not_recorded",
+                f"the Run record carries no {field}, so nothing can be correlated against it",
+                f"A mutating Run must record its approved {field} before dispatch; "
+                "re-launch it through the sanctioned path.")
+        claimed = envelope.get(field)
+        if claimed is None:
+            return CorrelationFailure(
+                code,
+                f"result envelope omits {field}; correlation cannot be established",
+                f"A mutating Run's result must state its {field}. An omitted field is "
+                "not a passed check.")
+        if claimed != expected:
+            return CorrelationFailure(
+                code,
+                f"result envelope reports {field} {claimed!r}, Run record is {expected!r}",
+                "The worker returned a result for a different Run, Issue or approved "
+                "request; discard it and re-run this Run.")
 
     commit = envelope.get("commit") or envelope.get("commit_sha")
     if not isinstance(commit, str) or not SHA_RE.fullmatch(commit.strip().lower()):
@@ -189,12 +243,23 @@ def verify_commit_correlation(
             f"could not read the commit timestamp of {commit}",
             "Re-run the gate against a readable repository.")
     committed_at = int(out.strip())
-    if committed_at < int(getattr(run, "claimed_at", 0)):
+    claimed_second = int(getattr(run, "claimed_at", 0))
+    # Strictly after, not "not before". Git commit timestamps have one-second
+    # resolution, so a commit made in the same second as the claim -- including
+    # one made just *before* it -- used to compare equal and pass. That is the
+    # whole window an attacker or a confused worker needs to present
+    # pre-existing work as this Run's output. Requiring a strictly later second
+    # closes it in the fail-closed direction: the cost is that a run which
+    # claims and commits inside one second must retry, which no real worker
+    # does.
+    if committed_at <= claimed_second:
         return CorrelationFailure(
             "commit_predates_run",
-            f"{commit} was committed at {committed_at}, before the Run was claimed "
-            f"at {int(run.claimed_at)}",
-            "A pre-existing commit is not this Run's work; the Run landed nothing.")
+            f"{commit} was committed at {committed_at}, not strictly after the Run was "
+            f"claimed at {claimed_second} (same-second commits are refused: a one-second "
+            "timestamp resolution cannot order them against the claim)",
+            "A pre-existing or same-second commit is not verifiably this Run's work; "
+            "the Run landed nothing that can be ordered after its claim.")
 
     code, message = git(["show", "-s", "--format=%B", commit])
     if code != 0:
@@ -221,16 +286,49 @@ def verify_commit_correlation(
             f"{commit} changes no files",
             "An empty commit is not an artifact; the Run produced nothing to review.")
 
-    permitted = tuple(getattr(run, "artifact_paths", None) or ()) or policy_paths(
-        getattr(run, "artifact_policy", None))
-    if permitted:
-        outside = [path for path in files if not _within(path, permitted)]
-        if outside:
+    # The approved scope, resolved fail-closed at every step. There is no
+    # "unrestricted" outcome: a mutating Run either has a readable approved
+    # path set or it is blocked. Explicit `artifact_paths` win over prose,
+    # because prose is what the parser can misread.
+    permitted = tuple(getattr(run, "artifact_paths", None) or ())
+    if not permitted:
+        policy = getattr(run, "artifact_policy", None)
+        if not policy or not str(policy).strip():
             return CorrelationFailure(
-                "artifact_policy_violation",
-                f"{commit} touches paths outside the approved artifact policy: "
-                + ", ".join(sorted(outside)),
-                f"The approved policy permits only {', '.join(permitted)}. Re-run within scope.")
+                "artifact_policy_missing",
+                "the Run record carries neither approved artifact paths nor an artifact policy",
+                "A mutating Run must carry the approved artifact scope on its Run record "
+                "before dispatch. Nothing can be checked against an absent policy.")
+        permitted = policy_paths(policy)
+        if not permitted:
+            return CorrelationFailure(
+                "artifact_policy_unparsable",
+                "the approved artifact policy names no path this gate can read",
+                "Name the permitted paths in backticks in the issue's artifact policy "
+                "(for example `docs/agents/work-launcher.md` or `LICENSE`), or record "
+                "them explicitly as artifact_paths on the approved request.")
+    unsafe_permitted = [p for p in permitted if normalize_repo_path(p) is None]
+    if unsafe_permitted:
+        return CorrelationFailure(
+            "artifact_policy_unsafe_path",
+            "the approved artifact scope contains entries that are not repository-relative "
+            "paths: " + ", ".join(sorted(unsafe_permitted)),
+            "An absolute path, a drive letter, or a `..` segment cannot bound a commit. "
+            "Correct the approved scope.")
+    unsafe_files = [path for path in files if normalize_repo_path(path) is None]
+    if unsafe_files:
+        return CorrelationFailure(
+            "artifact_path_unsafe",
+            f"{commit} touches paths that are not repository-relative: "
+            + ", ".join(sorted(unsafe_files)),
+            "A commit whose paths cannot be normalized cannot be bounded by any policy.")
+    outside = [path for path in files if not _within(path, permitted)]
+    if outside:
+        return CorrelationFailure(
+            "artifact_policy_violation",
+            f"{commit} touches paths outside the approved artifact policy: "
+            + ", ".join(sorted(outside)),
+            f"The approved policy permits only {', '.join(permitted)}. Re-run within scope.")
 
     return CommitEvidence(
         run_id=run.run_id,

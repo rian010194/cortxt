@@ -76,13 +76,23 @@ def _now() -> str:
 
 
 def _find_session(store: Path, run_id: str, issue_id: str) -> Optional[str]:
-    """The existing session for this Run, preferring an exact `run_id` match.
+    """The existing session for this Run, or None.
 
-    A session created by the launcher carries `run_id`; an older one may carry
-    only `issue_id`. Matching on `run_id` first keeps two Runs on the same
-    Issue from sharing a submission chain.
+    An exact `run_id` match always wins. The `issue_id` fallback exists only
+    for **legacy** sessions written before `session.created` carried a
+    `run_id`, and is therefore restricted to sessions that carry no `run_id` at
+    all.
+
+    Matching on `issue_id` alone was wrong: a second Run on the same Issue --
+    a retry, or the next attempt after a recovery -- would have appended its
+    submission to the *first* Run's session. The two Runs would then share one
+    submission chain, and `review_sync` derives the Issue from
+    `session.created`, so the second Run's evidence would have been filed under
+    the first Run's identity. Correlating a Run to the wrong session is exactly
+    the class of defect #490 and #493 exist to close, so the fallback now
+    refuses any session that belongs to a known, different Run.
     """
-    by_issue = None
+    legacy_match = None
     for path in sorted(store.glob("session_*/session.json")):
         session_id = path.parent.name
         try:
@@ -96,9 +106,10 @@ def _find_session(store: Path, run_id: str, issue_id: str) -> Optional[str]:
         payload = created["payload"]
         if payload.get("run_id") == run_id:
             return session_id
-        if by_issue is None and payload.get("issue_id") == issue_id:
-            by_issue = session_id
-    return by_issue
+        if (legacy_match is None and payload.get("run_id") is None
+                and payload.get("issue_id") == issue_id):
+            legacy_match = session_id
+    return legacy_match
 
 
 def _already_submitted(doc: dict, submission_id: str) -> bool:

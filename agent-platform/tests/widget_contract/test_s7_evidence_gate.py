@@ -87,6 +87,20 @@ def _commit(repo: Path, branch: str, path: str, *, message: str = "docs: land th
     return _git(repo, "rev-parse", "HEAD").stdout.strip()
 
 
+def _envelope(**overrides) -> dict:
+    """A result envelope carrying the correlation the gate now requires.
+
+    `run_id`, `issue_id` and `request_id` are mandatory for a mutating success
+    (#490 review finding 3): previously each was checked only when the worker
+    happened to supply it, so a worker could skip its own correlation check by
+    omitting the field.
+    """
+    envelope = {"status": "succeeded", "run_id": "run-1",
+                "issue_id": "owner/repo#485", "request_id": "sha256:abc"}
+    envelope.update(overrides)
+    return envelope
+
+
 def _run(**overrides) -> Run:
     fields = dict(
         run_id="run-1", issue_id="owner/repo#485", workflow="work-launcher/v1",
@@ -107,7 +121,7 @@ def test_gate_accepts_a_real_correlated_commit(repo):
     """The positive path: an existing, in-scope, signed-off commit on the run's
     own branch, made after the claim, is durable correlated evidence."""
     sha = _commit(repo, "work/run-1", "docs/agents/work-launcher.md")
-    outcome = verify_commit_correlation(_run(), {"status": "succeeded", "commit": sha},
+    outcome = verify_commit_correlation(_run(), _envelope(commit=sha),
                                         repo_path=repo)
     assert isinstance(outcome, CommitEvidence), getattr(outcome, "detail", outcome)
     record = outcome.as_record()
@@ -123,9 +137,9 @@ def test_gate_accepts_a_real_correlated_commit(repo):
 def test_gate_rejects_the_485_shape_exactly(repo):
     """#485's own result envelope: `succeeded`, a run-log artifact, and no
     commit anywhere. This is the case the gate exists for."""
-    envelope = {"status": "succeeded",
-                "artifacts": ["run-log:run-6d936b467f804939a4ce734ac5f45dd8"],
-                "evidence": "hermes-free reported status=succeeded; see local run log"}
+    envelope = _envelope(
+        artifacts=["run-log:run-6d936b467f804939a4ce734ac5f45dd8"],
+        evidence="hermes-free reported status=succeeded; see local run log")
     outcome = verify_commit_correlation(_run(), envelope, repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == "commit_missing"
@@ -139,7 +153,7 @@ def test_gate_rejects_the_485_shape_exactly(repo):
 def test_gate_rejects_a_result_belonging_to_another_run(repo, envelope_extra, code):
     sha = _commit(repo, "work/run-1", "docs/agents/work-launcher.md")
     outcome = verify_commit_correlation(
-        _run(), {"status": "succeeded", "commit": sha, **envelope_extra}, repo_path=repo)
+        _run(), {**_envelope(commit=sha), **envelope_extra}, repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == code
 
@@ -147,14 +161,13 @@ def test_gate_rejects_a_result_belonging_to_another_run(repo, envelope_extra, co
 @pytest.mark.parametrize("commit_value", [None, "", "not-a-sha", "abc123", 12345,
                                           "0" * 39, "g" * 40])
 def test_gate_rejects_anything_that_is_not_a_full_sha(repo, commit_value):
-    outcome = verify_commit_correlation(_run(), {"status": "succeeded",
-                                                 "commit": commit_value}, repo_path=repo)
+    outcome = verify_commit_correlation(_run(), _envelope(commit=commit_value), repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == "commit_missing"
 
 
 def test_gate_rejects_a_commit_that_does_not_exist(repo):
-    outcome = verify_commit_correlation(_run(), {"status": "succeeded", "commit": "a" * 40},
+    outcome = verify_commit_correlation(_run(), _envelope(commit="a" * 40),
                                         repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == "commit_not_found"
@@ -166,7 +179,7 @@ def test_gate_rejects_a_run_that_recorded_no_isolation(repo):
     branch that was never registered, so the gate falls closed."""
     sha = _commit(repo, "work/run-1", "docs/agents/work-launcher.md")
     outcome = verify_commit_correlation(
-        _run(isolation=None, branch=None), {"status": "succeeded", "commit": sha},
+        _run(isolation=None, branch=None), _envelope(commit=sha),
         repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == "isolation_not_recorded"
@@ -176,7 +189,7 @@ def test_gate_rejects_a_commit_on_a_different_branch(repo):
     """A real, signed-off, in-scope commit is still not this Run's evidence if
     it landed outside the Run's isolated worktree branch."""
     sha = _commit(repo, "work/somebody-else", "docs/agents/work-launcher.md")
-    outcome = verify_commit_correlation(_run(), {"status": "succeeded", "commit": sha},
+    outcome = verify_commit_correlation(_run(), _envelope(commit=sha),
                                         repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == "commit_not_on_run_branch"
@@ -185,7 +198,7 @@ def test_gate_rejects_a_commit_on_a_different_branch(repo):
 def test_gate_rejects_a_commit_that_predates_the_run(repo):
     sha = _commit(repo, "work/run-1", "docs/agents/work-launcher.md")
     future = _run(claimed_at=time.time() + 86400)
-    outcome = verify_commit_correlation(future, {"status": "succeeded", "commit": sha},
+    outcome = verify_commit_correlation(future, _envelope(commit=sha),
                                         repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == "commit_predates_run"
@@ -193,7 +206,7 @@ def test_gate_rejects_a_commit_that_predates_the_run(repo):
 
 def test_gate_rejects_a_commit_without_a_dco_trailer(repo):
     sha = _commit(repo, "work/run-1", "docs/agents/work-launcher.md", signoff=False)
-    outcome = verify_commit_correlation(_run(), {"status": "succeeded", "commit": sha},
+    outcome = verify_commit_correlation(_run(), _envelope(commit=sha),
                                         repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == "dco_trailer_missing"
@@ -203,7 +216,7 @@ def test_gate_rejects_a_commit_outside_the_approved_artifact_policy(repo):
     """#485's policy named exactly one file. A commit touching anything else
     breaches the approved scope, however real it is."""
     sha = _commit(repo, "work/run-1", "README.md")
-    outcome = verify_commit_correlation(_run(), {"status": "succeeded", "commit": sha},
+    outcome = verify_commit_correlation(_run(), _envelope(commit=sha),
                                         repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == "artifact_policy_violation"
@@ -213,7 +226,7 @@ def test_gate_rejects_a_commit_outside_the_approved_artifact_policy(repo):
 def test_gate_honors_an_explicit_artifact_path_set_over_prose(repo):
     sha = _commit(repo, "work/run-1", "README.md")
     outcome = verify_commit_correlation(
-        _run(artifact_paths=["README.md"]), {"status": "succeeded", "commit": sha},
+        _run(artifact_paths=["README.md"]), _envelope(commit=sha),
         repo_path=repo)
     assert isinstance(outcome, CommitEvidence)
     assert outcome.policy_paths == ("README.md",)
@@ -229,7 +242,7 @@ def test_gate_requires_a_real_change_under_an_unscoped_policy(repo):
     assert empty.returncode == 0
     sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
     outcome = verify_commit_correlation(
-        _run(artifact_policy=unscoped), {"status": "succeeded", "commit": sha}, repo_path=repo)
+        _run(artifact_policy=unscoped), _envelope(commit=sha), repo_path=repo)
     assert isinstance(outcome, CorrelationFailure)
     assert outcome.code == "no_files_changed"
 
@@ -276,7 +289,7 @@ def test_complete_blocks_a_mutating_run_with_no_commit(tmp_path, repo):
     dispatcher = _dispatcher(tmp_path, repo)
     dispatcher.registry.add(_run())
     run = dispatcher.complete("run-1", "succeeded",
-                              {"status": "succeeded", "evidence": "worker says so"})
+                              _envelope(evidence="worker says so"))
     assert run.status == "blocked"
     assert run.result["evidence_gate"] == "commit_correlation_failed"
     assert run.result["error"]["category"] == "commit_missing"
@@ -288,7 +301,7 @@ def test_complete_records_durable_correlated_evidence(tmp_path, repo):
     sha = _commit(repo, "work/run-1", "docs/agents/work-launcher.md")
     dispatcher = _dispatcher(tmp_path, repo)
     dispatcher.registry.add(_run())
-    run = dispatcher.complete("run-1", "succeeded", {"status": "succeeded", "commit": sha})
+    run = dispatcher.complete("run-1", "succeeded", _envelope(commit=sha))
     assert run.status == "succeeded"
     assert run.commit_evidence["commit"] == sha
     assert run.commit_evidence["branch"] == "work/run-1"
@@ -307,7 +320,7 @@ def test_a_gate_that_raises_blocks_rather_than_passes(tmp_path, repo):
     registry = RunRegistry(tmp_path / "runs.json")
     dispatcher = Dispatcher(registry, gh=FakeGh(), commit_gate=exploding_gate)
     dispatcher.registry.add(_run())
-    run = dispatcher.complete("run-1", "succeeded", {"status": "succeeded", "commit": "a" * 40})
+    run = dispatcher.complete("run-1", "succeeded", _envelope(commit="a" * 40))
     assert run.status == "blocked"
     assert run.result["error"]["category"] == "commit_gate_error"
 
@@ -357,7 +370,7 @@ def test_terminal_success_alone_no_longer_moves_the_issue_to_review(tmp_path, re
     sha = _commit(repo, "work/run-1", "docs/agents/work-launcher.md")
     dispatcher = _dispatcher(tmp_path, repo)
     dispatcher.registry.add(_run())
-    dispatcher.complete("run-1", "succeeded", {"status": "succeeded", "commit": sha})
+    dispatcher.complete("run-1", "succeeded", _envelope(commit=sha))
     assert dispatcher.gh.labels["owner/repo#485"] == [LABEL_IN_PROGRESS]
     assert LABEL_REVIEW not in [add for _, _, add in dispatcher.gh.swaps]
     assert dispatcher.gh.comments  # the result is still reported, just not as a transition
@@ -382,7 +395,7 @@ def test_the_sanctioned_order_end_to_end(tmp_path, repo):
     dispatcher = _dispatcher(tmp_path, repo, submitter=make_review_submitter(store))
     dispatcher.registry.add(_run())
 
-    run = dispatcher.complete("run-1", "succeeded", {"status": "succeeded", "commit": sha})
+    run = dispatcher.complete("run-1", "succeeded", _envelope(commit=sha))
     # 1 + 2: gated, with correlated evidence.
     assert run.status == "succeeded"
     assert run.commit_evidence["commit"] == sha
@@ -442,7 +455,7 @@ def test_a_failing_submitter_is_surfaced_and_retried(tmp_path, repo):
     dispatcher = _dispatcher(tmp_path, repo, submitter=flaky)
     dispatcher.registry.add(_run())
     with pytest.raises(ReviewSubmissionError):
-        dispatcher.complete("run-1", "succeeded", {"status": "succeeded", "commit": sha})
+        dispatcher.complete("run-1", "succeeded", _envelope(commit=sha))
     assert dispatcher.registry.get("run-1").status == "succeeded"
     assert dispatcher.registry.get("run-1").gh_synced is False
 
@@ -517,7 +530,7 @@ def test_review_sync_replays_a_submission_only_once(tmp_path, repo):
     state = tmp_path / "state"
     dispatcher = _dispatcher(tmp_path, repo, submitter=make_review_submitter(store))
     dispatcher.registry.add(_run())
-    dispatcher.complete("run-1", "succeeded", {"status": "succeeded", "commit": sha})
+    dispatcher.complete("run-1", "succeeded", _envelope(commit=sha))
 
     edits = []
 
@@ -589,18 +602,27 @@ def test_the_ci_dispatch_proof_worker_produces_gate_passing_evidence(tmp_path, r
         assert proof.run_cmd(["git", "-C", str(checkout), "rev-parse", "--verify",
                               f"refs/heads/{branch}"]).returncode == 0
 
+        request_id = "sha256:" + "0" * 64
         adapter = proof.DeterministicCommitAdapter(
-            worktree, run.issue_id, tmp_path / "logs", "hermes-free")
+            worktree, run.issue_id, tmp_path / "logs", "hermes-free",
+            request_id=request_id)
         envelope = adapter.invoke(run, "[ci fixture]", timeout_seconds=60)
         assert envelope["_status"] == "succeeded", envelope.get("error")
         assert envelope["commit"] == envelope["evidence"][1]["head_after"]
+        # The worker states its correlation; the gate is what checks it.
+        assert envelope["request_id"] == request_id
+        assert envelope["run_id"] == run.run_id and envelope["issue_id"] == run.issue_id
 
-        # And the production gate accepts it, against the run's real branch.
+        # And the production gate accepts it, against the run's real branch and
+        # the approved scope the fixture persists before dispatch.
         gated = _run(run_id=run.run_id, issue_id=run.issue_id, branch=branch,
-                     artifact_policy=None, request_id=None)
+                     artifact_policy=None, request_id=request_id,
+                     artifact_paths=[proof.MARKER_DIR], claimed_at=0.0)
         outcome = verify_commit_correlation(gated, envelope, repo_path=checkout)
         assert isinstance(outcome, CommitEvidence), getattr(outcome, "detail", outcome)
         assert outcome.commit == envelope["commit"]
         assert outcome.branch == branch
+        assert outcome.policy_paths == (proof.MARKER_DIR,)
+        assert all(f.startswith(proof.MARKER_DIR + "/") for f in outcome.files)
     finally:
         proof.remove_worktree(checkout, worktree)

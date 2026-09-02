@@ -2,6 +2,7 @@
 """Operator-facing parallel work launcher built on the dispatch contract."""
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 import re
@@ -13,7 +14,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from commit_evidence import make_commit_gate
+from commit_evidence import (make_commit_gate, normalize_repo_path,
+                             policy_paths)
 from dispatcher import Dispatcher, RunRegistry
 from execution_map import (ClaimConflict, ClaimRecord, ClaimStore, Issue,
                            SqliteClaimStore, collision_keys, derive_graph,
@@ -107,8 +109,14 @@ def parse_scope_file(path: Path) -> dict:
     title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), path.stem)
     before, sep, after = text.partition("## Acceptance criteria")
     criteria = [line[2:].strip() for line in after.splitlines() if line.startswith("- ")] if sep else []
+    # The concrete approved artifact scope, named in backticks under an
+    # `## Artifact policy` heading. `create()` requires it: that path always
+    # dispatches a mutating worker, and a mutating Run without a readable
+    # approved scope is refused by the Evidence Gate rather than run unbounded.
+    _, policy_sep, policy_text = text.partition("## Artifact policy")
+    artifact_paths = list(policy_paths(policy_text)) if policy_sep else []
     return {"title": title, "scope": before.replace(f"# {title}", "", 1).strip(),
-            "acceptance_criteria": criteria}
+            "acceptance_criteria": criteria, "artifact_paths": artifact_paths}
 
 
 class WorkLauncher:
@@ -392,6 +400,31 @@ class WorkLauncher:
             print(f"[work_launcher] could not record isolation for {run_id}: {exc}",
                   file=sys.stderr)
 
+    def _record_approved_scope(self, run_id: str, artifact_paths: Sequence[str]) -> None:
+        """Persist the concrete approved artifact paths before dispatch.
+
+        The Evidence Gate resolves a mutating Run's permitted scope fail-closed
+        and prefers explicit paths over prose, so the launcher must write them
+        before the worker starts -- not after, and never from anything the
+        worker returns. Like `_record_mutating`, a registry that cannot carry
+        them fails the launch rather than leaving the run unbounded.
+        """
+        normalized = []
+        for path in artifact_paths or ():
+            safe = normalize_repo_path(path)
+            if safe is None:
+                raise ExecutionGateError("artifact_path_not_repository_relative")
+            normalized.append(safe)
+        if not normalized:
+            raise ExecutionGateError("approved_artifact_paths_required")
+        registry = getattr(self.dispatcher, "registry", None)
+        if registry is None or not hasattr(registry, "update"):
+            raise ExecutionGateError("approved_scope_not_recordable")
+        try:
+            registry.update(run_id, artifact_paths=normalized)
+        except Exception as exc:  # noqa: BLE001 - an unbounded mutating run is worse
+            raise ExecutionGateError("approved_scope_not_recordable") from exc
+
     def _record_mutating(self, run_id: str) -> None:
         """Mark the Run as mutating on the durable record, or fail the launch.
 
@@ -417,7 +450,8 @@ class WorkLauncher:
                 delegation_depth: int | None = None,
                 artifact_policy: str | None = None,
                 request_id: str | None = None,
-                mutating: bool = False) -> dict:
+                mutating: bool = False,
+                artifact_paths: Sequence[str] | None = None) -> dict:
         # Single authoritative pre-claim config gate (S7b #482 follow-on):
         # `runtime_launch_config_ok` is the same function the eligibility
         # projection consults (action_host._build_dispatch_request,
@@ -429,12 +463,22 @@ class WorkLauncher:
         # the adapter itself later refuses to start.
         if not runtime_launch_config_ok(runtime):
             raise ExecutionGateError("runtime_not_configured")
+        # A mutating Run must be isolated, and that must be decided *here*,
+        # before any claim. The Evidence Gate refuses a mutating Run whose
+        # record shows no isolation, but that refusal happens after the worker
+        # has already run -- in the launcher's own shared checkout, which is
+        # exactly the #485/#489 breach. Failing the launch closed is the only
+        # point at which the shared checkout is still protected.
+        if mutating and not create_worktree:
+            raise ExecutionGateError("mutating_run_requires_isolation")
         if self.claim_store is None:
             # Legacy (pre-#262) path: no execution-map gate; Dispatcher owns the run_id.
             run = self.dispatcher.claim(issue_id, workflow, worker_role, runtime,
                                         max_runtime_seconds)
             run_id = run.run_id
             if mutating:
+                if artifact_paths:
+                    self._record_approved_scope(run_id, artifact_paths)
                 self._record_mutating(run_id)
             worktree = self.worktree_root / run_id
             if create_worktree:
@@ -477,6 +521,8 @@ class WorkLauncher:
             if limit_fields and hasattr(self.dispatcher.registry, "update"):
                 self.dispatcher.registry.update(run_id, **limit_fields)
             if mutating:
+                if artifact_paths:
+                    self._record_approved_scope(run_id, artifact_paths)
                 self._record_mutating(run_id)
             if create_worktree:
                 try:
@@ -502,18 +548,48 @@ class WorkLauncher:
 
     def create(self, repo: str, title: str, scope: str, acceptance_criteria: list[str], *,
                runtime: str, worker_role: str, workflow: str, max_runtime_seconds: int,
-               max_cost_usd: float, approved: bool) -> dict:
+               max_cost_usd: float, approved: bool,
+               artifact_paths: Sequence[str]) -> dict:
+        """Create an approved issue and launch it as an isolated mutating run.
+
+        `artifact_paths` is the concrete approved scope and is required: this
+        path always dispatches a mutating worker, and the Evidence Gate
+        resolves a mutating Run's permitted paths fail-closed. Deriving them
+        from prose here would put the parser between the operator's approval
+        and what the gate enforces, so the caller states them and the launcher
+        persists them on the durable Run before the worker starts.
+        """
         if not approved:
             raise ValueError("operator approval is required before claim and dispatch")
+        if not artifact_paths:
+            raise ExecutionGateError("approved_artifact_paths_required")
+        policy = ("Only these repository-relative paths, inside the run's isolated worktree: "
+                  + ", ".join(f"`{p}`" for p in artifact_paths) + ". "
+                  + DEFAULT_ARTIFACT_POLICY)
         limits = {"max_cost_usd": max_cost_usd, "max_runtime_seconds": max_runtime_seconds,
                   "max_parallel_workers": "operator policy", "delegation_depth": 0}
-        prompt = generate_worker_prompt(scope, acceptance_criteria, limits)
-        body = f"## Scope\n\n{scope}\n\n## Acceptance criteria\n\n" + "\n".join(f"- {x}" for x in acceptance_criteria)
+        prompt = generate_worker_prompt(scope, acceptance_criteria, limits,
+                                        artifact_policy=policy)
+        body = (f"## Scope\n\n{scope}\n\n## Acceptance criteria\n\n"
+                + "\n".join(f"- {x}" for x in acceptance_criteria)
+                + f"\n\n## Artifact policy\n\n{policy}\n")
         issue_id = self.github.create_issue(repo, title, body)
         self.github.approve(issue_id)
+        # The approved request snapshot this run executes. `create` builds the
+        # mandate itself, so the digest is taken over exactly what was approved
+        # -- the gate requires every mutating Run to correlate to one.
+        request_id = "sha256:" + hashlib.sha256(json.dumps(
+            {"issue_id": issue_id, "scope": scope,
+             "acceptance_criteria": list(acceptance_criteria),
+             "limits": {k: str(v) for k, v in sorted(limits.items())},
+             "artifact_paths": list(artifact_paths)},
+            sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
         return self._launch(issue_id, prompt, runtime=runtime, worker_role=worker_role,
                             workflow=workflow, max_runtime_seconds=max_runtime_seconds,
-                            create_worktree=True, mutating=True)
+                            create_worktree=True, mutating=True,
+                            artifact_paths=artifact_paths,
+                            artifact_policy=policy, request_id=request_id,
+                            max_cost_usd=max_cost_usd)
 
     def resume(self, issue_id: str, *, runtime: str, worker_role: str, workflow: str,
                max_runtime_seconds: int, prompt: str,
@@ -523,7 +599,8 @@ class WorkLauncher:
                artifact_policy: str | None = None,
                request_id: str | None = None,
                isolate: bool = False,
-               mutating: bool | None = None) -> dict:
+               mutating: bool | None = None,
+               artifact_paths: Sequence[str] | None = None) -> dict:
         """Resume a ready issue with the full approved dispatch request.
 
         The dispatch-contract fields (cost ceiling, parallel-worker ceiling,
@@ -551,14 +628,26 @@ class WorkLauncher:
         override that reading in either direction.
         """
         if mutating is None:
-            mutating = artifact_policy is not None
+            # Isolation decides it. A run authorized to produce commit evidence
+            # must be isolated (#489/#490), so "is this run mutating?" and "was
+            # it given its own worktree?" are the same question on this path.
+            # Deriving it from `artifact_policy is not None` instead was wrong
+            # in both directions: it marked a sanctioned shared-checkout
+            # mandate mutating, which the isolation guard below then refuses,
+            # and it left an isolated run with no policy ungated.
+            mutating = isolate
+        # #490/#489: a mutating run is isolated or it does not start. Refusing
+        # here, rather than letting `_launch` decide, keeps the refusal next to
+        # the caller that asked for the unsafe combination.
+        if mutating and not isolate:
+            raise ExecutionGateError("mutating_run_requires_isolation")
         return self._launch(issue_id, prompt, runtime=runtime, worker_role=worker_role,
                             workflow=workflow, max_runtime_seconds=max_runtime_seconds,
                             create_worktree=isolate, max_cost_usd=max_cost_usd,
                             max_parallel_workers=max_parallel_workers,
                             delegation_depth=delegation_depth,
                             artifact_policy=artifact_policy, request_id=request_id,
-                            mutating=mutating)
+                            mutating=mutating, artifact_paths=artifact_paths)
 
     def submit(self, run_id: str, result: dict) -> dict:
         """Record a terminal result, enforcing the approved cost ceiling.
@@ -581,13 +670,47 @@ class WorkLauncher:
                           "error": {"category": "budget_exceeded",
                                     "recovery": "Approved cost ceiling exceeded; amend the issue ceiling or "
                                                 "reduce scope, then start a fresh run."}}
-        run = self.dispatcher.complete(run_id, result["status"], result)
+        # `complete()` persists the terminal transition first and only then
+        # syncs GitHub and writes the durable review submission (#493). Those
+        # later steps can raise -- a ReviewSubmissionError, a GitHubError -- at
+        # which point the Run is already terminal but this method used to
+        # return early, leaking the execution-map claim and the resources it
+        # holds for a Run that had already finished. The claim release must
+        # therefore run on the failure path too, and the original error must
+        # still reach the caller: a cleanup must never convert a failure into
+        # silence, nor mask it with a failure of its own.
+        try:
+            run = self.dispatcher.complete(run_id, result["status"], result)
+        except BaseException:
+            try:
+                self._release_terminal_claim(run_id)
+            except Exception as cleanup_error:  # noqa: BLE001 - never mask the original
+                print(f"[work_launcher] claim release after failed complete() for "
+                      f"{run_id}: {cleanup_error}", file=sys.stderr)
+            raise
+        self._release_terminal_claim(run_id, status=run.status)
+        return {"issue_id": run.issue_id, "run_id": run.run_id, "status": run.status}
+
+    def _release_terminal_claim(self, run_id: str, status: str | None = None) -> None:
+        """Release `run_id`'s execution-map claim, whatever its terminal status.
+
+        Shared by the success and failure paths of `submit()` so a claim is
+        never held past the point its Run went terminal. When the status is not
+        known (the failure path, where `complete()` raised), it is read back
+        from the registry so the release reason still records what actually
+        happened rather than a guess.
+        """
         claim = self._claims_by_run.pop(run_id, None)
         if claim is None and self.claim_store is not None:
-            claim = next((x for x in self.claim_store.active_claims(self.clock()) if x.run_id == run_id), None)
-        if claim is not None:
-            self._release(claim, f"terminal:{run.status}")
-        return {"issue_id": run.issue_id, "run_id": run.run_id, "status": run.status}
+            claim = next((x for x in self.claim_store.active_claims(self.clock())
+                          if x.run_id == run_id), None)
+        if claim is None:
+            return
+        if status is None:
+            registry = getattr(self.dispatcher, "registry", None)
+            run = registry.get(run_id) if registry is not None and hasattr(registry, "get") else None
+            status = getattr(run, "status", None) or "unknown"
+        self._release(claim, f"terminal:{status}")
 
     def list_active(self) -> list[dict]:
         now = self.clock()

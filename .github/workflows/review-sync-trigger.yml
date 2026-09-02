@@ -64,7 +64,18 @@ jobs:
           pip install pyyaml jsonschema cryptography
 
       - name: Run one review-sync pass
+        # `cli` lives in agent-platform/, not at the repository root, and this
+        # job deliberately does not install the package. Running
+        # `python -m cli.unified_cli` from the root therefore failed with
+        # ModuleNotFoundError on every trigger -- the pass never ran, and the
+        # job's success said nothing. The working directory stays at the root
+        # so REVIEW_SYNC_STORE/STATE_DIR keep resolving as repository-relative
+        # paths; PYTHONPATH is what makes the package importable.
+        env:
+          PYTHONPATH: agent-platform
         run: |
+          set -euo pipefail
+          python -c "import cli.unified_cli"  # fail loudly if the path is wrong again
           python -m cli.unified_cli daemon sync-review \
             --repo "$GITHUB_REPOSITORY" \
             --store "$REVIEW_SYNC_STORE" \
