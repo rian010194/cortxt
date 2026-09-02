@@ -21,6 +21,28 @@ restarted host all address the same submission; an existing event with that id
 short-circuits before any append. `review_sync`'s own marker file dedupes the
 GitHub side on the same id, so a replay never produces a second label edit or
 a second submission event.
+
+## Relationship to the MCP lifecycle writer
+
+`cortxt_mcp/run_lifecycle.py` also writes `run.review_submitted`, through the
+`cortxt_run_submit_for_review` tool (ADR-034). That is not a duplicate of this
+module and neither replaces the other -- they are two different submitters for
+two different paths:
+
+| | MCP lifecycle | this module |
+| --- | --- | --- |
+| Submitter | an agent, through the mandate-protected MCP surface | the dispatcher, after its Evidence Gate |
+| Submission id | random per submission | derived from the `run_id` |
+| Idempotence key | caller-supplied, conflicts on a changed payload | the derived id; a replay is a no-op |
+
+A caller supplying its own idempotency key can express "this is a *different*
+submission of the same run", which the MCP tool needs and the dispatcher does
+not: a Run completes once, so its submission is a function of the Run.
+
+`review_sync._submissions()` reads only `review_submission_id`, so it consumes
+both. If one Run ever produced a submission on both paths, review-sync applies
+whichever it reaches first and skips the other as `already_review`; the
+transition still happens exactly once.
 """
 from __future__ import annotations
 
