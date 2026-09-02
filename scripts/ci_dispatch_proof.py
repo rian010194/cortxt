@@ -6,8 +6,17 @@ isolated worktree, against the live (private) repository through `gh`:
 
   workflow:ready -> claim() -> workflow:in-progress -> dispatch_async()
   -> deterministic worker writes a marker file and commits it in a unique
-     isolated worktree -> Dispatcher.complete() -> workflow:review
+     isolated worktree -> Dispatcher.complete() -> Evidence Gate correlates
+     the landed commit to the run's registered branch -> durable
+     run.review_submitted -> review-sync -> workflow:review
   -> result comment posted -> harness verifies -> fixture reset.
+
+Since #490 and #493 this fixture also proves the safety chain live, not just
+the mechanical loop: the run is registered mutating with its real isolated
+branch, so `Dispatcher.complete()` runs the production Evidence Gate against a
+real commit, and the label is asserted to be still `workflow:in-progress`
+immediately after completion. Only `sync_review_submissions()` moves it, and a
+replay of that pass is asserted to be a no-op.
 
 This is the implementation of the design in lab/ci-dispatch-proof-design.md
 (workspace-local). It deliberately does NOT call a model: AC 1 (provider-
@@ -133,9 +142,14 @@ class DeterministicCommitAdapter:
     in for are fixed at construction.
     """
 
-    def __init__(self, worktree: Path, issue_id: str, log_dir: Path, engine_id: str) -> None:
+    def __init__(self, worktree: Path, issue_id: str, log_dir: Path, engine_id: str,
+                 request_id: str | None = None) -> None:
         self.worktree = worktree
         self.issue_id = issue_id
+        # The approved request this run executes. The Evidence Gate requires a
+        # mutating result to state run_id, issue_id AND request_id, and to have
+        # all three match the durable Run record exactly (#490).
+        self.request_id = request_id
         self.log_dir = log_dir
         self.engine_id = engine_id
         self.runtime = f"ci-deterministic/{engine_id}-route-v1"
@@ -192,8 +206,12 @@ class DeterministicCommitAdapter:
             staged = self._git("diff", "--cached", "--name-only")
             if staged.stdout.strip() != marker_rel:
                 raise ProofError(f"unexpected staged paths: {staged.stdout.strip()!r}")
+            # `-s`: the Evidence Gate (#490) requires a DCO trailer on every
+            # commit it accepts as a mutating run's evidence, and this fixture
+            # proves that gate live. The commit is local to the runner's
+            # worktree and is never pushed.
             commit = self._git(
-                "commit", "-m", f"test(dispatch): proof {run.run_id}",
+                "commit", "-s", "-m", f"test(dispatch): proof {run.run_id}",
                 "--author", f"{COMMIT_IDENTITY[0]} <{COMMIT_IDENTITY[1]}>",
             )
             if commit.returncode != 0:
@@ -214,6 +232,10 @@ class DeterministicCommitAdapter:
             envelope = {
                 "issue_id": run.issue_id,
                 "run_id": run.run_id,
+                # The commit-correlation Evidence Gate (#490) reads this field.
+                # A mutating run that omits it is blocked, not succeeded.
+                "commit": head_after,
+                "request_id": self.request_id,
                 "runtime": self.runtime,
                 "worker_role": run.worker_role,
                 "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
@@ -283,6 +305,16 @@ def ensure_imports() -> None:
 _CREATED_WORKTREES: list[tuple[Path, Path]] = []
 
 
+def proof_branch(issue_num: str, run_id: str) -> str:
+    """The run's isolated branch name.
+
+    Factored out because the Evidence Gate (#490) correlates the landed commit
+    against the branch recorded on the durable Run, so the proof must register
+    exactly the branch it created -- not a name reconstructed later.
+    """
+    return f"ci/dispatch-proof/{issue_num}/{run_id.replace(':', '-')}"
+
+
 def create_worktree(checkout: Path, temp_root: Path, issue_num: str, run_id: str) -> Path:
     """Create a unique isolated worktree (sibling dirs under temp_root),
     following the daemon's worktree pattern but unique per run."""
@@ -290,7 +322,7 @@ def create_worktree(checkout: Path, temp_root: Path, issue_num: str, run_id: str
     run_part = run_id.replace(":", "-")
     worktree = temp_root / f"{checkout.name}-worktrees" / safe_id / run_part
     worktree.parent.mkdir(parents=True, exist_ok=True)
-    branch = f"ci/dispatch-proof/{issue_num}/{run_part}"
+    branch = proof_branch(issue_num, run_id)
     result = run_cmd(
         ["git", "-C", str(checkout), "worktree", "add", "-b", branch, str(worktree), "HEAD"],
         timeout=60,
@@ -344,7 +376,10 @@ def verify_commit_independent(checkout: Path, worktree: Path, head_before: str, 
 def run_proof(args: argparse.Namespace) -> dict:
     ensure_imports()
 
+    from commit_evidence import make_commit_gate  # scripts/
     from dispatcher import Dispatcher, GitHubOps, RunRegistry  # scripts/
+    from daemon.review_submission import make_review_submitter  # agent-platform
+    from daemon.review_sync import sync_review_submissions
     from routing.engine_manifest import DEFAULT_MANIFESTS, route  # agent-platform
     from runtime.default_engine_context import build_default_engine_context
     from worker_adapters import ADAPTER_REGISTRY, dispatch_async, register_adapter
@@ -410,7 +445,17 @@ def run_proof(args: argparse.Namespace) -> dict:
     state_dir = temp_root / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     registry = RunRegistry(state_dir / "runs.json")
-    dispatcher = Dispatcher(registry, GitHubOps())
+    # S7 (#490, #493): the proof runs the production gate and the production
+    # review path, not a relaxed variant. The gate reads git in the primary
+    # checkout, whose ref store the linked worktree shares; the review
+    # submitter writes to a runner-local session store that review-sync then
+    # reads. Both are the same objects `default_launcher` wires.
+    sessions_dir = state_dir / "sessions"
+    dispatcher = Dispatcher(
+        registry, GitHubOps(),
+        commit_gate=make_commit_gate(checkout),
+        review_submitter=make_review_submitter(sessions_dir),
+    )
     run_log_dir = checkout / ".hermes" / "dispatch" / "runs"
 
     # 4. Claim (label ready -> in-progress + claim comment).
@@ -421,15 +466,32 @@ def run_proof(args: argparse.Namespace) -> dict:
     evidence["claim"] = {"run_id": run.run_id, "runtime": run.runtime, "worker_role": run.worker_role}
     observe_labels(repo, issue_num, expect=frozenset({"workflow:in-progress", "background-task", "ci:dispatch-proof"}), step="after claim")
 
-    # 5. Isolated worktree.
+    # 5. Isolated worktree, registered on the durable Run.
     worktree = create_worktree(checkout, temp_root, issue_num, run.run_id)
+    # #490: the gate correlates the landed commit against the branch the Run
+    # record registers, and applies at all only to a Run the launcher marked
+    # mutating. This proof creates its own worktree rather than going through
+    # WorkLauncher, so it records the same three fields the launcher would --
+    # otherwise the fixture would exercise a weaker path than production.
+    # The approved scope is persisted before dispatch and is the same data the
+    # gate enforces: one marker path under MARKER_DIR, plus the request the run
+    # executes. The worker supplies none of it.
+    approved_paths = [MARKER_DIR]
+    request_id = "sha256:" + hashlib.sha256(
+        f"{issue_id}|{run.run_id}|{MARKER_DIR}".encode("utf-8")).hexdigest()
+    registry.update(run.run_id, mutating=True, isolation="worktree",
+                    branch=proof_branch(issue_num, run.run_id),
+                    artifact_paths=approved_paths, request_id=request_id)
+    run = registry.get(run.run_id)
+    evidence["approved_scope"] = {"artifact_paths": approved_paths, "request_id": request_id}
     head_before = run_cmd(["git", "-C", str(worktree), "rev-parse", "HEAD"], timeout=30).stdout.strip()
     if not head_before:
         raise ProofError("could not read head_before from worktree")
 
     # 6. Replace only the routed engine's registry entry with the
     #    deterministic worker.
-    adapter = DeterministicCommitAdapter(worktree, issue_id, run_log_dir, engine_id)
+    adapter = DeterministicCommitAdapter(worktree, issue_id, run_log_dir, engine_id,
+                                        request_id=request_id)
     register_adapter(engine_id, adapter)
     assert ADAPTER_REGISTRY[engine_id] is adapter
 
@@ -460,8 +522,56 @@ def run_proof(args: argparse.Namespace) -> dict:
         raise ProofError("envelope correlation mismatch (issue_id/run_id)")
     evidence["result"] = {"status": result["status"], "gh_synced": True, "fields": required_fields}
 
-    # 10. Live label observation: in-progress -> review.
-    observe_labels(repo, issue_num, expect=frozenset({"workflow:review", "background-task", "ci:dispatch-proof"}), step="after complete")
+    # 9b. Evidence Gate (#490): the run is succeeded because a real commit was
+    #     verified and correlated, not because the worker said so.
+    gate_evidence = result.get("commit_evidence") or {}
+    if envelope.get("evidence_gate") != "commit_correlated":
+        raise ProofError(f"result envelope not gate-verified: {envelope.get('evidence_gate')!r}")
+    if gate_evidence.get("commit") != evidence["commit"]["head_after"]:
+        raise ProofError("gate evidence commit does not match the independently verified commit")
+    if gate_evidence.get("branch") != proof_branch(issue_num, run.run_id):
+        raise ProofError(f"gate evidence branch mismatch: {gate_evidence.get('branch')!r}")
+    if gate_evidence.get("run_id") != run.run_id or gate_evidence.get("issue_id") != issue_id:
+        raise ProofError("gate evidence does not correlate to this run/issue")
+    if gate_evidence.get("policy_paths") != approved_paths:
+        raise ProofError(
+            f"gate enforced {gate_evidence.get('policy_paths')!r}, not the approved "
+            f"artifact paths {approved_paths!r}")
+    if gate_evidence.get("request_id") != request_id:
+        raise ProofError("gate evidence does not carry the approved request_id")
+    outside = [f for f in gate_evidence.get("files", [])
+               if not f.replace(chr(92), "/").startswith(MARKER_DIR + "/")]
+    if outside:
+        raise ProofError(f"commit touched paths outside the approved scope: {outside}")
+    evidence["evidence_gate"] = {
+        "verdict": "commit_correlated",
+        "commit": gate_evidence["commit"],
+        "branch": gate_evidence["branch"],
+        "files": gate_evidence.get("files", []),
+        "policy_paths": gate_evidence.get("policy_paths", []),
+        "request_id": gate_evidence.get("request_id"),
+    }
+    log(f"evidence gate: commit correlated on {gate_evidence['branch']}")
+
+    # 10. Review is earned, not asserted (#493). The dispatcher must NOT have
+    #     moved the label; a durable review submission must exist; and only
+    #     review-sync performs in-progress -> review.
+    observe_labels(repo, issue_num, expect=frozenset({"workflow:in-progress", "background-task", "ci:dispatch-proof"}), step="after complete, before review-sync")
+    submission_id = result.get("review_submission_id")
+    if not submission_id:
+        raise ProofError("no durable review submission recorded on the run")
+    report = sync_review_submissions(sessions_dir, state_dir)
+    if report["synced"] != [submission_id]:
+        raise ProofError(f"review-sync did not apply exactly this submission: {report}")
+    observe_labels(repo, issue_num, expect=frozenset({"workflow:review", "background-task", "ci:dispatch-proof"}), step="after review-sync")
+    # Replay: a second pass is a no-op, not a second edit.
+    replay = sync_review_submissions(sessions_dir, state_dir)
+    if replay["synced"] or not replay["skipped"]:
+        raise ProofError(f"review-sync replay was not idempotent: {replay}")
+    evidence["review_sync"] = {"review_submission_id": submission_id,
+                               "label_moved_by": "review-sync",
+                               "replay_skipped": replay["skipped"][0]["reason"]}
+    log(f"review-sync applied {submission_id}; replay skipped as {replay['skipped'][0]['reason']}")
 
     # 11. Result comment validation (parse conservatively; comment is markdown).
     #     The claim comment also contains the run_id, so require the result

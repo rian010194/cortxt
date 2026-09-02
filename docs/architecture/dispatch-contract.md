@@ -77,6 +77,20 @@ Every terminal result must return:
 | `artifacts` | Content-free references plus hashes where applicable |
 | `evidence` | Tests, sources, assertions, or review inputs |
 | `error` | Structured category and recovery suggestion when not successful |
+| `commit` | **Mutating runs only.** The full SHA of the commit the run landed |
+
+A **mutating run** — one whose approved mandate expects it to change the
+repository — must return `commit`. Self-reported status is not evidence: the
+Evidence Gate (`scripts/commit_evidence.py`, applied in
+`Dispatcher.complete()`) verifies that the commit exists, correlates to this
+`run_id`, `issue_id` and `request_id` — all three required in the envelope, so
+a worker cannot skip a check by omitting a field — sits on the run's registered
+isolated worktree branch, was made **strictly after** the second the run was
+claimed, carries a DCO trailer, and stays inside the approved artifact scope,
+which resolves fail-closed and never to "unrestricted". It then writes that correlation onto the
+durable Run record as `commit_evidence`. A missing, unverifiable or
+non-correlating commit converts the claimed `succeeded` into a structured
+`blocked` — it is never relayed onward as success (#490).
 
 The result may link to protected artifacts but must not place secrets, private
 documents, prompts, raw reasoning, or unrestricted logs in GitHub.
@@ -92,7 +106,16 @@ dispatcher processes remain an open race risk (ADR-018 clarification,
 2026-08-22).
 
 - A valid claim moves the GitHub item from `Ready` to `In progress`.
-- A complete result with required evidence moves it to `Review`.
+- A complete result with required evidence moves it to `Review` — but a
+  terminal worker status never performs that move by itself (#493). The order
+  is: the worker reaches a terminal candidate status; the Evidence Gate
+  verifies the result and, for a mutating run, the commit correlation above; a
+  complete and idempotent `run.review_submitted` is written to the session
+  store (`agent-platform/daemon/review_submission.py`); and only then does
+  `cortxt daemon sync-review`
+  (`agent-platform/daemon/review_sync.py`, ADR-037) apply
+  `in-progress -> review` from that durable submission. Missing or incorrect
+  evidence blocks the transition; the issue stays `In progress`.
 - A structured non-recoverable result moves it to `Blocked`.
 - Only independent review plus human approval moves it to `Done`.
 - Retry creates a new `run_id`; it never overwrites prior run evidence.

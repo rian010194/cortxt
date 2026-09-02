@@ -54,6 +54,92 @@ while the change had landed in the shared checkout, and a mandate requiring
 the change to stay "inside the run's isolated worktree" was unenforceable
 rather than merely unenforced.
 
+## Evidence Gate: a mutating run must land a correlated commit
+
+Isolation says where a run worked. It does not say whether the run produced
+anything. A run whose approved mandate expects it to change the repository is
+recorded as **mutating** on its durable Run record — `create` always, `resume`
+whenever the mandate carries an artifact policy, and either way by the
+launcher, never by the worker. A registry that cannot carry the flag fails the
+launch (`mutating_run_not_recordable`) instead of running a mutating worker
+under no gate at all.
+
+A mutating run may not be recorded `succeeded` unless
+`scripts/commit_evidence.py` verifies a landed commit that:
+
+- exists in the repository;
+- correlates to this run's `run_id`, `issue_id` and approved `request_id`. All
+  three are **required** in the result envelope — an omitted field is not a
+  passed check — and a Run record missing any of them cannot be correlated at
+  all;
+- is reachable from the run's registered `work/<run_id>` branch — a run that
+  recorded no isolation has no branch to correlate against and fails closed;
+- was committed **strictly after** the second in which the run was claimed.
+  Git timestamps have one-second resolution, so a commit inside the claim's own
+  second cannot be ordered against it and is refused;
+- carries a `Signed-off-by:` DCO trailer;
+- touches only what the approved artifact scope permits.
+
+The approved scope resolves fail-closed, with no unrestricted outcome. An
+explicit `artifact_paths` set on the Run wins; otherwise the gate uses the paths
+named in backticks in the artifact policy, including single-segment
+repository-relative paths such as `LICENSE`. A Run carrying neither is blocked
+(`artifact_policy_missing`), and a policy naming no readable path is blocked
+(`artifact_policy_unparsable`) rather than treated as permitting everything.
+Every path on both sides must be repository-relative: an absolute path, a drive
+letter or a `..` segment is refused, never silently skipped.
+
+A mutating run is always isolated. `resume` derives "is this run mutating?" from
+whether it was given its own worktree, and a mutating launch without isolation
+is refused before any claim exists (`mutating_run_requires_isolation`) — the
+Evidence Gate would refuse the result anyway, but only after the worker had
+already run in the launcher's shared checkout. `create` states its approved
+paths outright and the launcher persists them on the Run before dispatch.
+
+The verified correlation is written onto the Run as `commit_evidence` and into
+the result envelope. Anything else — a missing SHA, a foreign commit, a policy
+breach, or a gate that cannot read the repository — converts the claimed
+`succeeded` into `blocked` with a stable failure code.
+
+This closes #490. The #485 run `run-6d936b467f804939a4ce734ac5f45dd8` reported
+`succeeded` with `artifacts: ["run-log:..."]` and evidence "hermes-free
+reported status=succeeded", while `git log --all` for the mandated path
+returned zero commits. Nothing required an artifact, so the claim was accepted
+and relayed to the Issue.
+
+## Review is earned, not asserted
+
+A terminal worker status never moves the Issue to `workflow:review`. The order
+is fixed (#493):
+
+1. the worker reaches a terminal candidate status;
+2. the Evidence Gate verifies the result and the commit correlation above;
+3. `agent-platform/daemon/review_submission.py` writes a complete, idempotent
+   `run.review_submitted` event to the session store — the submission id is
+   derived from the `run_id`, so a replay, a resync and a restarted host all
+   address the same submission;
+4. `cortxt daemon sync-review` (`daemon/review_sync.py`, ADR-037) performs
+   `in-progress -> review` from that durable submission, and only from it.
+
+The dispatcher still syncs the transitions that are its own — `cancelled`
+returns the Issue to `workflow:ready`, a failing status takes it to
+`workflow:blocked` — and still posts the result comment. It no longer moves
+the Issue forward. With no session store configured there is no submission
+path, so a completed run stays `workflow:in-progress`: the transition is
+withheld rather than taken on a worker's word.
+
+Because that failure mode is silent-but-terminal, `default_launcher` always
+wires the submitter. The store resolves from the registry —
+`agent-platform/.dispatch/runs.json` -> `agent-platform/.sessions`, the same
+store `cortxt sessions` and `cortxt daemon sync-review` use — and never from
+the process cwd, for the reason `action_host.py` resolves the registry that
+way: a cwd-relative store is how #485's Run records ended up in a second,
+unaudited registry root. Pass `review_store` to override it.
+
+On #485 the label moved `in-progress -> review` at 12:16:38 and the result
+comment landed at 12:16:40 — the ordered pair `_sync_github()` emits — while
+no `run.review_submitted` event existed in any store.
+
 ## Recovery out of a stranded claim
 
 `workflow.recover-to-ready.v1` is the one sanctioned actuator for

@@ -59,7 +59,9 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
+
+from commit_evidence import CorrelationFailure, verify_commit_correlation
 
 DEFAULT_MAX_PARALLEL_WORKERS = None  # None = no ceiling (operator decision 2026-08-15, see #136)
 DEFAULT_DELEGATION_DEPTH = None  # None = no ceiling (operator decision 2026-08-15, see #136)
@@ -96,6 +98,16 @@ FAILING_STATUSES = ("failed", "timed_out", "budget_exceeded", "blocked")
 
 class GitHubError(RuntimeError):
     pass
+
+
+class ReviewSubmissionError(RuntimeError):
+    """The durable review submission could not be written (#493).
+
+    Separate from GitHubError because it is not a network condition: without
+    it the run has no sanctioned route to `workflow:review` at all, so
+    `_sync_github()` must fail rather than leave a run that looks reviewable
+    and is not. `resync_pending()` retries it on the next pass.
+    """
 
 
 class GitHubOps:
@@ -161,6 +173,24 @@ class Run:
     # name constructed out of the run_id.
     isolation: Optional[str] = None
     branch: Optional[str] = None
+    # Whether this Run's approved mandate expects it to change the repository
+    # (S7 #490). A mutating Run may not be recorded `succeeded` without a
+    # commit the Evidence Gate has verified and correlated; a non-mutating Run
+    # (research, diagnosis) has no commit to correlate and is not gated on one.
+    # Defaults False so only a launch that declares itself mutating is held to
+    # the commit requirement -- the launcher sets it, never the worker.
+    mutating: bool = False
+    # The path set the approved artifact policy permits, when the mandate
+    # carries one explicitly instead of naming paths in prose.
+    artifact_paths: Optional[list] = None
+    # The Evidence Gate's durable verdict for a mutating Run: the correlated
+    # commit, branch, worktree, timestamp and changed files. Present only when
+    # the gate actually verified them, so its absence is itself evidence.
+    commit_evidence: Optional[dict] = None
+    # The durable `run.review_submitted` id written for this Run (#493). Set
+    # only by the sanctioned submission path; review-sync moves the Issue to
+    # `workflow:review` from that event, never from a terminal worker status.
+    review_submission_id: Optional[str] = None
 
     def gh_sync_claim_stale(self, now: Optional[float] = None) -> bool:
         """A claim older than GH_SYNC_CLAIM_LEASE_SECONDS is treated as
@@ -220,9 +250,18 @@ class Dispatcher:
         gh: Optional[GitHubOps] = None,
         max_parallel_workers: Optional[int] = DEFAULT_MAX_PARALLEL_WORKERS,
         delegation_depth: Optional[int] = DEFAULT_DELEGATION_DEPTH,
+        commit_gate: Optional[Callable] = None,
+        review_submitter: Optional[Callable] = None,
     ):
         self.registry = registry
         self.gh = gh or GitHubOps()
+        # The Evidence Gate (#490) and the durable review submission (#493).
+        # Both are injected so tests can drive them without git or a session
+        # store, and so a deployment that has no session store configured
+        # fails closed (no submission -> no review transition) rather than
+        # silently falling back to the old label-on-status behavior.
+        self.commit_gate = commit_gate or verify_commit_correlation
+        self.review_submitter = review_submitter
         # RLock, not Lock: sweep_expired() holds the lock while calling
         # complete() on the same thread, and complete()/heartbeat() must
         # themselves be lock-protected once a caller other than claim() can
@@ -365,11 +404,89 @@ class Dispatcher:
                     f"run {run_id} already terminal (status={run.status!r}); "
                     "refusing a second complete() to avoid a double label/comment"
                 )
-            self.registry.update(run_id, status=status, finished_at=time.time(), result=result_envelope)
+            status, result_envelope, evidence = self._gate_commit(run, status, result_envelope)
+            fields = {"status": status, "finished_at": time.time(), "result": result_envelope}
+            if evidence is not None:
+                fields["commit_evidence"] = evidence
+            self.registry.update(run_id, **fields)
+            run = self.registry.get(run_id)
 
         if run.parent_run_id is None:
             self._sync_github(run_id, run.issue_id, status, result_envelope)
         return self.registry.get(run_id)
+
+    def _gate_commit(self, run: Run, status: str, result_envelope: dict):
+        """Evidence Gate for a mutating Run's claimed success (#490).
+
+        A mutating Run reaching `succeeded` must be backed by a landed commit
+        that exists, belongs to this Run and request, sits on the Run's
+        registered isolated worktree branch, and satisfies the approved
+        artifact policy. When it is, the correlated evidence is written onto
+        the durable Run record and into the result envelope, so the proof is
+        durable rather than reconstructed from a comment.
+
+        When it is not, the claimed `succeeded` becomes `blocked` carrying the
+        gate's stable failure code. The gate falls closed in both directions:
+        a missing commit blocks, and a gate that itself raises blocks too --
+        an unverifiable result is never relayed onward as success.
+
+        Returns `(status, result_envelope, commit_evidence_or_None)`.
+        """
+        if status != "succeeded" or not getattr(run, "mutating", False):
+            return status, result_envelope, None
+        try:
+            outcome = self.commit_gate(run, result_envelope)
+        except Exception as exc:  # noqa: BLE001 - an unverifiable result must not pass
+            outcome = CorrelationFailure(
+                "commit_gate_error",
+                f"{type(exc).__name__}: {exc}",
+                "The Evidence Gate could not verify this Run's commit; treat the result as "
+                "unproven and re-run once the repository is readable.")
+        if isinstance(outcome, CorrelationFailure):
+            blocked = {
+                **dict(result_envelope or {}),
+                "status": "blocked",
+                "evidence_gate": "commit_correlation_failed",
+                "error": {"category": outcome.code, "recovery": outcome.recovery,
+                          "detail": outcome.detail},
+            }
+            return "blocked", blocked, None
+        evidence = outcome.as_record()
+        artifacts = list((result_envelope or {}).get("artifacts") or [])
+        marker = f"commit:{evidence['commit']}"
+        if marker not in artifacts:
+            artifacts.append(marker)
+        verified = {
+            **dict(result_envelope or {}),
+            "artifacts": artifacts,
+            "evidence_gate": "commit_correlated",
+            "commit": evidence["commit"],
+            "branch": evidence["branch"],
+            "commit_evidence": evidence,
+        }
+        return status, verified, evidence
+
+    def _submit_review(self, run: Run, result_envelope: dict) -> Optional[str]:
+        """Write the durable, idempotent `run.review_submitted` for `run` (#493).
+
+        Step 3 of the sanctioned order: only after the Evidence Gate has passed
+        may a submission be written, and only from that submission may
+        review-sync perform `in-progress -> review`. With no submitter
+        configured, nothing is written and the Issue stays where it is -- the
+        transition is withheld, never taken on a worker's word.
+        """
+        if self.review_submitter is None:
+            return None
+        try:
+            submission_id = self.review_submitter(run, result_envelope,
+                                                  getattr(run, "commit_evidence", None))
+        except Exception as exc:  # noqa: BLE001 - surfaced, never swallowed
+            raise ReviewSubmissionError(
+                f"could not write the review submission for {run.run_id}: {exc}") from exc
+        if submission_id:
+            with self._lock:
+                self.registry.update(run.run_id, review_submission_id=submission_id)
+        return submission_id
 
     def _sync_github(self, run_id: str, issue_id: str, status: str, result_envelope: dict) -> bool:
         """Post the label swap + result comment for a just-completed top-level
@@ -397,14 +514,29 @@ class Dispatcher:
             self.registry.update(run_id, gh_sync_claimed_at=time.time())
 
         repo, num = issue_id.split("#")
+        # #493: a terminal worker status may move the Issue *back* (cancelled ->
+        # ready) or *out* (a failing status -> blocked), because neither is a
+        # claim of reviewable work. It may not move the Issue *forward* to
+        # `workflow:review`. That transition belongs to review-sync alone, and
+        # only from a durable `run.review_submitted` this run actually earned:
+        # the Evidence Gate runs first (complete()), the submission is written
+        # here, and `review_sync.sync_review_submissions()` performs the label
+        # change. Before this, `_sync_github()` mapped every non-failing
+        # terminal status straight to LABEL_REVIEW, which is how #485 reached
+        # review with no submission event in any store.
         if status == "cancelled":
             target = LABEL_READY
         elif status in FAILING_STATUSES:
             target = LABEL_BLOCKED
         else:
-            target = LABEL_REVIEW
-        self.gh.swap_label(repo, num, LABEL_IN_PROGRESS, target)
-        self.gh.comment(repo, num, self._result_comment(run_id, status, result_envelope))
+            target = None
+        submission_id = None
+        if target is None:
+            submission_id = self._submit_review(self.registry.get(run_id), result_envelope)
+        else:
+            self.gh.swap_label(repo, num, LABEL_IN_PROGRESS, target)
+        self.gh.comment(repo, num,
+                        self._result_comment(run_id, status, result_envelope, target, submission_id))
         with self._lock:
             self.registry.update(run_id, gh_synced=True)
         return True
@@ -431,8 +563,9 @@ class Dispatcher:
             try:
                 if self._sync_github(run_id, issue_id, status, result or {}):
                     synced.append(run_id)
-            except GitHubError:
-                # Still failing (e.g. GitHub still unreachable) -- the claim
+            except (GitHubError, ReviewSubmissionError):
+                # Still failing (e.g. GitHub still unreachable, or the session
+                # store is not yet writable for the review submission) -- the claim
                 # lease will go stale and a later resync_pending() call can
                 # retry; don't let one stuck run block the rest of this pass.
                 continue
@@ -460,6 +593,22 @@ class Dispatcher:
         return "\n".join(lines)
 
     @staticmethod
-    def _result_comment(run_id: str, status: str, envelope: dict) -> str:
+    def _result_comment(run_id: str, status: str, envelope: dict,
+                        target: Optional[str] = None,
+                        submission_id: Optional[str] = None) -> str:
         rows = "\n".join(f"| {k} | {v} |" for k, v in envelope.items())
-        return f"## Run result: `{run_id}`\n\n| Field | Value |\n|---|---|\n| status | {status} |\n{rows}\n"
+        comment = (f"## Run result: `{run_id}`\n\n| Field | Value |\n|---|---|\n"
+                   f"| status | {status} |\n{rows}\n")
+        if target is not None:
+            return comment
+        # #493: say plainly that this comment is not itself the review
+        # transition, and whether the submission that authorizes one exists.
+        if submission_id:
+            comment += (f"\nReview submission `{submission_id}` recorded. "
+                        f"{LABEL_IN_PROGRESS} -> {LABEL_REVIEW} is applied by review-sync "
+                        "from that durable submission, not by this result.\n")
+        else:
+            comment += (f"\nNo durable review submission was recorded, so this run does not "
+                        f"move the issue to {LABEL_REVIEW}. It stays {LABEL_IN_PROGRESS} until "
+                        "a sanctioned review submission exists.\n")
+        return comment

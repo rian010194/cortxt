@@ -132,7 +132,8 @@ def test_worktree_creation_failure_is_terminal_and_releases_claim(tmp_path):
     with pytest.raises(LauncherDispatchError) as exc:
         app.create("acme/repo", "Proof", "scope", ["AC one"], runtime="hermes-free",
                    worker_role="builder", workflow="work-launcher/v1",
-                   max_runtime_seconds=60, max_cost_usd=1.0, approved=True)
+                   max_runtime_seconds=60, max_cost_usd=1.0, approved=True,
+                   artifact_paths=["docs/agents/work-launcher.md"])
     assert exc.value.code == "worktree_creation_failed"
     run = dispatcher.registry.get("run-1")
     assert run.status == "blocked"
