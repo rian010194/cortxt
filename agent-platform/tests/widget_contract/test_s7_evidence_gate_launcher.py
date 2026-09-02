@@ -11,6 +11,7 @@ transition can even run.
 import subprocess
 import sys
 import time
+import inspect
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ import yaml  # noqa: E402
 from dispatcher import Run  # noqa: E402
 from work_launcher import (  # noqa: E402
     ExecutionGateError, WorkLauncher, parse_scope_file)
+from cli.unified_cli import _run_work  # noqa: E402
 
 POLICY = "Only `docs/agents/work-launcher.md` inside the run's isolated worktree."
 
@@ -247,6 +249,13 @@ def test_isolation_is_what_decides_whether_a_resume_is_mutating():
 
     source = inspect.getsource(WorkLauncher.resume)
     assert "mutating = isolate" in source
+
+
+def test_cli_request_snapshot_always_enables_its_approved_worktree_isolation():
+    """A request-file cannot be used to reopen the shared-checkout bypass."""
+    source = inspect.getsource(_run_work)
+    assert "effective_isolate = request is not None or" in source
+    assert "isolate=effective_isolate" in source
 
 
 # ==========================================================================

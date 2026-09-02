@@ -3091,12 +3091,13 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
             else:
                 paths = None
                 prompt = args.prompt
+            effective_isolate = request is not None or getattr(args, "isolate", False)
             data = launcher.resume(
                 args.issue_id, runtime=request.get("engine") if request else args.runtime,
                 worker_role=request.get("worker_role") if request else args.worker_role,
                 workflow=request.get("workflow_id") if request else args.workflow,
                 max_runtime_seconds=request.get("max_runtime_seconds") if request else args.max_runtime_seconds,
-                prompt=prompt, isolate=getattr(args, "isolate", False),
+                prompt=prompt, isolate=effective_isolate,
                 artifact_policy=policy, artifact_paths=paths,
                 request_id=request.get("request_id") if request else None,
                 max_cost_usd=request.get("max_cost_usd") if request else None,

@@ -631,10 +631,11 @@ class WorkLauncher:
 
         `mutating` declares that this Run is expected to change the repository,
         which subjects its claimed success to the commit-correlation Evidence
-        Gate (#490). It defaults to "the mandate carries an artifact policy":
-        a policy describes the artifacts the Run may produce, so a Run that has
-        one is a Run an operator expects to produce them. Pass it explicitly to
-        override that reading in either direction.
+        Gate (#490). It defaults to `isolate`: on this path, authorization to
+        produce commit evidence and provision of the required isolated
+        worktree are one decision. An artifact policy alone does not make a
+        shared-checkout resume mutating, and an isolated resume cannot silently
+        escape the gate merely because its policy is absent.
         """
         if mutating is None:
             # Isolation decides it. A run authorized to produce commit evidence
