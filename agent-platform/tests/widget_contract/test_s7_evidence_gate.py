@@ -563,3 +563,44 @@ def test_the_default_launcher_is_wired_to_the_audited_session_store(tmp_path):
             for path in store.glob("session_*/session.json")
             for event in session_state.load(store, path.parent.name)["events"]
             if event["event_type"] == REVIEW_EVENT] == [submission]
+
+
+def test_the_ci_dispatch_proof_worker_produces_gate_passing_evidence(tmp_path, repo):
+    """The #207 live fixture must exercise the production gate, not a weaker
+    path -- and it cannot be run from a test, so its offline-checkable parts
+    are checked here: the branch it registers is the branch it creates, its
+    commit carries a DCO trailer, its envelope reports the SHA, and the real
+    `verify_commit_correlation` accepts the result.
+
+    Before #490/#493 this fixture asserted `workflow:review` immediately after
+    `Dispatcher.complete()`, which #493 makes false. Leaving it unchanged would
+    have left a green PR with a broken live proof.
+    """
+    import ci_dispatch_proof as proof
+
+    checkout, temp_root = repo, tmp_path / "temp"
+    temp_root.mkdir()
+    run = _run(run_id="run-ci-1", issue_id="owner/repo#207")
+
+    branch = proof.proof_branch("207", run.run_id)
+    worktree = proof.create_worktree(checkout, temp_root, "207", run.run_id)
+    try:
+        # The branch the proof registers on the Run is the branch it created.
+        assert proof.run_cmd(["git", "-C", str(checkout), "rev-parse", "--verify",
+                              f"refs/heads/{branch}"]).returncode == 0
+
+        adapter = proof.DeterministicCommitAdapter(
+            worktree, run.issue_id, tmp_path / "logs", "hermes-free")
+        envelope = adapter.invoke(run, "[ci fixture]", timeout_seconds=60)
+        assert envelope["_status"] == "succeeded", envelope.get("error")
+        assert envelope["commit"] == envelope["evidence"][1]["head_after"]
+
+        # And the production gate accepts it, against the run's real branch.
+        gated = _run(run_id=run.run_id, issue_id=run.issue_id, branch=branch,
+                     artifact_policy=None, request_id=None)
+        outcome = verify_commit_correlation(gated, envelope, repo_path=checkout)
+        assert isinstance(outcome, CommitEvidence), getattr(outcome, "detail", outcome)
+        assert outcome.commit == envelope["commit"]
+        assert outcome.branch == branch
+    finally:
+        proof.remove_worktree(checkout, worktree)
