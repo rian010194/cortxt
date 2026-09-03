@@ -329,16 +329,26 @@ FRESHNESS_STALE = "stale"
 FRESHNESS_STRANDED = "stranded_running"
 FRESHNESS_TERMINAL = "terminal"
 FRESHNESS_UNAVAILABLE = "unavailable"
+FRESHNESS_INDETERMINATE = "indeterminate"
 FRESHNESS_STATES = frozenset({
     FRESHNESS_FRESH, FRESHNESS_STALE, FRESHNESS_STRANDED,
-    FRESHNESS_TERMINAL, FRESHNESS_UNAVAILABLE,
+    FRESHNESS_TERMINAL, FRESHNESS_UNAVAILABLE, FRESHNESS_INDETERMINATE,
 })
 
 TERMINAL_RUN_STATUSES = frozenset({
     "succeeded", "failed", "timed_out", "budget_exceeded", "blocked",
     "cancelled", "review_submitted",
 })
-ACTIVE_RUN_STATUSES = frozenset({"in_progress", "conflict", "unknown"})
+ACTIVE_RUN_STATUSES = frozenset({"in_progress"})
+# Statuses that say the authority itself is unresolved rather than saying
+# anything about the Run (#507). `conflict` is two stores disagreeing, which is
+# deliberately never silently resolved; `unknown` is a status this projection
+# could not recognise. Neither used to be distinguishable from a live claim --
+# both sat in ACTIVE_RUN_STATUSES and so aged into `stranded_running`, which is
+# the state that offers recovery. Unresolved provenance must fail closed, not
+# permissively, so they now yield `indeterminate` and no recovery is derived
+# from them at all.
+UNRESOLVED_RUN_STATUSES = frozenset({"conflict", "unknown"})
 
 _ACTIVITY_EVENT_TYPES = ("run.created", "run.running", "run.engine_turn", "run.review_submitted")
 
@@ -365,6 +375,10 @@ def compute_run_freshness(
                          all).
     ``terminal``         every run for the issue has reached a terminal state.
     ``unavailable``      ``now`` could not be resolved (caller fails closed).
+    ``indeterminate``    a run's provenance is unresolved -- two stores disagree
+                         (``conflict``) or a status could not be recognised
+                         (``unknown``). Nothing about liveness is established,
+                         and the caller fails closed (#507).
     """
     now_epoch = _epoch(now_iso)
     if now_epoch is None:
@@ -373,6 +387,14 @@ def compute_run_freshness(
     items = [s for s in (summaries or []) if isinstance(s, Mapping)]
     if not items:
         return {"status": FRESHNESS_FRESH, "age_seconds": 0, "complete": True}
+
+    # Unresolved provenance is decided before any time bound, because a time
+    # bound applied to a Run nobody agrees about produces a confident answer
+    # out of a disagreement (#507). A recorded `conflict` tail counts even when
+    # the merged status itself looks ordinary.
+    if any(str(s.get("status")) in UNRESOLVED_RUN_STATUSES or s.get("conflict") is not None
+           for s in items):
+        return {"status": FRESHNESS_INDETERMINATE, "age_seconds": 0, "complete": False}
 
     active = [s for s in items if str(s.get("status")) in ACTIVE_RUN_STATUSES]
     if active:

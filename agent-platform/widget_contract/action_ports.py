@@ -53,7 +53,8 @@ def operator_authorize(confirm: bool) -> Callable[[Action, ActionContext], bool]
 def github_transition_adapter(labels_reader: Callable[[str], list[str]],
                               transition_writer: Callable[[str], Mapping[str, Any]],
                               *, review_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
-                              recover_transition_writer: Callable[[str], Mapping[str, Any]] | None = None
+                              recover_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
+                              recovery_authority: Callable[[str], "bool | None"] | None = None
                               ) -> Callable[[str, Mapping[str, Any]], Any]:
     """github-transition port adapter, routed by operation.
 
@@ -90,7 +91,9 @@ def github_transition_adapter(labels_reader: Callable[[str], list[str]],
         if operation == "workflow.record-decision.v1":
             return record_decision_transition(operation, request, issue_reader=reader, transition=review_writer)
         if operation == "workflow.recover-to-ready.v1":
-            return return_to_ready_transition(operation, request, issue_reader=reader, transition=recover_writer)
+            return return_to_ready_transition(operation, request, issue_reader=reader,
+                                              transition=recover_writer,
+                                              recovery_authority=recovery_authority)
         return mark_ready_transition(operation, request, issue_reader=reader, transition=writer)
     return adapter
 
@@ -108,6 +111,7 @@ def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm
                    resume: Callable[[str], Any],
                    review_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
                    recover_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
+                   recovery_authority: Callable[[str], "bool | None"] | None = None,
                    authoritative_reference: str | None = None
                    ) -> tuple[ActionExecutor, ActionContext]:
     """Assemble the shared executor + per-action context for one execution.
@@ -131,13 +135,21 @@ def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm
     `github_transition_adapter` would have to fall back to `transition_writer`
     (the inbox -> ready writer) and silently perform the wrong label edit, so
     it raises instead.
+
+    `recovery_authority` is the write-time run-liveness re-derivation the
+    recovery transition requires (#507). It is passed the issue id and returns
+    the tri-state `run_holds_issue` answer; only an explicit `False` permits
+    the write. A caller that does not supply it gets no recovery at all --
+    `return_to_ready_transition` denies rather than writing unchecked, so an
+    unwired host fails closed instead of offering an unverified recovery.
     """
     declared = declared_action(widget, action_id)
     executor = ActionExecutor(
         {"github-transition": github_transition_adapter(
             labels_reader, transition_writer,
             review_transition_writer=review_transition_writer,
-            recover_transition_writer=recover_transition_writer),
+            recover_transition_writer=recover_transition_writer,
+            recovery_authority=recovery_authority),
          "cli": cli_claim_adapter(resume)},
         operator_authorize(confirm),
     )

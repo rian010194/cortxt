@@ -17,6 +17,7 @@ import pytest
 
 from widget_contract.detail import build_workstream_detail_v1
 from widget_contract.next_action import resolve_next_action, run_holds_issue
+from widget_contract.run_authority import STORE_DISPATCHER, STORE_SESSION
 from widget_contract.registry import TYPES
 from widget_contract.validation import validate
 from widget_contract.workstreams import build_workstream_projection
@@ -132,15 +133,35 @@ def test_in_progress_without_a_run_answer_is_not_offered_recovery():
 
 
 def test_run_holds_issue_requires_positive_evidence_in_both_directions():
-    """A claim past the stranded bound is exactly what recovery exists to
-    rescue, so it must not block its own remedy -- but absence of a Run is not
-    evidence of a stranded one, and an unresolvable clock is not evidence of
-    anything."""
+    """Only the dispatcher's own record of a released claim is evidence that
+    no Run holds the Issue (#507). Absence of a Run is not evidence of a
+    stranded one, an unresolvable clock is not evidence of anything, and a
+    heartbeat that stopped arriving is not the claim being released."""
     runs = [{"status": "in_progress"}]
     assert run_holds_issue(runs, "fresh") is True
     assert run_holds_issue(runs, "stale") is True
-    assert run_holds_issue(runs, "stranded_running") is False
-    assert run_holds_issue([{"status": "succeeded"}], "terminal") is False
+    assert run_holds_issue([{"status": "succeeded", "sources": [STORE_DISPATCHER]}],
+                           "terminal") is False
+
+    # A stranded claim is NOT a released claim. The heartbeat bound says only
+    # that nothing wrote a signal; the dispatcher may still hold the lease, and
+    # recomputing the lease here would be this projection's opinion rather than
+    # the write side's record. Recovery waits for the dispatcher to release or
+    # time the claim out, which then reads as `terminal`.
+    assert run_holds_issue(runs, "stranded_running") is None
+
+    # A terminal Run reported only by a session store is the worker's own
+    # account of itself, not the claim owner's.
+    assert run_holds_issue([{"status": "succeeded", "sources": [STORE_SESSION]}],
+                           "terminal") is None
+    assert run_holds_issue([{"status": "succeeded"}], "terminal") is None
+    # One un-corroborated Run is enough to withhold the answer.
+    assert run_holds_issue([{"status": "succeeded", "sources": [STORE_DISPATCHER]},
+                            {"status": "succeeded", "sources": [STORE_SESSION]}],
+                           "terminal") is None
+
+    # Unresolved provenance never grants recovery.
+    assert run_holds_issue(runs, "indeterminate") is None
 
     # Not established -> the caller must fail closed.
     assert run_holds_issue([], "fresh") is None

@@ -38,6 +38,10 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
+# The dispatcher owns the claim, so its record is the only authority for
+# whether ownership was released (#507).
+from .run_authority import STORE_DISPATCHER
+
 KIND_LAUNCH = "launch"
 KIND_RECOVER = "recover"
 KIND_DECISION = "decision"
@@ -78,11 +82,29 @@ def run_holds_issue(summaries: Sequence[Mapping[str, Any]] | None,
       this, and so does any status this function does not recognise.
 
     A Run holds the Issue while the run authority still considers it alive:
-    ``fresh`` and ``stale`` both count. ``stranded_running`` does not -- a
-    claim past the stranded bound is exactly the abandoned Run
-    ``workflow.recover-to-ready.v1`` exists to rescue, and must not block its
-    own remedy. ``terminal`` does not either: a finished Run whose Issue is
-    still ``workflow:in-progress`` is stranded state a recovery should clear.
+    ``fresh`` and ``stale`` both count.
+
+    ``stranded_running`` no longer yields ``False`` (#507). A heartbeat that
+    stopped arriving is not the dispatcher saying the claim was released --
+    it is only the absence of a signal, and the dispatcher may still consider
+    the claim valid for the rest of its lease. Recomputing lease expiry here
+    would not help either: a locally derived expiry is this projection's
+    opinion, not the write side's record. So a stranded claim is ``None`` --
+    not established -- and the caller fails closed. The remedy for a genuinely
+    abandoned Run is the dispatcher releasing or timing out the claim, which
+    then shows up as ``terminal``.
+
+    ``terminal`` yields ``False`` only when the **dispatcher** is among the
+    sources that reported it. The dispatcher owns the claim, so only its record
+    is evidence that ownership was released; a session store reporting a
+    finished Run is a worker's own account of itself. Note the remaining, real
+    limit: a released claim means the dispatcher no longer holds the Issue, not
+    that the worker's process has ended. Recovery re-opens the dispatch gate,
+    which is safe against a released claim; it is not a promise that nothing is
+    still running somewhere.
+
+    Any other status -- ``indeterminate`` provenance, ``unavailable`` clock, or
+    one this function does not recognise -- is ``None``.
     """
     items = [s for s in (summaries or []) if isinstance(s, Mapping)]
     if not items:
@@ -90,8 +112,10 @@ def run_holds_issue(summaries: Sequence[Mapping[str, Any]] | None,
     status = str(freshness_status)
     if status in ("fresh", "stale"):
         return True
-    if status in ("stranded_running", "terminal"):
-        return False
+    if status == "terminal":
+        if all(STORE_DISPATCHER in (s.get("sources") or ()) for s in items):
+            return False
+        return None
     return None
 
 
