@@ -96,8 +96,23 @@ Evidence Gate would refuse the result anyway, but only after the worker had
 already run in the launcher's shared checkout. `create` states its approved
 paths outright and the launcher persists them on the Run before dispatch.
 
+The gate verifies **everything the Run contributed**, not the one commit its
+envelope presents (#509). The launcher records `base_commit` on the Run at
+worktree creation — the commit the branch was created from — and every commit
+in `base_commit..work/<run_id>` is held to the same artifact policy, DCO
+trailer and strictly-after-claim ordering. Otherwise a Run could land a commit
+outside its approved scope, then a conforming one, present the conforming one,
+and pass: the scope breached and the evidence saying it was not. A breach
+anywhere in that range blocks the Run, reported as `contributed_<code>` so a
+reviewer can tell it from a fault in the presented commit itself. Multiple
+commits remain legitimate; only hiding one behind another does not. A mutating
+Run with no usable base is blocked (`base_commit_not_recorded`) rather than
+falling back to verifying its tip alone.
+
 The verified correlation is written onto the Run as `commit_evidence` and into
-the result envelope. Anything else — a missing SHA, a foreign commit, a policy
+the result envelope, and describes the whole contributed change
+(`base_commit`, `contributed_commits`, `contributed_files`) alongside the
+presented commit. Anything else — a missing SHA, a foreign commit, a policy
 breach, or a gate that cannot read the repository — converts the claimed
 `succeeded` into `blocked` with a stable failure code.
 

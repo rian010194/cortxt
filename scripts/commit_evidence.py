@@ -61,6 +61,12 @@ class CommitEvidence:
     request_id: Optional[str] = None
     worktree: Optional[str] = None
     policy_paths: tuple = ()
+    # The whole change the Run contributed on top of its recorded base (#509),
+    # so the durable record describes what the Run landed rather than the one
+    # commit its envelope happened to present.
+    base_commit: Optional[str] = None
+    contributed_commits: tuple = ()
+    contributed_files: tuple = ()
 
     def as_record(self) -> dict:
         """The shape written onto the durable Run record and its result envelope."""
@@ -73,6 +79,9 @@ class CommitEvidence:
             "worktree": self.worktree,
             "committed_at": self.committed_at,
             "files": list(self.files),
+            "base_commit": self.base_commit,
+            "contributed_commits": list(self.contributed_commits),
+            "contributed_files": list(self.contributed_files),
             "policy_paths": list(self.policy_paths),
             "verified_at": self.verified_at,
         }
@@ -151,6 +160,79 @@ def _within(path: str, permitted: Sequence[str]) -> bool:
         if normalized == allowed_norm or normalized.startswith(allowed_norm + "/"):
             return True
     return False
+
+
+def _commit_files(git, sha):
+    """`(files, failure)` for one commit: the paths it changed, or why not."""
+    code, out = git(["show", "--name-only", "--format=", sha])
+    if code != 0:
+        return None, ("commit_files_unreadable",
+                      f"could not list the files changed by {sha}",
+                      "Re-run the gate against a readable repository.")
+    files = tuple(line.strip() for line in out.splitlines() if line.strip())
+    if not files:
+        return None, ("no_files_changed", f"{sha} changes no files",
+                      "An empty commit is not an artifact; the Run produced nothing to review.")
+    return files, None
+
+
+def _commit_basics(git, sha, claimed_second):
+    """The per-commit rules that need no artifact policy: `((files, committed_at), failure)`.
+
+    Split from the scope check so the presented commit is still judged in the
+    order it was before #509 -- an empty commit is `no_files_changed` whatever
+    the policy says, and an unparsable policy does not preempt it.
+    """
+    code, out = git(["show", "-s", "--format=%ct", sha])
+    if code != 0 or not out.strip().isdigit():
+        return None, ("commit_time_unreadable",
+                      f"could not read the commit timestamp of {sha}",
+                      "Re-run the gate against a readable repository.")
+    committed_at = int(out.strip())
+    if committed_at <= claimed_second:
+        return None, ("commit_predates_run",
+                      f"{sha} was committed at {committed_at}, not strictly after the Run was "
+                      f"claimed at {claimed_second} (same-second commits are refused: a one-second "
+                      "timestamp resolution cannot order them against the claim)",
+                      "A pre-existing or same-second commit is not verifiably this Run's work; "
+                      "the Run landed nothing that can be ordered after its claim.")
+
+    code, message = git(["show", "-s", "--format=%B", sha])
+    if code != 0:
+        return None, ("commit_message_unreadable",
+                      f"could not read the commit message of {sha}",
+                      "Re-run the gate against a readable repository.")
+    if not DCO_RE.search(message):
+        return None, ("dco_trailer_missing", f"{sha} carries no `Signed-off-by:` trailer",
+                      "Every landed commit must carry a DCO sign-off; amend the commit and re-run.")
+
+    files, failure = _commit_files(git, sha)
+    if failure is not None:
+        return None, failure
+    return (files, committed_at), None
+
+
+def _verify_commit_scope(sha, files, permitted):
+    """The approved-scope half: `failure` or None.
+
+    Applied to *every* commit the Run contributed, not only the one a result
+    envelope happens to present (#509). A commit that breaches the approved
+    scope must block the Run whichever commit is offered as its evidence.
+    """
+    unsafe_files = [path for path in files if normalize_repo_path(path) is None]
+    if unsafe_files:
+        return ("artifact_path_unsafe",
+                f"{sha} touches paths that are not repository-relative: "
+                + ", ".join(sorted(unsafe_files)),
+                "A commit whose paths cannot be normalized cannot be bounded by any policy.")
+    outside = [path for path in files if not _within(path, permitted)]
+    if outside:
+        return ("artifact_policy_violation",
+                f"{sha} touches paths outside the approved artifact policy: "
+                + ", ".join(sorted(outside)),
+                f"The approved policy permits only {', '.join(permitted)}. "
+                "Re-run within scope.")
+    return None
 
 
 def verify_commit_correlation(
@@ -236,60 +318,21 @@ def verify_commit_correlation(
             f"The commit is not on this Run's registered branch {branch!r}; a commit made "
             "outside the Run's isolated worktree is not this Run's evidence.")
 
-    code, out = git(["show", "-s", "--format=%ct", commit])
-    if code != 0 or not out.strip().isdigit():
-        return CorrelationFailure(
-            "commit_time_unreadable",
-            f"could not read the commit timestamp of {commit}",
-            "Re-run the gate against a readable repository.")
-    committed_at = int(out.strip())
+    # The presented commit's policy-free rules first, so an empty commit is
+    # still `no_files_changed` and an unreadable timestamp still
+    # `commit_time_unreadable`, whatever the policy says.
     claimed_second = int(getattr(run, "claimed_at", 0))
-    # Strictly after, not "not before". Git commit timestamps have one-second
-    # resolution, so a commit made in the same second as the claim -- including
-    # one made just *before* it -- used to compare equal and pass. That is the
-    # whole window an attacker or a confused worker needs to present
-    # pre-existing work as this Run's output. Requiring a strictly later second
-    # closes it in the fail-closed direction: the cost is that a run which
-    # claims and commits inside one second must retry, which no real worker
-    # does.
-    if committed_at <= claimed_second:
-        return CorrelationFailure(
-            "commit_predates_run",
-            f"{commit} was committed at {committed_at}, not strictly after the Run was "
-            f"claimed at {claimed_second} (same-second commits are refused: a one-second "
-            "timestamp resolution cannot order them against the claim)",
-            "A pre-existing or same-second commit is not verifiably this Run's work; "
-            "the Run landed nothing that can be ordered after its claim.")
+    verified, failure = _commit_basics(git, commit, claimed_second)
+    if failure is not None:
+        return CorrelationFailure(*failure)
+    files, committed_at = verified
 
-    code, message = git(["show", "-s", "--format=%B", commit])
-    if code != 0:
-        return CorrelationFailure(
-            "commit_message_unreadable",
-            f"could not read the commit message of {commit}",
-            "Re-run the gate against a readable repository.")
-    if not DCO_RE.search(message):
-        return CorrelationFailure(
-            "dco_trailer_missing",
-            f"{commit} carries no `Signed-off-by:` trailer",
-            "Every landed commit must carry a DCO sign-off; amend the commit and re-run.")
-
-    code, out = git(["show", "--name-only", "--format=", commit])
-    if code != 0:
-        return CorrelationFailure(
-            "commit_files_unreadable",
-            f"could not list the files changed by {commit}",
-            "Re-run the gate against a readable repository.")
-    files = tuple(line.strip() for line in out.splitlines() if line.strip())
-    if not files:
-        return CorrelationFailure(
-            "no_files_changed",
-            f"{commit} changes no files",
-            "An empty commit is not an artifact; the Run produced nothing to review.")
-
-    # The approved scope, resolved fail-closed at every step. There is no
-    # "unrestricted" outcome: a mutating Run either has a readable approved
-    # path set or it is blocked. Explicit `artifact_paths` win over prose,
-    # because prose is what the parser can misread.
+    # The approved scope, resolved fail-closed. Every commit in the contributed
+    # range is measured against it. There is no "unrestricted" outcome: a
+    # mutating Run either
+    # has a readable approved path set or it is blocked. Explicit
+    # `artifact_paths` win over prose, because prose is what the parser can
+    # misread.
     permitted = tuple(getattr(run, "artifact_paths", None) or ())
     if not permitted:
         policy = getattr(run, "artifact_policy", None)
@@ -315,20 +358,81 @@ def verify_commit_correlation(
             "paths: " + ", ".join(sorted(unsafe_permitted)),
             "An absolute path, a drive letter, or a `..` segment cannot bound a commit. "
             "Correct the approved scope.")
-    unsafe_files = [path for path in files if normalize_repo_path(path) is None]
-    if unsafe_files:
+
+    failure = _verify_commit_scope(commit, files, permitted)
+    if failure is not None:
+        return CorrelationFailure(*failure)
+
+    # #509: the presented commit passing is not the Run passing. The artifact
+    # policy, the DCO trailer and the strictly-after-claim ordering used to be
+    # checked against ONE commit's file list, so a Run could land commit A
+    # outside the approved scope and then commit B inside it, present B, and
+    # have the gate record `commit_correlated` while the branch that becomes a
+    # pull request carried A. Multiple commits are legitimate; hiding one
+    # behind another is not. Every commit the Run contributed on top of its
+    # recorded base is now held to the same rules, and one breach blocks the
+    # Run whichever commit is offered as its evidence.
+    base = getattr(run, "base_commit", None)
+    if not isinstance(base, str) or not SHA_RE.fullmatch(base.strip().lower()):
         return CorrelationFailure(
-            "artifact_path_unsafe",
-            f"{commit} touches paths that are not repository-relative: "
-            + ", ".join(sorted(unsafe_files)),
-            "A commit whose paths cannot be normalized cannot be bounded by any policy.")
-    outside = [path for path in files if not _within(path, permitted)]
-    if outside:
+            "base_commit_not_recorded",
+            f"the Run record carries no usable base_commit (got {base!r})",
+            "A mutating Run must record the commit its branch was created from, so the "
+            "gate can verify everything the Run contributed rather than one commit of it. "
+            "Re-launch it through the sanctioned path.")
+    base = base.strip().lower()
+
+    code, out = git(["cat-file", "-t", base])
+    if code != 0 or out.strip() != "commit":
         return CorrelationFailure(
-            "artifact_policy_violation",
-            f"{commit} touches paths outside the approved artifact policy: "
-            + ", ".join(sorted(outside)),
-            f"The approved policy permits only {', '.join(permitted)}. Re-run within scope.")
+            "base_commit_not_found",
+            f"{base} is not a commit object in this repository",
+            "The Run's recorded base does not exist here, so the contributed change "
+            "cannot be bounded. Treat the result as unproven.")
+    code, _ = git(["merge-base", "--is-ancestor", base, f"refs/heads/{branch}"])
+    if code != 0:
+        return CorrelationFailure(
+            "branch_not_from_recorded_base",
+            f"refs/heads/{branch} does not descend from the recorded base {base}",
+            "The Run's branch was rewritten, or is not the branch its base was recorded "
+            "for; a range computed from that base would not describe what the Run did.")
+
+    code, out = git(["rev-list", f"{base}..refs/heads/{branch}"])
+    if code != 0:
+        return CorrelationFailure(
+            "contributed_range_unreadable",
+            f"could not list the commits between {base} and refs/heads/{branch}",
+            "Re-run the gate against a readable repository.")
+    contributed = tuple(line.strip().lower() for line in out.splitlines() if line.strip())
+    if not contributed:
+        return CorrelationFailure(
+            "no_contributed_commits",
+            f"refs/heads/{branch} is unchanged from its recorded base {base}",
+            "The Run landed nothing on its own branch; there is no contributed change "
+            "to verify.")
+    if commit not in contributed:
+        return CorrelationFailure(
+            "commit_not_contributed_by_run",
+            f"{commit} is reachable from refs/heads/{branch} but is not among the commits "
+            f"the Run added on top of {base}",
+            "The presented commit predates this Run's base; it is inherited history, not "
+            "this Run's output.")
+
+    contributed_files: list = []
+    for sha in contributed:
+        if sha == commit:
+            contributed_files.extend(files)
+            continue
+        verified_other, failure = _commit_basics(git, sha, claimed_second)
+        if failure is None:
+            failure = _verify_commit_scope(sha, verified_other[0], permitted)
+        if failure is not None:
+            failed_code, detail, recovery = failure
+            # Distinguished from the presented commit's own failure, so a
+            # reviewer can tell "the commit you showed me is bad" from
+            # "another commit on this branch is bad".
+            return CorrelationFailure(f"contributed_{failed_code}", detail, recovery)
+        contributed_files.extend(verified_other[0])
 
     return CommitEvidence(
         run_id=run.run_id,
@@ -341,6 +445,9 @@ def verify_commit_correlation(
         request_id=getattr(run, "request_id", None),
         worktree=envelope.get("worktree"),
         policy_paths=permitted,
+        base_commit=base,
+        contributed_commits=contributed,
+        contributed_files=tuple(sorted(set(contributed_files))),
     )
 
 

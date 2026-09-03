@@ -42,6 +42,7 @@ from daemon.review_submission import (  # noqa: E402
 from daemon.review_sync import sync_review_submissions  # noqa: E402
 from runtime import session_state  # noqa: E402
 
+BASELINE: dict = {}
 SIGNOFF = "Signed-off-by: Operator <operator@example.com>"
 POLICY = "Only `docs/agents/work-launcher.md` inside the run's isolated worktree."
 
@@ -69,6 +70,10 @@ def repo(tmp_path):
     (root / "README.md").write_text("base\n", encoding="utf-8")
     _git(root, "add", "-A")
     _git(root, "commit", "-m", f"chore: base\n\n{SIGNOFF}")
+    # #509: the gate verifies everything the Run contributed on top of the
+    # commit its branch was created from, so every mutating Run here records
+    # the baseline it was actually launched at.
+    BASELINE["sha"] = _git(root, "rev-parse", "HEAD").stdout.strip()
     return root
 
 
@@ -107,7 +112,7 @@ def _run(**overrides) -> Run:
         worker_role="builder", runtime="hermes-free", claimed_at=1000.0,
         lease_seconds=600, status="in_progress", mutating=True,
         isolation="worktree", branch="work/run-1", artifact_policy=POLICY,
-        request_id="sha256:abc",
+        request_id="sha256:abc", base_commit=BASELINE.get("sha"),
     )
     fields.update(overrides)
     return Run(**fields)

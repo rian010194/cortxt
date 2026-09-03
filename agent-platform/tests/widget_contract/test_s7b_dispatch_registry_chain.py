@@ -97,6 +97,9 @@ def _real_launcher(tmp_path, *, dispatch=None, issue_id="owner/repo#482"):
         # S7d: the UI launch path now isolates by default, and the launcher
         # verifies the directory exists before reporting that isolation, so a
         # stand-in for `git worktree add` has to create it like the real one.
+        if argv[1] == "rev-parse":
+            # #509: the launcher resolves the branch's base before creating it.
+            return SimpleNamespace(returncode=0, stdout="0" * 40)
         Path(argv[-2]).mkdir(parents=True, exist_ok=True)
         return SimpleNamespace(returncode=0)
 

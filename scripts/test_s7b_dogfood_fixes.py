@@ -302,7 +302,8 @@ def run_all_checks():
         kwargs = {} if dispatch is None else {"dispatch": dispatch}
         launcher6 = wl.WorkLauncher(
             disp6, gh6, worktree_root=tmp_dir / "trees",
-            run_worktree=lambda *a, **k: SimpleNamespace(returncode=0),
+            run_worktree=lambda argv, **k: SimpleNamespace(
+            returncode=0, stdout=("0" * 40 if argv[1] == "rev-parse" else "")),
             claim_store=store6, issue_reader=lambda issue_id: issue6,
             graph_reader=lambda issue_id: (issue6,), inventory_readers={},
             writer_reader=lambda: (), clock=lambda: 100.0,

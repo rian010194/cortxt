@@ -168,8 +168,28 @@ def test_mutating_isolation_metadata_is_mandatory_before_dispatch():
 
     app = _launcher(_dispatcherish(BrokenRegistry(_run())))
     with pytest.raises(ExecutionGateError) as exc:
-        app._record_isolation("run-1", True, required=True)
+        app._record_isolation("run-1", True, required=True, base_commit="a" * 40)
     assert exc.value.code == "isolation_not_recordable"
+
+
+def test_a_mutating_run_without_a_recorded_base_fails_the_launch_closed():
+    """#509: the Evidence Gate verifies everything the Run contributed on top
+    of its base, so a mutating Run whose base could not be resolved would run
+    under a gate that can only ever check its tip commit. Fail the launch
+    instead, the way an unrecordable isolation already does."""
+    app = _launcher(_dispatcherish(_Registry(_run())))
+    with pytest.raises(ExecutionGateError) as exc:
+        app._record_isolation("run-1", True, required=True, base_commit=None)
+    assert exc.value.code == "base_commit_not_resolvable"
+
+
+def test_a_non_mutating_run_still_launches_without_a_base():
+    """Only a mutating Run is gated on a commit, so only a mutating Run needs
+    a base to verify one against."""
+    registry = _Registry(_run())
+    app = _launcher(_dispatcherish(registry))
+    app._record_isolation("run-1", True, required=False, base_commit=None)
+    assert registry.updates[-1][1]["base_commit"] is None
 
 
 def test_the_scope_file_carries_the_approved_paths(tmp_path):

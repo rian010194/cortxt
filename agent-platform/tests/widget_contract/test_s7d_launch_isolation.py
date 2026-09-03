@@ -225,6 +225,9 @@ def _real_launcher(tmp_path):
 
     def _run_worktree(argv, **kwargs):
         events.append(("git", tuple(argv)))
+        if argv[1] == "rev-parse":
+            # #509: the launcher resolves the branch's base before creating it.
+            return SimpleNamespace(returncode=0, stdout="0" * 40)
         if not created_dirs["skip"]:
             Path(argv[-2]).mkdir(parents=True, exist_ok=True)
         return SimpleNamespace(returncode=0)
@@ -259,7 +262,11 @@ def test_ui_launch_chain_reaches_a_real_isolated_worktree(tmp_path):
     assert result["status"] == "ok"
     git_calls = [event[1] for event in events if event[0] == "git"]
     assert git_calls, "the launch chain never asked git for an isolated worktree"
-    assert git_calls[0][:5] == ("git", "worktree", "add", "-b", "work/run-1")
+    # #509: the base is resolved first, before the branch that will be verified
+    # against it exists.
+    assert git_calls[0] == ("git", "rev-parse", "HEAD")
+    assert git_calls[1][:5] == ("git", "worktree", "add", "-b", "work/run-1")
+    assert dispatcher.registry.get("run-1").base_commit == "0" * 40
 
     launched = result["result"]
     assert launched["isolation"] == "worktree"
