@@ -196,3 +196,26 @@ def test_the_schema_rejects_a_mutation_capability():
     detail["view_capabilities"] = ["act:claim-run"]
     with pytest.raises(Exception):
         validate(detail, TYPES["workstream.detail.v1"].schema)
+
+
+# --- the summary line must not contradict the control (#498) --------------
+
+def test_work_summary_falls_back_to_the_typed_label_not_fixture_prose():
+    """The Next card's summary read `x.nextAction` -- prose that only the
+    fixtures carry. On a live host that rendered "No next action pending."
+    directly above a rendered launch control, which is the same fixture-only
+    defect the typed field exists to close. The summary must fall back to the
+    typed label the control itself is derived from."""
+    from pathlib import Path
+
+    widget = Path(__file__).resolve().parents[2] / "widget"
+    js = (widget / "work-console.js").read_text(encoding="utf-8")
+    mirror = (Path(__file__).resolve().parents[3] / "site" / "public" / "widgets"
+              / "work-console.js").read_text(encoding="utf-8")
+
+    summary = [line for line in js.splitlines() if "x.nextAction?esc(x.nextAction)" in line]
+    assert len(summary) == 1
+    assert "primaryKind&&nextLabel" in js.splitlines()[js.splitlines().index(summary[0]) + 1], (
+        "the wc-main summary must fall back to the typed next_action label "
+        "before 'No next action pending.'")
+    assert js == mirror, "site mirror must carry the same source"
