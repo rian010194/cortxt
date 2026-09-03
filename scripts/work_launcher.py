@@ -714,16 +714,26 @@ class WorkLauncher:
         # run's own isolated branch when the worker reported none. The Evidence
         # Gate still verifies whatever commit is presented (reachability, branch,
         # strictly-after-claim timestamp, DCO, artifact policy), so this enriches
-        # the envelope without weakening the gate's checks. Commit derivation
-        # only runs when a repo is present (`repo_path`); test harnesses and
-        # deployments without one fall back to injecting the correlation fields
-        # alone, which is the gate's minimum and the worker's job to satisfy.
+        # the envelope without weakening the gate's checks.
+        #
+        # Only a claimed success is enriched with a commit, matching
+        # `dispatch_async`: a failed, timed-out or budget_exceeded result must
+        # never carry a field that reads as landed evidence, and `_gate_commit`
+        # does not run for those statuses, so nothing would verify it. The
+        # status is read after the budget rewrite above, so an over-budget
+        # result is treated as the non-success it has become.
+        #
+        # `repo_path` is always set on a real launcher (`__init__` defaults it
+        # to the process cwd); the getattr fallback is only for the duck-typed
+        # launchers tests build with `__new__`, which inject the correlation
+        # fields alone.
         if run_correlation is not None:
             repo_path = getattr(self, "repo_path", None)
-            if repo_path is not None:
+            derive = repo_path if (result or {}).get("status") == "succeeded" else None
+            if derive is not None:
                 result = enrich_run_correlation(
-                    run_correlation, result, repo_dir=repo_path,
-                    git=lambda args: _run_git_correlation(repo_path, args))
+                    run_correlation, result, repo_dir=derive,
+                    git=lambda args: _run_git_correlation(derive, args))
             else:
                 result = enrich_run_correlation(run_correlation, result)
         # `complete()` persists the terminal transition first and only then

@@ -123,12 +123,14 @@ cover it. Only a claimed success is enriched with a commit; a failed Run must
 not carry a field that reads as landed evidence.
 
 The gate still re-verifies whatever commit is presented, so this enriches
-without weakening. A `succeeded` report that lands nothing is still `blocked`:
-on the coordinator-direct path as `commit_missing`, and on the live path — where
-the Run's branch resolves to the baseline it started from — as
-`commit_predates_run`, the gate's strictly-after-claim check refusing a
-pre-existing commit as this Run's output. Both are
-`evidence_gate: "commit_correlation_failed"`.
+without weakening. A `succeeded` report that lands nothing is still `blocked`
+with `evidence_gate: "commit_correlation_failed"` — but on both paths the
+recorded category is `commit_predates_run`, not `commit_missing`. A mutating
+Run always has its branch created before dispatch, so derivation always
+resolves a SHA: the baseline the branch started from, which the gate's
+strictly-after-claim check refuses as this Run's output. `commit_missing`
+remains reachable only where no branch resolves at all. A consumer that keyed
+on `commit_missing` as the no-commit signal must read `evidence_gate` instead.
 The worker prompt (`generate_worker_prompt`) states the result contract: commit
 with a DCO `Signed-off-by:` trailer inside the run's own worktree and report
 `run_id` / `issue_id` / `request_id` and the commit SHA in the result envelope.

@@ -341,3 +341,45 @@ def test_live_dispatch_path_does_not_attach_a_commit_to_a_failed_run(repo, tmp_p
     assert done.status == "failed"
     # A failed run must not carry a field that reads as landed evidence.
     assert "commit" not in done.result
+
+
+# ==========================================================================
+# submit() must uphold the same two invariants as the live path.
+#
+# Both cases below were unlocked by independent review of this PR: the
+# coordinator-direct path had neither the success guard nor a test for what a
+# branch sitting on its baseline actually produces there.
+# ==========================================================================
+
+def test_submit_does_not_attach_a_commit_to_a_non_succeeded_run(repo, tmp_path):
+    # A stray commit exists on the run's branch, but the worker reported
+    # failure. `_gate_commit` never runs for a non-success, so nothing would
+    # verify a commit recorded here -- it must not be recorded at all.
+    _commit(repo, "work/run-1", "docs/agents/work-launcher.md", signoff=True)
+    app, dispatcher = _launcher(repo, "run-1", tmp_path=tmp_path)
+
+    app.submit("run-1", {"status": "failed"})
+    run = dispatcher.registry.get("run-1")
+
+    assert run.status == "failed"
+    assert "commit" not in run.result
+    # Correlation identity is still supplied: it is never worker prose.
+    assert run.result["run_id"] == "run-1"
+
+
+def test_submit_on_a_baseline_branch_is_refused_as_predating_the_run(repo, tmp_path):
+    # The Run's branch exists but nothing landed on it. Derivation resolves the
+    # baseline tip, and the gate refuses it -- `commit_predates_run`, not
+    # `commit_missing`, because a mutating Run always has a branch. This is the
+    # production shape of the negative arm on this path too.
+    _git(repo, "branch", "work/run-base2", "main")
+    app, dispatcher = _launcher(repo, "run-base2", claimed_at=time.time(),
+                                tmp_path=tmp_path)
+    dispatcher.registry.get("run-base2").branch = "work/run-base2"
+
+    app.submit("run-base2", {"status": "succeeded"})
+    run = dispatcher.registry.get("run-base2")
+
+    assert run.status == "blocked"
+    assert run.result["evidence_gate"] == "commit_correlation_failed"
+    assert run.result["error"]["category"] == "commit_predates_run"
