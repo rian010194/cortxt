@@ -14,12 +14,14 @@ answers the server has *already* computed from its own authorities:
   (``widget_contract.dispatch_request.build_dispatch_request_v1``) -- the exact
   same verdict ``_bind_claim_run`` re-derives before a claim, so a projection
   can never offer a launch the claim gate would refuse;
-- recoverable comes from ``workflow.recover-to-ready.v1``'s own precondition
+- recoverable requires ``workflow.recover-to-ready.v1``'s own precondition
   (``adapters.github_ports.return_to_ready_transition``: exactly
-  ``workflow:in-progress``) *plus* the run authority in
-  ``run_authority.compute_run_freshness`` -- the label alone is not enough,
-  because an Issue whose worker is still alive must not be offered a recovery
-  that would re-open the dispatch gate underneath a running claim;
+  ``workflow:in-progress``) *plus* positive evidence from the run authority
+  (``run_authority.compute_run_freshness``) that a Run existed and no longer
+  holds the Issue. The label alone is not enough in either direction: an Issue
+  whose worker is still alive must not be offered a recovery that would
+  re-open the dispatch gate underneath a running claim, and an Issue with no
+  Run at all has no stranded Run to recover -- see ``run_holds_issue``;
 - decidable mirrors the projection's existing ``attention``/``decision`` rule:
   ``workflow:review`` with recorded evidence.
 
@@ -35,8 +37,6 @@ still lives in the registered action ports.
 from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
-
-from .run_authority import ACTIVE_RUN_STATUSES
 
 KIND_LAUNCH = "launch"
 KIND_RECOVER = "recover"
@@ -58,22 +58,41 @@ _VIEWS = {
 }
 
 
-def has_active_run(summaries: Sequence[Mapping[str, Any]] | None,
-                   freshness_status: str | None) -> bool:
-    """True when a Run still holds this Issue, so recovery must not be offered.
+def run_holds_issue(summaries: Sequence[Mapping[str, Any]] | None,
+                    freshness_status: str | None) -> bool | None:
+    """Whether a Run still holds this Issue: ``True``/``False``, or ``None``.
 
-    A claim counts as holding the Issue only while the run authority still
-    considers it alive: an ``in_progress`` claim whose newest signal is past the
-    stranded bound is exactly the abandoned Run
+    ``None`` means *not established*, and the caller must fail closed. That is
+    the important case, and the reason this is tri-state rather than a bool:
+
+    - **No correlated Run at all** is not evidence of a stranded Run. An
+      ``workflow:in-progress`` Issue with no Run record is the normal shape of
+      an epic, or of work a human is doing right now by hand -- including this
+      very Issue while it is being implemented. Offering to "return it to
+      ready" there would re-open the dispatch gate
+      (``scripts/dispatcher.py`` claims only ``workflow:ready``) underneath
+      live human work, so a worker could claim an Issue somebody is already
+      working in. Absence of a Run yields ``None``, never ``False``.
+    - **``unavailable`` freshness** means ``now`` could not be resolved;
+      ``compute_run_freshness`` documents that its caller fails closed. So does
+      this, and so does any status this function does not recognise.
+
+    A Run holds the Issue while the run authority still considers it alive:
+    ``fresh`` and ``stale`` both count. ``stranded_running`` does not -- a
+    claim past the stranded bound is exactly the abandoned Run
     ``workflow.recover-to-ready.v1`` exists to rescue, and must not block its
-    own remedy. ``stranded_running`` therefore does not count as active, while
-    ``fresh`` and ``stale`` do.
+    own remedy. ``terminal`` does not either: a finished Run whose Issue is
+    still ``workflow:in-progress`` is stranded state a recovery should clear.
     """
-    active = [s for s in (summaries or [])
-              if isinstance(s, Mapping) and str(s.get("status")) in ACTIVE_RUN_STATUSES]
-    if not active:
+    items = [s for s in (summaries or []) if isinstance(s, Mapping)]
+    if not items:
+        return None
+    status = str(freshness_status)
+    if status in ("fresh", "stale"):
+        return True
+    if status in ("stranded_running", "terminal"):
         return False
-    return str(freshness_status) in ("fresh", "stale")
+    return None
 
 
 def resolve_next_action(workflow: str | None, *,
@@ -99,8 +118,10 @@ def resolve_next_action(workflow: str | None, *,
             kind = KIND_LAUNCH
     elif state == "in-progress":
         # The recovery transition's own precondition is the label; the run
-        # authority decides whether the Issue is actually stranded. `None`
-        # (unknown run state) fails closed.
+        # authority must then supply positive evidence that a Run existed and
+        # released the Issue. `None` -- no Run at all, an unresolvable clock,
+        # or an unreadable store -- fails closed, because recovery re-opens
+        # the dispatch gate and must never do so on absence of evidence.
         if run_active is False:
             kind = KIND_RECOVER
     elif state == "review":

@@ -130,16 +130,32 @@ def test_host_offers_recovery_only_when_no_run_still_holds_the_issue(tmp_path):
     """A stranded in-progress Issue is recoverable; the same Issue under a
     live claim is not. `workflow:in-progress` alone is never the authority."""
     issue = _issue(473, "workflow:in-progress")
+    claim = {"r1": _run_record("r1", f"{REPO}#473")}
 
-    stranded = _host(tmp_path / "a", [issue])
+    stranded = _host(tmp_path / "a", [issue], registry_doc=claim,
+                     now="2026-09-03T12:00:00+00:00")
     assert stranded.workstreams(REPO)["workstreams"][0]["next_action"]["kind"] == "recover"
 
-    live = _host(tmp_path / "b", [issue],
-                 registry_doc={"r1": _run_record("r1", f"{REPO}#473")},
+    live = _host(tmp_path / "b", [issue], registry_doc=claim,
                  now="2026-09-02T12:00:30+00:00")
     listed = live.workstreams(REPO)["workstreams"][0]
     assert listed["next_action"] is None
     assert listed["view_capabilities"] == []
+
+
+def test_host_never_offers_recovery_for_an_issue_with_no_run_at_all(tmp_path):
+    """The epic and manual-work shape, and the regression this test file
+    previously encoded as intended behavior: an empty Run registry made every
+    `workflow:in-progress` Issue look stranded. Recovery re-opens the dispatch
+    gate, so on absence of evidence it must not be offered -- otherwise a
+    worker can claim an Issue a human is actively working in."""
+    host = _host(tmp_path, [_issue(473, "workflow:in-progress")])
+    listed = host.workstreams(REPO)["workstreams"][0]
+
+    assert listed["workflow"] == "in-progress"
+    assert listed["next_action"] is None
+    assert listed["view_capabilities"] == []
+    assert host.workstream_detail(REPO, 473)["next_action"] is None
 
 
 def test_host_offers_recovery_for_an_abandoned_claim(tmp_path):

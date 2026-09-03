@@ -10,10 +10,13 @@ rendered "No next action pending" and offered no control.
 These tests drive the **production builders**, never the fixtures, and assert
 the derivation is bound to the same authorities the mutation gates use.
 """
+import json
+from pathlib import Path
+
 import pytest
 
 from widget_contract.detail import build_workstream_detail_v1
-from widget_contract.next_action import has_active_run, resolve_next_action
+from widget_contract.next_action import resolve_next_action, run_holds_issue
 from widget_contract.registry import TYPES
 from widget_contract.validation import validate
 from widget_contract.workstreams import build_workstream_projection
@@ -128,15 +131,42 @@ def test_in_progress_without_a_run_answer_is_not_offered_recovery():
     assert detail["next_action"] is None
 
 
-def test_has_active_run_treats_a_stranded_claim_as_not_holding_the_issue():
+def test_run_holds_issue_requires_positive_evidence_in_both_directions():
     """A claim past the stranded bound is exactly what recovery exists to
-    rescue, so it must not block its own remedy."""
+    rescue, so it must not block its own remedy -- but absence of a Run is not
+    evidence of a stranded one, and an unresolvable clock is not evidence of
+    anything."""
     runs = [{"status": "in_progress"}]
-    assert has_active_run(runs, "fresh") is True
-    assert has_active_run(runs, "stale") is True
-    assert has_active_run(runs, "stranded_running") is False
-    assert has_active_run([], "fresh") is False
-    assert has_active_run([{"status": "succeeded"}], "terminal") is False
+    assert run_holds_issue(runs, "fresh") is True
+    assert run_holds_issue(runs, "stale") is True
+    assert run_holds_issue(runs, "stranded_running") is False
+    assert run_holds_issue([{"status": "succeeded"}], "terminal") is False
+
+    # Not established -> the caller must fail closed.
+    assert run_holds_issue([], "fresh") is None
+    assert run_holds_issue(None, "fresh") is None
+    assert run_holds_issue(runs, "unavailable") is None
+    assert run_holds_issue(runs, "something-new") is None
+    assert run_holds_issue(runs, None) is None
+
+
+def test_an_issue_with_no_run_at_all_is_never_offered_recovery():
+    """The epic and manual-work shape: `workflow:in-progress` with no Run
+    record at all. Recovery re-opens the dispatch gate
+    (`scripts/dispatcher.py` claims only `workflow:ready`), so offering it here
+    would let a worker claim an Issue a human is actively working in. There is
+    no stranded Run to recover, so there is no recovery to offer."""
+    assert resolve_next_action("in-progress",
+                               run_active=run_holds_issue([], "fresh"))["next_action"] is None
+
+
+def test_an_unresolvable_clock_never_grants_recovery():
+    """`compute_run_freshness` documents that `unavailable` means its caller
+    fails closed. A clock that cannot be resolved is not evidence a worker
+    stopped."""
+    runs = [{"status": "in_progress"}]
+    assert resolve_next_action("in-progress",
+                               run_active=run_holds_issue(runs, "unavailable"))["next_action"] is None
 
 
 # --- decision -------------------------------------------------------------
@@ -204,18 +234,59 @@ def test_work_summary_falls_back_to_the_typed_label_not_fixture_prose():
     """The Next card's summary read `x.nextAction` -- prose that only the
     fixtures carry. On a live host that rendered "No next action pending."
     directly above a rendered launch control, which is the same fixture-only
-    defect the typed field exists to close. The summary must fall back to the
-    typed label the control itself is derived from."""
-    from pathlib import Path
+    defect the typed field exists to close.
+
+    This evaluates the real expression out of `work-console.js` rather than
+    asserting on its source text, so it survives reformatting and fails if the
+    expression's *behavior* regresses.
+    """
+    import shutil
+    import subprocess
+
+    if shutil.which("node") is None:
+        pytest.skip("node unavailable")
 
     widget = Path(__file__).resolve().parents[2] / "widget"
     js = (widget / "work-console.js").read_text(encoding="utf-8")
-    mirror = (Path(__file__).resolve().parents[3] / "site" / "public" / "widgets"
-              / "work-console.js").read_text(encoding="utf-8")
 
-    summary = [line for line in js.splitlines() if "x.nextAction?esc(x.nextAction)" in line]
-    assert len(summary) == 1
-    assert "primaryKind&&nextLabel" in js.splitlines()[js.splitlines().index(summary[0]) + 1], (
-        "the wc-main summary must fall back to the typed next_action label "
-        "before 'No next action pending.'")
-    assert js == mirror, "site mirror must carry the same source"
+    marker = '\'<p class="wc-main">\'+'
+    start = js.index(marker) + len(marker)
+    end = js.index("+'</p>'", start)
+    expression = js[start:end]
+
+    script = "\n".join([
+        "function esc(s){return String(s);}",
+        "const summary = (x, primaryKind, nextLabel, decision) => (" + expression + ");",
+        "const out = {",
+        "  prose: summary({nextAction:'Prose summary'}, 'launch', 'Start the approved Run', null),",
+        "  typed: summary({}, 'launch', 'Start the approved Run', null),",
+        "  recover: summary({}, 'recover', 'Return this Issue to ready', null),",
+        "  none: summary({}, null, null, null),",
+        "  decision_only: summary({}, null, null, {summary:'Decide this'}),",
+        "};",
+        "console.log(JSON.stringify(out));",
+    ])
+    proc = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    out = json.loads(proc.stdout)
+
+    # The defect: an authorized control with no prose must not read "No next
+    # action pending." -- it must name the action the control performs.
+    assert out["typed"] == "Start the approved Run"
+    assert out["recover"] == "Return this Issue to ready"
+    # Fixture prose still wins where a projection supplies it.
+    assert out["prose"] == "Prose summary"
+    # No authorized next action still reads as none, and a pending decision
+    # without a primary control still surfaces its own summary.
+    assert out["none"] == "No next action pending."
+    assert out["decision_only"] == "Decide this"
+
+
+def test_work_console_site_mirror_matches_canonical_source():
+    """The served file and the public mirror must not diverge (#498 touched
+    both; the parity invariant is enforced elsewhere too, but a change to this
+    expression must not be able to land in only one of them)."""
+    widget = Path(__file__).resolve().parents[2] / "widget"
+    mirror = Path(__file__).resolve().parents[3] / "site" / "public" / "widgets"
+    assert ((widget / "work-console.js").read_text(encoding="utf-8")
+            == (mirror / "work-console.js").read_text(encoding="utf-8"))

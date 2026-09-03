@@ -50,7 +50,7 @@ from widget_contract.run_authority import (
     summaries_from_sessions,
 )
 from widget_contract.workstreams import build_workstream_projection
-from widget_contract.next_action import has_active_run
+from widget_contract.next_action import run_holds_issue
 from widget_contract.detail import _workflow_state
 from widget_contract.generation import generate_widget_spec
 from widget_contract.loader import load_widget_file
@@ -319,7 +319,7 @@ class ActionHost:
                         issue_id, dispatcher_runs,
                         summaries_from_sessions(session_docs or [], issue_id))
                     freshness = compute_run_freshness(runs, now_iso=now_iso)
-                    grant["run_active"] = has_active_run(runs, freshness["status"])
+                    grant["run_active"] = run_holds_issue(runs, freshness["status"])
                 except Exception:
                     grant["run_active"] = None
             if grant:
@@ -379,7 +379,7 @@ class ActionHost:
             except Exception:
                 launch_eligible = None
         elif workflow == "in-progress":
-            run_active = has_active_run(runs, freshness["status"])
+            run_active = run_holds_issue(runs, freshness["status"])
         return read_workstream_detail_v1(
             issue, runs, repo=repo,
             status=freshness["status"], age_seconds=freshness["age_seconds"],
