@@ -670,6 +670,59 @@ def runtime_launch_config_ok(runtime: str) -> bool:
     return all(os.environ.get(name) for name in required_env)
 
 
+def _derive_run_branch_commit(run, repo_dir, git) -> "str | None":
+    """Resolve the tip of ``run``'s registered branch, or None.
+
+    The Evidence Gate re-verifies whatever commit is claimed against the Run's
+    registered isolated branch, timestamp, DCO and artifact policy, so deriving
+    the branch tip here is safe (`#506`): a baseline commit that predates the
+    claim is refused by the gate's own ``commit_predates_run`` check, and a
+    branch that cannot be resolved yields None (a later ``commit_missing``).
+    """
+    branch = getattr(run, "branch", None)
+    if not repo_dir or not branch:
+        return None
+    try:
+        code, out = git(["rev-parse", f"refs/heads/{branch}"])
+    except Exception:  # noqa: BLE001 - a readable repo is the gate's job, never ours
+        return None
+    if code != 0:
+        return None
+    value = (out or "").strip()
+    return value if value else None
+
+
+def enrich_run_correlation(run, result_envelope, *, repo_dir=None, git=None) -> dict:
+    """Inject the authoritative correlation fields into a result envelope (#506).
+
+    ``run_id``, ``issue_id`` and ``request_id`` come from the durable Run
+    record, never trusted from worker prose: a worker that echoes them back adds
+    no assurance and must not be allowed to change them. These are overwritten
+    unconditionally, because correlation is the platform's to own.
+
+    The ``commit`` is *not* taken from worker prose on faith either: when the
+    envelope omits it and a ``repo_dir`` + ``run.branch`` are available, it is
+    derived from the Run's own isolated branch. Whatever commit is ultimately
+    presented is still verified by the Evidence Gate itself (reachability, the
+    Run's branch, a strictly-after-claim timestamp, DCO, and artifact policy) --
+    this helper supplies the authoritative identity fields, it does not weaken
+    the gate's checks.
+
+    Returns a new envelope dict; the caller's original is not mutated.
+    """
+    envelope = dict(result_envelope or {})
+    envelope["run_id"] = str(run.run_id)
+    envelope["issue_id"] = str(run.issue_id)
+    request_id = getattr(run, "request_id", None)
+    if request_id is not None:
+        envelope["request_id"] = str(request_id)
+    if not envelope.get("commit"):
+        derived = _derive_run_branch_commit(run, repo_dir, git) if (repo_dir and git) else None
+        if derived:
+            envelope["commit"] = derived
+    return envelope
+
+
 def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str,
                    worktree: Path | None = None,
                    on_terminal: "Callable[[str, str], None] | None" = None) -> threading.Thread:
@@ -731,6 +784,13 @@ def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str,
                 },
             }
         try:
+            # #506: supply the authoritative correlation fields from the durable
+            # Run record before the Evidence Gate sees the envelope, so a worker
+            # that echoes nothing (or echoes wrong values) can never bypass
+            # correlation. No commit derivation here: this is the adapter path
+            # with no repo access; the worker reports the commit and the gate
+            # verifies it against the run's branch.
+            envelope = enrich_run_correlation(run, envelope)
             dispatcher.complete(run.run_id, status, envelope)
         except Exception as exc:  # noqa: BLE001 - last resort, run must not vanish silently
             print(

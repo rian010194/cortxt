@@ -195,11 +195,13 @@ def test_eligible_engine_is_actually_dispatchable_through_real_registry(tmp_path
     # landed nothing.
     assert run.status == "blocked"
     assert run.result["evidence_gate"] == "commit_correlation_failed"
-    # This worker returns a bare `{"status": "succeeded"}`-shaped envelope: no
-    # commit, and no correlation either. Correlation is checked first, so that
-    # is the reported cause -- an envelope that states nothing about which Run
-    # it belongs to cannot be evidence for any Run, whatever it landed.
-    assert run.result["error"]["category"] == "run_correlation_mismatch"
+    # #506: the launcher now supplies the authoritative run_id / issue_id /
+    # request_id from the durable Run record, so correlation is established even
+    # when the worker reports nothing. The run is still blocked -- it landed no
+    # commit, so the gate fails on commit_missing. The negative arm must keep
+    # failing: correlation is not success, and a worker that echoes nothing
+    # about a commit is still not evidence of a landed commit.
+    assert run.result["error"]["category"] == "commit_missing"
     assert run.commit_evidence is None
     # And the issue goes to blocked, not review: a failing terminal status is
     # still the dispatcher's to sync, while `workflow:review` is review-sync's

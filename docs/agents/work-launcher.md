@@ -101,6 +101,21 @@ the result envelope. Anything else — a missing SHA, a foreign commit, a policy
 breach, or a gate that cannot read the repository — converts the claimed
 `succeeded` into `blocked` with a stable failure code.
 
+The producer side supplies the correlation from the durable Run record, never
+from worker prose (#506). Both `worker_adapters.dispatch_async` and
+`work_launcher.submit()` inject the authoritative `run_id` / `issue_id` /
+`request_id` into the envelope before the Run is completed, so an envelope that
+echoes wrong values (or none) cannot move the correlation check — it is the
+platform's identity to own. On the coordinator-direct path `submit()` also
+derives the `commit` from the Run's own `work/<run_id>` branch when the worker
+reported none; the gate still re-verifies that commit, so this enriches without
+weakening. Consequently a `succeeded` report that lands nothing is still
+`blocked`, now recorded as `commit_missing` (correlation is established but no
+commit is evidence of a landed commit) rather than `run_correlation_mismatch`.
+The worker prompt (`generate_worker_prompt`) states the result contract: commit
+with a DCO `Signed-off-by:` trailer inside the run's own worktree and report
+`run_id` / `issue_id` / `request_id` and the commit SHA in the result envelope.
+
 This closes #490. The #485 run `run-6d936b467f804939a4ce734ac5f45dd8` reported
 `succeeded` with `artifacts: ["run-log:..."]` and evidence "hermes-free
 reported status=succeeded", while `git log --all` for the mandated path

@@ -25,13 +25,23 @@ from launcher_inventory import (InventoryUnavailable, daemon_claims_reader,
                                 lifecycle_sessions_reader, make_graph_reader,
                                 writer_domain_reader)
 from worker_adapters import (UnknownRuntimeError, dispatch_async,
-                             runtime_launch_config_ok)
+                             enrich_run_correlation, runtime_launch_config_ok)
 
 FORBIDDEN = re.compile(r"[\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6]")
 DEFAULT_ARTIFACT_POLICY = (
     "Commit only English project artifacts on a feature branch. Do not push, merge, "
     "close issues, expose secrets, copy full prompts, or record model reasoning."
 )
+
+
+def _run_git_correlation(repo_path, args):
+    """A minimal ``git`` callable for #506's commit derivation, matching the
+    ``(returncode, stdout)`` contract ``commit_evidence`` uses so a caller can
+    resolve a Run branch's tip without coupling this module to the gate."""
+    proc = subprocess.run(["git", *args], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=30,
+                          cwd=str(repo_path))
+    return proc.returncode, proc.stdout
 
 
 class ExecutionGateError(RuntimeError):
@@ -99,7 +109,25 @@ def generate_worker_prompt(scope: str, acceptance_criteria: list[str], limits: d
     return ("You are a bounded worker.\n\nScope\n-----\n" + scope.strip() +
             "\n\nAcceptance criteria\n-------------------\n" + ac_lines +
             "\n\nLimits\n------\n" + limit_lines +
-            "\n\nArtifact policy\n---------------\n" + artifact_policy + "\n")
+            "\n\nArtifact policy\n---------------\n" + artifact_policy +
+            "\n\nResult contract\n---------------\n"
+            "You work inside this Run's own isolated git worktree, on its branch.\n"
+            "If your scope changes the repository: commit your approved English "
+            "artifacts,\n"
+            "each commit carrying a DCO `Signed-off-by: Your Name <email>` trailer.\n"
+            "Your completed result must be reported as the structured result "
+            "envelope with\n"
+            "`run_id`, `issue_id`, `request_id` and, when you committed, the full "
+            "40-hex\n"
+            "`commit` SHA of the commit you landed. Do not invent these: the "
+            "platform\n"
+            "supplies the authoritative run/issue/request identity and verifies "
+            "your commit\n"
+            "against this Run's own branch (reachability, timestamp, DCO and "
+            "artifact policy).\n"
+            "Do not push, merge, close issues, expose secrets, copy full prompts, "
+            "or record\n"
+            "model reasoning.\n")
 
 
 def parse_scope_file(path: Path) -> dict:
@@ -669,10 +697,11 @@ class WorkLauncher:
         """
         registry = getattr(self.dispatcher, "registry", None)
         ceiling = None
+        run_correlation = None
         if registry is not None and hasattr(registry, "get"):
-            run = registry.get(run_id)
-            if run is not None:
-                ceiling = getattr(run, "max_cost_usd", None)
+            run_correlation = registry.get(run_id)
+            if run_correlation is not None:
+                ceiling = getattr(run_correlation, "max_cost_usd", None)
         if ceiling is not None:
             cost = (result or {}).get("cost")
             if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost > ceiling:
@@ -680,6 +709,16 @@ class WorkLauncher:
                           "error": {"category": "budget_exceeded",
                                     "recovery": "Approved cost ceiling exceeded; amend the issue ceiling or "
                                                 "reduce scope, then start a fresh run."}}
+        # #506: supply the authoritative correlation fields (run_id / issue_id /
+        # request_id) from the durable Run record, and derive the commit from the
+        # run's own isolated branch when the worker reported none. The Evidence
+        # Gate still verifies whatever commit is presented (reachability, branch,
+        # strictly-after-claim timestamp, DCO, artifact policy), so this enriches
+        # the envelope without weakening the gate's checks.
+        if run_correlation is not None:
+            result = enrich_run_correlation(
+                run_correlation, result, repo_dir=self.repo_path,
+                git=lambda args: _run_git_correlation(self.repo_path, args))
         # `complete()` persists the terminal transition first and only then
         # syncs GitHub and writes the durable review submission (#493). Those
         # later steps can raise -- a ReviewSubmissionError, a GitHubError -- at
