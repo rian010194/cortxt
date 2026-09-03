@@ -244,3 +244,100 @@ def test_a_pre_existing_commit_does_not_count_as_output(repo, tmp_path):
     run = dispatcher.registry.get("run-base")
     assert run.status == "blocked"
     assert run.result["error"]["category"] == "commit_predates_run"
+
+
+# ==========================================================================
+# The live OS path: WorkLauncher._dispatch -> dispatch_async -> adapter ->
+# Dispatcher.complete -> Evidence Gate.
+#
+# This is the path #497 and a real Cortxt OS launch take. `submit()` is the
+# coordinator-direct path and passing it proves nothing about this one: no
+# adapter emits a `commit` field, so before #506 every mutating Run on the
+# live path stopped at `commit_missing` no matter what it landed.
+# ==========================================================================
+
+class _NoCommitAdapter:
+    """Shaped like the hermes-free success envelope: no correlation, no commit."""
+
+    def __init__(self, status="succeeded"):
+        self.status = status
+
+    def invoke(self, run, task_prompt, timeout_seconds, worktree=None):
+        return {"_status": self.status, "runtime": run.runtime,
+                "worker_role": run.worker_role, "provider": "nous",
+                "model": "upstage/solar-pro4:free", "usage": "unknown",
+                "cost": "unknown (not measured)", "artifacts": [],
+                "evidence": "worker reported status=" + self.status, "error": None}
+
+
+def _run_worktree(repo, branch, tmp_path, name):
+    """A real linked git worktree for `branch`, as the launcher creates."""
+    _git(repo, "checkout", "main")
+    path = tmp_path / name
+    _git(repo, "worktree", "add", str(path), branch)
+    return path
+
+
+def _dispatch_live(repo, tmp_path, run_id, branch, worktree, *, claimed_at,
+                   status="succeeded"):
+    from worker_adapters import dispatch_async, register_adapter
+
+    registry = RunRegistry(tmp_path / ("reg-live-" + run_id + ".json"))
+    dispatcher = Dispatcher(registry, gh=FakeGitHub(),
+                            commit_gate=make_commit_gate(repo))
+    run = Run(run_id=run_id, issue_id="owner/repo#485",
+              workflow="work-launcher/v1", worker_role="builder",
+              runtime="test-nocommit", claimed_at=claimed_at, lease_seconds=600,
+              status="in_progress", mutating=True, isolation="worktree",
+              branch=branch, artifact_policy=POLICY, request_id="sha256:abc")
+    registry.add(run)
+    register_adapter("test-nocommit", _NoCommitAdapter(status))
+    dispatch_async(dispatcher, run, "[test] see issue body",
+                   worktree=worktree).join(timeout=30)
+    return registry.get(run_id)
+
+
+def test_live_dispatch_path_positive_arm_reaches_commit_correlated(repo, tmp_path):
+    claimed_at = time.time()
+    time.sleep(1.1)  # the gate refuses a commit inside the claim's own second
+    _commit(repo, "work/run-live", "docs/agents/work-launcher.md", signoff=True)
+    wt = _run_worktree(repo, "work/run-live", tmp_path, "wt-live")
+
+    done = _dispatch_live(repo, tmp_path, "run-live", "work/run-live", wt,
+                          claimed_at=claimed_at)
+
+    assert done.status == "succeeded"
+    assert done.result["evidence_gate"] == "commit_correlated"
+    assert done.result["commit_evidence"]["branch"] == "work/run-live"
+    # Correlation came from the Run record; the adapter emitted none of it.
+    assert done.result["run_id"] == "run-live"
+    assert done.result["request_id"] == "sha256:abc"
+
+
+def test_live_dispatch_path_negative_arm_stays_blocked(repo, tmp_path):
+    # The branch exists but sits on the baseline: the Run landed nothing. The
+    # derived tip predates the claim, so the gate refuses it as output.
+    _git(repo, "branch", "work/run-live-neg", "main")
+    claimed_at = time.time()
+    wt = _run_worktree(repo, "work/run-live-neg", tmp_path, "wt-live-neg")
+
+    done = _dispatch_live(repo, tmp_path, "run-live-neg", "work/run-live-neg", wt,
+                          claimed_at=claimed_at)
+
+    assert done.status == "blocked"
+    assert done.result["evidence_gate"] == "commit_correlation_failed"
+    assert done.result["error"]["category"] == "commit_predates_run"
+
+
+def test_live_dispatch_path_does_not_attach_a_commit_to_a_failed_run(repo, tmp_path):
+    claimed_at = time.time()
+    time.sleep(1.1)
+    _commit(repo, "work/run-live-fail", "docs/agents/work-launcher.md", signoff=True)
+    wt = _run_worktree(repo, "work/run-live-fail", tmp_path, "wt-live-fail")
+
+    done = _dispatch_live(repo, tmp_path, "run-live-fail", "work/run-live-fail", wt,
+                          claimed_at=claimed_at, status="failed")
+
+    assert done.status == "failed"
+    # A failed run must not carry a field that reads as landed evidence.
+    assert "commit" not in done.result

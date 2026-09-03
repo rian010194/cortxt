@@ -106,12 +106,29 @@ from worker prose (#506). Both `worker_adapters.dispatch_async` and
 `work_launcher.submit()` inject the authoritative `run_id` / `issue_id` /
 `request_id` into the envelope before the Run is completed, so an envelope that
 echoes wrong values (or none) cannot move the correlation check — it is the
-platform's identity to own. On the coordinator-direct path `submit()` also
-derives the `commit` from the Run's own `work/<run_id>` branch when the worker
-reported none; the gate still re-verifies that commit, so this enriches without
-weakening. Consequently a `succeeded` report that lands nothing is still
-`blocked`, now recorded as `commit_missing` (correlation is established but no
-commit is evidence of a landed commit) rather than `run_correlation_mismatch`.
+platform's identity to own. When the Run record carries no `request_id` at all,
+a worker-supplied one is dropped rather than left standing in for approved
+identity: the Run is refused as unapproved instead of correlated against the
+worker's own claim.
+
+Both paths also derive the `commit` when the worker reported none — `submit()`
+from the launcher's repository, `dispatch_async` from the Run's own isolated
+worktree, which is a git working directory for that Run's own branch. The live
+path needs this in its own right: it is the path a real Cortxt OS launch takes
+(`WorkLauncher._dispatch` -> `dispatch_async` -> adapter ->
+`Dispatcher.complete`), and no adapter emits a `commit` field, so without
+derivation every mutating Run on the live path stopped at `commit_missing` and
+the accepted arm was structurally unreachable. A green `submit()` test does not
+cover it. Only a claimed success is enriched with a commit; a failed Run must
+not carry a field that reads as landed evidence.
+
+The gate still re-verifies whatever commit is presented, so this enriches
+without weakening. A `succeeded` report that lands nothing is still `blocked`:
+on the coordinator-direct path as `commit_missing`, and on the live path — where
+the Run's branch resolves to the baseline it started from — as
+`commit_predates_run`, the gate's strictly-after-claim check refusing a
+pre-existing commit as this Run's output. Both are
+`evidence_gate: "commit_correlation_failed"`.
 The worker prompt (`generate_worker_prompt`) states the result contract: commit
 with a DCO `Signed-off-by:` trailer inside the run's own worktree and report
 `run_id` / `issue_id` / `request_id` and the commit SHA in the result envelope.
