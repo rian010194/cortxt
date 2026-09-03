@@ -922,7 +922,15 @@ function renderWork(winEl,ctx){
     '<div class="work-layout">'+
       '<div class="work-col">'+
         '<section class="work-card next-card"><h3>Next</h3>'+
-          '<p class="wc-main">'+(x.nextAction?esc(x.nextAction):(decision?esc(decision.summary):"No next action pending."))+'</p>'+
+          /* #498: on a live host `nextAction` (prose) is fixture-only, so this
+             line read "No next action pending." while the typed next action
+             below rendered its control -- the same fixture-only defect the
+             typed field exists to close. The typed label is the authority the
+             control itself uses, so it is what the summary must fall back to
+             when no prose summary was projected. */
+          '<p class="wc-main">'+(x.nextAction?esc(x.nextAction)
+              :(primaryKind&&nextLabel?esc(nextLabel)
+              :(decision?esc(decision.summary):"No next action pending.")))+'</p>'+
           (decision?'<p class="wc-sub">'+esc(decision.summary)+'</p>':'')+
           '<div class="work-actions">'+
             /* Exactly one primary affordance, derived from the typed next

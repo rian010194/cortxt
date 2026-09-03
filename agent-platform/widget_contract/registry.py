@@ -398,9 +398,26 @@ SOURCE_STATE_SCHEMA = {"type": "object", "additionalProperties": False,
                                       "properties": {"kind": {"type": "string"},
                                                      "message": {"type": "string"}}},
                         }}
+# --- S7d (#498): typed navigation authority --------------------------------
+# `next_action` is the single authority for Work's primary affordance. It is
+# derived server-side (`widget_contract.next_action.resolve_next_action`) from
+# the dispatch gate's eligibility and the run/recovery authority, never from
+# prose and never defaulted. `view_capabilities` authorizes *navigating* to a
+# non-mutating preview only: the pattern forbids anything but a `view:` grant,
+# so a mutation capability cannot be expressed here even by mistake.
+NEXT_ACTION_SCHEMA = {"type": ["object", "null"], "additionalProperties": False,
+                      "required": ["kind", "label"],
+                      "properties": {"kind": {"type": "string",
+                                              "enum": ["launch", "recover", "decision"]},
+                                     "label": {"type": "string"}}}
+VIEW_CAPABILITIES_SCHEMA = {"type": "array",
+                            "items": {"type": "string",
+                                      "enum": ["view:launch", "view:recovery", "view:decision"]}}
+
 WORKSTREAM_DETAIL_SCHEMA = {"type": "object", "additionalProperties": False,
                              "required": ["schema_version", "mode", "synthetic", "issue",
-                                          "mandate", "relations", "runs", "evidence", "source"],
+                                          "mandate", "relations", "runs", "evidence", "source",
+                                          "next_action", "view_capabilities"],
                              "properties": {
                                  "schema_version": {"const": 1},
                                  "mode": {"type": "string", "enum": ["local", "synthetic"]},
@@ -411,6 +428,8 @@ WORKSTREAM_DETAIL_SCHEMA = {"type": "object", "additionalProperties": False,
                                  "runs": {"type": "array", "items": RUN_SUMMARY_SCHEMA},
                                  "evidence": EVIDENCE_DETAIL_SCHEMA,
                                  "source": SOURCE_STATE_SCHEMA,
+                                 "next_action": NEXT_ACTION_SCHEMA,
+                                 "view_capabilities": VIEW_CAPABILITIES_SCHEMA,
                              }}
 RUN_SUMMARIES_SCHEMA = {"type": "object", "additionalProperties": False,
                         "required": ["schema_version", "issue_ref", "runs"],

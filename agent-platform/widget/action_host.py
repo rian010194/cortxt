@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable, Deque, Mapping
+from typing import Any, Callable, Deque, Mapping, Sequence
 from urllib.parse import parse_qs
 
 from widget_contract.action_executor import AuthorizationDenied
@@ -50,6 +50,8 @@ from widget_contract.run_authority import (
     summaries_from_sessions,
 )
 from widget_contract.workstreams import build_workstream_projection
+from widget_contract.next_action import run_holds_issue
+from widget_contract.detail import _workflow_state
 from widget_contract.generation import generate_widget_spec
 from widget_contract.loader import load_widget_file
 from widget_contract.validation import ValidationError, validate
@@ -263,7 +265,66 @@ class ActionHost:
 
     def workstreams(self, repo: str = DEFAULT_REPO) -> dict:
         raw = self._issues.read(repo)
-        return build_workstream_projection(repo, raw["issues"], status=raw["status"], error=raw["error"])
+        return build_workstream_projection(
+            repo, raw["issues"], status=raw["status"], error=raw["error"],
+            authority=self._next_action_authority(repo, raw["issues"]))
+
+    def _next_action_authority(self, repo: str, issues: Sequence[Mapping[str, Any]]
+                               ) -> dict[str, dict[str, Any]]:
+        """Server-computed answers the typed `next_action` is derived from (#498).
+
+        Work reads its primary affordance from the *list* projection, so the
+        list is where the field has to be authoritative. Both answers come from
+        the authorities that already govern the corresponding mutation, so the
+        projection cannot offer what the gate would refuse:
+
+        - `launch_eligible` is `dispatch.request.v1`'s fail-closed `eligible`,
+          the same verdict `_bind_claim_run` re-derives at confirmation time.
+        - `run_active` is the run authority's view of whether a claim still
+          holds the Issue, so a live worker is never undercut by a recovery
+          affordance.
+
+        Fail-closed per issue: any read or routing failure leaves that Issue
+        without an authority answer, which `resolve_next_action` renders as no
+        next action rather than a guess. One slow or malformed Issue therefore
+        cannot deny the whole list.
+        """
+        dispatcher_runs: Mapping[str, Any] | None
+        session_docs: list[Mapping[str, Any]] | None
+        try:
+            dispatcher_runs = self._read_dispatcher_runs()
+            session_docs = self._read_session_docs()
+        except StoreUnavailable:
+            dispatcher_runs = None
+            session_docs = None
+
+        now_iso = self._wall_clock()
+        authority: dict[str, dict[str, Any]] = {}
+        for issue in issues:
+            number = issue.get("number")
+            if not isinstance(number, int):
+                continue
+            issue_id = f"{repo}#{number}"
+            workflow, workflow_labels = _workflow_state(issue)
+            grant: dict[str, Any] = {}
+            if workflow == "ready":
+                try:
+                    grant["launch_eligible"] = bool(
+                        self._build_dispatch_request(repo, number, issue=issue)["eligible"])
+                except Exception:
+                    grant["launch_eligible"] = None
+            elif workflow == "in-progress" and dispatcher_runs is not None:
+                try:
+                    runs = correlate_run_summaries(
+                        issue_id, dispatcher_runs,
+                        summaries_from_sessions(session_docs or [], issue_id))
+                    freshness = compute_run_freshness(runs, now_iso=now_iso)
+                    grant["run_active"] = run_holds_issue(runs, freshness["status"])
+                except Exception:
+                    grant["run_active"] = None
+            if grant:
+                authority[issue_id] = grant
+        return authority
 
     def _read_dispatcher_runs(self) -> Mapping[str, Any]:
         if not self._registry.exists():
@@ -306,9 +367,23 @@ class ActionHost:
             issue_ref, self._read_dispatcher_runs(),
             summaries_from_sessions(self._read_session_docs(), issue_ref))
         freshness = compute_run_freshness(runs, now_iso=self._wall_clock())
+        # Same two authorities as the list projection (#498), so detail and
+        # list can never disagree about what the operator may do next.
+        workflow, _ = _workflow_state(issue)
+        launch_eligible: bool | None = None
+        run_active: bool | None = None
+        if workflow == "ready":
+            try:
+                launch_eligible = bool(
+                    self._build_dispatch_request(repo, number, issue=issue)["eligible"])
+            except Exception:
+                launch_eligible = None
+        elif workflow == "in-progress":
+            run_active = run_holds_issue(runs, freshness["status"])
         return read_workstream_detail_v1(
             issue, runs, repo=repo,
-            status=freshness["status"], age_seconds=freshness["age_seconds"])
+            status=freshness["status"], age_seconds=freshness["age_seconds"],
+            launch_eligible=launch_eligible, run_active=run_active)
 
     def run_summaries(self, repo: str, number: int) -> dict:
         issue_ref = f"{repo}#{number}"

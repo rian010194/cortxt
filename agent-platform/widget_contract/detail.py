@@ -17,6 +17,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 from .approval import resolve_approval
+from .next_action import resolve_next_action
 
 WORKFLOW = re.compile(r"^workflow:(inbox|ready|in-progress|review|blocked|done)$", re.I)
 SECTION = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.M)
@@ -153,6 +154,14 @@ def _milestone(issue: Mapping[str, Any]) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _next_action_fields(workflow: str, launch_eligible: bool | None,
+                        run_active: bool | None, has_evidence: bool) -> dict[str, Any]:
+    derived = resolve_next_action(workflow, launch_eligible=launch_eligible,
+                                  run_active=run_active, has_evidence=has_evidence)
+    return {"next_action": derived["next_action"],
+            "view_capabilities": derived["view_capabilities"]}
+
+
 def build_workstream_detail_v1(
     issue: Mapping[str, Any],
     runs: Sequence[Mapping[str, Any]],
@@ -162,6 +171,8 @@ def build_workstream_detail_v1(
     error: Mapping[str, Any] | None = None,
     age_seconds: int = 0,
     synthetic: bool = False,
+    launch_eligible: bool | None = None,
+    run_active: bool | None = None,
 ) -> dict[str, Any]:
     """Map one GitHub Issue plus correlated Run summaries onto ``workstream.detail.v1``."""
     number = issue["number"]
@@ -202,6 +213,10 @@ def build_workstream_detail_v1(
             "approval_source": approval["source"],
             "dispatch_limits": parse_dispatch_limits(body),
         },
+        # Typed navigation authority (#498), derived from the same server
+        # authorities the claim and recovery gates use. Absent authority yields
+        # no next action -- never a mutation-oriented default.
+        **_next_action_fields(workflow, launch_eligible, run_active, has_evidence),
         "relations": parse_relations(body),
         "runs": [dict(run) for run in runs],
         "evidence": {

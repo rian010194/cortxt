@@ -638,11 +638,19 @@ def read_workstream_detail_v1(issue: Mapping[str, Any],
                               status: str = "fresh",
                               error: Mapping[str, Any] | None = None,
                               age_seconds: int = 0,
-                              synthetic: bool = False) -> dict[str, Any]:
-    """Build and validate the versioned Workstream detail projection."""
+                              synthetic: bool = False,
+                              launch_eligible: bool | None = None,
+                              run_active: bool | None = None) -> dict[str, Any]:
+    """Build and validate the versioned Workstream detail projection.
+
+    ``launch_eligible``/``run_active`` are the server-computed authority
+    answers the typed ``next_action`` is derived from (#498); omitting them
+    fails closed to no next action.
+    """
     result = build_workstream_detail_v1(
         issue, runs, repo=repo, status=status, error=error,
-        age_seconds=age_seconds, synthetic=synthetic)
+        age_seconds=age_seconds, synthetic=synthetic,
+        launch_eligible=launch_eligible, run_active=run_active)
     try:
         validate(result, TYPES["workstream.detail.v1"].schema)
     except Exception as exc:
