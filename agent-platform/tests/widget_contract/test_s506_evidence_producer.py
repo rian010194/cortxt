@@ -182,7 +182,8 @@ def test_commit_evidence_positive_arm_via_real_launcher(repo, tmp_path):
     assert run.result["commit"] == sha
     assert run.result["run_id"] == "run-pos"
     assert run.commit_evidence is not None
-    assert run.commit_evidence.commit == sha
+    # complete() persists commit_evidence as a record dict (CommitEvidence.as_record()).
+    assert run.commit_evidence["commit"] == sha
 
 
 # ==========================================================================

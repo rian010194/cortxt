@@ -714,11 +714,18 @@ class WorkLauncher:
         # run's own isolated branch when the worker reported none. The Evidence
         # Gate still verifies whatever commit is presented (reachability, branch,
         # strictly-after-claim timestamp, DCO, artifact policy), so this enriches
-        # the envelope without weakening the gate's checks.
+        # the envelope without weakening the gate's checks. Commit derivation
+        # only runs when a repo is present (`repo_path`); test harnesses and
+        # deployments without one fall back to injecting the correlation fields
+        # alone, which is the gate's minimum and the worker's job to satisfy.
         if run_correlation is not None:
-            result = enrich_run_correlation(
-                run_correlation, result, repo_dir=self.repo_path,
-                git=lambda args: _run_git_correlation(self.repo_path, args))
+            repo_path = getattr(self, "repo_path", None)
+            if repo_path is not None:
+                result = enrich_run_correlation(
+                    run_correlation, result, repo_dir=repo_path,
+                    git=lambda args: _run_git_correlation(repo_path, args))
+            else:
+                result = enrich_run_correlation(run_correlation, result)
         # `complete()` persists the terminal transition first and only then
         # syncs GitHub and writes the durable review submission (#493). Those
         # later steps can raise -- a ReviewSubmissionError, a GitHubError -- at
