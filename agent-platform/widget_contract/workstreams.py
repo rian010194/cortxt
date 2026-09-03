@@ -10,6 +10,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 from .approval import resolve_approval
+from .next_action import resolve_next_action
 
 WORKFLOW = re.compile(r"^workflow:(inbox|ready|in-progress|review|blocked|done)$", re.I)
 SECTION = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.M)
@@ -34,8 +35,19 @@ def _section(body: str, names: Sequence[str]) -> str | None:
 
 
 def build_workstream_projection(repo: str, issues: Sequence[Mapping[str, Any]], *,
-                                status: str = "fresh", error: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Map complete issue records to durable, non-invented Workstream views."""
+                                status: str = "fresh", error: Mapping[str, Any] | None = None,
+                                authority: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, Any]:
+    """Map complete issue records to durable, non-invented Workstream views.
+
+    ``authority`` carries the server-computed answers the typed ``next_action``
+    is derived from, keyed by ``issue_id``: ``launch_eligible`` (the
+    ``dispatch.request.v1`` verdict) and ``run_active`` (the run authority's
+    view of whether a claim still holds the Issue). This projection is built
+    from ``gh issue list`` records and cannot compute either itself, so a
+    caller that omits them gets no next action at all rather than a guess
+    (#498). Work reads its primary affordance from *this* projection, so it is
+    the projection that must carry the field.
+    """
     workstreams = []
     for issue in issues:
         labels = _labels(issue)
@@ -54,9 +66,17 @@ def build_workstream_projection(repo: str, issues: Sequence[Mapping[str, Any]], 
         approval = resolve_approval(body)
         outcome = _section(body, ("Outcome", "Objective", "Goal")) or str(issue.get("title") or "Untitled work")
         actionable = workflow == "review" and bool(evidence)
+        issue_id = f"{repo}#{issue['number']}"
+        grant = (authority or {}).get(issue_id) or {}
+        derived = resolve_next_action(
+            workflow,
+            launch_eligible=grant.get("launch_eligible"),
+            run_active=grant.get("run_active"),
+            has_evidence=bool(evidence),
+        )
         workstreams.append({
             "id": f"WS-{issue['number']}",
-            "issue_id": f"{repo}#{issue['number']}",
+            "issue_id": issue_id,
             "number": issue["number"],
             "title": str(issue.get("title") or "Untitled work"),
             "outcome": outcome.splitlines()[0][:240],
@@ -71,6 +91,11 @@ def build_workstream_projection(repo: str, issues: Sequence[Mapping[str, Any]], 
             "evidence": ([{"title": "Issue evidence", "detail": evidence[:1200], "status": "recorded"}]
                          if evidence else []),
             "acceptance_criteria": acceptance,
+            # Typed navigation authority (#498). Read-only by construction:
+            # `view_capabilities` can only ever carry `view:` grants, and the
+            # mutation boundary remains the registered action ports.
+            "next_action": derived["next_action"],
+            "view_capabilities": derived["view_capabilities"],
         })
     order = {"review": 0, "blocked": 1, "in-progress": 2, "ready": 3, "inbox": 4, "done": 5, "unknown": 6}
     workstreams.sort(key=lambda item: (order.get(item["workflow"], 6), -item["number"]))
