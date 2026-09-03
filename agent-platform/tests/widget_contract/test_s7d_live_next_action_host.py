@@ -55,11 +55,12 @@ def _free_route_configured(monkeypatch):
 LIVE_HEARTBEAT = 1788350400.0  # 2026-09-02T12:00:00Z
 
 
-def _run_record(run_id, issue_id, status="in_progress", heartbeat=LIVE_HEARTBEAT):
+def _run_record(run_id, issue_id, status="in_progress", heartbeat=LIVE_HEARTBEAT,
+                finished_at=None):
     return {"run_id": run_id, "issue_id": issue_id, "workflow": "work-launcher/v1",
             "worker_role": "builder", "runtime": "hermes-free", "claimed_at": 1756470000.0,
             "lease_seconds": 5400, "status": status, "parent_run_id": None, "depth": 0,
-            "heartbeat_at": heartbeat, "finished_at": None, "result": None,
+            "heartbeat_at": heartbeat, "finished_at": finished_at, "result": None,
             "gh_synced": False, "gh_sync_claimed_at": None}
 
 
@@ -126,17 +127,20 @@ def test_host_derives_launch_from_the_dispatch_gate_not_from_the_label(tmp_path)
 
 # --- recovery -------------------------------------------------------------
 
-def test_host_offers_recovery_only_when_no_run_still_holds_the_issue(tmp_path):
-    """A stranded in-progress Issue is recoverable; the same Issue under a
-    live claim is not. `workflow:in-progress` alone is never the authority."""
+def test_host_offers_recovery_only_when_the_dispatcher_released_the_claim(tmp_path):
+    """An Issue whose Run the dispatcher recorded as finished is recoverable;
+    the same Issue under a live claim is not. `workflow:in-progress` alone is
+    never the authority, and neither is a heartbeat that stopped (#507)."""
     issue = _issue(473, "workflow:in-progress")
-    claim = {"r1": _run_record("r1", f"{REPO}#473")}
+    released = {"r1": _run_record("r1", f"{REPO}#473", status="failed",
+                                  finished_at=1756470600.0)}
 
-    stranded = _host(tmp_path / "a", [issue], registry_doc=claim,
-                     now="2026-09-03T12:00:00+00:00")
-    assert stranded.workstreams(REPO)["workstreams"][0]["next_action"]["kind"] == "recover"
+    recoverable = _host(tmp_path / "a", [issue], registry_doc=released,
+                        now="2026-09-03T12:00:00+00:00")
+    assert recoverable.workstreams(REPO)["workstreams"][0]["next_action"]["kind"] == "recover"
 
-    live = _host(tmp_path / "b", [issue], registry_doc=claim,
+    live = _host(tmp_path / "b", [issue],
+                 registry_doc={"r1": _run_record("r1", f"{REPO}#473")},
                  now="2026-09-02T12:00:30+00:00")
     listed = live.workstreams(REPO)["workstreams"][0]
     assert listed["next_action"] is None
@@ -158,13 +162,40 @@ def test_host_never_offers_recovery_for_an_issue_with_no_run_at_all(tmp_path):
     assert host.workstream_detail(REPO, 473)["next_action"] is None
 
 
-def test_host_offers_recovery_for_an_abandoned_claim(tmp_path):
-    """A claim past the stranded bound is what recovery exists to rescue, so
-    it must not block its own remedy."""
+def test_host_does_not_offer_recovery_for_a_claim_the_dispatcher_still_holds(tmp_path):
+    """A claim past the stranded bound is NOT a released claim (#507).
+
+    The Run's heartbeat is 24h stale, well past the 900s stranded bound, but
+    the dispatcher still records it `in_progress` and its 5400s lease is its
+    own to expire. A stale heartbeat says only that nothing wrote a signal.
+    Offering recovery here would re-open the dispatch gate under a claim the
+    write side still considers valid, so the projection withholds it and waits
+    for the dispatcher to release or time the claim out.
+    """
     host = _host(tmp_path, [_issue(473, "workflow:in-progress")],
                  registry_doc={"r1": _run_record("r1", f"{REPO}#473")},
                  now="2026-09-03T12:00:00+00:00")
-    assert host.workstreams(REPO)["workstreams"][0]["next_action"]["kind"] == "recover"
+    listed = host.workstreams(REPO)["workstreams"][0]
+    assert listed["next_action"] is None
+    assert listed["view_capabilities"] == []
+
+
+def test_host_never_offers_recovery_on_unresolved_provenance(tmp_path):
+    """A status the projection cannot recognise is not evidence of anything
+    (#507).
+
+    `unknown` (and `conflict`, two stores disagreeing) used to sit in
+    ACTIVE_RUN_STATUSES and so aged into `stranded_running`, which yielded
+    recovery: the most uncertain state produced the most permissive answer.
+    It is now `indeterminate`, and no recovery is derived from it.
+    """
+    host = _host(tmp_path, [_issue(473, "workflow:in-progress")],
+                 registry_doc={"r1": _run_record("r1", f"{REPO}#473",
+                                                 status="not-a-known-status")},
+                 now="2026-09-03T12:00:00+00:00")
+    listed = host.workstreams(REPO)["workstreams"][0]
+    assert listed["next_action"] is None
+    assert listed["view_capabilities"] == []
 
 
 # --- the mutation boundary ------------------------------------------------

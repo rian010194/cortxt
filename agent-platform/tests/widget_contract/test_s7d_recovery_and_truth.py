@@ -18,6 +18,7 @@ S7d human-decision journey exists:
 - ``_KNOWN_AUDIT_EVIDENCE_PATHS`` exempted ``scripts/runs.json``; the dispatch
   registry actually lives under ``agent-platform/.dispatch/``.
 """
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -168,9 +169,77 @@ def test_return_to_ready_moves_a_stranded_in_progress_issue(tmp_path):
 
     result = return_to_ready_transition(
         "workflow.recover-to-ready.v1", {"issue_id": "acme/repo#1"},
-        issue_reader=_reader(["workflow:in-progress"]), transition=transition)
+        issue_reader=_reader(["workflow:in-progress"]), transition=transition,
+        recovery_authority=lambda issue_id: False)
     assert result["status"] == "ok"
     assert calls == [("workflow.recover-to-ready.v1", "acme/repo#1")]
+
+
+# --- the write-time re-derivation (#507) ------------------------------------
+
+def _denied(authority):
+    """Run the recovery port with `authority` and return the denial message."""
+    def transition(operation, request):  # pragma: no cover - must never run
+        raise AssertionError("transition must not be called")
+    with pytest.raises(TransitionDenied) as excinfo:
+        return_to_ready_transition(
+            "workflow.recover-to-ready.v1", {"issue_id": "acme/repo#1"},
+            issue_reader=_reader(["workflow:in-progress"]), transition=transition,
+            recovery_authority=authority)
+    return str(excinfo.value)
+
+
+def test_recovery_is_refused_when_no_liveness_authority_is_wired():
+    """Optional in signature only: an unwired caller gets no recovery, never
+    an unchecked one."""
+    def transition(operation, request):  # pragma: no cover - must never run
+        raise AssertionError("transition must not be called")
+    with pytest.raises(TransitionDenied, match="run-liveness authority"):
+        return_to_ready_transition(
+            "workflow.recover-to-ready.v1", {"issue_id": "acme/repo#1"},
+            issue_reader=_reader(["workflow:in-progress"]), transition=transition)
+
+
+@pytest.mark.parametrize("authority, why", [
+    (lambda issue_id: True, "a Run still holds the Issue"),
+    (lambda issue_id: None, "liveness could not be established"),
+])
+def test_recovery_is_refused_unless_the_claim_is_shown_released(authority, why):
+    """Only an explicit `False` permits the write. `True` and `None` both deny:
+    recovery re-opens the dispatch gate and must never do so on absence of
+    evidence."""
+    assert "recovery is refused" in _denied(authority)
+
+
+def test_an_unreadable_liveness_authority_denies_rather_than_permits():
+    def raises(issue_id):
+        raise RuntimeError("dispatcher registry unreadable")
+    message = _denied(raises)
+    assert "could not be re-derived" in message
+    # The store's own error text is not relayed into the denial.
+    assert "unreadable" not in message.replace("could not be re-derived", "")
+
+
+def test_activity_resumed_between_render_and_confirm_denies_recovery():
+    """The TOCTOU window #507 finding 3 describes.
+
+    The projection renders `recover` at t=0 on a released claim. Before the
+    operator confirms, a new Run claims the Issue. The label is still exactly
+    `workflow:in-progress`, so the label re-read alone would let the write
+    through -- it is the write-time liveness re-derivation that must refuse.
+    """
+    answers = iter([False, True])   # render time, then write time
+    rendered = next(answers)
+    assert rendered is False        # the projection would offer recovery
+
+    def transition(operation, request):  # pragma: no cover - must never run
+        raise AssertionError("a resumed Run must not be written over")
+
+    with pytest.raises(TransitionDenied, match="run_active=True"):
+        return_to_ready_transition(
+            "workflow.recover-to-ready.v1", {"issue_id": "acme/repo#1"},
+            issue_reader=_reader(["workflow:in-progress"]), transition=transition,
+            recovery_authority=lambda issue_id: next(answers))
 
 
 @pytest.mark.parametrize("labels", [["workflow:ready"], ["workflow:review"],
@@ -195,6 +264,7 @@ def test_github_transition_adapter_routes_recovery_to_its_own_writer():
         lambda issue_id: seen.append(("ready", issue_id)) or {"status": "ok"},
         review_transition_writer=lambda issue_id: seen.append(("done", issue_id)) or {"status": "ok"},
         recover_transition_writer=lambda issue_id: seen.append(("recover", issue_id)) or {"status": "ok"},
+        recovery_authority=lambda issue_id: False,
     )
     assert adapter("workflow.recover-to-ready.v1", {"issue_id": "acme/repo#1"})["status"] == "ok"
     assert seen == [("recover", "acme/repo#1")]
@@ -204,6 +274,7 @@ def test_github_transition_adapter_refuses_recovery_without_its_writer():
     adapter = github_transition_adapter(
         lambda issue_id: ["workflow:in-progress"],
         lambda issue_id: {"status": "ok"},
+        recovery_authority=lambda issue_id: False,
     )
     with pytest.raises(ValueError, match="recover_transition_writer"):
         adapter("workflow.recover-to-ready.v1", {"issue_id": "acme/repo#1"})
@@ -222,15 +293,55 @@ def test_action_host_exposes_the_recovery_action_as_a_capability():
     assert "recover-to-ready" in ids
 
 
-def test_action_host_executes_recovery_through_the_authorized_port():
+def _released_registry(tmp_path):
+    """A dispatch registry whose only Run for acme/repo#1 the dispatcher itself
+    recorded as finished -- the one state that shows a released claim (#507)."""
+    registry = tmp_path / "runs.json"
+    registry.write_text(json.dumps({"r1": {
+        "run_id": "r1", "issue_id": "acme/repo#1", "workflow": "work-launcher/v1",
+        "worker_role": "builder", "runtime": "hermes-free", "claimed_at": 1756470000.0,
+        "lease_seconds": 5400, "status": "failed", "parent_run_id": None, "depth": 0,
+        "heartbeat_at": 1756470300.0, "finished_at": 1756470600.0, "result": None,
+        "gh_synced": False, "gh_sync_claimed_at": None}}), encoding="utf-8")
+    return registry
+
+
+def test_action_host_executes_recovery_through_the_authorized_port(tmp_path):
     seen = []
-    host = _host(labels_reader=lambda issue_id: ["workflow:in-progress"],
+    host = _host(registry=_released_registry(tmp_path),
+                 session_store=tmp_path / ".sessions",
+                 labels_reader=lambda issue_id: ["workflow:in-progress"],
                  recover_transition_writer=lambda issue_id: seen.append(issue_id) or {
                      "issue_id": issue_id, "status": "ok"})
     result = host.execute(action_id="recover-to-ready", issue_id="acme/repo#1",
                           approval_ref="operator-approval", confirm=True, token=host.token)
     assert result["operation"] == "workflow.recover-to-ready.v1"
     assert seen == ["acme/repo#1"]
+
+
+def test_action_host_refuses_recovery_while_a_run_still_holds_the_issue(tmp_path):
+    """The host's own wiring, not just the port in isolation: the same request
+    against a live claim is denied and never reaches the writer."""
+    from widget.action_host import ActionDenied
+
+    registry = tmp_path / "runs.json"
+    registry.write_text(json.dumps({"r1": {
+        "run_id": "r1", "issue_id": "acme/repo#1", "workflow": "work-launcher/v1",
+        "worker_role": "builder", "runtime": "hermes-free", "claimed_at": 1756470000.0,
+        "lease_seconds": 5400, "status": "in_progress", "parent_run_id": None,
+        "depth": 0, "heartbeat_at": 1756470300.0, "finished_at": None, "result": None,
+        "gh_synced": False, "gh_sync_claimed_at": None}}), encoding="utf-8")
+
+    def writer(issue_id):  # pragma: no cover - must never run
+        raise AssertionError("a live claim must not be written over")
+
+    host = _host(registry=registry, session_store=tmp_path / ".sessions",
+                 labels_reader=lambda issue_id: ["workflow:in-progress"],
+                 recover_transition_writer=writer)
+    host._wall_clock = lambda: "2026-08-29T12:05:30+00:00"
+    with pytest.raises(ActionDenied, match="recovery is refused"):
+        host.execute(action_id="recover-to-ready", issue_id="acme/repo#1",
+                     approval_ref="operator-approval", confirm=True, token=host.token)
 
 
 def test_action_host_recovery_requires_explicit_confirmation():

@@ -119,7 +119,9 @@ def record_decision_transition(operation: str, request: Mapping[str, Any], *,
 
 def return_to_ready_transition(operation: str, request: Mapping[str, Any], *,
                                issue_reader: Callable[[str], Mapping[str, Any]],
-                               transition: Callable[[str, Mapping[str, Any]], Any]) -> dict[str, Any]:
+                               transition: Callable[[str, Mapping[str, Any]], Any],
+                               recovery_authority: Callable[[str], "bool | None"] | None = None
+                               ) -> dict[str, Any]:
     """Exactly one authorized label transition: workflow:in-progress -> workflow:ready.
 
     The operator recovery the execution model already assumes but had no
@@ -133,12 +135,40 @@ def return_to_ready_transition(operation: str, request: Mapping[str, Any], *,
     Returning to ``ready`` re-opens the dispatch gate; it does not approve,
     close, or complete anything, and it never chains to a new run: a fresh
     launch remains a separate operator decision through the claim-run action.
+
+    ``recovery_authority`` re-derives run liveness immediately before the write,
+    the way the label is re-read (#507). Without it the label alone bounded the
+    window: the projection could offer recovery at render time, the Run could
+    resume -- or a new Run could claim the Issue -- while the operator read the
+    confirmation, and the port would write anyway. It is passed the issue id and
+    must return the same tri-state ``run_holds_issue`` answer. Only an explicit
+    ``False`` (no Run holds this Issue, per the dispatcher's own record) permits
+    the write. ``True``, ``None`` and a reader that raises all deny: recovery
+    re-opens the dispatch gate and must never do so on absence of evidence.
+
+    The parameter is optional in signature only. When it is omitted the port
+    denies every recovery, so a caller that has not wired an authority gets no
+    recovery rather than an unchecked one.
     """
     issue = issue_reader(request["issue_id"])
     labels = [x.get("name", "") if isinstance(x, dict) else str(x) for x in issue.get("labels") or []]
     workflow = [x for x in labels if str(x).lower().startswith("workflow:")]
     if workflow != ["workflow:in-progress"]:
         raise TransitionDenied(f"issue is not exactly workflow:in-progress: {workflow}")
+    if recovery_authority is None:
+        raise TransitionDenied(
+            "recovery requires a run-liveness authority re-derived at write time; "
+            "none was wired, so the recovery transition is refused")
+    try:
+        holds = recovery_authority(request["issue_id"])
+    except Exception as exc:  # noqa: BLE001 - an unreadable authority is not permission
+        raise TransitionDenied(
+            f"run liveness could not be re-derived before the write ({type(exc).__name__}); "
+            "recovery is refused") from exc
+    if holds is not False:
+        raise TransitionDenied(
+            "run liveness re-derived at write time does not show a released claim "
+            f"(run_active={holds!r}); recovery is refused")
     result = transition(operation, {"issue_id": request["issue_id"]})
     if not isinstance(result, dict):
         raise TransitionDenied("transition result must be an object")

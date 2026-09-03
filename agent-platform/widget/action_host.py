@@ -360,6 +360,20 @@ class ActionHost:
                 continue
         return docs
 
+    def _run_active(self, issue_ref: str) -> "bool | None":
+        """Re-derive whether a Run still holds ``issue_ref`` (#507).
+
+        The same two authorities the detail projection uses, read fresh. The
+        recovery port calls this immediately before its write, so a Run that
+        resumed -- or a new Run that claimed the Issue -- between render and
+        confirmation denies the recovery instead of being written over.
+        """
+        runs = correlate_run_summaries(
+            issue_ref, self._read_dispatcher_runs(),
+            summaries_from_sessions(self._read_session_docs(), issue_ref))
+        freshness = compute_run_freshness(runs, now_iso=self._wall_clock())
+        return run_holds_issue(runs, freshness["status"])
+
     def workstream_detail(self, repo: str, number: int) -> dict:
         issue = self._issue_reader(repo, number)
         issue_ref = f"{repo}#{number}"
@@ -530,6 +544,7 @@ class ActionHost:
             resume=partial(self._resume, approval_ref=approval_ref, request_id=request_id),
             review_transition_writer=self._review_transition_writer,
             recover_transition_writer=self._recover_transition_writer,
+            recovery_authority=self._run_active,
             authoritative_reference=authoritative_reference)
         try:
             result = executor.execute(action, context)
