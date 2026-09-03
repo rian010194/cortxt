@@ -78,7 +78,9 @@ def launcher(root, issues, events, ids, *, store=None, issue_reader=None,
     gh = FakeGitHub(issues, events)
     disp = FakeDispatcher(events)
     return WorkLauncher(disp, gh, dispatch=lambda d, r, p: events.append(("engine", r.run_id)),
-        worktree_root=root / "trees", run_worktree=lambda *a, **k: SimpleNamespace(returncode=0),
+        worktree_root=root / "trees",
+        run_worktree=lambda argv, **k: SimpleNamespace(
+            returncode=0, stdout=("0" * 40 if argv[1] == "rev-parse" else "")),
         claim_store=store, issue_reader=issue_reader or gh.get_issue,
         inventory_readers={name: (lambda: ()) for name in WorkLauncher.INVENTORY_NAMES},
         clock=lambda: 100.0, id_generator=lambda: next(ids), store_session_id=session,

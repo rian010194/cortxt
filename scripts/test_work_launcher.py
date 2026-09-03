@@ -43,6 +43,9 @@ def real_worktree_add(seen_cwd=None):
     def _run(args, *a, **kwargs):
         if seen_cwd is not None:
             seen_cwd.append(kwargs.get("cwd"))
+        if args[1] == "rev-parse":
+            # #509: the launcher resolves the branch's base before creating it.
+            return SimpleNamespace(returncode=0, stdout="0" * 40)
         # args: ["git", "worktree", "add", "-b", branch, <path>, "HEAD"]
         path = Path(args[5]) if len(args) > 5 else None
         if path:
@@ -57,6 +60,9 @@ def fake_worktree_add(*args, **kwargs):
     reports `isolation: "worktree"`, so a stand-in that creates nothing would
     (correctly) fail the launch closed."""
     argv = args[0] if args else kwargs.get("args")
+    if argv[1] == "rev-parse":
+        # #509: the launcher resolves the branch's base before creating it.
+        return SimpleNamespace(returncode=0, stdout="0" * 40)
     Path(argv[-2]).mkdir(parents=True, exist_ok=True)
     return SimpleNamespace(returncode=0)
 

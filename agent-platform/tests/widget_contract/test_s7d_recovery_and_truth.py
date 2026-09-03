@@ -75,6 +75,9 @@ def _launcher(tmp_path, *, worktree_returncode=0, ids=("run-1", "run-2")):
 
     def _run_worktree(argv, **kwargs):
         created.append(("git", tuple(argv)))
+        if argv[1] == "rev-parse":
+            # #509: the launcher resolves the branch's base before creating it.
+            return SimpleNamespace(returncode=0, stdout="0" * 40)
         if not worktree_returncode:
             # a real `git worktree add` creates the directory; the launcher
             # verifies it before reporting isolation
@@ -132,7 +135,9 @@ def test_resume_with_isolation_creates_and_reports_the_real_worktree(tmp_path):
     assert result["worktree"] == str(tmp_path / "trees" / "run-1")
     assert result["working_dir"] == result["worktree"]
     git_calls = [event[1] for event in created if event[0] == "git"]
-    assert git_calls and git_calls[0][:4] == ("git", "worktree", "add", "-b")
+    # #509: the base is resolved before the branch is created.
+    assert git_calls and git_calls[0] == ("git", "rev-parse", "HEAD")
+    assert git_calls[1][:4] == ("git", "worktree", "add", "-b")
 
 
 def test_isolated_resume_failure_is_still_fail_closed(tmp_path):

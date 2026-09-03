@@ -370,8 +370,13 @@ class WorkLauncher:
                 recovery=f"No adapter is registered for runtime {run.runtime!r}; register an adapter, or "
                          f"approve an issue Engine policy that routes to a registered engine.") from exc
 
-    def _create_worktree(self, run_id: str, worktree: Path) -> None:
+    def _create_worktree(self, run_id: str, worktree: Path) -> "str | None":
         """Create the run's isolated worktree and branch, or raise.
+
+        Returns the commit the branch was created from, for the durable
+        ``base_commit`` the Evidence Gate needs (#509), or None when it could
+        not be resolved -- a mutating Run then fails closed in
+        ``_record_isolation``.
 
         Verifies the directory afterwards: `_dispatch` binds the worker only to
         a worktree that actually exists, so a zero exit code that produced no
@@ -379,6 +384,11 @@ class WorkLauncher:
         had while the worker ran in the launcher's own checkout.
         """
         self.worktree_root.mkdir(parents=True, exist_ok=True)
+        # Resolve the base BEFORE creating the branch, so the recorded base is
+        # the commit the branch was actually created from (#509). Reading it
+        # afterwards would race a concurrent checkout in the same repository.
+        base = self.run_worktree(["git", "rev-parse", "HEAD"], capture_output=True,
+                                 text=True, cwd=str(self.repo_path))
         proc = self.run_worktree(["git", "worktree", "add", "-b", f"work/{run_id}",
                                   str(worktree), "HEAD"], capture_output=True, text=True,
                                  cwd=str(self.repo_path))
@@ -386,6 +396,10 @@ class WorkLauncher:
             raise LauncherDispatchError(
                 "worktree_creation_failed",
                 recovery="Ensure the worktree root is writable and retry with a fresh run.")
+        if getattr(base, "returncode", 0):
+            return None
+        resolved = (getattr(base, "stdout", "") or "").strip()
+        return resolved or None
 
     ISOLATION_WORKTREE = "worktree"
     ISOLATION_SHARED = "shared-checkout"
@@ -410,20 +424,31 @@ class WorkLauncher:
         return {"worktree": None, "branch": None,
                 "isolation": self.ISOLATION_SHARED, "working_dir": str(self.repo_path)}
 
-    def _record_isolation(self, run_id: str, created: bool, *, required: bool = False) -> None:
+    def _record_isolation(self, run_id: str, created: bool, *, required: bool = False,
+                          base_commit: "str | None" = None) -> None:
         """Carry the isolation mode onto the durable Run record.
 
         Best-effort: a registry without `update` (older/injected fakes) simply
         keeps no isolation field, and recording it must never fail a launch
         that has otherwise succeeded.
+
+        `base_commit` is the exception (#509). When the caller requires
+        isolation -- a mutating Run -- an unresolvable base fails the launch
+        closed, exactly as an unrecordable isolation does. The gate verifies
+        everything the Run contributed on top of that base, so a mutating Run
+        without one would run under a gate that could only ever check its tip
+        commit, which is the hole #509 exists to close.
         """
         registry = getattr(self.dispatcher, "registry", None)
         if registry is None or not hasattr(registry, "update"):
             if required:
                 raise ExecutionGateError("isolation_not_recordable")
             return
+        if created and required and not base_commit:
+            raise ExecutionGateError("base_commit_not_resolvable")
         fields = {"isolation": self.ISOLATION_WORKTREE if created else self.ISOLATION_SHARED,
-                  "branch": f"work/{run_id}" if created else None}
+                  "branch": f"work/{run_id}" if created else None,
+                  "base_commit": base_commit if created else None}
         try:
             registry.update(run_id, **fields)
         except Exception as exc:  # noqa: BLE001 - provenance metadata, never fatal
@@ -513,15 +538,17 @@ class WorkLauncher:
                     self._record_approved_scope(run_id, artifact_paths)
                 self._record_mutating(run_id)
             worktree = self.worktree_root / run_id
+            base_commit = None
             if create_worktree:
                 try:
-                    self._create_worktree(run_id, worktree)
+                    base_commit = self._create_worktree(run_id, worktree)
                 except LauncherDispatchError:
                     self.dispatcher.complete(run_id, "blocked",
                                              {"error": "isolated worktree creation failed"})
                     raise
             try:
-                self._record_isolation(run_id, create_worktree, required=mutating)
+                self._record_isolation(run_id, create_worktree, required=mutating,
+                                       base_commit=base_commit)
             except ExecutionGateError:
                 self.dispatcher.complete(run_id, "blocked",
                                          {"error": "isolation metadata could not be recorded"})
@@ -538,6 +565,7 @@ class WorkLauncher:
 
         run_id = self.id_generator()
         worktree = self.worktree_root / run_id
+        base_commit = None
         claim, receipt = self._gate(issue_id, workflow, runtime, max_runtime_seconds, run_id, worktree)
         try:
             run = self._claim_dispatcher(run_id, issue_id, workflow, worker_role, runtime,
@@ -563,11 +591,12 @@ class WorkLauncher:
                 self._record_mutating(run_id)
             if create_worktree:
                 try:
-                    self._create_worktree(run_id, worktree)
+                    base_commit = self._create_worktree(run_id, worktree)
                 except LauncherDispatchError as failure:
                     self._fail_launch(run_id, claim, failure)
                     raise
-            self._record_isolation(run_id, create_worktree, required=mutating)
+            self._record_isolation(run_id, create_worktree, required=mutating,
+                                   base_commit=base_commit)
             self._claims_by_run[run_id] = claim
             self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id,

@@ -173,6 +173,14 @@ class Run:
     # name constructed out of the run_id.
     isolation: Optional[str] = None
     branch: Optional[str] = None
+    # The commit this Run's isolated branch was created from (#509). The
+    # Evidence Gate verifies everything the Run contributed on top of it, not
+    # just the one commit a result envelope happens to present, so the base
+    # must be durable: it cannot be re-derived afterwards without hardcoding a
+    # baseline ref or guessing against a HEAD that has since moved, and neither
+    # belongs in a fail-closed gate. Recorded by the launcher at worktree
+    # creation, never by the worker.
+    base_commit: Optional[str] = None
     # Whether this Run's approved mandate expects it to change the repository
     # (S7 #490). A mutating Run may not be recorded `succeeded` without a
     # commit the Evidence Gate has verified and correlated; a non-mutating Run

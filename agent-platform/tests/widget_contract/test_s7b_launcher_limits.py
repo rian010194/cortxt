@@ -75,7 +75,8 @@ def _launcher(tmp_path, *, dispatcher=None, dispatch=None, store=None):
         dispatcher, SimpleNamespace(get_issue=lambda i: _issue(i)),
         dispatch=dispatch or record,
         worktree_root=tmp_path / "trees",
-        run_worktree=lambda *a, **k: SimpleNamespace(returncode=0),
+        run_worktree=lambda argv, **k: SimpleNamespace(
+            returncode=0, stdout=("0" * 40 if argv[1] == "rev-parse" else "")),
         claim_store=store,
         issue_reader=lambda issue_id: _issue(issue_id),
         inventory_readers={name: (lambda: ()) for name in WorkLauncher.INVENTORY_NAMES},
