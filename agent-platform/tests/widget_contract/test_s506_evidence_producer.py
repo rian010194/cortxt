@@ -35,14 +35,22 @@ the gate's own failure codes (`commit_not_on_run_branch`, `dco_trailer_missing`,
 must not shift or weaken any of them.
 """
 import subprocess
+import sys
 import time
+from pathlib import Path
 
 import pytest
 
-from commit_evidence import make_commit_gate
-from dispatcher import Dispatcher, Run, RunRegistry
-from work_launcher import WorkLauncher
-from worker_adapters import enrich_run_correlation
+# `scripts/` is not on the interpreter path in CI; the other widget_contract
+# chain tests bootstrap it the same way (see test_s7b_dispatch_registry_chain).
+SCRIPTS_DIR = Path(__file__).resolve().parents[3] / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from commit_evidence import make_commit_gate  # noqa: E402
+from dispatcher import Dispatcher, Run, RunRegistry  # noqa: E402
+from work_launcher import WorkLauncher  # noqa: E402
+from worker_adapters import enrich_run_correlation  # noqa: E402
 
 POLICY = "Only `docs/agents/work-launcher.md` inside the run's isolated worktree."
 SIGNOFF = "Signed-off-by: Operator <operator@example.com>"
