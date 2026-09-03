@@ -25,8 +25,11 @@ scope):
   run's own worktree; report run/issue/request + commit SHA).
 
 The negative arm stays fail-closed: a worker that lands nothing is still
-`blocked`, now reported as `commit_missing` (correlation is established, but a
-missing commit is not evidence of a landed commit).
+`blocked` with `evidence_gate: "commit_correlation_failed"`. The recorded
+category is `commit_predates_run` in the production shape -- a mutating Run
+always has its branch created before dispatch, so nothing-landed resolves to
+the baseline the branch started from, which the gate refuses as this Run's
+output. `commit_missing` is what remains when no branch resolves at all.
 
 These tests drive the REAL launcher, adapter, dispatcher and `make_commit_gate`
 chain end to end against a throwaway git repo -- not fixtures. The assertions on
@@ -187,8 +190,12 @@ def test_commit_evidence_positive_arm_via_real_launcher(repo, tmp_path):
 
 
 # ==========================================================================
-# Negative arm -- correlation is established, but a missing commit is still
-# a block. This is the #506 shift: `run_correlation_mismatch` -> `commit_missing`.
+# Negative arm, the no-branch-resolves case -- correlation is established and
+# the block is `commit_missing`. This is NOT the production shape of "the Run
+# landed nothing": a mutating Run always has its branch created before
+# dispatch, so nothing-landed resolves to the baseline and is refused as
+# `commit_predates_run` (see the baseline tests below). This case is what
+# remains when no branch resolves at all.
 # ==========================================================================
 
 def test_no_commit_fails_as_commit_missing_not_correlation_mismatch(repo, tmp_path):
@@ -383,3 +390,42 @@ def test_submit_on_a_baseline_branch_is_refused_as_predating_the_run(repo, tmp_p
     assert run.status == "blocked"
     assert run.result["evidence_gate"] == "commit_correlation_failed"
     assert run.result["error"]["category"] == "commit_predates_run"
+
+
+def test_submit_over_ceiling_records_no_commit_even_when_one_landed(repo, tmp_path):
+    """The budget rewrite happens before enrichment, and the guard must read
+    the rewritten status -- not the success the worker claimed.
+
+    Without the ordering, an over-budget result would be recorded as
+    `budget_exceeded` while still carrying a derived commit that no gate ever
+    verified (`_gate_commit` does not run for a non-success). Raised by
+    independent review of this pull request: no test covered a status other
+    than `failed`, so guarding on the pre-rewrite status went undetected.
+    """
+    _commit(repo, "work/run-cost", "docs/agents/work-launcher.md", signoff=True)
+    app, dispatcher = _launcher(repo, "run-cost", claimed_at=time.time() - 60,
+                                tmp_path=tmp_path)
+    run = dispatcher.registry.get("run-cost")
+    run.branch = "work/run-cost"
+    run.max_cost_usd = 1.0
+
+    app.submit("run-cost", {"status": "succeeded", "cost": 99.0})
+    done = dispatcher.registry.get("run-cost")
+
+    assert done.status == "budget_exceeded"
+    assert "commit" not in done.result
+    assert done.result["run_id"] == "run-cost"
+
+
+def test_a_worker_reported_commit_is_stripped_from_a_non_succeeded_result(repo, tmp_path):
+    """Suppressing derivation is not enough: a worker can put a commit in its
+    own envelope. A non-success must carry none, on either path."""
+    sha = _commit(repo, "work/run-1", "docs/agents/work-launcher.md", signoff=True)
+    app, dispatcher = _launcher(repo, "run-1", tmp_path=tmp_path)
+
+    app.submit("run-1", {"status": "failed", "commit": sha})
+    done = dispatcher.registry.get("run-1")
+
+    assert done.status == "failed"
+    assert "commit" not in done.result
+    assert "commit_sha" not in done.result

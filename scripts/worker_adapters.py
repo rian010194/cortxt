@@ -705,7 +705,8 @@ def _derive_run_branch_commit(run, repo_dir, git) -> "str | None":
     return value if value else None
 
 
-def enrich_run_correlation(run, result_envelope, *, repo_dir=None, git=None) -> dict:
+def enrich_run_correlation(run, result_envelope, *, repo_dir=None, git=None,
+                           landed: bool = True) -> dict:
     """Inject the authoritative correlation fields into a result envelope (#506).
 
     ``run_id``, ``issue_id`` and ``request_id`` come from the durable Run
@@ -720,6 +721,14 @@ def enrich_run_correlation(run, result_envelope, *, repo_dir=None, git=None) -> 
     Run's branch, a strictly-after-claim timestamp, DCO, and artifact policy) --
     this helper supplies the authoritative identity fields, it does not weaken
     the gate's checks.
+
+    ``landed`` is False for any status that is not a claimed success. Such a
+    result must carry no commit at all: the Evidence Gate does not run for a
+    non-success, so nothing would verify one, and a SHA sitting in the
+    envelope's evidence field reads as a landed commit to every downstream
+    consumer. Suppressing derivation is not enough -- a worker can put a
+    `commit` in its own envelope -- so the field is stripped outright
+    (independent review of #508 found the worker-prose half still open).
 
     Returns a new envelope dict; the caller's original is not mutated.
     """
@@ -736,7 +745,11 @@ def enrich_run_correlation(run, result_envelope, *, repo_dir=None, git=None) -> 
         # `request_id_not_recorded`, an unapproved Run -- instead of letting
         # worker prose stand in for approved identity.
         envelope.pop("request_id", None)
-    if not envelope.get("commit"):
+    if not landed:
+        # Both spellings the gate would read (`commit_evidence` accepts either).
+        envelope.pop("commit", None)
+        envelope.pop("commit_sha", None)
+    elif not envelope.get("commit"):
         derived = _derive_run_branch_commit(run, repo_dir, git) if (repo_dir and git) else None
         if derived:
             envelope["commit"] = derived
@@ -823,10 +836,11 @@ def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str,
             # after-claim timestamp, DCO, artifact policy), so a run that landed
             # nothing derives its branch's baseline tip and is refused by
             # `commit_predates_run` rather than passing.
-            derive = worktree if status == "succeeded" else None
+            landed = status == "succeeded"
             envelope = enrich_run_correlation(
-                run, envelope, repo_dir=derive,
-                git=(lambda args, _wt=derive: _worktree_git(_wt, args)) if derive else None)
+                run, envelope, landed=landed,
+                repo_dir=worktree if landed else None,
+                git=(lambda args, _wt=worktree: _worktree_git(_wt, args)) if (landed and worktree) else None)
             dispatcher.complete(run.run_id, status, envelope)
         except Exception as exc:  # noqa: BLE001 - last resort, run must not vanish silently
             print(

@@ -716,12 +716,13 @@ class WorkLauncher:
         # strictly-after-claim timestamp, DCO, artifact policy), so this enriches
         # the envelope without weakening the gate's checks.
         #
-        # Only a claimed success is enriched with a commit, matching
-        # `dispatch_async`: a failed, timed-out or budget_exceeded result must
-        # never carry a field that reads as landed evidence, and `_gate_commit`
-        # does not run for those statuses, so nothing would verify it. The
-        # status is read after the budget rewrite above, so an over-budget
-        # result is treated as the non-success it has become.
+        # Only a claimed success carries a commit, matching `dispatch_async`:
+        # a failed, timed-out or budget_exceeded result must never carry a
+        # field that reads as landed evidence, and `_gate_commit` does not run
+        # for those statuses, so nothing would verify one. `landed=False` both
+        # suppresses derivation and strips a commit the worker put there
+        # itself. The status is read after the budget rewrite above, so an
+        # over-budget result is treated as the non-success it has become.
         #
         # `repo_path` is always set on a real launcher (`__init__` defaults it
         # to the process cwd); the getattr fallback is only for the duck-typed
@@ -729,13 +730,14 @@ class WorkLauncher:
         # fields alone.
         if run_correlation is not None:
             repo_path = getattr(self, "repo_path", None)
-            derive = repo_path if (result or {}).get("status") == "succeeded" else None
+            landed = (result or {}).get("status") == "succeeded"
+            derive = repo_path if landed else None
             if derive is not None:
                 result = enrich_run_correlation(
-                    run_correlation, result, repo_dir=derive,
+                    run_correlation, result, landed=True, repo_dir=derive,
                     git=lambda args: _run_git_correlation(derive, args))
             else:
-                result = enrich_run_correlation(run_correlation, result)
+                result = enrich_run_correlation(run_correlation, result, landed=landed)
         # `complete()` persists the terminal transition first and only then
         # syncs GitHub and writes the durable review submission (#493). Those
         # later steps can raise -- a ReviewSubmissionError, a GitHubError -- at
