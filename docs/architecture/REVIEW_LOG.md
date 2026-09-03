@@ -58,3 +58,4 @@ that modifies an Accepted ADR must add a row here.
 | 2026-08-16 | ADR-014 | Amended — proof-environment naming per ADR-020 | #151 |
 | 2026-08-16 | ADR-015 | Amended — proof-environment naming per ADR-020 | #151 |
 | 2026-08-27 | ADR-043 | Added and accepted — global design-system source, generated artifact ownership, consumer boundaries, and conformance gate | Operator approval |
+| 2026-09-03 | ADR-046 | Added and accepted — TypeScript as the Cortxt OS frontend source language; one generated build for both consumers; incremental migration; types do not replace runtime validation | Operator decision (#503, #504) |
