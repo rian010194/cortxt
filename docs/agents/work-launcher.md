@@ -101,6 +101,40 @@ the result envelope. Anything else — a missing SHA, a foreign commit, a policy
 breach, or a gate that cannot read the repository — converts the claimed
 `succeeded` into `blocked` with a stable failure code.
 
+The producer side supplies the correlation from the durable Run record, never
+from worker prose (#506). Both `worker_adapters.dispatch_async` and
+`work_launcher.submit()` inject the authoritative `run_id` / `issue_id` /
+`request_id` into the envelope before the Run is completed, so an envelope that
+echoes wrong values (or none) cannot move the correlation check — it is the
+platform's identity to own. When the Run record carries no `request_id` at all,
+a worker-supplied one is dropped rather than left standing in for approved
+identity: the Run is refused as unapproved instead of correlated against the
+worker's own claim.
+
+Both paths also derive the `commit` when the worker reported none — `submit()`
+from the launcher's repository, `dispatch_async` from the Run's own isolated
+worktree, which is a git working directory for that Run's own branch. The live
+path needs this in its own right: it is the path a real Cortxt OS launch takes
+(`WorkLauncher._dispatch` -> `dispatch_async` -> adapter ->
+`Dispatcher.complete`), and no adapter emits a `commit` field, so without
+derivation every mutating Run on the live path stopped at `commit_missing` and
+the accepted arm was structurally unreachable. A green `submit()` test does not
+cover it. Only a claimed success is enriched with a commit; a failed Run must
+not carry a field that reads as landed evidence.
+
+The gate still re-verifies whatever commit is presented, so this enriches
+without weakening. A `succeeded` report that lands nothing is still `blocked`
+with `evidence_gate: "commit_correlation_failed"` — but on both paths the
+recorded category is `commit_predates_run`, not `commit_missing`. A mutating
+Run always has its branch created before dispatch, so derivation always
+resolves a SHA: the baseline the branch started from, which the gate's
+strictly-after-claim check refuses as this Run's output. `commit_missing`
+remains reachable only where no branch resolves at all. A consumer that keyed
+on `commit_missing` as the no-commit signal must read `evidence_gate` instead.
+The worker prompt (`generate_worker_prompt`) states the result contract: commit
+with a DCO `Signed-off-by:` trailer inside the run's own worktree and report
+`run_id` / `issue_id` / `request_id` and the commit SHA in the result envelope.
+
 This closes #490. The #485 run `run-6d936b467f804939a4ce734ac5f45dd8` reported
 `succeeded` with `artifacts: ["run-log:..."]` and evidence "hermes-free
 reported status=succeeded", while `git log --all` for the mandated path
