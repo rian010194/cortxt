@@ -794,7 +794,19 @@ def run_diff_projection(
         # ONE subprocess for the whole review, not one per file: this runs on a
         # single-threaded loopback host, and a Run with many contributed files
         # would otherwise hold it for the sum of their timeouts.
-        code, out = git(["diff", base_commit + ".." + commit, "--", *permitted])
+        #
+        # `--no-ext-diff --no-textconv` is a SECURITY requirement, not a
+        # formatting preference. A Run owns its worktree, so it owns
+        # `.gitattributes` and `.git/config` too, and it can register an
+        # external diff driver or textconv filter there. Without these flags
+        # `git diff` executes that program -- in the operator's own process, at
+        # the moment they open the change to decide on it. The artifact policy
+        # cannot prevent it: `_within` governs what is DISPLAYED, while git
+        # reads attributes and config from the worktree regardless, and
+        # `.git/config` is not a tracked file the gate could ever see. Both
+        # flags must follow `diff`; as git-level flags they are rejected.
+        code, out = git(["diff", "--no-ext-diff", "--no-textconv",
+                         base_commit + ".." + commit, "--", *permitted])
         if code != 0:
             for path in permitted:
                 files.append({"path": path, "withheld": True,

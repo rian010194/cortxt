@@ -7,6 +7,7 @@ does with that record, and reproducing the gate here would test a copy of it.
 """
 
 import subprocess
+import sys
 
 from widget_contract.run_authority import _diff_git as _real_git
 
@@ -181,6 +182,64 @@ def test_an_evidence_record_belonging_to_another_issue_is_refused(repo):
     store["run-1"]["commit_evidence"]["issue_id"] = "owner/repo#1"
     result = read_run_diff_v1(ISSUE_REF, store, run_id="run-1")
     assert result["available"] is False and result["reason"] == "evidence_issue_mismatch"
+
+
+def test_a_run_cannot_execute_code_through_a_diff_driver(repo, tmp_path):
+    """A Run owns its worktree, so it owns `.gitattributes` and `.git/config`.
+
+    Without `--no-ext-diff`, `git diff` would run a driver registered there --
+    in the operator's process, at the moment they open the change to decide on
+    it. The artifact policy cannot stop it: it governs what is displayed, while
+    git reads attributes and config from the worktree regardless.
+    """
+    root = repo["root"]
+    marker = tmp_path / "DRIVER_RAN"
+    script = tmp_path / "driver.py"
+    script.write_text(
+        "import pathlib\npathlib.Path(r'{}').write_text('ran')\n".format(marker),
+        encoding="utf-8")
+    _git(root, "config", "diff.pwn.command",
+         '"{}" "{}"'.format(sys.executable.replace("\\", "/"),
+                            str(script).replace("\\", "/")))
+    (root / ".gitattributes").write_text("*.md diff=pwn\n", encoding="utf-8")
+    (root / "docs" / "agents" / "work-launcher.md").write_text(
+        "before\nTHE CONTRIBUTED LINE\nthird\n", encoding="utf-8")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "arm the driver")
+    tip = _git(root, "rev-parse", "HEAD").stdout.strip()
+
+    result = _diff(repo, commit=tip, contributed_commits=[tip])
+
+    assert not marker.exists(), "an external diff driver was executed"
+    permitted = [f for f in result["files"] if not f["withheld"]]
+    # And the change is still rendered as ordinary text, not swallowed.
+    assert permitted and "+third" in permitted[0]["patch"]
+
+
+def test_the_diff_header_split_matches_what_git_actually_emits(repo):
+    """`_split_diff` keys on git's own header; assert against real output."""
+    from widget_contract.run_authority import _split_diff
+
+    git = _real_git(str(repo["root"]))
+    code, out = git(["diff", "--no-ext-diff", "--no-textconv",
+                     repo["base"] + ".." + repo["head"], "--",
+                     "docs/agents/work-launcher.md"])
+    assert code == 0
+    chunks = _split_diff(out, ["docs/agents/work-launcher.md"])
+    assert list(chunks) == ["docs/agents/work-launcher.md"]
+    assert chunks["docs/agents/work-launcher.md"].startswith("diff --git ")
+
+
+def test_a_diff_header_line_inside_file_content_cannot_hide_a_file(repo):
+    """Hunk bodies are prefixed, so content can never look like a header."""
+    root = repo["root"]
+    (root / "docs" / "agents" / "work-launcher.md").write_text(
+        "before\nTHE CONTRIBUTED LINE\ndiff --git a/evil b/evil\n", encoding="utf-8")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "smuggle a header")
+    tip = _git(root, "rev-parse", "HEAD").stdout.strip()
+    permitted = [f for f in _diff(repo, commit=tip)["files"] if not f["withheld"]]
+    assert permitted and "+diff --git a/evil b/evil" in permitted[0]["patch"]
 
 
 def test_the_whole_review_costs_one_git_diff(repo):

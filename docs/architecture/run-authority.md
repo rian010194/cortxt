@@ -99,7 +99,15 @@ without a canonical-writer decision and without any new mutation surface.
   Patches are capped per file (60 000 characters) and per response (400 000);
   a capped patch is marked `truncated`, never silently shortened. The whole
   review costs exactly one `git diff` -- the host is single-threaded, so one
-  subprocess per contributed file would let a single Run hold it.
+  subprocess per contributed file would let a single Run hold it. That diff
+  runs with `--no-ext-diff --no-textconv`, which is a security requirement
+  rather than a formatting one: a Run owns its worktree, so it owns
+  `.gitattributes` and `.git/config`, and without those flags a diff driver it
+  registered there would execute in the operator's own process the moment they
+  opened the change to decide on it. The artifact policy cannot prevent that --
+  it governs what is displayed, while git reads attributes and config from the
+  worktree regardless, and `.git/config` is not a tracked file the gate could
+  ever see.
 
   Cortxt OS names the Run the panel is showing and, when a Workstream has more
   than one, lets the operator pick it. The projection is bound to an exact
