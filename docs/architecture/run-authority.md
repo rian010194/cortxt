@@ -41,12 +41,15 @@ creates the durable Run and owns the write path. This slice only reads.
 - `run.summaries.v1` — content-free, provenance-tagged Run summaries
   (S7c adds a nullable `heartbeat_at`).
 - `run.terminal.v1` / `run.activity.v1` / `run.review.v1` — S7c content-free
-  live-Run projections.
+  live-Run projections. `run.terminal.v1` also carries the Evidence Gate's
+  verdict (`evidence_gate`) and its correlated `commit_evidence` record (#499).
+- `run.diff.v1` — the change one Run contributed, read for operator review
+  (#499). The single read in this module that returns run-produced content.
 - Same-origin read endpoints in `widget/action_host.py` (loopback, read-only,
   fail-closed): `GET /api/workstream-detail?issue=owner/repo#N`,
   `GET /api/runs?issue=owner/repo#N`, and the S7c
   `GET /api/run-freshness`, `GET /api/run-terminal`, `GET /api/run-activity`,
-  `GET /api/run-review`.
+  `GET /api/run-review`, and `GET /api/run-diff`.
 
 ## Live Run status, evidence, and review loop (S7c, #472)
 
@@ -72,6 +75,44 @@ without a canonical-writer decision and without any new mutation surface.
   durable run event types with a whitelisted `detail` (status, `cost_status`,
   artifact/evidence counts, `review_kind`, `result_status`, engine). No
   prompt, reasoning, secret, raw log, or artifact body is ever read.
+- **Readable change.** `run.diff.v1`
+  (`GET /api/run-diff?issue=owner/repo#N&run=<run_id>`) returns the diff the Run
+  contributed, so the operator decides on the change rather than on a hash
+  (#499). It is the one read that returns content, and every bound on it comes
+  from the durable record, not the request: the request schema is exactly
+  `{issue_ref, run_id}`, so the browser can never name a path; commit, base,
+  branch and worktree are read from the `commit_evidence` record the Evidence
+  Gate wrote onto the **durable Run**, never from the worker's result envelope
+  (a refused Run's envelope is copied forward verbatim by
+  `Dispatcher._gate_commit`, so a worker-authored `commit_evidence` key would
+  otherwise have chosen the worktree the read runs `git` in); the envelope must
+  additionally carry `evidence_gate: "commit_correlated"`, so a Run the gate
+  refused serves no content at all; the record must name this exact Run and
+  Issue, and a record missing either identifier is refused rather than assumed
+  to match; the commit must still be an ancestor of the registered branch;
+  and a patch is returned only for a file that is both in `contributed_files`
+  and inside the approved artifact policy, judged by the gate's own
+  `commit_evidence._within` / `normalize_repo_path`. Any other file is a
+  `withheld` entry carrying its reason and no content, and every failure is
+  `available: false` with a stable reason — never an empty diff, so "nothing
+  changed" and "not allowed to show" can never be read as the same answer.
+  Patches are capped per file (60 000 characters) and per response (400 000);
+  a capped patch is marked `truncated`, never silently shortened. The whole
+  review costs exactly one `git diff` -- the host is single-threaded, so one
+  subprocess per contributed file would let a single Run hold it. That diff
+  runs with `--no-ext-diff --no-textconv`, which is a security requirement
+  rather than a formatting one: a Run owns its worktree, so it owns
+  `.gitattributes` and `.git/config`, and without those flags a diff driver it
+  registered there would execute in the operator's own process the moment they
+  opened the change to decide on it. The artifact policy cannot prevent that --
+  it governs what is displayed, while git reads attributes and config from the
+  worktree regardless, and `.git/config` is not a tracked file the gate could
+  ever see.
+
+  Cortxt OS names the Run the panel is showing and, when a Workstream has more
+  than one, lets the operator pick it. The projection is bound to an exact
+  issue+run pair; a surface that silently rendered a different Run's diff than
+  the one under decision would be worse than rendering none.
 - **Exact correlation.** Every S7c read is bound to an exact `issue_ref` +
   `run_id`; a pair with no correlated summary fails closed
   (`RunNotCorrelated` → HTTP 404), never a fallback to another run.

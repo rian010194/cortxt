@@ -450,11 +450,85 @@ RUN_ERROR_SCHEMA = {"type": ["object", "null"], "additionalProperties": False,
                     "required": ["category", "message"],
                     "properties": {"category": {"type": "string"},
                                    "message": {"type": "string"}}}
+# The Evidence Gate's verdict and its correlated commit record, carried into
+# the projection so the operator can read WHY a Run was accepted or refused
+# (#499 slice 6a). Content-free by construction: identifiers, repo-relative
+# paths and timestamps only. The absolute worktree path recorded on the Run is
+# deliberately NOT projected -- its existence is reported as
+# `worktree_recorded`, because a filesystem path is neither needed by the
+# browser nor safe to surface (_safe_reference already refuses one).
+#
+# `contributed_commits` / `contributed_files` are the exact set the Evidence
+# Gate correlated as this Run's own work inside the approved artifact policy.
+# A follow-on `run.diff.v1` read (#499's remaining half) is restricted to that
+# same set, so this projection already names every unit whose content that read
+# may return -- the diff hangs off these lists and needs no new identifiers.
+COMMIT_EVIDENCE_SCHEMA = {
+    "type": ["object", "null"], "additionalProperties": False,
+    "required": ["commit", "branch", "base_commit", "committed_at", "verified_at",
+                 "contributed_commits", "contributed_files", "files", "policy_paths",
+                 "worktree_recorded"],
+    "properties": {
+        "commit": {"type": ["string", "null"]},
+        "branch": {"type": ["string", "null"]},
+        "base_commit": {"type": ["string", "null"]},
+        "committed_at": {"type": ["integer", "null"]},
+        "verified_at": {"type": ["string", "null"]},
+        "contributed_commits": {"type": "array", "items": {"type": "string"}},
+        "contributed_files": {"type": "array", "items": {"type": "string"}},
+        "files": {"type": "array", "items": {"type": "string"}},
+        "policy_paths": {"type": "array", "items": {"type": "string"}},
+        "worktree_recorded": {"type": "boolean"},
+    }}
+# `null` is "no gate verdict recorded", which is the correct reading for a
+# non-mutating Run and for one that never reached the gate. It is never a pass.
+EVIDENCE_GATE_SCHEMA = {"type": ["string", "null"],
+                        "enum": [None, "commit_correlated", "commit_correlation_failed"]}
+# The one place run-produced CONTENT crosses into a projection the OS renders
+# (#499). Everything else in this module is content-free; this is deliberately
+# not, because the operator cannot decide on a change they cannot read.
+#
+# What bounds it: the request names only `issue_ref` + `run_id`, so the browser
+# can never name a path. The server reads the paths from the durable
+# `commit_evidence` record the Evidence Gate already correlated, and returns a
+# patch only for a file that is BOTH in `contributed_files` and inside the
+# approved artifact policy. Anything else is a `withheld` entry carrying its
+# reason and no content at all.
+RUN_DIFF_FILE_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["path", "withheld", "reason", "patch", "truncated"],
+    "properties": {
+        "path": {"type": "string"},
+        # True means: no content is present in this entry, and `reason` says why.
+        "withheld": {"type": "boolean"},
+        "reason": {"type": ["string", "null"]},
+        "patch": {"type": ["string", "null"]},
+        "truncated": {"type": "boolean"},
+    }}
+RUN_DIFF_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["schema_version", "issue_ref", "run_id", "available", "reason",
+                 "base_commit", "commit", "branch", "contributed_commits", "files"],
+    "properties": {
+        "schema_version": {"const": 1},
+        "issue_ref": {"type": "string"},
+        "run_id": {"type": "string"},
+        # False with a stated `reason` is the fail-closed answer. It is never
+        # rendered as "no changes"; the OS must show the reason instead.
+        "available": {"type": "boolean"},
+        "reason": {"type": ["string", "null"]},
+        "base_commit": {"type": ["string", "null"]},
+        "commit": {"type": ["string", "null"]},
+        "branch": {"type": ["string", "null"]},
+        "contributed_commits": {"type": "array", "items": {"type": "string"}},
+        "files": {"type": "array", "items": RUN_DIFF_FILE_SCHEMA},
+    }}
 RUN_TERMINAL_SCHEMA = {"type": "object", "additionalProperties": False,
                        "required": ["schema_version", "issue_ref", "run_id", "status", "engine",
                                     "worker_role", "started_at", "finished_at", "provider", "model",
                                     "usage", "cost", "cost_currency", "cost_status", "artifacts",
-                                    "evidence", "error", "incomplete", "conflicting"],
+                                    "evidence", "error", "incomplete", "conflicting",
+                                    "evidence_gate", "commit_evidence"],
                        "properties": {
                            "schema_version": {"const": 1},
                            "issue_ref": {"type": "string"},
@@ -475,6 +549,8 @@ RUN_TERMINAL_SCHEMA = {"type": "object", "additionalProperties": False,
                            "error": RUN_ERROR_SCHEMA,
                            "incomplete": {"type": "boolean"},
                            "conflicting": {"type": "boolean"},
+                           "evidence_gate": EVIDENCE_GATE_SCHEMA,
+                           "commit_evidence": COMMIT_EVIDENCE_SCHEMA,
                        }}
 RUN_ACTIVITY_ITEM_SCHEMA = {"type": "object", "additionalProperties": False,
                             "required": ["seq", "event_type", "timestamp", "detail", "source"],
@@ -603,6 +679,7 @@ TYPES = {
     "workstream.detail.v1": TypeEntry(WORKSTREAM_DETAIL_SCHEMA, "public-metadata"),
     "run.summaries.v1": TypeEntry(RUN_SUMMARIES_SCHEMA, "operational"),
     "run.terminal.v1": TypeEntry(RUN_TERMINAL_SCHEMA, "operational"),
+    "run.diff.v1": TypeEntry(RUN_DIFF_SCHEMA, "operational"),
     "run.activity.v1": TypeEntry(RUN_ACTIVITY_SCHEMA, "operational"),
     "run.review.v1": TypeEntry(RUN_REVIEW_SCHEMA, "operational"),
     "dispatch.request.v1": TypeEntry(DISPATCH_REQUEST_SCHEMA, "public-metadata"),
@@ -628,6 +705,7 @@ READ_OPERATIONS = {
     "workstream.detail.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo", "issue_number"], "properties": {"repo": {"type": "string"}, "issue_number": {"type": "integer", "minimum": 1}}}, "workstream.detail.v1", "public-metadata", 5000, 30, 30, "read:workstream-detail"),
     "run.summaries.v1": ReadOperation("store", {"type": "object", "additionalProperties": False, "required": ["issue_ref"], "properties": {"issue_ref": {"type": "string"}}}, "run.summaries.v1", "operational", 500, 60, 2, "read:run-summaries"),
     "run.terminal.v1": ReadOperation("store", {"type": "object", "additionalProperties": False, "required": ["issue_ref", "run_id"], "properties": {"issue_ref": {"type": "string"}, "run_id": {"type": "string"}}}, "run.terminal.v1", "operational", 500, 30, 2, "read:run-terminal"),
+    "run.diff.v1": ReadOperation("store", {"type": "object", "additionalProperties": False, "required": ["issue_ref", "run_id"], "properties": {"issue_ref": {"type": "string"}, "run_id": {"type": "string"}}}, "run.diff.v1", "operational", 500, 30, 2, "read:run-diff"),
     "run.activity.v1": ReadOperation("store", {"type": "object", "additionalProperties": False, "required": ["issue_ref", "run_id"], "properties": {"issue_ref": {"type": "string"}, "run_id": {"type": "string"}}}, "run.activity.v1", "operational", 500, 30, 2, "read:run-activity"),
     "run.review.v1": ReadOperation("store", {"type": "object", "additionalProperties": False, "required": ["issue_ref"], "properties": {"issue_ref": {"type": "string"}}}, "run.review.v1", "operational", 500, 30, 2, "read:run-review"),
     "dispatch.request.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo", "issue_number"], "properties": {"repo": {"type": "string"}, "issue_number": {"type": "integer", "minimum": 1}}}, "dispatch.request.v1", "public-metadata", 5000, 30, 30, "read:dispatch-request"),

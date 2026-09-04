@@ -42,6 +42,7 @@ from widget_contract.adapters.store_reads import (
     read_run_review_v1,
     read_run_summaries_v1,
     read_run_terminal_v1,
+    read_run_diff_v1,
     read_workstream_detail_v1,
 )
 from widget_contract.run_authority import (
@@ -423,6 +424,16 @@ class ActionHost:
         return read_run_terminal_v1(
             issue_ref, self._read_dispatcher_runs(), self._read_session_docs(), run_id=run_id)
 
+    def run_diff(self, repo: str, number: int, run_id: str) -> dict:
+        """The change this exact Run contributed, read for operator review (#499).
+
+        The dispatcher store is the only input beyond the issue+run pair: the
+        commit, branch and worktree the projection reads all come from the
+        durable `commit_evidence` record, never from the request.
+        """
+        issue_ref = f"{repo}#{number}"
+        return read_run_diff_v1(issue_ref, self._read_dispatcher_runs(), run_id=run_id)
+
     def run_review(self, repo: str, number: int) -> dict:
         issue_ref = f"{repo}#{number}"
         return read_run_review_v1(issue_ref, self._read_session_docs(),
@@ -665,6 +676,9 @@ class ActionHandler(SimpleHTTPRequestHandler):
         if path in ("/api/run-terminal", "/api/run-terminal/"):
             self._handle_read("run-terminal")
             return
+        if path in ("/api/run-diff", "/api/run-diff/"):
+            self._handle_read("run-diff")
+            return
         if path in ("/api/run-review", "/api/run-review/"):
             self._handle_read("run-review")
             return
@@ -693,7 +707,7 @@ class ActionHandler(SimpleHTTPRequestHandler):
             return
         repo, number = parsed
         run_id = self._query_value("run")
-        if kind in ("run-activity", "run-terminal") and not run_id:
+        if kind in ("run-activity", "run-terminal", "run-diff") and not run_id:
             self._json(400, {"schema_version": 1, "status": "unavailable",
                              "error": {"kind": "validation_error",
                                        "message": "run query parameter is required"}})
@@ -709,6 +723,8 @@ class ActionHandler(SimpleHTTPRequestHandler):
                 self._json(200, self.host.run_activity(repo, number, run_id))
             elif kind == "run-terminal":
                 self._json(200, self.host.run_terminal(repo, number, run_id))
+            elif kind == "run-diff":
+                self._json(200, self.host.run_diff(repo, number, run_id))
             elif kind == "run-review":
                 self._json(200, self.host.run_review(repo, number))
             else:

@@ -508,16 +508,371 @@ def _safe_artifact_entry(item: Any) -> dict[str, Any] | None:
     return None
 
 
+_MESSAGE_MAX = 400
+
+
+def _safe_message(value: Any) -> str:
+    """A short authored explanation, or ``""``.
+
+    The Evidence Gate's ``recovery`` strings are authored constants in
+    ``scripts/commit_evidence.py`` -- never model output, never log bodies --
+    so they are the one piece of prose this projection may carry. It is still
+    filtered rather than trusted: anything that looks like a filesystem path
+    (the ``worktree`` a gate failure could otherwise mention) is refused
+    outright, on the same rule as ``_safe_reference``, and the result is
+    length-capped. A rejected message degrades to ``""``, leaving the stable
+    ``category`` as the operator's signal -- never to raw text.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    text = " ".join(value.split())
+    if "\\" in text or "://" in text:
+        return ""
+    for token in text.split(" "):
+        if token.startswith(("/", "./", "../")) or "/../" in token:
+            return ""
+        if len(token) >= 3 and token[1:3] in (":/", ":\\"):
+            return ""
+    return text[:_MESSAGE_MAX]
+
+
 def _safe_error(value: Any) -> dict[str, str] | None:
+    """Content-free ``{category, message}`` for a terminal Run.
+
+    Before #499 slice 6a ``message`` was the error ``code`` alone, so a Run
+    refused by the Evidence Gate -- whose envelope carries ``category``,
+    ``recovery`` and ``detail`` but no ``code`` -- rendered as the bare
+    ``commit_predates_run:`` with nothing after the colon. The operator could
+    see that a refusal happened and not what to do about it. ``recovery`` is
+    now preferred, falling back to the prior ``code`` behaviour so existing
+    envelope shapes project exactly as they did.
+    """
     if not isinstance(value, Mapping):
         return None
     category = _safe_token(value.get("category") or value.get("kind"), "error")
     code = value.get("code")
-    message = str(code) if isinstance(code, str) and code and all(
-        char.isalnum() or char in "._:-" for char in code) else ""
+    message = _safe_message(value.get("recovery"))
+    if not message:
+        message = str(code) if isinstance(code, str) and code and all(
+            char.isalnum() or char in "._:-" for char in code) else ""
     if not message and not value.get("category") and not value.get("kind"):
         return None
     return {"category": str(category), "message": str(message)}
+
+
+def _safe_sha(value: Any) -> str | None:
+    """A git object name, or ``None``. Never anything else."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if 7 <= len(text) <= 64 and all(char in "0123456789abcdefABCDEF" for char in text):
+        return text
+    return None
+
+
+def _safe_path_list(value: Any) -> list[str]:
+    """Repository-relative paths only, in recorded order, de-duplicated.
+
+    ``_safe_reference`` already refuses absolute, drive-lettered, escaping and
+    backslash paths, so an absolute worktree path can never enter the
+    projection through this door.
+    """
+    out: list[str] = []
+    for item in value if isinstance(value, (list, tuple)) else ():
+        ref = _safe_reference(item)
+        if ref is not None and ref not in out:
+            out.append(ref)
+    return out
+
+
+def _safe_commit_evidence(value: Any) -> dict[str, Any] | None:
+    """Content-free projection of the durable ``commit_evidence`` record.
+
+    Identifiers, repo-relative paths and timestamps survive; the absolute
+    ``worktree`` path does not -- only the fact that one was registered, as
+    ``worktree_recorded``. Nothing here reads a file, so no run-produced
+    content can reach the browser through this projection (#499 slice 6a).
+    """
+    if not isinstance(value, Mapping):
+        return None
+    committed_at = value.get("committed_at")
+    if not (isinstance(committed_at, int) and not isinstance(committed_at, bool)):
+        committed_at = None
+    return {
+        "commit": _safe_sha(value.get("commit")),
+        "branch": _safe_reference(value.get("branch")),
+        "base_commit": _safe_sha(value.get("base_commit")),
+        "committed_at": committed_at,
+        "verified_at": _safe_reference(value.get("verified_at")),
+        "contributed_commits": [sha for sha in
+                                (_safe_sha(item) for item in
+                                 (value.get("contributed_commits") or ()))
+                                if sha is not None],
+        "contributed_files": _safe_path_list(value.get("contributed_files")),
+        "files": _safe_path_list(value.get("files")),
+        "policy_paths": _safe_path_list(value.get("policy_paths")),
+        "worktree_recorded": bool(value.get("worktree")),
+    }
+
+
+def _safe_evidence_gate(*candidates: Any) -> str | None:
+    """The gate verdict from the first source that recorded one.
+
+    An unrecognised value is ``None``: absence of a verdict is never a pass.
+    """
+    for candidate in candidates:
+        if candidate in ("commit_correlated", "commit_correlation_failed"):
+            return str(candidate)
+    return None
+
+
+# Per-file and whole-response ceilings for `run.diff.v1`. A review surface has
+# to stay readable and the response has to stay a projection, not a file
+# transfer; a patch past the ceiling is truncated with `truncated: True` rather
+# than dropped, so the operator always sees that more exists.
+# Measured in CHARACTERS, not bytes: the response is JSON text and slicing on
+# a character boundary is what keeps a patch valid. Multibyte content therefore
+# serializes larger than the nominal cap; the cap exists to keep a review
+# surface readable, not to bound the socket.
+_DIFF_FILE_MAX_CHARS = 60_000
+_DIFF_TOTAL_MAX_CHARS = 400_000
+
+
+def _gate_path_rules():
+    """The Evidence Gate's own path rules, imported rather than re-implemented.
+
+    `run.diff.v1` must withhold exactly what the gate would have refused, so it
+    calls the gate's functions instead of keeping a second copy that could
+    drift. They live in the repository-level `scripts/` directory, which the
+    action host puts on `sys.path` lazily; this does the same so the projection
+    is importable from a plain test as well.
+    """
+    import sys
+    from pathlib import Path
+
+    scripts_dir = str(Path(__file__).resolve().parent.parent.parent / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from commit_evidence import _within, normalize_repo_path
+    return _within, normalize_repo_path
+
+
+def _diff_git(worktree: str):
+    """A git runner pinned to one registered worktree.
+
+    Mirrors `scripts/commit_evidence._subprocess_git`: same bounded timeout,
+    same `(code, stdout)` contract, and `cwd` is the worktree recorded on the
+    durable Run -- never a path that came from the request.
+    """
+    import subprocess
+
+    def run(args):
+        try:
+            proc = subprocess.run(["git", *args], capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=30,
+                                  cwd=worktree)
+        except (OSError, subprocess.SubprocessError):
+            # A worktree that has been removed, or a git that cannot run, is a
+            # non-zero result like any other -- never an exception escaping into
+            # a 500. The caller turns it into a stated reason.
+            return 1, ""
+        return proc.returncode, proc.stdout
+    return run
+
+
+def _unavailable(issue_ref: str, run_id: str, reason: str) -> dict[str, Any]:
+    """The fail-closed answer: a stated reason and no content whatsoever."""
+    return {"schema_version": 1, "issue_ref": issue_ref, "run_id": run_id,
+            "available": False, "reason": reason, "base_commit": None,
+            "commit": None, "branch": None, "contributed_commits": [], "files": []}
+
+
+def run_diff_projection(
+    issue_ref: str,
+    run_id: str,
+    dispatcher_store: Mapping[str, Any] | None = None,
+    *,
+    git_factory: Any = None,
+) -> "dict[str, Any] | None":
+    """The change a Run contributed, read from its own registered worktree (#499).
+
+    The operator's final decision is about a change they did not watch happen.
+    Metadata and a SHA are not that change, so this is the one read that returns
+    run-produced content -- under every restriction the durable record already
+    carries and none the request may relax:
+
+    * The Run must correlate to this EXACT ``issue_ref`` + ``run_id``, like
+      every other per-Run read.
+    * The Evidence Gate must have ACCEPTED this Run. Only
+      ``Dispatcher._gate_commit`` writes ``commit_evidence`` onto the durable
+      Run record, and only on a pass. The worker's own result envelope is never
+      read for it: a refused Run's envelope is copied forward verbatim
+      (``scripts/dispatcher.py``), so a worker that put a ``commit_evidence``
+      key in its envelope would otherwise have chosen the worktree this
+      function runs git in. That is the whole gate, inverted.
+    * ``commit``, ``base_commit``, ``branch`` and ``worktree`` come from that
+      record. Nothing is taken from the caller but the pair identifying the Run.
+    * The record must name this Run and this Issue. A record missing either is
+      refused rather than assumed to match.
+    * The commit must still be on the registered branch.
+    * A patch is returned only for a file in ``contributed_files`` that is also
+      inside the approved artifact policy. Any other file is reported
+      ``withheld`` with its reason and no content.
+
+    Every failure returns ``available: False`` with a stable reason rather than
+    an empty diff, so "nothing to show" and "not allowed to show" can never be
+    read as the same answer.
+    """
+    within, normalize_repo_path = _gate_path_rules()
+
+    run = _dispatcher_run(dispatcher_store, issue_ref, run_id)
+    if run is None:
+        return None
+    # Durable record only -- see the docstring. There is deliberately no
+    # fallback to the result envelope.
+    record = run.get("commit_evidence")
+    if not isinstance(record, Mapping):
+        return _unavailable(issue_ref, run_id, "no_commit_evidence")
+    result = run.get("result") if isinstance(run.get("result"), Mapping) else {}
+    if result.get("evidence_gate") != "commit_correlated":
+        return _unavailable(issue_ref, run_id, "evidence_gate_did_not_pass")
+    # A record that does not name this exact Run and Issue is never read for
+    # them. Absent is refused too: a missing field must not compare equal.
+    if _safe_reference(record.get("run_id")) != run_id:
+        return _unavailable(issue_ref, run_id, "evidence_run_mismatch")
+    if _safe_reference(record.get("issue_id")) != issue_ref:
+        return _unavailable(issue_ref, run_id, "evidence_issue_mismatch")
+
+    commit = _safe_sha(record.get("commit"))
+    base_commit = _safe_sha(record.get("base_commit"))
+    branch = _safe_reference(record.get("branch"))
+    worktree = record.get("worktree")
+    if not commit or not base_commit:
+        return _unavailable(issue_ref, run_id, "no_correlated_commit")
+    if not branch:
+        return _unavailable(issue_ref, run_id, "no_registered_branch")
+    if not isinstance(worktree, str) or not worktree.strip():
+        return _unavailable(issue_ref, run_id, "no_registered_worktree")
+
+    git = (git_factory or _diff_git)(worktree)
+    # Separate "the worktree is gone" from "the commit left the branch": both
+    # fail closed, but they mean different things to the operator and only one
+    # of them is a reason to distrust the Run.
+    code, _ = git(["rev-parse", "--is-inside-work-tree"])
+    if code != 0:
+        return _unavailable(issue_ref, run_id, "worktree_unreadable")
+    code, _ = git(["merge-base", "--is-ancestor", commit, "refs/heads/" + branch])
+    if code != 0:
+        return _unavailable(issue_ref, run_id, "commit_not_on_registered_branch")
+
+    policy = [item for item in (record.get("policy_paths") or ()) if isinstance(item, str)]
+    # Read RAW, not through `_safe_path_list`: that helper drops a path it
+    # cannot vouch for, and a silently dropped path is exactly the failure this
+    # read exists to prevent. An unsafe entry must be visible to the operator as
+    # withheld, with its reason, rather than absent from the review.
+    raw = record.get("contributed_files") or record.get("files") or ()
+    contributed = [item for item in raw if isinstance(item, str) and item.strip()]
+
+    files: list[dict[str, Any]] = []
+    permitted: list[str] = []
+    for path in contributed:
+        normalized = normalize_repo_path(path)
+        if normalized is None:
+            files.append({"path": path, "withheld": True, "reason": "unsafe_path",
+                          "patch": None, "truncated": False})
+        # An unparsable or unscoped policy names nothing, which the gate treats
+        # as fail-closed -- so it withholds here too, never opens up.
+        elif not within(normalized, policy):
+            files.append({"path": normalized, "withheld": True,
+                          "reason": "outside_artifact_policy", "patch": None,
+                          "truncated": False})
+        elif normalized not in permitted:
+            permitted.append(normalized)
+
+    patches: dict[str, str] = {}
+    if permitted:
+        # ONE subprocess for the whole review, not one per file: this runs on a
+        # single-threaded loopback host, and a Run with many contributed files
+        # would otherwise hold it for the sum of their timeouts.
+        #
+        # `--no-ext-diff --no-textconv` is a SECURITY requirement, not a
+        # formatting preference. A Run owns its worktree, so it owns
+        # `.gitattributes` and `.git/config` too, and it can register an
+        # external diff driver or textconv filter there. Without these flags
+        # `git diff` executes that program -- in the operator's own process, at
+        # the moment they open the change to decide on it. The artifact policy
+        # cannot prevent it: `_within` governs what is DISPLAYED, while git
+        # reads attributes and config from the worktree regardless, and
+        # `.git/config` is not a tracked file the gate could ever see. Both
+        # flags must follow `diff`; as git-level flags they are rejected.
+        code, out = git(["diff", "--no-ext-diff", "--no-textconv",
+                         base_commit + ".." + commit, "--", *permitted])
+        if code != 0:
+            for path in permitted:
+                files.append({"path": path, "withheld": True,
+                              "reason": "diff_unreadable", "patch": None,
+                              "truncated": False})
+            permitted = []
+        else:
+            patches = _split_diff(out, permitted)
+
+    budget = _DIFF_TOTAL_MAX_CHARS
+    for path in permitted:
+        patch = patches.get(path)
+        if patch is None:
+            files.append({"path": path, "withheld": True,
+                          "reason": "no_change_in_contributed_range",
+                          "patch": None, "truncated": False})
+            continue
+        if budget <= 0:
+            files.append({"path": path, "withheld": True,
+                          "reason": "response_budget_exhausted", "patch": None,
+                          "truncated": False})
+            continue
+        limit = min(_DIFF_FILE_MAX_CHARS, budget)
+        truncated = len(patch) > limit
+        patch = patch[:limit]
+        budget -= len(patch)
+        files.append({"path": path, "withheld": False, "reason": None,
+                      "patch": patch, "truncated": truncated})
+
+    return {
+        "schema_version": 1, "issue_ref": issue_ref, "run_id": run_id,
+        "available": True, "reason": None,
+        "base_commit": base_commit, "commit": commit, "branch": branch,
+        "contributed_commits": [sha for sha in
+                                (_safe_sha(item) for item in
+                                 (record.get("contributed_commits") or ()))
+                                if sha is not None],
+        "files": files,
+    }
+
+
+def _split_diff(output: str, permitted: "Sequence[str]") -> "dict[str, str]":
+    """Split one ``git diff`` into per-file patches, keyed by permitted path.
+
+    Only a path git names that was ALSO asked for is kept, so a header this
+    parser misreads can never attribute content to a file outside the request.
+    """
+    wanted = list(permitted)
+    chunks: dict[str, str] = {}
+    current = None
+    lines: list[str] = []
+    for line in output.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            if current is not None:
+                chunks[current] = "".join(lines)
+            current, lines = None, []
+            header = line.rstrip("\r\n")
+            for path in wanted:
+                if header.endswith(" b/" + path):
+                    current = path
+                    break
+        if current is not None:
+            lines.append(line)
+    if current is not None:
+        chunks[current] = "".join(lines)
+    return chunks
 
 
 def run_terminal_projection(
@@ -573,6 +928,19 @@ def run_terminal_projection(
                 for item in (raw_evidence if isinstance(raw_evidence, list) else [])]
     error = _safe_error(turn.get("error"))
 
+    # The Evidence Gate's verdict and record (#499 slice 6a). Both are written
+    # by `Dispatcher._gate_commit`: the verdict onto the result envelope, the
+    # correlated record onto the durable Run as well. The envelope is read
+    # first and the durable Run last, so the most specific source wins and a
+    # record that outlives its envelope is still projected.
+    evidence_gate = _safe_evidence_gate(turn.get("evidence_gate"),
+                                        dispatcher_result.get("evidence_gate"),
+                                        dispatcher_run.get("evidence_gate"))
+    commit_evidence = _safe_commit_evidence(
+        turn.get("commit_evidence")
+        or dispatcher_result.get("commit_evidence")
+        or dispatcher_run.get("commit_evidence"))
+
     return {
         "schema_version": 1,
         "issue_ref": issue_ref,
@@ -594,6 +962,8 @@ def run_terminal_projection(
         "error": error,
         "incomplete": (not artifacts) or (not evidence) or cost_status == "unknown" or error is not None,
         "conflicting": bool(summary.get("conflict")),
+        "evidence_gate": evidence_gate,
+        "commit_evidence": commit_evidence,
     }
 
 

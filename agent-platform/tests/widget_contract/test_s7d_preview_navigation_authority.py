@@ -170,14 +170,35 @@ def test_ineligible_workstream_cannot_open_launch_by_deep_link():
     assert 'typed !== "launch"' in LAUNCH
     assert '(x.view_capabilities || []).indexOf("view:launch") === -1' in LAUNCH
     assert "no authorized launch" in LAUNCH
-    # Within renderLaunch itself, the refusal returns before either loader is
-    # called -- an ineligible Workstream causes no fetch at all.
+    # Within renderLaunch itself, the refusal returns before either dispatch
+    # loader is called -- an ineligible Workstream never fetches a mandate.
+    #
+    # #472 AC9 narrowed this invariant rather than dropping it, and this test
+    # states exactly what survived. An ineligible Workstream still returns
+    # before either dispatch loader, so it never fetches a mandate. The ONE
+    # exception is a Workstream that actually holds a claim: it may follow its
+    # own already-correlated Run read-only, because a reload during a Run
+    # otherwise leaves the operator with no way back to the live panel.
     body = LAUNCH[LAUNCH.index("function renderLaunch(winEl, ctx)"):]
     body = body[:body.index("OSRenderer.register")]
-    guard = body.index("This Workstream has no authorized launch")
+    guard = body.index("renderRunOnly(")
     assert guard < body.index("loadSynthetic(")
     assert guard < body.index("loadLive(")
     assert "return;" in body[guard:body.index("loadSynthetic(")]
+    # The claim is the gate on that exception: an ineligible Workstream that
+    # holds no claim still causes no fetch at all.
+    assert "if (!claimed(x)) { winEl.innerHTML = noLaunchNotice(typed); return; }" in body
+    assert body.index("if (!claimed(x))") < guard
+    # And that read-only path reaches no mandate and no mutation. It DOES call
+    # attachLiveRun, whose reads are asserted below -- the claim here is about
+    # which endpoints are reachable, never about how many fetches happen.
+    run_only = LAUNCH[LAUNCH.index("function renderRunOnly("):]
+    run_only = run_only[:run_only.index("function noLaunchNotice(")]
+    assert '"api/runs?issue="' in run_only
+    reachable = run_only + LAUNCH[LAUNCH.index("function attachLiveRun("):
+                                  LAUNCH.index("function renderRunOnly(")]
+    assert "api/dispatch-request" not in reachable
+    assert "api/action" not in reachable
 
 
 @pytest.mark.parametrize("ws_id", ["WS-042", "WS-039", "WS-031"])
