@@ -109,6 +109,17 @@ commits remain legitimate; only hiding one behind another does not. A mutating
 Run with no usable base is blocked (`base_commit_not_recorded`) rather than
 falling back to verifying its tip alone.
 
+The launcher records the **worktree** on the Run at the same moment, and the
+gate reads it from there rather than from the result envelope (#514). The
+launcher created that directory, so it is the only authority for its path.
+Taking it from the envelope had two costs: an adapter that never reported one
+left `commit_evidence.worktree` null, so the operator could not open the change
+at all (`run.diff.v1` refused with `no_registered_worktree`); and a worker that
+did report one chose the directory the operator's own review later ran `git`
+in. A mutating Run whose worktree cannot be recorded is blocked
+(`worktree_not_recordable`), on the same rule as `base_commit`: evidence nobody
+can open is not evidence.
+
 The verified correlation is written onto the Run as `commit_evidence` and into
 the result envelope, and describes the whole contributed change
 (`base_commit`, `contributed_commits`, `contributed_files`) alongside the

@@ -168,7 +168,10 @@ def test_mutating_isolation_metadata_is_mandatory_before_dispatch():
 
     app = _launcher(_dispatcherish(BrokenRegistry(_run())))
     with pytest.raises(ExecutionGateError) as exc:
-        app._record_isolation("run-1", True, required=True, base_commit="a" * 40)
+        # A worktree is supplied (#514) so the call reaches the store write --
+        # this test is about the write failing, not about a missing field.
+        app._record_isolation("run-1", True, required=True, base_commit="a" * 40,
+                              worktree="/tmp/wt/run-1")
     assert exc.value.code == "isolation_not_recordable"
 
 

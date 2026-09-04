@@ -82,7 +82,11 @@ without a canonical-writer decision and without any new mutation surface.
   from the durable record, not the request: the request schema is exactly
   `{issue_ref, run_id}`, so the browser can never name a path; commit, base,
   branch and worktree are read from the `commit_evidence` record the Evidence
-  Gate wrote onto the **durable Run**, never from the worker's result envelope
+  Gate wrote onto the **durable Run**. Every one of those fields originates with
+  the launcher, not the worker: the worktree is recorded on the Run at
+  `_record_isolation` time and the gate reads it from there (#514), so a worker
+  naming a different directory in its envelope cannot redirect the `git` the
+  operator's review runs. The envelope is never a fallback for the record
   (a refused Run's envelope is copied forward verbatim by
   `Dispatcher._gate_commit`, so a worker-authored `commit_evidence` key would
   otherwise have chosen the worktree the read runs `git` in); the envelope must

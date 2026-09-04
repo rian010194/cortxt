@@ -443,7 +443,10 @@ def verify_commit_correlation(
         files=files,
         verified_at=clock(),
         request_id=getattr(run, "request_id", None),
-        worktree=envelope.get("worktree"),
+        # The Run record, never the envelope (#514). The launcher created the
+        # worktree; a worker naming a different one must not redirect the
+        # review that later reads this path.
+        worktree=getattr(run, "worktree", None),
         policy_paths=permitted,
         base_commit=base,
         contributed_commits=contributed,
