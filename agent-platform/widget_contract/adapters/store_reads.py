@@ -8,6 +8,7 @@ from ..validation import validate
 from ..run_authority import (
     correlate_run_summaries,
     run_activity_projection,
+    run_diff_projection,
     run_review_projection,
     run_summaries_projection,
     run_terminal_projection,
@@ -586,6 +587,29 @@ def read_run_terminal_v1(issue_ref: str,
         raise RunNotCorrelated(f"no run {run_id!r} correlated for {issue_ref!r}")
     try:
         validate(result, TYPES["run.terminal.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_run_diff_v1(issue_ref: str,
+                     dispatcher_store: "Mapping[str, Any] | None",
+                     *, run_id: str, git_factory: "Any" = None) -> "dict[str, Any]":
+    """``run.diff.v1`` -- the change one exact issue+run contributed (#499).
+
+    Unlike its siblings this read returns content, bounded by the durable
+    ``commit_evidence`` record; see ``run_diff_projection`` for what it refuses.
+    ``RunNotCorrelated`` still means the pair itself does not exist, which is
+    distinct from a correlated Run whose diff is unavailable -- the latter is a
+    valid answer carrying ``available: False`` and a reason.
+    """
+    dispatcher_runs = dispatcher_store if isinstance(dispatcher_store, Mapping) else {}
+    result = run_diff_projection(issue_ref, run_id, dispatcher_store=dispatcher_runs,
+                                 git_factory=git_factory)
+    if result is None:
+        raise RunNotCorrelated(f"no run {run_id!r} correlated for {issue_ref!r}")
+    try:
+        validate(result, TYPES["run.diff.v1"].schema)
     except Exception as exc:
         raise ReadAdapterError(str(exc)) from exc
     return result

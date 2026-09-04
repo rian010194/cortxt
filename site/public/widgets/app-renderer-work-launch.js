@@ -293,6 +293,19 @@
             esc(e && e.message ? e.message : "terminal projection unavailable") + "</div>";
         });
     }
+    /* The Evidence Gate's verdict and the commit it correlated (#499). Absence
+       of a verdict is rendered as "not recorded", never as a pass: a Run that
+       never reached the gate must not look like one the gate accepted. */
+    function gateRows(term) {
+    var gate = term.evidence_gate, ev = term.commit_evidence;
+    var html = row("Evidence gate", gate ? gate.replace(/_/g, " ") : "not recorded");
+    if (!ev) return html;
+    return html + row("Commit", ev.commit) + row("Base", ev.base_commit) +
+        row("Branch", ev.branch) +
+        row("Contributed commits", (ev.contributed_commits || []).length) +
+        row("Contributed files", (ev.contributed_files || []).join(", "));
+  }
+
     function renderTerminal(term, act) {
       var html = "<h4>Live Run · terminal</h4>";
       if (term) {
@@ -308,6 +321,7 @@
           (term.incomplete ? '<p class="run-live-warn">Incomplete or unverified evidence.</p>' : "") +
           (term.conflicting ? '<p class="run-live-warn">Sources disagree on this run; not resolved.</p>' : "") +
           (term.error ? '<p class="run-live-warn">' + esc(term.error.category) + ": " + esc(term.error.message) + "</p>" : "") +
+          gateRows(term) +
           "</div>";
       } else {
         html += '<div class="run-live-error">terminal result unavailable</div>';
@@ -326,20 +340,68 @@
     tick();
   }
 
+  /* ---- read-only follow of an already correlated Run (#472 AC9) -------
+     A claim moves the Issue to workflow:in-progress, at which point the typed
+     next action becomes `null` while the Run is alive (a running Run has no
+     sanctioned next step: it is neither launchable nor recoverable). The
+     launch view used to refuse outright on that, so a browser reload during a
+     Run left the operator with no way back to the live panel -- the one
+     surface that carries freshness, the terminal result and the Evidence Gate
+     verdict. Restoring READ of an existing Run is all this does.
+
+     The launch gate itself is untouched: no dispatch request is fetched, and
+     neither the confirmation dialog nor the claim POST is reachable from
+     here. Both still require `next_action.kind === "launch"` above. */
+  function renderRunOnly(winEl, ctx, issue, typed) {
+    fetch("api/runs?issue=" + encodeURIComponent(issue), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("run projection unavailable (" + r.status + ")"); return r.json(); })
+      .then(function (d) {
+        /* Fail closed on correlation exactly as the dispatch-request path
+           does: only Runs the server reports against THIS Issue count. */
+        var runs = ((d && d.runs) || []).filter(function (r) {
+          return r && (!r.issue_ref || r.issue_ref === issue);
+        });
+        if (!runs.length) { winEl.innerHTML = noLaunchNotice(typed); return; }
+        winEl.innerHTML = '<span class="eyebrow">' + esc(ctx.workstream.id) +
+          " · run in progress</span><h3>Following this Workstream's Run</h3>" +
+          "<p>This Workstream is claimed, so no launch is offered. Its correlated Run is followed read-only below.</p>";
+        attachLiveRun(winEl, ctx, issue, null);
+      })
+      .catch(function () { winEl.innerHTML = noLaunchNotice(typed); });
+  }
+
+  /* A claim is what makes a Run exist to follow: the workflow label the
+     dispatcher sets when it claims the Issue. Nothing else opens this path. */
+  function claimed(x) {
+    return !!x && String(x.workflow || "").replace(/^workflow:/, "") === "in-progress";
+  }
+
+  function noLaunchNotice(typed) {
+    return empty(
+      "This Workstream has no authorized launch. Its typed next action is " +
+      String(typed || "none") + ", so no dispatch request is requested or rendered.");
+  }
+
   function renderLaunch(winEl, ctx) {
     if (!winEl) return;
     var s = (ctx && ctx.state) || {}, x = (ctx && ctx.workstream) || null;
     if (!x) { winEl.innerHTML = empty("Select a Workstream to review and start a Run."); return; }
     /* An ineligible Workstream cannot reach the launch view even by deep
        link: without an Issue, a `launch` next action, or (in preview mode)
-       its own view:launch grant, nothing is fetched at all. */
+       its own view:launch grant, no dispatch request is fetched at all. */
     var syntheticMode = !!(s.model && s.model.synthetic);
     var typed = (x.next_action && x.next_action.kind) || null;
-    if (!x.issue_id || typed !== "launch" ||
+    if (!x.issue_id) { winEl.innerHTML = noLaunchNotice(typed); return; }
+    if (typed !== "launch" ||
         (syntheticMode && ((x.view_capabilities || []).indexOf("view:launch") === -1))) {
-      winEl.innerHTML = empty(
-        "This Workstream has no authorized launch. Its typed next action is " +
-        String(typed || "none") + ", so no dispatch request is requested or rendered.");
+      /* Preview mode never reaches a live host, so there is no Run to follow
+         and nothing is fetched. */
+      if (syntheticMode) { winEl.innerHTML = noLaunchNotice(typed); return; }
+      /* Only a Workstream that actually holds a claim may follow a Run. Every
+         other ineligible Workstream still causes no fetch at all -- the
+         original deep-link invariant, narrowed rather than dropped. */
+      if (!claimed(x)) { winEl.innerHTML = noLaunchNotice(typed); return; }
+      renderRunOnly(winEl, ctx, x.issue_id, typed);
       return;
     }
     winEl.innerHTML = '<span class="eyebrow">' + esc(x.id) + '</span><h3>Loading the approved dispatch request…</h3>';

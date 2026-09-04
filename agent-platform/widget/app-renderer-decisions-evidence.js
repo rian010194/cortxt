@@ -151,6 +151,9 @@
     if (accept) accept.addEventListener("click", function () { beginDecision(winEl, ctx); });
     var recover = winEl.querySelector("[data-r-recover]");
     if (recover) recover.addEventListener("click", function () { beginRecovery(winEl, ctx); });
+    /* #499: the decision is about a change the operator did not watch happen,
+       so the change itself is rendered here, before the accept control. */
+    if (!isSynthetic(s) && x.issue_id) attachRunDiff(winEl, x);
   }
 
   function beginDecision(winEl, ctx) {
@@ -194,6 +197,137 @@
     winEl.innerHTML = '<span class="eyebrow">Preview outcome</span><h3>Accepted (preview)</h3><p>' + esc(x.title) + " — no external mutation was performed.</p>";
   }
 
+  /* ---- The change itself (#499) --------------------------------------
+     The closing step of S7 is a decision about work the operator did not
+     watch happen. A SHA, a file list and a correlation receipt are not that
+     work, so this panel renders the contributed diff read-only, from
+     `GET /api/run-diff`.
+
+     Nothing here can widen what is shown. The request carries only the Issue
+     and the Run; the server resolves commit, branch and worktree from the
+     durable evidence record the Evidence Gate wrote, and returns a patch only
+     for a file that gate correlated inside the approved artifact policy. A
+     withheld file is rendered as its reason with no content, and an
+     unavailable diff renders its reason -- never as an empty change.
+
+     WHICH Run is never guessed silently. The projection is bound to an exact
+     issue+run pair, and a decision surface that showed a different Run's diff
+     than the one being decided would be worse than showing none. So the Run
+     is always named in the panel, and when the Workstream has more than one
+     the operator picks it explicitly. Selection is local presentation state:
+     it opens no port and changes no authority. */
+  function runLabel(r) {
+    var when = r.finished_at || r.started_at || r.heartbeat_at || null;
+    return r.run_id + (r.status ? " · " + r.status : "") + (when ? " · " + when : "");
+  }
+
+  function orderRuns(runs) {
+    /* `finished_at`/`started_at` are nullable, so an unparsable date must sort
+       last deterministically rather than becoming NaN and reordering the list
+       arbitrarily on every render. */
+    return runs.slice().map(function (r, i) {
+      var t = Date.parse(r.finished_at || r.started_at || "");
+      return { run: r, key: isNaN(t) ? -1 : t, i: i };
+    }).sort(function (a, b) { return b.key - a.key || a.i - b.i; })
+      .map(function (e) { return e.run; });
+  }
+
+  function attachRunDiff(winEl, x) {
+    var existing = winEl.querySelector("[data-run-diff]");
+    if (existing) existing.remove();
+    var panel = document.createElement("section");
+    panel.className = "run-diff";
+    panel.setAttribute("data-run-diff", "loading");
+    panel.innerHTML = "<h4>Contributed change</h4><p>Loading the change this Run contributed…</p>";
+    winEl.appendChild(panel);
+
+    fetch("api/runs?issue=" + encodeURIComponent(x.issue_id), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("run projection unavailable"); return r.json(); })
+      .then(function (d) {
+        /* Fail closed on correlation: only Runs the server reports against
+           THIS Issue are offered. */
+        var runs = orderRuns(((d && d.runs) || []).filter(function (r) {
+          return r && r.run_id && (!r.issue_ref || r.issue_ref === x.issue_id);
+        }));
+        if (!runs.length) throw new Error("no correlated run");
+        loadDiff(panel, x, runs, runs[0].run_id);
+      })
+      .catch(function (e) { diffUnavailable(panel, e && e.message ? e.message : "unavailable"); });
+  }
+
+  function loadDiff(panel, x, runs, runId) {
+    var q = "issue=" + encodeURIComponent(x.issue_id) + "&run=" + encodeURIComponent(runId);
+    fetch("api/run-diff?" + q, { cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("this Run has no readable change (" + r.status + ")");
+        return r.json();
+      })
+      .then(function (diff) { renderRunDiff(panel, x, runs, runId, diff); })
+      .catch(function (e) {
+        diffUnavailable(panel, e && e.message ? e.message : "unavailable",
+                        runPicker(runs, runId));
+      });
+  }
+
+  function diffUnavailable(panel, message, picker) {
+    panel.setAttribute("data-run-diff", "unavailable");
+    panel.innerHTML = "<h4>Contributed change</h4>" + (picker || "") +
+      '<p class="run-live-warn">' + esc(message) +
+      " — nothing is shown. Deciding on metadata alone is your call, not this surface's.</p>";
+  }
+
+  function runPicker(runs, runId) {
+    if (runs.length < 2) {
+      return '<p class="run-diff-run">Run <b>' + esc(runId) + "</b></p>";
+    }
+    return '<label class="run-diff-run">Run <select data-run-diff-pick>' +
+      runs.map(function (r) {
+        return '<option value="' + esc(r.run_id) + '"' +
+          (r.run_id === runId ? " selected" : "") + ">" + esc(runLabel(r)) + "</option>";
+      }).join("") + "</select></label>";
+  }
+
+  function renderRunDiff(panel, x, runs, runId, diff) {
+    var picker = runPicker(runs, runId);
+    function bind() {
+      var pick = panel.querySelector("[data-run-diff-pick]");
+      if (pick) pick.addEventListener("change", function () { loadDiff(panel, x, runs, pick.value); });
+    }
+    if (!diff || diff.available !== true) {
+      diffUnavailable(panel, "no readable change: " + ((diff && diff.reason) || "unknown"), picker);
+      bind();
+      return;
+    }
+    panel.setAttribute("data-run-diff", diff.run_id);
+    var files = diff.files || [];
+    var shown = files.filter(function (f) { return !f.withheld; });
+    var held = files.filter(function (f) { return f.withheld; });
+    var body;
+    if (shown.length) {
+      body = shown.map(function (f) {
+        return "<article><strong>" + esc(f.path) + "</strong>" +
+          '<pre class="run-diff-patch">' + esc(f.patch) + "</pre>" +
+          (f.truncated ? '<p class="run-live-warn">Truncated — this file changed more than is shown.</p>' : "") +
+          "</article>";
+      }).join("");
+    } else if (held.length) {
+      body = '<p class="run-live-warn">Every changed file was withheld; there is nothing to read here.</p>';
+    } else {
+      /* Correlated, permitted, and empty: a real state that is neither a
+         refusal nor a readable change, and must not be reported as either. */
+      body = '<p class="run-live-warn">This Run recorded no changed file inside the approved artifact policy.</p>';
+    }
+    panel.innerHTML = "<h4>Contributed change</h4>" + picker +
+      "<p>" + esc(diff.base_commit) + " … " + esc(diff.commit) +
+      " on " + esc(diff.branch) + "</p>" + body +
+      (held.length
+        ? '<ul class="run-diff-withheld">' + held.map(function (f) {
+            return "<li>" + esc(f.path) + " — withheld: " + esc(f.reason) + "</li>";
+          }).join("") + "</ul>"
+        : "");
+    bind();
+  }
+
   /* ---- Evidence ------------------------------------------------------ */
   function renderEvidence(winEl, ctx) {
     if (!winEl) return;
@@ -204,12 +338,16 @@
         "This Workstream's evidence references do not correlate with its Issue. Nothing is rendered.");
       return;
     }
-    if (!x.evidence || !x.evidence.length) { winEl.innerHTML = empty("No authoritative evidence is attached."); return; }
+    var items = x.evidence || [];
     winEl.innerHTML =
       '<span class="eyebrow">' + esc(x.id) + "</span><h3>Evidence</h3>" +
-      '<div class="projection-list">' + x.evidence.map(function (ev) {
+      (items.length ? "" : empty("No authoritative evidence is attached.")) +
+      '<div class="projection-list">' + items.map(function (ev) {
         return '<article><span class="eyebrow">' + esc(ev.status) + "</span><strong>" + esc(ev.title) + "</strong><p>" + esc(ev.detail) + "</p></article>";
       }).join("") + "</div>";
+    /* Synthetic mode reaches no host, so there is no Run whose change could
+       be read; the metadata list above is all that exists there. */
+    if (!isSynthetic(ctx && ctx.state) && x.issue_id) attachRunDiff(winEl, x);
   }
 
   if (typeof OSRenderer !== "undefined") {
