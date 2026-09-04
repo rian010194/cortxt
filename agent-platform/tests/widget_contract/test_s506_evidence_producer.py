@@ -126,6 +126,11 @@ def _launcher(repo, run_id, *, claimed_at=1000.0, tmp_path=None):
         lease_seconds=600, status="in_progress", mutating=True,
         isolation="worktree", branch="work/run-1", artifact_policy=POLICY,
         request_id="sha256:abc",
+        # The commit `work/run-1` was branched from (#509). A real launcher
+        # records this in `_record_isolation` and fails the launch closed
+        # without it; this helper builds the Run directly, so it must supply
+        # what that path would have.
+        base_commit=_git(repo, "rev-parse", "main").stdout.strip(),
     )
     registry.add(run)
     app = WorkLauncher.__new__(WorkLauncher)
@@ -296,7 +301,10 @@ def _dispatch_live(repo, tmp_path, run_id, branch, worktree, *, claimed_at,
               workflow="work-launcher/v1", worker_role="builder",
               runtime="test-nocommit", claimed_at=claimed_at, lease_seconds=600,
               status="in_progress", mutating=True, isolation="worktree",
-              branch=branch, artifact_policy=POLICY, request_id="sha256:abc")
+              branch=branch, artifact_policy=POLICY, request_id="sha256:abc",
+              # See `_launcher`: the real launch path records the commit the
+              # branch was created from (#509), so this one must too.
+              base_commit=_git(repo, "rev-parse", "main").stdout.strip())
     registry.add(run)
     register_adapter("test-nocommit", _NoCommitAdapter(status))
     dispatch_async(dispatcher, run, "[test] see issue body",
