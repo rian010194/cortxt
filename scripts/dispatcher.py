@@ -173,6 +173,13 @@ class Run:
     # name constructed out of the run_id.
     isolation: Optional[str] = None
     branch: Optional[str] = None
+    # The isolated working directory the launcher actually gave this Run
+    # (#514). Recorded here because the launcher is the only authority for it:
+    # it created the directory. The Evidence Gate used to read this from the
+    # worker's own result envelope, which made a worker-supplied string decide
+    # which directory the operator's review later ran `git` in -- and left it
+    # `null` outright for any adapter that did not happen to report it.
+    worktree: Optional[str] = None
     # The commit this Run's isolated branch was created from (#509). The
     # Evidence Gate verifies everything the Run contributed on top of it, not
     # just the one commit a result envelope happens to present, so the base

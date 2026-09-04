@@ -425,7 +425,8 @@ class WorkLauncher:
                 "isolation": self.ISOLATION_SHARED, "working_dir": str(self.repo_path)}
 
     def _record_isolation(self, run_id: str, created: bool, *, required: bool = False,
-                          base_commit: "str | None" = None) -> None:
+                          base_commit: "str | None" = None,
+                          worktree: "Path | None" = None) -> None:
         """Carry the isolation mode onto the durable Run record.
 
         Best-effort: a registry without `update` (older/injected fakes) simply
@@ -438,6 +439,19 @@ class WorkLauncher:
         everything the Run contributed on top of that base, so a mutating Run
         without one would run under a gate that could only ever check its tip
         commit, which is the hole #509 exists to close.
+
+        `worktree` follows the same rule (#514). The launcher created the
+        directory, so it is the only authority for its path; the Evidence Gate
+        previously took it from the worker's result envelope, which both left
+        it `null` for adapters that never reported it and let a worker-supplied
+        string decide which directory the operator's review read.
+
+        It is recorded ABSOLUTE and only after confirming the directory exists.
+        `worktree_root` defaults to a relative `.worktrees`, and the process
+        that later reads this path is the action host, not this launcher -- a
+        relative string would resolve against the reader's cwd. A mutating Run
+        whose worktree cannot be recorded that way fails the launch closed
+        rather than producing evidence nobody can open.
         """
         registry = getattr(self.dispatcher, "registry", None)
         if registry is None or not hasattr(registry, "update"):
@@ -446,9 +460,22 @@ class WorkLauncher:
             return
         if created and required and not base_commit:
             raise ExecutionGateError("base_commit_not_resolvable")
+        # Absolute, and only if it is really there. `worktree_root` defaults to
+        # the relative `Path(".worktrees")`, so the naive string would be
+        # resolved against whatever process later reads it -- and the reader is
+        # the action host, not this launcher. Recording a path that does not
+        # resolve for the reader is the same failure as recording none.
+        recorded = None
+        if created and worktree is not None:
+            resolved = (self.repo_path / worktree).resolve()
+            if resolved.is_dir():
+                recorded = str(resolved)
+        if created and required and recorded is None:
+            raise ExecutionGateError("worktree_not_recordable")
         fields = {"isolation": self.ISOLATION_WORKTREE if created else self.ISOLATION_SHARED,
                   "branch": f"work/{run_id}" if created else None,
-                  "base_commit": base_commit if created else None}
+                  "base_commit": base_commit if created else None,
+                  "worktree": recorded}
         try:
             registry.update(run_id, **fields)
         except Exception as exc:  # noqa: BLE001 - provenance metadata, never fatal
@@ -548,7 +575,7 @@ class WorkLauncher:
                     raise
             try:
                 self._record_isolation(run_id, create_worktree, required=mutating,
-                                       base_commit=base_commit)
+                                       base_commit=base_commit, worktree=worktree)
             except ExecutionGateError:
                 self.dispatcher.complete(run_id, "blocked",
                                          {"error": "isolation metadata could not be recorded"})
@@ -596,7 +623,7 @@ class WorkLauncher:
                     self._fail_launch(run_id, claim, failure)
                     raise
             self._record_isolation(run_id, create_worktree, required=mutating,
-                                   base_commit=base_commit)
+                                   base_commit=base_commit, worktree=worktree)
             self._claims_by_run[run_id] = claim
             self._dispatch(run, prompt, worktree)
             return {"issue_id": issue_id, "run_id": run_id,

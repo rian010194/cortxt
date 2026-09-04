@@ -159,7 +159,7 @@ def test_a_registry_that_cannot_carry_the_scope_fails_the_launch():
     assert exc.value.code == "approved_scope_not_recordable"
 
 
-def test_mutating_isolation_metadata_is_mandatory_before_dispatch():
+def test_mutating_isolation_metadata_is_mandatory_before_dispatch(tmp_path):
     class BrokenRegistry(_Registry):
         def update(self, run_id, **fields):
             if "isolation" in fields:
@@ -168,7 +168,14 @@ def test_mutating_isolation_metadata_is_mandatory_before_dispatch():
 
     app = _launcher(_dispatcherish(BrokenRegistry(_run())))
     with pytest.raises(ExecutionGateError) as exc:
-        app._record_isolation("run-1", True, required=True, base_commit="a" * 40)
+        # A real worktree is supplied (#514) so the call reaches the store
+        # write -- this test is about the write failing, not about a missing or
+        # unresolvable directory.
+        app.repo_path = tmp_path
+        real = tmp_path / ".worktrees" / "run-1"
+        real.mkdir(parents=True)
+        app._record_isolation("run-1", True, required=True, base_commit="a" * 40,
+                              worktree=real)
     assert exc.value.code == "isolation_not_recordable"
 
 
