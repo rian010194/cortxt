@@ -481,9 +481,16 @@ def run_proof(args: argparse.Namespace) -> dict:
         f"{issue_id}|{run.run_id}|{MARKER_DIR}".encode("utf-8")).hexdigest()
     registry.update(run.run_id, mutating=True, isolation="worktree",
                     branch=proof_branch(issue_num, run.run_id),
+                    # The launcher records the worktree too (#514); a fixture
+                    # that omits it reproduces exactly the null-worktree state
+                    # that issue exists to close, and would prove a weaker path.
+                    worktree=str(Path(worktree).resolve()),
                     artifact_paths=approved_paths, request_id=request_id)
     run = registry.get(run.run_id)
     evidence["approved_scope"] = {"artifact_paths": approved_paths, "request_id": request_id}
+    if not run.worktree:
+        raise ProofError("run record carries no worktree; the fixture must record what "
+                         "the launcher records (#514)")
     head_before = run_cmd(["git", "-C", str(worktree), "rev-parse", "HEAD"], timeout=30).stdout.strip()
     if not head_before:
         raise ProofError("could not read head_before from worktree")

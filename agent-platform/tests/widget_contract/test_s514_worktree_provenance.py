@@ -62,21 +62,28 @@ class _Dispatcher:
         self.registry = registry
 
 
-def _app(registry):
+POLICY_TEXT = "Only `docs/a.md` inside the run's isolated worktree."
+
+
+def _app(registry, repo_path=None):
+    from pathlib import Path as _Path
+
     work_launcher = _launcher_module()
     app = work_launcher.WorkLauncher.__new__(work_launcher.WorkLauncher)
     app.dispatcher = _Dispatcher(registry)
+    app.repo_path = _Path(repo_path) if repo_path else _Path.cwd()
     return app, work_launcher
 
 
 def test_the_launcher_records_the_worktree_it_created(tmp_path):
     registry = _Registry()
-    app, _ = _app(registry)
+    app, _ = _app(registry, tmp_path)
     worktree = tmp_path / ".worktrees" / "run-1"
+    worktree.mkdir(parents=True)
     app._record_isolation("run-1", True, required=True, base_commit="a" * 40,
                           worktree=worktree)
     recorded = registry.fields["run-1"]
-    assert recorded["worktree"] == str(worktree)
+    assert recorded["worktree"] == str(worktree.resolve())
     assert recorded["isolation"] == "worktree"
     assert recorded["branch"] == "work/run-1"
 
@@ -93,7 +100,7 @@ def test_a_mutating_run_whose_worktree_cannot_be_recorded_fails_closed(tmp_path)
 def test_a_shared_checkout_run_records_no_worktree(tmp_path):
     """A run that got no isolated directory must not claim one."""
     registry = _Registry()
-    app, _ = _app(registry)
+    app, _ = _app(registry, tmp_path)
     app._record_isolation("run-1", False, required=False, worktree=tmp_path)
     assert registry.fields["run-1"]["worktree"] is None
     assert registry.fields["run-1"]["isolation"] == "shared-checkout"
@@ -198,3 +205,90 @@ def test_run_diff_can_read_a_gate_passed_run_end_to_end(repo):
     permitted = [f for f in result["files"] if not f["withheld"]]
     assert [f["path"] for f in permitted] == ["docs/a.md"]
     assert "+after" in permitted[0]["patch"]
+
+
+# --------------------------------------------------------------------------- #
+# the real Run dataclass and the real registry, across a reload
+# --------------------------------------------------------------------------- #
+def test_the_worktree_survives_a_registry_round_trip(repo, tmp_path):
+    """The regression the stand-ins above cannot see.
+
+    `RunRegistry.update` is `setattr`, which succeeds silently for a field the
+    `Run` dataclass does not declare -- and `asdict()` then drops it on the next
+    flush. Every test that uses a dict recorder would still pass with
+    `Run.worktree` missing entirely, and the field would vanish on reload. This
+    one drives the real `Run`, the real registry, a real flush and a real
+    reload, then feeds the reloaded record to the real gate.
+    """
+    import sys
+    from pathlib import Path as _Path
+
+    scripts = str(_Path(__file__).resolve().parents[3] / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    from dispatcher import Run, RunRegistry
+    from commit_evidence import verify_commit_correlation
+
+    store = tmp_path / "runs.json"
+    registry = RunRegistry(store)
+    base = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    registry.add(Run(run_id="run-1", issue_id="owner/repo#514",
+                     workflow="work-launcher/v1", worker_role="builder",
+                     runtime="hermes-free", claimed_at=1000.0, lease_seconds=600,
+                     status="in_progress", mutating=True, isolation="worktree",
+                     branch="work/run-1", artifact_policy=POLICY_TEXT,
+                     request_id="sha256:abc", base_commit=base))
+    registry.update("run-1", worktree=str(repo))
+
+    # Reload from disk: a field the dataclass does not declare is gone by here.
+    reloaded = RunRegistry(store).get("run-1")
+    assert reloaded.worktree == str(repo), "Run.worktree did not survive the flush"
+
+    sha = _contribute(repo)
+    committed = int(_git(repo, "show", "-s", "--format=%ct", sha).stdout.strip())
+    registry2 = RunRegistry(store)
+    registry2.update("run-1", claimed_at=committed - 5)
+    run = registry2.get("run-1")
+
+    outcome = verify_commit_correlation(
+        run, {"run_id": run.run_id, "issue_id": run.issue_id,
+              "request_id": run.request_id, "commit": sha, "branch": run.branch},
+        repo_path=repo)
+
+    assert outcome.as_record()["worktree"] == str(repo)
+
+
+def test_the_recorded_worktree_is_absolute_and_exists(repo, tmp_path):
+    """A relative path would be resolved against the READER's cwd.
+
+    `worktree_root` defaults to a relative `.worktrees`, and the process that
+    later reads this path is the action host, not the launcher. `run.diff.v1`
+    passes it straight to `subprocess.run(cwd=...)`.
+    """
+    from pathlib import Path as _Path
+
+    registry = _Registry()
+    app, _ = _app(registry)
+    app.repo_path = repo
+    real = repo / ".worktrees" / "run-1"
+    real.mkdir(parents=True)
+
+    app._record_isolation("run-1", True, required=True, base_commit="a" * 40,
+                          worktree=_Path(".worktrees/run-1"))
+
+    recorded = registry.fields["run-1"]["worktree"]
+    assert _Path(recorded).is_absolute()
+    assert _Path(recorded).is_dir()
+    assert _Path(recorded) == real.resolve()
+
+
+def test_a_worktree_that_does_not_exist_fails_a_mutating_launch_closed(repo):
+    """Evidence pointing at a directory nobody can open is not evidence."""
+    from pathlib import Path as _Path
+
+    app, work_launcher = _app(_Registry())
+    app.repo_path = repo
+    with pytest.raises(work_launcher.ExecutionGateError) as exc:
+        app._record_isolation("run-1", True, required=True, base_commit="a" * 40,
+                              worktree=_Path(".worktrees/never-created"))
+    assert "worktree_not_recordable" in str(exc.value)
