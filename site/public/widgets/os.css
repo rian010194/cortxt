@@ -250,6 +250,18 @@ button,input{font:inherit}button{color:inherit}
 .run-live-age{font-size:11px;color:var(--dim)}
 .run-live-warn{font-size:12px;color:var(--warn);line-height:1.5;margin:8px 0 0}
 .run-live-error{font-size:12px;color:var(--warn);line-height:1.5}
+/* S7d (#469): outcome-first terminal panel. Plain verdict and next step lead;
+   the machine vocabulary lives in the collapsed detail block below them. */
+.run-outcome{margin:10px 0 0;padding:10px 12px;border:1px solid var(--stroke);border-left-width:3px;border-radius:8px;background:var(--layer)}
+.run-outcome.ok{border-left-color:var(--good)}
+.run-outcome.warn{border-left-color:var(--warn)}
+.run-outcome strong{display:block;font-size:12.5px;color:var(--text);margin:0 0 4px}
+.run-outcome p{margin:0;font-size:12px;line-height:1.55;color:var(--muted)}
+.run-next-step{margin:8px 0 0 !important;color:var(--text) !important}
+.run-next-step span{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:650;color:var(--dim);margin-right:6px}
+.run-detail{margin:10px 0 0}
+.run-detail summary{font-size:11px;color:var(--dim);cursor:pointer;letter-spacing:.04em}
+.run-detail summary:hover{color:var(--muted)}
 .run-activity{margin:10px 0 0;padding-left:18px;display:grid;gap:4px}
 .run-activity li{font-size:11.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
 .run-diff{margin:14px 0 0;border-top:1px solid var(--line);padding-top:12px}

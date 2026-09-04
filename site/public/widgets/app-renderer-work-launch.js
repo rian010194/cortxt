@@ -293,6 +293,107 @@
             esc(e && e.message ? e.message : "terminal projection unavailable") + "</div>";
         });
     }
+    /* What the operator is told, in their own language (#469 UX pass).
+
+       The terminal panel used to lead with `blocked` and a raw failure code.
+       Both are true and neither answers the two questions an operator actually
+       has: did my task get done, and what do I do now. The technical vocabulary
+       is not removed -- it moves into the detail block below, where debugging
+       needs it -- and the headline separates the two facts the old panel ran
+       together: whether the WORKER finished, and whether its RESULT was
+       accepted. A worker can finish perfectly and still land nothing. */
+    var OUTCOMES = {
+      commit_predates_run: {
+        plain: "No new commit could be verified for this run. The worker reported " +
+               "that it finished, but the run's branch is still exactly where it " +
+               "started, so there is no change to review.",
+        next: "Open the run log to see whether the worker produced a result at all. " +
+              "If it did not, re-run. If it did but decided no change was needed, " +
+              "the task itself may already be done.",
+      },
+      commit_missing: {
+        plain: "No commit could be found for this run at all — not even a branch to " +
+               "look at.",
+        next: "The run's branch could not be resolved. Check that it still exists " +
+              "before re-running.",
+      },
+      artifact_policy_missing: {
+        plain: "This run was allowed to change the repository, but nothing recorded " +
+               "which files it was allowed to touch, so no change can be accepted.",
+        next: "Add an artifact policy naming the permitted paths to the Issue, then " +
+              "re-run.",
+      },
+      artifact_policy_unparsable: {
+        plain: "The approved artifact policy names no file that can be read as a " +
+               "path, so there is nothing to check the change against.",
+        next: "Name the permitted paths in backticks in the Issue's artifact policy, " +
+              "then re-run.",
+      },
+      worker_nonzero_exit: {
+        plain: "The worker stopped before finishing its task.",
+        next: "Open the run log for what it reported, then re-run.",
+      },
+    };
+
+    function outcomeFor(term) {
+      var status = term && term.status;
+      var code = (term && term.error && term.error.category) || null;
+      /* Acceptance is the GATE's verdict, not the worker's status word. A Run
+         that passed the gate and was then submitted for review reads
+         `review_submitted`, not `succeeded` (#515) -- keying on the status
+         alone rendered the one accepted Run in the dogfood as "outcome not
+         recorded", which is exactly backwards. */
+      if (term && term.evidence_gate === "commit_correlated") {
+        return {
+          tone: "ok",
+          headline: "Worker finished · change accepted",
+          /* Never let a gate pass read as "shipped". The Gate verifies a commit
+             on the run's own isolated branch; nothing has left this machine. */
+          plain: "The Evidence Gate verified a commit on this run's own branch. " +
+                 "Nothing has been pushed, merged, published or deployed — the " +
+                 "change is waiting for your review.",
+          next: "Read the change, then decide whether to take it further.",
+        };
+      }
+      if (status === "blocked" || term.evidence_gate === "commit_correlation_failed") {
+        var known = code && OUTCOMES[code];
+        return {
+          tone: "warn",
+          headline: "Worker finished · result not accepted",
+          plain: known ? known.plain
+                       : "The worker reported that it finished, but its result could " +
+                         "not be verified, so nothing was accepted.",
+          next: known ? known.next
+                      : "Open the details below for the exact reason, then re-run.",
+        };
+      }
+      if (status === "failed" || status === "cancelled") {
+        return {
+          tone: "warn",
+          headline: "Worker did not finish",
+          plain: (code && OUTCOMES[code] && OUTCOMES[code].plain) ||
+                 "The run ended before the worker completed its task.",
+          next: (code && OUTCOMES[code] && OUTCOMES[code].next) ||
+                "Open the run log for what it reported, then re-run.",
+        };
+      }
+      return {
+        tone: "warn",
+        headline: "Outcome not recorded",
+        plain: "This run has no recorded terminal status, so nothing can be said " +
+               "about whether its work was accepted.",
+        next: "Open the details below and check the run's durable record.",
+      };
+    }
+
+    function outcomeBlock(term) {
+      var o = outcomeFor(term);
+      return '<div class="run-outcome ' + esc(o.tone) + '" data-run-outcome="' + esc(o.tone) + '">' +
+        '<strong data-run-outcome-headline>' + esc(o.headline) + "</strong>" +
+        '<p data-run-outcome-plain>' + esc(o.plain) + "</p>" +
+        '<p class="run-next-step" data-run-next-step><span>Next</span> ' + esc(o.next) + "</p></div>";
+    }
+
     /* The Evidence Gate's verdict and the commit it correlated (#499). Absence
        of a verdict is rendered as "not recorded", never as a pass: a Run that
        never reached the gate must not look like one the gate accepted. */
@@ -312,16 +413,24 @@
         var costText = term.cost_status === "unknown"
           ? "unknown"
           : money(term.cost) + " (" + esc(term.cost_status) + ")";
+        /* Plain outcome first, machine vocabulary second. The identifiers an
+           operator needs to debug -- run id, failure code, provider, model,
+           gate verdict -- stay one click away rather than leading the panel,
+           and the panel's evidence hooks stay exactly where they were. */
         html += '<div data-run-terminal="' + esc(term.run_id) + '" data-run-status="' + esc(term.status) + '">' +
+          outcomeBlock(term) +
+          (term.conflicting ? '<p class="run-live-warn">Sources disagree on this run; not resolved.</p>' : "") +
+          '<details class="run-detail"><summary>Technical detail</summary>' +
+          row("Run", term.run_id) +
           row("Status", term.status) + row("Engine", term.engine) +
           row("Provider", term.provider) + row("Model", term.model) +
           row("Cost", costText) +
           row("Artifacts", (term.artifacts || []).length) +
           row("Evidence", (term.evidence || []).length) +
           (term.incomplete ? '<p class="run-live-warn">Incomplete or unverified evidence.</p>' : "") +
-          (term.conflicting ? '<p class="run-live-warn">Sources disagree on this run; not resolved.</p>' : "") +
-          (term.error ? '<p class="run-live-warn">' + esc(term.error.category) + ": " + esc(term.error.message) + "</p>" : "") +
+          (term.error ? '<p class="run-live-warn" data-run-error-code>' + esc(term.error.category) + ": " + esc(term.error.message) + "</p>" : "") +
           gateRows(term) +
+          "</details>" +
           "</div>";
       } else {
         html += '<div class="run-live-error">terminal result unavailable</div>';
