@@ -238,6 +238,30 @@ def _conflict_tail(existing: dict[str, Any], summary: dict[str, Any],
                         conflict={"field": field, "values": values})
 
 
+# The one ordered pair the two stores legitimately disagree about (#515).
+#
+# The dispatcher records a Run `succeeded`; the session store records
+# `review_submitted` when that same Run is submitted for review. Those are
+# consecutive moments in one Run's life, not two competing claims about one
+# moment, and reading them as a conflict made Cortxt OS warn "sources disagree"
+# over every healthy Run that reached review -- which teaches the operator to
+# ignore the warning that matters.
+#
+# Deliberately just this pair. `blocked` alongside `review_submitted` stays a
+# conflict: a refused Run has no correlated envelope to submit, so the two
+# stores really would be telling different stories.
+_LIFECYCLE_SUCCESSORS = {("succeeded", "review_submitted")}
+
+
+def _lifecycle_successor(first: str, second: str) -> "str | None":
+    """The later of two statuses when they are one sequence, else ``None``."""
+    if (first, second) in _LIFECYCLE_SUCCESSORS:
+        return second
+    if (second, first) in _LIFECYCLE_SUCCESSORS:
+        return first
+    return None
+
+
 def correlate_run_summaries(
     issue_ref: str,
     dispatcher_runs: Mapping[str, Any],
@@ -280,9 +304,15 @@ def correlate_run_summaries(
         if existing is None:
             merged[run_id] = summary
             continue
-        if not _agree(existing, summary, "status"):
+        later = _lifecycle_successor(existing["status"], summary["status"])
+        if later is None and not _agree(existing, summary, "status"):
             merged[run_id] = _conflict_tail(existing, summary, "status",
                                             [existing["status"], summary["status"]])
+            continue
+        if later is not None:
+            # Not a disagreement: one store simply saw a later moment in the
+            # same Run's life. Carry the later state and keep both sources.
+            merged[run_id] = _merged_tail(existing, summary, status=later, conflict=None)
             continue
         if (existing.get("finished_at") is not None and summary.get("finished_at") is not None
                 and existing["finished_at"] != summary["finished_at"]):
@@ -905,7 +935,16 @@ def run_terminal_projection(
         dispatcher_run = {}
     dispatcher_result = dispatcher_run.get("result") if isinstance(
         dispatcher_run.get("result"), Mapping) else {}
-    turn = _last_event_payload(doc, "run.engine_turn") if doc else dict(dispatcher_result)
+    # Per field, not one source wholesale (#515). The launcher path writes the
+    # engine result to the dispatcher registry and never emits a
+    # `run.engine_turn` event, so a Run launched from the OS has a session doc
+    # carrying only `session.created` and `run.review_submitted`. Choosing the
+    # session branch because a doc merely EXISTS then yielded `{}` and dropped
+    # artifacts, provider, model and usage that the dispatcher envelope held.
+    turn = dict(dispatcher_result)
+    turn.update({key: value
+                 for key, value in (_last_event_payload(doc, "run.engine_turn") if doc else {}).items()
+                 if value is not None})
     created = _last_event_payload(doc, "run.created") if doc else {}
 
     cost_status = turn.get("cost_status")
