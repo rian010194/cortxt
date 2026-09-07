@@ -691,6 +691,87 @@ _RUNTIME_ENV_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _dsh_carrier_preflight() -> "tuple[bool, str | None]":
+    """Is there a DSH runtime carrier this host can actually launch? (#500)
+
+    Environment variables are not the only thing that makes a runtime
+    unlaunchable: `dsh` needs an executable or a node carrier present for this
+    platform, and its absence is what killed #417's `run-0654831c...` and
+    #485's Run 1 at the adapter boundary, three seconds in, after an approved
+    dispatch had already been spent.
+
+    The check asks the SDK's own resolver rather than testing the platform.
+    Hard-coding "win32 has no carrier" would be both forbidden by #500's
+    acceptance criteria and, since A4, wrong: the node carrier resolves and
+    completes a JSON-RPC handshake on win32 today
+    (`lab/finding-a4-dsh-carrier-on-win32.md`). Resolution honours
+    `DSH_RUNTIME_MODE`, so this reports on the carrier the launch would really
+    use, not on a carrier we assumed it would pick.
+
+    The resolved carrier is named in the success reason. `node` is a dev-only
+    source build -- the SDK deliberately refuses to select it automatically so
+    that "a production deployment can never silently ride on a source build" --
+    so riding one must be visible to the operator rather than merely permitted.
+
+    Never reports a credential value: a carrier path is routing configuration,
+    the same class as provider/model, and no secret passes through here.
+    """
+    try:
+        from deepseek_harness_runtime import resolve_bundled_launch_args
+    except ImportError:
+        return False, ("the DeepSeek Harness runtime package is not installed, so no dsh "
+                       "carrier can be resolved on this host")
+    mode = os.environ.get("DSH_RUNTIME_MODE") or "exe"
+    try:
+        resolve_bundled_launch_args()
+    except FileNotFoundError as error:
+        # The SDK's message names the acquisition routes; it is long, so only
+        # its first line is carried into the projection.
+        first_line = str(error).split(".")[0].strip()
+        return False, (f"no dsh runtime carrier is available in {mode!r} mode: {first_line}")
+    except Exception as error:  # noqa: BLE001 - any resolver failure is unlaunchable
+        return False, (f"the dsh runtime carrier could not be resolved in {mode!r} mode: "
+                       f"{type(error).__name__}")
+    if mode == "node":
+        return True, ("dsh will run on the dev-only node carrier (DSH_RUNTIME_MODE=node), "
+                      "not a production executable")
+    return True, None
+
+
+# Per-runtime launch preflights beyond "the adapter class is registered" and
+# "its env vars are set". A runtime with no entry here is governed by
+# `_RUNTIME_ENV_REQUIREMENTS` alone, exactly as before.
+_RUNTIME_PREFLIGHTS: dict[str, "Callable[[], tuple[bool, str | None]]"] = {
+    "dsh": _dsh_carrier_preflight,
+}
+
+
+def runtime_launch_preflight(runtime: str) -> "tuple[bool, str | None]":
+    """Can this runtime actually start here, and if not, why not? (#500)
+
+    Returns ``(launchable, reason)``. The reason is a short, non-secret
+    sentence naming what is missing, so a refusal reaches the operator as
+    "no dsh runtime carrier is available" rather than a generic
+    ``runtime_unavailable`` recorded after a claim was already burned. It is
+    also populated on the *success* path when the launch would ride something
+    the operator should know about (see `_dsh_carrier_preflight`).
+
+    `runtime_launch_config_ok` is the boolean view of this, kept for the
+    callers that only need a verdict.
+    """
+    if not is_runtime_dispatchable(runtime):
+        return False, f"no worker adapter is registered for runtime {runtime!r}"
+    for name in _RUNTIME_ENV_REQUIREMENTS.get(runtime, ()):
+        if not os.environ.get(name):
+            # Presence only -- never the value (#500: "never inspect or report
+            # credential values").
+            return False, f"{runtime} is not configured: {name} is not set"
+    preflight = _RUNTIME_PREFLIGHTS.get(runtime)
+    if preflight is None:
+        return True, None
+    return preflight()
+
+
 def is_runtime_dispatchable(runtime: str) -> bool:
     """Single authoritative runtime-dispatchability check (S7b #482).
 
@@ -720,11 +801,13 @@ def runtime_launch_config_ok(runtime: str) -> bool:
     in addition to ``is_runtime_dispatchable``. Never inspects or reports
     credential *values* -- only whether the non-secret routing env vars are
     set, matching "the check must not expose credentials."
+
+    Since #500 this also covers a runtime whose executable or carrier is
+    absent on the current platform, not only its environment variables --
+    `runtime_launch_preflight` is the full check and carries the reason.
     """
-    if not is_runtime_dispatchable(runtime):
-        return False
-    required_env = _RUNTIME_ENV_REQUIREMENTS.get(runtime, ())
-    return all(os.environ.get(name) for name in required_env)
+    ok, _reason = runtime_launch_preflight(runtime)
+    return ok
 
 
 def _worktree_git(worktree, args):

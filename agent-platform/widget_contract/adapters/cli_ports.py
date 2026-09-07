@@ -107,9 +107,28 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
         def engine_has_provider(engine_id: str) -> bool:
             return runtime_launch_config_ok(engine_id)
 
+    registered = bool(choice and engine_has_provider(choice.engine_id))
+    # #500: when the engine is registered but this host has no carrier for it,
+    # say which carrier is missing rather than emitting the generic
+    # `engine_registered`. The reason is read from the same preflight the
+    # verdict came from, so the projection and the launch cannot disagree.
+    unavailable_reason = None
+    if choice is not None and not registered:
+        try:
+            from worker_adapters import is_runtime_dispatchable, runtime_launch_preflight
+            if is_runtime_dispatchable(choice.engine_id):
+                _ok, unavailable_reason = runtime_launch_preflight(choice.engine_id)
+        except ImportError:
+            # An injected `engine_has_provider` (tests, and any caller that
+            # supplies its own) means the launcher registry may not be
+            # importable here at all. A missing reason degrades to the generic
+            # code; it never fabricates one.
+            unavailable_reason = None
+
     request = build_dispatch_request_v1(
         issue, choice, repo=repo,
-        engine_registered=bool(choice and engine_has_provider(choice.engine_id)),
+        engine_registered=registered,
+        engine_unavailable_reason=unavailable_reason,
         routable_tags=tags)
     if not request["eligible"]:
         raise DispatchNotEligible(request)

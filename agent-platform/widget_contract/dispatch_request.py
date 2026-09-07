@@ -169,6 +169,15 @@ FAILURE_RECOVERY: dict[str, tuple[str, str]] = {
     "engine_registered": ("engine",
                           "Register the routed engine's provider, or approve an issue Engine policy that routes to "
                           "a registered engine."),
+    # #500: distinct from `engine_registered`, which means "nothing here can
+    # run this engine". This one means the engine IS registered and would have
+    # been dispatched, but its executable or carrier is absent on this host --
+    # the failure that burned two approved dispatches at the adapter boundary
+    # before any provider was reached. The reason names what is missing; see
+    # `runtime_launch_preflight`.
+    "engine_carrier_unavailable": ("engine",
+                                   "The routed engine has no runnable carrier on this host. Install or select one, "
+                                   "or approve an Engine policy routing to an engine this host can launch."),
     "engine_policy": ("routing",
                       "Add an explicit ## Engine policy section approving the engine and/or its reliability class."),
     "engine_policy_unapproved": ("routing",
@@ -274,11 +283,21 @@ def _request_id(payload: Mapping[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _failures(missing: Sequence[str]) -> list[dict[str, str]]:
-    """Stable, recoverable failure entries for every missing-code (AC5)."""
+def _failures(missing: Sequence[str],
+              detail: Mapping[str, str] | None = None) -> list[dict[str, str]]:
+    """Stable, recoverable failure entries for every missing-code (AC5).
+
+    `detail` carries a host-specific reason for codes that have one (#500:
+    which carrier is missing), appended to the stable recovery text rather
+    than replacing it -- the taxonomy stays fixed while the message can say
+    what actually went wrong here.
+    """
     errors = []
     for code in missing:
         category, recovery = FAILURE_RECOVERY.get(code, ("eligibility", "Complete the approved issue mandate."))
+        reason = (detail or {}).get(code)
+        if reason:
+            recovery = f"{recovery} On this host: {reason}."
         errors.append({"code": code, "category": category, "recovery": recovery})
     return errors
 
@@ -289,6 +308,7 @@ def build_dispatch_request_v1(
     *,
     repo: str,
     engine_registered: bool = True,
+    engine_unavailable_reason: str | None = None,
     routable_tags: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Render the authoritative dispatch request and its fail-closed eligibility."""
@@ -322,7 +342,13 @@ def build_dispatch_request_v1(
     if choice is None:
         missing.append("engine_routed")
     elif not engine_registered:
-        missing.append("engine_registered")
+        # #500: distinguish "no host can run this" from "this host cannot".
+        # A reason means the engine is registered and would have dispatched,
+        # but its carrier is absent here -- refused now, before a claim, with
+        # the cause named, instead of dying at the adapter boundary after an
+        # approved dispatch was already spent.
+        missing.append("engine_carrier_unavailable" if engine_unavailable_reason
+                       else "engine_registered")
     if engine_policy is None:
         missing.append("engine_policy")
     elif engine_policy.get("approved_engine") and getattr(choice, "engine_id", None) != engine_policy["approved_engine"]:
@@ -350,7 +376,8 @@ def build_dispatch_request_v1(
         "artifact_policy": artifact_policy,
         "isolation": isolation_for_artifact_policy(artifact_policy),
         "missing": missing,
-        "errors": _failures(missing),
+        "errors": _failures(missing, {"engine_carrier_unavailable": engine_unavailable_reason}
+                            if engine_unavailable_reason else None),
     }
     payload["request_id"] = _request_id(payload)
     return payload
