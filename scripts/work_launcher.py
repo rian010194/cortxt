@@ -527,6 +527,57 @@ class WorkLauncher:
         except Exception as exc:  # noqa: BLE001 - a silent gate bypass is worse than a failed launch
             raise ExecutionGateError("mutating_run_not_recordable") from exc
 
+    def _record_mandate(self, run_id: str, *, required: bool,
+                        max_cost_usd: float | None = None,
+                        max_parallel_workers: int | None = None,
+                        delegation_depth: int | None = None,
+                        artifact_policy: str | None = None,
+                        request_id: str | None = None) -> None:
+        """Write the approved dispatch request onto the durable Run (#471 AC2).
+
+        One place both `_launch` branches reach, because #517 was what happened
+        when there were two: the no-claim-store branch never reached the
+        `limit_fields` block, so a mutating Run arrived at the worker carrying
+        an approved mandate that was never recorded. The Evidence Gate then
+        refused it for `request_id_not_recorded` -- correct, fail-closed, and
+        naming the wrong cause: not "this Run was never approved" but "this
+        launcher path forgot to write the approval it was given".
+
+        The dropped ceilings mattered more than the misnamed refusal.
+        `max_cost_usd` is enforced in `submit()` by reading it off the Run
+        record, so a Run launched that way had no ceiling to enforce.
+
+        `required` (a mutating Run) makes an unrecordable mandate fail the
+        launch closed, the way `artifact_paths`, `base_commit` and `worktree`
+        already do -- a mutating Run whose approved limits are not durable is
+        not an approved Run. A non-mutating Run keeps the tolerant behaviour
+        the claim-store branch always had: nothing to record, or a registry
+        that cannot record it, is not a reason to refuse a read-only run.
+        """
+        fields = {}
+        if max_cost_usd is not None:
+            fields["max_cost_usd"] = max_cost_usd
+        if max_parallel_workers is not None:
+            fields["max_parallel_workers"] = max_parallel_workers
+        if delegation_depth is not None:
+            fields["delegation_depth"] = delegation_depth
+        if artifact_policy is not None:
+            fields["artifact_policy"] = artifact_policy
+        if request_id is not None:
+            fields["request_id"] = request_id
+        if not fields:
+            return
+        registry = getattr(self.dispatcher, "registry", None)
+        if registry is None or not hasattr(registry, "update"):
+            if required:
+                raise ExecutionGateError("mandate_not_recordable")
+            return
+        try:
+            registry.update(run_id, **fields)
+        except Exception as exc:  # noqa: BLE001 - an unrecorded mandate is not an approved one
+            if required:
+                raise ExecutionGateError("mandate_not_recordable") from exc
+
     def _launch(self, issue_id: str, prompt: str, *, runtime: str, worker_role: str,
                 workflow: str, max_runtime_seconds: int, create_worktree: bool,
                 max_cost_usd: float | None = None,
@@ -560,6 +611,18 @@ class WorkLauncher:
             run = self.dispatcher.claim(issue_id, workflow, worker_role, runtime,
                                         max_runtime_seconds)
             run_id = run.run_id
+            # #517: the approved mandate is recorded on BOTH branches, before
+            # dispatch. This branch used to skip it entirely.
+            try:
+                self._record_mandate(
+                    run_id, required=mutating, max_cost_usd=max_cost_usd,
+                    max_parallel_workers=max_parallel_workers,
+                    delegation_depth=delegation_depth, artifact_policy=artifact_policy,
+                    request_id=request_id)
+            except ExecutionGateError:
+                self.dispatcher.complete(run_id, "blocked",
+                                         {"error": "approved mandate could not be recorded"})
+                raise
             if mutating:
                 if artifact_paths:
                     self._record_approved_scope(run_id, artifact_paths)
@@ -599,19 +662,13 @@ class WorkLauncher:
                                          max_runtime_seconds)
             # Carry the full dispatch request onto the durable run record so the
             # claim/run identity reflects the executed mandate (issue #471 AC2).
-            limit_fields = {}
-            if max_cost_usd is not None:
-                limit_fields["max_cost_usd"] = max_cost_usd
-            if max_parallel_workers is not None:
-                limit_fields["max_parallel_workers"] = max_parallel_workers
-            if delegation_depth is not None:
-                limit_fields["delegation_depth"] = delegation_depth
-            if artifact_policy is not None:
-                limit_fields["artifact_policy"] = artifact_policy
-            if request_id is not None:
-                limit_fields["request_id"] = request_id
-            if limit_fields and hasattr(self.dispatcher.registry, "update"):
-                self.dispatcher.registry.update(run_id, **limit_fields)
+            # Shared with the no-claim-store branch above since #517, so the two
+            # paths cannot record different mandates for the same approval.
+            self._record_mandate(
+                run_id, required=mutating, max_cost_usd=max_cost_usd,
+                max_parallel_workers=max_parallel_workers,
+                delegation_depth=delegation_depth, artifact_policy=artifact_policy,
+                request_id=request_id)
             if mutating:
                 if artifact_paths:
                     self._record_approved_scope(run_id, artifact_paths)
