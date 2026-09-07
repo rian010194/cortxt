@@ -369,7 +369,10 @@ def test_host_capabilities_declare_actions():
     caps = host.capabilities()
     assert caps["actions_enabled"] is True
     assert {a["id"] for a in caps["actions"]} == {
-        "mark-ready", "claim-run", "record-decision", "recover-to-ready"}
+        "mark-ready", "claim-run", "record-decision", "recover-to-ready",
+        # #519: the sanctioned blocked -> ready transition, declared alongside
+        # recovery rather than folded into it.
+        "unblock-to-ready"}
     assert all(a["confirm"]["required"] for a in caps["actions"])
 
 

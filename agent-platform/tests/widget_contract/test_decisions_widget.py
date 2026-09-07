@@ -80,7 +80,7 @@ def test_spec_loads_and_declares_decision_pending_read_and_action():
     (read,) = widget.reads
     assert (read.id, read.source, read.operation, read.output_type) == (
         "pending", "store", "decision.pending.v1", "decision.pending.v1")
-    decide, recover = widget.actions
+    decide, recover, unblock = widget.actions
     assert (decide.id, decide.port, decide.operation) == (
         "record-decision", "github-transition", "workflow.record-decision.v1")
     # S7d (#472 finding 2): the one sanctioned recovery out of a stranded
@@ -88,8 +88,16 @@ def test_spec_loads_and_declares_decision_pending_read_and_action():
     # general label editor.
     assert (recover.id, recover.port, recover.operation) == (
         "recover-to-ready", "github-transition", "workflow.recover-to-ready.v1")
+    # S7d (#519): lifting a block is a SEPARATE sanctioned transition, not a
+    # widening of recovery -- recovery returns an Issue whose Run stranded,
+    # while this sets aside a refusal the platform made on evidence. Distinct
+    # operation, distinct capability, and its own required justification.
+    assert (unblock.id, unblock.port, unblock.operation) == (
+        "unblock-to-ready", "github-transition", "workflow.unblock-to-ready.v1")
+    assert "justification" in unblock.input
     assert set(widget.capabilities) == {
-        "read:decision-pending", "act:record-decision", "act:recover-to-ready"}
+        "read:decision-pending", "act:record-decision", "act:recover-to-ready",
+        "act:unblock-to-ready"}
 
 
 def test_render_shows_summary_and_actionable_flag():
