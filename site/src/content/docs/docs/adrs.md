@@ -5,7 +5,7 @@ description: The Accepted-only ADR index mirrored from the repository authority.
 
 <!-- docs-currency:auto:begin -->
 
-This page is generated from the repository ADR files by `scripts/docs_currency.py`; do not hand-edit the generated block. As of 2026-09-02. [Open the authoritative ADR index](https://github.com/rian010194/cortxt/blob/main/docs/adr/README.md).
+This page is generated from the repository ADR files by `scripts/docs_currency.py`; do not hand-edit the generated block. As of 2026-09-03. [Open the authoritative ADR index](https://github.com/rian010194/cortxt/blob/main/docs/adr/README.md).
 
 | ADR | Decision |
 | --- | --- |
@@ -37,6 +37,7 @@ This page is generated from the repository ADR files by `scripts/docs_currency.p
 | [041](https://github.com/rian010194/cortxt/blob/main/docs/adr/041-backend-service-surface-reopens-adr-015.md) | Backend Service Surface Reopens ADR-015 (Surface Dimension Only) |
 | [042](https://github.com/rian010194/cortxt/blob/main/docs/adr/042-work-mandate-first-product-surface-and-secure-execution-boundary.md) | Work- and Mandate-First Product Surface with Replaceable Secure Execution |
 | [044](https://github.com/rian010194/cortxt/blob/main/docs/adr/044-cortxt-os-system-surfaces-and-first-party-app-boundary.md) | Cortxt OS system surfaces and first-party app boundary |
+| [046](https://github.com/rian010194/cortxt/blob/main/docs/adr/046-typescript-as-the-cortxt-os-frontend-source-language.md) | TypeScript is the source language for the Cortxt OS frontend |
 
 :::note
 **Proposed** records ([ADR-029](https://github.com/rian010194/cortxt/blob/main/docs/adr/029-unattended-daemon-credential-isolation.md) (Proposed), [ADR-030](https://github.com/rian010194/cortxt/blob/main/docs/adr/030-plan-vs-actual-divergence-tracking.md) (Proposed (Part 1 implemented; Part 2 spec-only)), [ADR-045](https://github.com/rian010194/cortxt/blob/main/docs/adr/045-execution-policy-profiles-and-evidence-contracts.md) (Proposed)) are reviewable designs, not Accepted decisions; they are intentionally absent from the Accepted table above. **Superseded** records ([ADR-011](https://github.com/rian010194/cortxt/blob/main/docs/adr/011-model-router.md), [ADR-012](https://github.com/rian010194/cortxt/blob/main/docs/adr/012-disaster-recovery.md), [ADR-013](https://github.com/rian010194/cortxt/blob/main/docs/adr/013-skill-composition.md)) are historical references kept for traceability only.
