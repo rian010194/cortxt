@@ -719,6 +719,15 @@ READ_OPERATIONS = {
 
 ISSUE_ID_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["issue_id"],
                    "properties": {"issue_id": {"type": "string"}}}
+# Lifting a block is the one transition that carries a payload beyond the issue
+# id: a block is a recorded refusal, and setting it aside without a durable,
+# stated reason would leave the Issue looking as though it had never been
+# refused. `minLength` mirrors `MIN_UNBLOCK_JUSTIFICATION` so a token reason is
+# rejected by the schema before the port ever runs.
+UNBLOCK_SCHEMA = {"type": "object", "additionalProperties": False,
+                  "required": ["issue_id", "justification"],
+                  "properties": {"issue_id": {"type": "string"},
+                                 "justification": {"type": "string", "minLength": 24}}}
 ACTIONS: dict[str, ActionEntry] = {
     "workflow.mark-ready.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",
                                           "workflow-transition", frozenset({"operator"}), "act:mark-ready", True),
@@ -732,6 +741,15 @@ ACTIONS: dict[str, ActionEntry] = {
     # manual `gh issue edit` and without a general label editor.
     "workflow.recover-to-ready.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",
                                                 "workflow-transition", frozenset({"operator"}), "act:recover-to-ready", True),
+    # S7d dogfood (#519): `blocked` had no registered way back, so an Issue the
+    # Evidence Gate refused was a dead end and every re-run needed a manual
+    # `gh issue edit` outside the action ports. Deliberately a SEPARATE action
+    # from recover-to-ready, which stays restricted to in-progress -> ready:
+    # recovery returns an Issue whose Run stranded, while this sets aside a
+    # refusal the platform made on evidence. The distinct capability means
+    # holding one grants nothing about the other.
+    "workflow.unblock-to-ready.v1": ActionEntry("github-transition", UNBLOCK_SCHEMA, "action.status.v1",
+                                                "workflow-transition", frozenset({"operator"}), "act:unblock-to-ready", True),
 }
 
 _LAYOUT = ("stack", "row", "grid", "tabs", "panel")

@@ -59,4 +59,23 @@ actions:
       required: true
     result_type: action.status.v1
     idempotency_key: "recover-to-ready"
-capabilities: [read:decision-pending, act:record-decision, act:recover-to-ready]
+  # S7d (#519): lifting a block is a separate decision from recovering a
+  # stranded Run, and carries its own capability. `justification` is declared
+  # here because the action's registered input schema requires it -- a block is
+  # a recorded refusal and is not set aside without a stated reason.
+  - id: unblock-to-ready
+    port: github-transition
+    operation: workflow.unblock-to-ready.v1
+    input:
+      issue_id: "owner/repo#0"
+      justification: ""
+    authorization:
+      mode: operator
+      reference: "operator-approval"
+    confirm:
+      summary: "Lift workflow:blocked and return the issue to workflow:ready, recording why the recorded refusal is being set aside"
+      effect_class: workflow-transition
+      required: true
+    result_type: action.status.v1
+    idempotency_key: "unblock-to-ready"
+capabilities: [read:decision-pending, act:record-decision, act:recover-to-ready, act:unblock-to-ready]

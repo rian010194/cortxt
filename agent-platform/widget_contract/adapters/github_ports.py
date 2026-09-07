@@ -75,6 +75,117 @@ def gh_in_progress_to_ready(issue_id: str) -> dict:
     return {"issue_id": issue_id, "status": "ok"}
 
 
+def gh_blocked_to_ready(issue_id: str, justification: str) -> dict:
+    """Perform exactly the blocked -> ready label swap, recording why.
+
+    The justification is posted as an Issue comment **before** the label moves,
+    so a lifted block always carries its stated reason even if the label write
+    then fails. A block records a refusal the platform made; setting it aside
+    without a durable reason would leave the Issue looking as though it had
+    never been refused.
+    """
+    repo, number = issue_id.rsplit("#", 1)
+    comment = subprocess.run(
+        ["gh", "issue", "comment", number, "-R", repo, "--body",
+         "Operator lifted `workflow:blocked` through `workflow.unblock-to-ready.v1`.\n\n"
+         "**Stated reason:** " + justification],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+    if comment.returncode:
+        raise RuntimeError(comment.stderr.strip())
+    proc = subprocess.run(["gh", "issue", "edit", number, "-R", repo,
+                           "--remove-label", "workflow:blocked", "--add-label", "workflow:ready"],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=20)
+    if proc.returncode:
+        raise RuntimeError(proc.stderr.strip())
+    return {"issue_id": issue_id, "status": "ok"}
+
+
+# A lifted block must state a reason, and a token one is not a reason. Short
+# enough that a real sentence clears it, long enough that "ok", "retry" and
+# "-" do not.
+MIN_UNBLOCK_JUSTIFICATION = 24
+
+
+def unblock_to_ready_transition(operation: str, request: Mapping[str, Any], *,
+                                issue_reader: Callable[[str], Mapping[str, Any]],
+                                transition: Callable[[str, Mapping[str, Any]], Any],
+                                unblock_authority: Callable[[str], "bool | None"] | None = None
+                                ) -> dict[str, Any]:
+    """Exactly one authorized label transition: workflow:blocked -> workflow:ready.
+
+    Deliberately **not** an extension of `return_to_ready_transition`, which
+    stays restricted to `in-progress -> ready`. The two look alike and are not:
+    recovery returns an Issue whose Run stranded, while this one sets aside a
+    refusal the platform made on evidence. They therefore carry different
+    capabilities (`act:recover-to-ready` vs `act:unblock-to-ready`), and holding
+    one grants nothing about the other.
+
+    Found by the S7d dogfood: the negative arm (#519) is required to end at
+    `workflow:blocked`, and `blocked` had no registered way back. The arm could
+    be run exactly once, and every re-run needed a manual `gh issue edit`
+    outside the action ports -- the very thing these transitions exist to
+    replace.
+
+    Three requirements, all fail closed with no write:
+
+    1. **The state is re-read immediately before the write** and must be exactly
+       `workflow:blocked`, mirroring the other transitions. A block lifted on a
+       stale read is a block lifted on something that may no longer be true.
+    2. **A stated justification.** A block is a recorded refusal; lifting it
+       without a durable reason leaves the Issue looking as though it had never
+       been refused. The reason is posted before the label moves.
+    3. **Run-liveness authority**, re-derived at write time.
+
+    On (3): `run_holds_issue` is reused deliberately, and it is **necessary but
+    not sufficient** here. What it does cover transfers exactly -- returning an
+    Issue to `ready` re-opens the dispatch gate, and doing that while the
+    dispatcher still holds a claim risks a second Run, which is the same hazard
+    whatever the source state was. What it does **not** cover is the block
+    itself: it knows nothing about the refusal being set aside, which is why
+    requirements (1) and (2) and the separate capability exist rather than this
+    port riding on the recovery check alone.
+
+    One consequence of that reuse is worth stating plainly, because it is a real
+    limit and not an oversight: `run_holds_issue` returns `None` -- not `False`
+    -- when no Run is correlated at all, so a `workflow:blocked` Issue that was
+    blocked by triage rather than by a Run cannot be lifted through this port.
+    That is the fail-closed direction, and widening it would mean re-opening the
+    dispatch gate on absence of evidence. Such an Issue needs its own decision,
+    not a weaker check here.
+    """
+    justification = request.get("justification")
+    if not isinstance(justification, str) or len(justification.strip()) < MIN_UNBLOCK_JUSTIFICATION:
+        raise TransitionDenied(
+            "lifting workflow:blocked requires a stated justification of at least "
+            f"{MIN_UNBLOCK_JUSTIFICATION} characters; the block is a recorded refusal "
+            "and is not set aside without a reason")
+    issue = issue_reader(request["issue_id"])
+    labels = [x.get("name", "") if isinstance(x, dict) else str(x) for x in issue.get("labels") or []]
+    workflow = [x for x in labels if str(x).lower().startswith("workflow:")]
+    if workflow != ["workflow:blocked"]:
+        raise TransitionDenied(f"issue is not exactly workflow:blocked: {workflow}")
+    if unblock_authority is None:
+        raise TransitionDenied(
+            "lifting a block requires a run-liveness authority re-derived at write time; "
+            "none was wired, so the unblock transition is refused")
+    try:
+        holds = unblock_authority(request["issue_id"])
+    except Exception as exc:  # noqa: BLE001 - an unreadable authority is not permission
+        raise TransitionDenied(
+            f"run liveness could not be re-derived before the write ({type(exc).__name__}); "
+            "lifting the block is refused") from exc
+    if holds is not False:
+        raise TransitionDenied(
+            "run liveness re-derived at write time does not show a released claim "
+            f"(run_active={holds!r}); lifting the block is refused")
+    result = transition(operation, {"issue_id": request["issue_id"],
+                                    "justification": justification.strip()})
+    if not isinstance(result, dict):
+        raise TransitionDenied("transition result must be an object")
+    return result
+
+
 def mark_ready_transition(operation: str, request: Mapping[str, Any], *,
                           issue_reader: Callable[[str], Mapping[str, Any]],
                           transition: Callable[[str, Mapping[str, Any]], Any]) -> dict[str, Any]:

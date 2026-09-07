@@ -31,7 +31,7 @@ from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
 from widget_contract.adapters.cli_ports import ClaimRunDenied, gh_claim_run_resume
 from widget_contract.adapters.github_ports import (
-    LastGoodIssues, TransitionDenied, gh_in_progress_to_ready, gh_inbox_to_ready,
+    LastGoodIssues, TransitionDenied, gh_blocked_to_ready, gh_in_progress_to_ready, gh_inbox_to_ready,
     gh_issue_workflow_labels, gh_review_to_done,
     read_issue_detail,
 )
@@ -76,6 +76,10 @@ ACTION_REQUEST_SCHEMA = {
         "issue_id": {"type": "string"},
         "approval_ref": {"type": "string"},
         "request_id": {"type": "string"},
+        # #519: required by `workflow.unblock-to-ready.v1` alone. Validated
+        # again by the action's own input schema and once more by the port, so
+        # a caller cannot lift a block without stating why at any layer.
+        "justification": {"type": "string"},
         "confirm": {"type": "boolean"},
     },
 }
@@ -212,6 +216,7 @@ class ActionHost:
                  transition_writer: Callable[[str], Mapping[str, Any]] = gh_inbox_to_ready,
                  review_transition_writer: Callable[[str], Mapping[str, Any]] = gh_review_to_done,
                  recover_transition_writer: Callable[[str], Mapping[str, Any]] = gh_in_progress_to_ready,
+                 unblock_transition_writer: Callable[[str, str], Mapping[str, Any]] = gh_blocked_to_ready,
                  resume: Callable[[str], Any] | None = None,
                  registry: Path | None = None, scripts_dir: Path | None = None,
                  session_store: Path | None = None,
@@ -224,6 +229,7 @@ class ActionHost:
         self._transition_writer = transition_writer
         self._review_transition_writer = review_transition_writer
         self._recover_transition_writer = recover_transition_writer
+        self._unblock_transition_writer = unblock_transition_writer
         # Launcher modules live in the repository-level scripts directory,
         # alongside agent-platform, not inside the Python package tree.
         self._scripts_dir = Path(scripts_dir) if scripts_dir else (AGENT_PLATFORM_DIR.parent / "scripts")
@@ -516,7 +522,8 @@ class ActionHost:
             raise RateLimited("too many action requests; wait and retry")
 
     def execute(self, *, action_id: str, issue_id: str, approval_ref: str,
-                confirm: bool, token: str, request_id: str | None = None) -> dict:
+                confirm: bool, token: str, request_id: str | None = None,
+                justification: str | None = None) -> dict:
         """Validate, re-authorize, and dispatch one action request.
 
         Raises ActionHostError subclasses on every failure; nothing executes
@@ -539,7 +546,8 @@ class ActionHost:
             raise InvalidRequest("approval_ref is required")
         try:
             widget = self._widget_for_action(action_id)
-            action = build_action(widget, action_id, issue_id, approval_ref, confirm)
+            action = build_action(widget, action_id, issue_id, approval_ref, confirm,
+                                  justification=justification)
         except UnknownAction as exc:
             raise NotFound(f"unknown action {action_id}") from exc
         authoritative_reference = None
@@ -556,6 +564,14 @@ class ActionHost:
             review_transition_writer=self._review_transition_writer,
             recover_transition_writer=self._recover_transition_writer,
             recovery_authority=self._run_active,
+            # #519: the same write-time run-liveness re-derivation, wired
+            # separately. `run_holds_issue` is necessary here for the same
+            # reason it is for recovery -- returning to `ready` re-opens the
+            # dispatch gate either way -- but it is not sufficient, which is why
+            # the unblock port also requires its own capability and a stated
+            # justification. See `unblock_to_ready_transition`.
+            unblock_transition_writer=self._unblock_transition_writer,
+            unblock_authority=self._run_active,
             authoritative_reference=authoritative_reference)
         try:
             result = executor.execute(action, context)
@@ -791,7 +807,8 @@ class ActionHandler(SimpleHTTPRequestHandler):
         try:
             result = self.host.execute(action_id=payload["action_id"], issue_id=payload["issue_id"],
                                        approval_ref=payload["approval_ref"], confirm=payload["confirm"],
-                                       token=token, request_id=payload.get("request_id"))
+                                       token=token, request_id=payload.get("request_id"),
+                                       justification=payload.get("justification"))
             self._json(200, {"status": "ok", "action_id": payload["action_id"],
                              "issue_id": payload["issue_id"], **result})
         except ActionHostError as exc:

@@ -16,7 +16,7 @@ from typing import Any, Callable, Mapping
 from .action_executor import ActionContext, ActionExecutor
 from .adapters.cli_ports import claim_run_via_launcher
 from .adapters.github_ports import (mark_ready_transition, record_decision_transition,
-                                    return_to_ready_transition)
+                                    return_to_ready_transition, unblock_to_ready_transition)
 from .models import Action, Widget
 
 
@@ -33,10 +33,20 @@ def declared_action(widget: Widget, action_id: str) -> Action:
 
 
 def build_action(widget: Widget, action_id: str, issue_id: str,
-                 approval_ref: str, confirm: bool) -> Action:
-    """Build the Action exactly as the CLI does for one authorized execution."""
+                 approval_ref: str, confirm: bool,
+                 *, justification: str | None = None) -> Action:
+    """Build the Action exactly as the CLI does for one authorized execution.
+
+    `justification` is carried only when supplied (#519). Adding it
+    unconditionally would break every other action's input schema, which is
+    `additionalProperties: False` -- and that strictness is the point: only the
+    action that declares a justification may receive one.
+    """
     declared = declared_action(widget, action_id)
-    return Action(declared.id, declared.port, declared.operation, {"issue_id": issue_id},
+    request = {"issue_id": issue_id}
+    if justification is not None:
+        request["justification"] = justification
+    return Action(declared.id, declared.port, declared.operation, request,
                   {"mode": declared.authorization["mode"], "reference": approval_ref},
                   declared.confirm, declared.result_type, declared.idempotency_key)
 
@@ -54,16 +64,20 @@ def github_transition_adapter(labels_reader: Callable[[str], list[str]],
                               transition_writer: Callable[[str], Mapping[str, Any]],
                               *, review_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
                               recover_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
-                              recovery_authority: Callable[[str], "bool | None"] | None = None
+                              recovery_authority: Callable[[str], "bool | None"] | None = None,
+                              unblock_transition_writer: Callable[[str, str], Mapping[str, Any]] | None = None,
+                              unblock_authority: Callable[[str], "bool | None"] | None = None
                               ) -> Callable[[str, Mapping[str, Any]], Any]:
     """github-transition port adapter, routed by operation.
 
     `workflow.mark-ready.v1` performs the inbox -> ready swap;
     `workflow.record-decision.v1` performs the review -> done swap;
     `workflow.recover-to-ready.v1` performs the in-progress -> ready recovery
-    swap. Each is a separate fixed-effect transition function -- this adapter
-    only dispatches on the declared action's operation, it never becomes a
-    general label editor.
+    swap; `workflow.unblock-to-ready.v1` performs the blocked -> ready swap
+    (#519), which is a separate action carrying its own capability rather than
+    a widening of recovery. Each is a separate fixed-effect transition function
+    -- this adapter only dispatches on the declared action's operation, it
+    never becomes a general label editor.
     """
     def reader(issue_id: str) -> Mapping[str, Any]:
         return {"issue_id": issue_id, "labels": [{"name": x} for x in labels_reader(issue_id)]}
@@ -87,6 +101,14 @@ def github_transition_adapter(labels_reader: Callable[[str], list[str]],
                 "transition_writer and mis-edit the issue's labels")
         return recover_transition_writer(request["issue_id"])
 
+    def unblock_writer(operation: str, request: Mapping[str, Any]) -> Any:
+        if unblock_transition_writer is None:
+            raise ValueError(
+                "github_transition_adapter: workflow.unblock-to-ready.v1 requires "
+                "unblock_transition_writer; refusing to fall back to the inbox->ready "
+                "transition_writer and mis-edit the issue's labels")
+        return unblock_transition_writer(request["issue_id"], request["justification"])
+
     def adapter(operation: str, request: Mapping[str, Any]) -> Any:
         if operation == "workflow.record-decision.v1":
             return record_decision_transition(operation, request, issue_reader=reader, transition=review_writer)
@@ -94,6 +116,10 @@ def github_transition_adapter(labels_reader: Callable[[str], list[str]],
             return return_to_ready_transition(operation, request, issue_reader=reader,
                                               transition=recover_writer,
                                               recovery_authority=recovery_authority)
+        if operation == "workflow.unblock-to-ready.v1":
+            return unblock_to_ready_transition(operation, request, issue_reader=reader,
+                                               transition=unblock_writer,
+                                               unblock_authority=unblock_authority)
         return mark_ready_transition(operation, request, issue_reader=reader, transition=writer)
     return adapter
 
@@ -112,6 +138,8 @@ def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm
                    review_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
                    recover_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
                    recovery_authority: Callable[[str], "bool | None"] | None = None,
+                   unblock_transition_writer: Callable[[str, str], Mapping[str, Any]] | None = None,
+                   unblock_authority: Callable[[str], "bool | None"] | None = None,
                    authoritative_reference: str | None = None
                    ) -> tuple[ActionExecutor, ActionContext]:
     """Assemble the shared executor + per-action context for one execution.
@@ -136,6 +164,11 @@ def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm
     (the inbox -> ready writer) and silently perform the wrong label edit, so
     it raises instead.
 
+    `unblock_transition_writer` and `unblock_authority` are the same pair for
+    `workflow.unblock-to-ready.v1` (#519). They are separate parameters, not a
+    reuse of the recovery ones, so wiring recovery never silently enables
+    lifting a block: an unwired host offers no unblock at all.
+
     `recovery_authority` is the write-time run-liveness re-derivation the
     recovery transition requires (#507). It is passed the issue id and returns
     the tri-state `run_holds_issue` answer; only an explicit `False` permits
@@ -149,7 +182,9 @@ def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm
             labels_reader, transition_writer,
             review_transition_writer=review_transition_writer,
             recover_transition_writer=recover_transition_writer,
-            recovery_authority=recovery_authority),
+            recovery_authority=recovery_authority,
+            unblock_transition_writer=unblock_transition_writer,
+            unblock_authority=unblock_authority),
          "cli": cli_claim_adapter(resume)},
         operator_authorize(confirm),
     )
