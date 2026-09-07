@@ -142,6 +142,27 @@ def _wait_terminal(dispatcher, run_id, timeout=5.0):
     raise AssertionError(f"run {run_id} did not reach a terminal status")
 
 
+def _wait_claim_released(store, predicate, timeout=5.0):
+    """Wait for the worker thread's claim release, rather than assuming it.
+
+    `dispatch_async` calls `dispatcher.complete()` and only then the
+    `on_terminal` hook that releases the claim, both on the background worker
+    thread (`scripts/worker_adapters.py`). `_wait_terminal` returns as soon as
+    `complete()` has written the terminal status, so a test that asserts the
+    release immediately afterwards is racing a window that really exists.
+
+    That race has been latent since the S7b dogfood fix and lost consistently
+    once #500's tests shifted suite timing on one machine. Waiting is the fix:
+    the release is asynchronous by design, and a test must observe it as such.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate(store.active_claims(100.0)):
+            return
+        time.sleep(0.02)
+    raise AssertionError("the execution-map claim was not released before the timeout")
+
+
 def test_eligible_engine_is_actually_dispatchable_through_real_registry(tmp_path, monkeypatch):
     """The dogfood fix: eligibility (hermes-free dispatchable) and the real
     launcher dispatch agree, and a confirmed launch completes end-to-end
@@ -226,7 +247,7 @@ def test_eligible_engine_is_actually_dispatchable_through_real_registry(tmp_path
     # bypassing WorkLauncher.submit(); the launcher's on_terminal hook must
     # still release the execution-map claim once the run goes terminal, so
     # no claim is left held for a Run that already succeeded.
-    assert result["claim_id"] not in {c.claim_id for c in store.active_claims(100.0)}
+    _wait_claim_released(store, lambda claims: result["claim_id"] not in {c.claim_id for c in claims})
 
     # Second click / replay: the issue left workflow:ready, so the re-read at
     # confirmation rejects the same POST body without a second launch.
@@ -289,5 +310,5 @@ def test_chain_post_claim_failure_is_terminal_and_releases_claim(tmp_path, monke
     run = dispatcher.registry.get("run-1")
     assert run.status == "blocked"
     assert run.result["error"]["category"] == "adapter_start_failed"
-    assert store.active_claims(100.0) == ()
+    _wait_claim_released(store, lambda claims: claims == ())
     assert gh.labels["owner/repo#482"] == ["workflow:blocked"]
