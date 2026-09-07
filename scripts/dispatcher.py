@@ -458,11 +458,24 @@ class Dispatcher:
                 "The Evidence Gate could not verify this Run's commit; treat the result as "
                 "unproven and re-run once the repository is readable.")
         if isinstance(outcome, CorrelationFailure):
+            category, recovery = outcome.code, outcome.recovery
+            # #520: a Run that attested no outcome and landed no commit did not
+            # "commit before it was claimed" -- that is the symptom the
+            # correlation check happened to trip on, not what happened. Name
+            # the cause instead, and keep the correlation code in `detail` so
+            # nothing is lost. The gate's verdict is unchanged: this Run was
+            # already being refused, and still is.
+            if (result_envelope or {}).get("outcome") == "unattested" and \
+                    outcome.code in ("commit_predates_run", "commit_missing"):
+                category = "no_attested_outcome"
+                recovery = ("This Run neither attested an outcome nor landed a commit, so "
+                            "there is nothing to verify. Read the local run log to see what "
+                            "the worker actually produced, then start a fresh run.")
             blocked = {
                 **dict(result_envelope or {}),
                 "status": "blocked",
                 "evidence_gate": "commit_correlation_failed",
-                "error": {"category": outcome.code, "recovery": outcome.recovery,
+                "error": {"category": category, "recovery": recovery,
                           "detail": outcome.detail},
             }
             return "blocked", blocked, None

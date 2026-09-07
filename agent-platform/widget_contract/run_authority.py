@@ -656,6 +656,21 @@ def _safe_evidence_gate(*candidates: Any) -> str | None:
     return None
 
 
+def _safe_outcome(*candidates: Any) -> str | None:
+    """What the worker did, from the first source that recorded it (#520).
+
+    Distinct from ``status``, which is how the Run terminated. ``None`` means
+    no outcome was recorded -- a process-level failure that never reached a
+    worker, or a Run predating #520. An unrecognised value is also ``None``:
+    the operator reads this to understand a terminal result, so an outcome
+    this projection does not know must not be shown as if it did.
+    """
+    for candidate in candidates:
+        if candidate in ("completed", "declined", "no_result", "unattested"):
+            return str(candidate)
+    return None
+
+
 # Per-file and whole-response ceilings for `run.diff.v1`. A review surface has
 # to stay readable and the response has to stay a projection, not a file
 # transfer; a patch past the ceiling is truncated with `truncated: True` rather
@@ -980,6 +995,11 @@ def run_terminal_projection(
         or dispatcher_result.get("commit_evidence")
         or dispatcher_run.get("commit_evidence"))
 
+    # What the worker did, beside how it terminated (#520). Read in the same
+    # envelope-first order as the gate verdict, so a `blocked / worker_declined`
+    # reaches the operator as a declination rather than an unexplained block.
+    outcome = _safe_outcome(turn.get("outcome"), dispatcher_result.get("outcome"))
+
     return {
         "schema_version": 1,
         "issue_ref": issue_ref,
@@ -1003,6 +1023,7 @@ def run_terminal_projection(
         "conflicting": bool(summary.get("conflict")),
         "evidence_gate": evidence_gate,
         "commit_evidence": commit_evidence,
+        "outcome": outcome,
     }
 
 

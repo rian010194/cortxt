@@ -484,6 +484,11 @@ COMMIT_EVIDENCE_SCHEMA = {
 # non-mutating Run and for one that never reached the gate. It is never a pass.
 EVIDENCE_GATE_SCHEMA = {"type": ["string", "null"],
                         "enum": [None, "commit_correlated", "commit_correlation_failed"]}
+# What the worker did, as distinct from how its process terminated (#520).
+# `null` covers a process-level failure that never reached a worker, and every
+# Run recorded before this field existed.
+WORKER_OUTCOME_SCHEMA = {"type": ["string", "null"],
+                         "enum": [None, "completed", "declined", "no_result", "unattested"]}
 # The one place run-produced CONTENT crosses into a projection the OS renders
 # (#499). Everything else in this module is content-free; this is deliberately
 # not, because the operator cannot decide on a change they cannot read.
@@ -528,7 +533,7 @@ RUN_TERMINAL_SCHEMA = {"type": "object", "additionalProperties": False,
                                     "worker_role", "started_at", "finished_at", "provider", "model",
                                     "usage", "cost", "cost_currency", "cost_status", "artifacts",
                                     "evidence", "error", "incomplete", "conflicting",
-                                    "evidence_gate", "commit_evidence"],
+                                    "evidence_gate", "commit_evidence", "outcome"],
                        "properties": {
                            "schema_version": {"const": 1},
                            "issue_ref": {"type": "string"},
@@ -551,6 +556,7 @@ RUN_TERMINAL_SCHEMA = {"type": "object", "additionalProperties": False,
                            "conflicting": {"type": "boolean"},
                            "evidence_gate": EVIDENCE_GATE_SCHEMA,
                            "commit_evidence": COMMIT_EVIDENCE_SCHEMA,
+                           "outcome": WORKER_OUTCOME_SCHEMA,
                        }}
 RUN_ACTIVITY_ITEM_SCHEMA = {"type": "object", "additionalProperties": False,
                             "required": ["seq", "event_type", "timestamp", "detail", "source"],

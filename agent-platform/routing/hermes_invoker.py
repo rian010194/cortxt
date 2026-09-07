@@ -87,10 +87,19 @@ def invoke_hermes(
 
     Returns a dict with:
         status: "succeeded" | "failed" | "timed_out"
+        exit_code: the process's return code, or None when it never returned
+            one (timeout)
         profile: the profile passed in
         stdout / stderr: captured text
         elapsed_seconds: wall-clock time for the call
         session_id: the session id if captured or provided, None otherwise
+
+    `status: "succeeded"` here means **only that the process exited 0**. It is
+    not a claim that the worker did the task -- this layer has no run context
+    and cannot know. Callers that need to know what the worker accomplished
+    must classify the result themselves (`routing.worker_outcome`); treating
+    this status as task completion is #520, where three of four real Runs
+    reported success having accomplished nothing.
 
     Raises HermesInvocationError if the hermes executable itself could not
     be started (missing from PATH, not executable, etc.) -- that's an
@@ -118,6 +127,7 @@ def invoke_hermes(
     except subprocess.TimeoutExpired:
         return {
             "status": "timed_out",
+            "exit_code": None,
             "profile": profile,
             "stdout": "",
             "stderr": f"hermes did not complete within {timeout_seconds}s",
@@ -134,6 +144,7 @@ def invoke_hermes(
 
     return {
         "status": status,
+        "exit_code": proc.returncode,
         "profile": profile,
         "stdout": proc.stdout or "",
         "stderr": proc.stderr or "",

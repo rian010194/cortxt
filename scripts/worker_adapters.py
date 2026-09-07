@@ -398,6 +398,7 @@ class DshWorkerAdapter:
                 "cost": "unknown (not measured)",
                 "artifacts": [],
                 "evidence": f"worker never started: {type(exc).__name__}: {exc}",
+                "outcome": None,
                 "error": {
                     "category": "runtime_unavailable",
                     "recovery": f"{type(exc).__name__}: {exc}",
@@ -527,6 +528,7 @@ class HermesFreeAdapter:
                 "cost": "unknown (not measured)",
                 "artifacts": [],
                 "evidence": f"worker never started: {type(exc).__name__}: {exc}",
+                "outcome": None,
                 "error": {
                     "category": "runtime_unavailable",
                     "recovery": f"{type(exc).__name__}: {exc}",
@@ -543,6 +545,7 @@ class HermesFreeAdapter:
                 "cost": "unknown (not measured)",
                 "artifacts": [],
                 "evidence": "free route not configured; worker never started",
+                "outcome": None,
                 "error": {
                     "category": "runtime_unavailable",
                     "recovery": "set CORTXT_FREE_MODEL and CORTXT_FREE_PROVIDER, then retry with a fresh run",
@@ -550,11 +553,16 @@ class HermesFreeAdapter:
                 "_elapsed_seconds": time.time() - started,
             }
         status = result.get("status", "failed")
+        # The runtime's own verdict, captured before the classification below
+        # may rewrite `status`. Reported verbatim in `evidence` so the envelope
+        # never attributes this adapter's conclusion to hermes-free.
+        reported_status = status
         stdout = result.get("stdout", "")
         stderr = result.get("stderr", "")
         log_path = self._write_run_log(run, stdout=stdout, stderr=stderr)
         log_note = "see local run log" if log_path else "local run log could not be written"
         error = None
+        outcome = None
         if status != "succeeded":
             error = {
                 "category": "worker_nonzero_exit" if status == "failed" else status,
@@ -563,6 +571,42 @@ class HermesFreeAdapter:
                 # never its actual filesystem path.
                 "recovery": f"hermes-free reported status={status}; {log_note}",
             }
+        else:
+            # #520: the invoker's `succeeded` means the process exited 0, not
+            # that the worker did the task. Classify what actually came back
+            # before relaying a claimed success onward. The run log is already
+            # written above, so a Run blocked here still has its evidence.
+            from routing.worker_outcome import classify_transport_outcome, read_attested_outcome
+            attested = read_attested_outcome(stdout)
+            outcome = attested[0] if attested is not None else                 classify_transport_outcome(stdout, stderr)
+            if outcome == "no_result":
+                # Nothing usable arrived -- a truncated or empty response is
+                # never a success for any Run shape, mutating or not. Refused
+                # here rather than left for the Evidence Gate to catch as a
+                # missing commit, which named the symptom and not the cause.
+                status = "blocked"
+                error = {
+                    "category": "provider_returned_no_result",
+                    "recovery": f"the provider returned no usable response; {log_note}",
+                }
+            elif outcome == "declined":
+                # A structured, non-recoverable result needing an operator --
+                # which is what `blocked` means per dispatch-contract.md. Not a
+                # worker failure, and the comment must not read as one.
+                #
+                # The attested reason is deliberately NOT carried here. It is
+                # worker-authored text and `recovery` reaches a GitHub issue
+                # comment, which CLAUDE.md rule 2 forbids for model output --
+                # the same rule every other `recovery` in this module follows
+                # by pointing at the local log instead (#58/#71). The category
+                # tells the operator this was a decision rather than a failure;
+                # the log tells them what the decision was.
+                status = "blocked"
+                error = {
+                    "category": "worker_declined",
+                    "recovery": ("the worker understood the task and declined to act; "
+                                 f"read its stated reason in the run log ({log_note})"),
+                }
         # The invocation actually started with these provider/model values
         # (the same env vars _call read to build the invoke_hermes call);
         # report what was actually used once the invocation began, instead
@@ -582,7 +626,20 @@ class HermesFreeAdapter:
             "usage": "unknown (not reported by the hermes CLI's one-shot mode)",
             "cost": "unknown (not measured)",
             "artifacts": _log_references(run, log_path),
-            "evidence": f"hermes-free reported status={status}; {log_note}",
+            # What the RUNTIME reported, never what this adapter concluded from
+            # it. `status` may have been rewritten to `blocked` above; saying
+            # "hermes-free reported status=blocked" would be a false claim
+            # about the runtime in the one field that reaches GitHub -- the
+            # exact misreporting #520 exists to stop.
+            "evidence": (f"hermes-free reported status={reported_status}, "
+                         f"outcome={outcome}; {log_note}"),
+            # What the worker did, as distinct from how its process terminated
+            # (#520). None on a process-level failure: there was no worker
+            # outcome to have. `unattested` is the honest default for the
+            # hermes CLI's one-shot mode, which has no attestation channel --
+            # a mutating Run's `unattested` is settled by the Evidence Gate,
+            # because a correlated commit outranks a worker's word about itself.
+            "outcome": outcome,
             "error": error,
             "_elapsed_seconds": time.time() - started,
         }
