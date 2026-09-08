@@ -307,7 +307,7 @@
        `review_submitted`, not `succeeded` (#515) -- keying on the status alone
        rendered the one accepted Run in the dogfood as "outcome not recorded",
        which is exactly backwards. */
-    var acceptance = accepted
+    var gateSentence = accepted
       ? "The Evidence Gate verified a commit on this run's own branch. " +
         "Nothing has been pushed, merged, published or deployed — the change " +
         "is waiting for your review."
@@ -317,6 +317,14 @@
                       "nothing was accepted.")
         : "No Evidence Gate verdict was recorded for this run. That is not a " +
           "pass: an unverified result stays unverified.";
+
+    /* A run that stopped before the gate was ever consulted still recorded a
+       reason. Say what it was, rather than only that no verdict exists --
+       otherwise `failed` + `worker_nonzero_exit` reads as an absence when the
+       run actually reported something. */
+    var acceptance = (guidance && !accepted && !refused)
+      ? guidance.plain + " " + gateSentence
+      : gateSentence;
 
     /* A named failure code is the most actionable thing there is, so it takes
        the next step whenever the run recorded one. The outcome-derived step
@@ -545,11 +553,15 @@
         /* Verdict first, machine vocabulary second. Nothing is dropped: the
            identifiers debugging needs -- run id, failure code, provider,
            model, cost, gate rows -- move one click away instead of leading
-           the panel, and every evidence hook stays where it was. A source
-           disagreement is too important to collapse, so it stays outside. */
+           the panel, and every evidence hook stays where it was. The two
+           warnings main showed at the top level stay at the top level: a
+           source disagreement and an incomplete-evidence flag are statements
+           about how much the panel itself can be trusted, so collapsing either
+           behind a summary would quietly downgrade it. */
         html += '<div data-run-terminal="' + esc(term.run_id) + '" data-run-status="' + esc(term.status) + '">' +
           verdictBlock(term) +
           (term.conflicting ? '<p class="run-live-warn">Sources disagree on this run; not resolved.</p>' : "") +
+          (term.incomplete ? '<p class="run-live-warn">Incomplete or unverified evidence.</p>' : "") +
           '<details class="run-detail"><summary>Technical detail</summary>' +
           row("Run", term.run_id) +
           row("Status", term.status) + row("Worker outcome", term.outcome) +
@@ -558,7 +570,6 @@
           row("Cost", costText) +
           row("Artifacts", (term.artifacts || []).length) +
           row("Evidence", (term.evidence || []).length) +
-          (term.incomplete ? '<p class="run-live-warn">Incomplete or unverified evidence.</p>' : "") +
           (term.error ? '<p class="run-live-warn" data-run-error-code>' + esc(term.error.category) + ": " + esc(term.error.message) + "</p>" : "") +
           gateRows(term) +
           "</details>" +

@@ -264,7 +264,7 @@ button,input{font:inherit}button{color:inherit}
 .run-verdict-facts dt{color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-size:10px;align-self:baseline}
 .run-verdict-facts dd{margin:0;color:var(--text);font-family:ui-monospace,Consolas,monospace}
 .run-verdict-gloss{color:var(--muted);font-family:var(--sans);font-size:11px}
-.run-next-step{margin:8px 0 0 !important;color:var(--text) !important}
+.run-verdict p.run-next-step{margin:8px 0 0;color:var(--text)}
 .run-next-step span{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:650;color:var(--dim);margin-right:6px}
 .run-detail{margin:10px 0 0}
 .run-detail summary{font-size:11px;color:var(--dim);cursor:pointer;letter-spacing:.04em}

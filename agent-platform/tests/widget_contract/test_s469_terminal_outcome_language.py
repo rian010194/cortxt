@@ -143,12 +143,23 @@ def test_an_error_status_keeps_its_existing_failure_information():
     assert v["tone"] == "warn"
     assert v["statusLabel"] == "blocked"
     assert v["gateLabel"] == "refused"
-    assert "nothing to verify" in v["plain"] or "nothing to verify" in v["next"] \
-        or "neither attested" in v["plain"]
-    html = block(term)
-    assert 'data-run-next-step' in html
-    # The raw code itself is never dropped -- it is rendered by the detail view.
-    assert "no_attested_outcome" in RENDERER.read_text(encoding="utf-8")
+    assert "neither attested an outcome nor landed a commit" in v["plain"]
+    assert "start a fresh run" in v["next"]
+    assert 'data-run-next-step' in block(term)
+
+
+@requires_node
+def test_a_failure_before_the_gate_still_states_its_recorded_reason():
+    """A run that never reached the gate is not a run with nothing to say.
+
+    Reporting only "no Evidence Gate verdict was recorded" would read as an
+    absence when the run actually recorded a reason.
+    """
+    v = verdict(run("failed", None,
+                    error={"category": "worker_nonzero_exit", "message": "exit 1"}))
+    assert "The worker stopped before finishing its task." in v["plain"]
+    assert "No Evidence Gate verdict was recorded" in v["plain"]
+    assert v["next"] == "Open the run log for what it reported, then re-run."
 
 
 @requires_node
@@ -229,12 +240,31 @@ def test_acceptance_is_keyed_on_the_gate_verdict_not_the_status_word(source):
 
 
 def test_the_machine_vocabulary_survives_in_a_detail_view(source):
-    """Debugging needs the raw code, run id and gate verdict -- one click away."""
-    assert '<details class="run-detail">' in source
-    assert "data-run-error-code" in source
-    assert 'row("Run", term.run_id)' in source
-    assert 'row("Worker outcome", term.outcome)' in source
-    assert "gateRows(term)" in source
+    """Debugging needs the raw code, run id and gate verdict -- one click away.
+
+    Asserted against the panel's own markup expression rather than the whole
+    file: `"gateRows(term)"` alone would also match the function's definition
+    line, so removing the call would not fail this test.
+    """
+    panel = source[source.index("function renderTerminal("):]
+    assert '<details class="run-detail">' in panel
+    assert "data-run-error-code" in panel
+    assert 'row("Run", term.run_id)' in panel
+    assert 'row("Worker outcome", term.outcome)' in panel
+    assert "gateRows(term) +" in panel
+
+
+def test_the_two_top_level_warnings_are_not_collapsed_behind_the_summary(source):
+    """A statement about how far the panel can be trusted must stay visible.
+
+    `conflicting` and `incomplete` say the panel's own content may be wrong.
+    Collapsing either behind the detail summary would downgrade it silently,
+    which is the failure mode this whole change exists to remove.
+    """
+    panel = source[source.index("function renderTerminal("):]
+    detail_at = panel.index('<details class="run-detail">')
+    for warning in ("Sources disagree on this run", "Incomplete or unverified evidence"):
+        assert panel.index(warning) < detail_at, warning
 
 
 def test_the_evidence_hooks_the_acceptance_matrix_reads_are_unchanged(source):
@@ -246,19 +276,43 @@ def test_the_evidence_hooks_the_acceptance_matrix_reads_are_unchanged(source):
 def test_the_presentation_boundary_holds(source):
     """W2 renders what the projection recorded and decides nothing itself.
 
-    No outcome is derived from free text, no stored value is written back, and
-    no workflow transition exists on this path.
+    A source guard, not a proof: it pins that the verdict is computed from the
+    projection's own fields against fixed keys, with no I/O, no persistence and
+    no transition on this path. The stronger evidence is the behavioural tests
+    above, which show the verdict is a pure function of its input.
     """
     terminal = source[source.index("function terminalVerdict("):source.index("function verdictBlock(")]
-    for forbidden in ("fetch(", "POST", "workflow:", "localStorage", "outcome ="):
+    for forbidden in ("fetch(", "XMLHttpRequest", "POST", "workflow:", "localStorage",
+                      "innerHTML", "OSRenderer", "t.outcome ="):
         assert forbidden not in terminal, forbidden
+    # The projection's own fields, read against fixed key sets and nothing else.
+    assert "term.outcome" in source
+    for field in ("t.status", "t.error", "t.evidence_gate"):
+        assert field in terminal, field
+    assert "has(ERROR_GUIDANCE" in terminal and "ERROR_GUIDANCE[" in terminal
+
+
+@requires_node
+def test_an_outcome_colliding_with_an_object_prototype_key_is_not_interpreted():
+    """`WORKER_OUTCOME_TERMS` is a plain object, so a bare property lookup
+    would resolve inherited keys and dress `constructor` up as a known outcome.
+    """
+    for hostile in ("constructor", "toString", "hasOwnProperty", "__proto__"):
+        v = verdict(run("succeeded", hostile))
+        assert v["outcomeLabel"] == "not recognised", hostile
+        assert v["tone"] == "warn", hostile
 
 
 def test_the_narrow_layout_stacks_the_fact_list():
-    """ADR-043: the panel must stay readable without sideways scrolling."""
+    """The narrow rule exists and uses the house breakpoint.
+
+    That the panel does not scroll sideways at 380px was checked by rendering
+    it, not by this test; this only pins the rule against a silent removal.
+    """
     css = CSS.read_text(encoding="utf-8")
     assert "@media(max-width:720px){.run-verdict-facts{grid-template-columns:1fr" in css
     assert ".run-verdict-facts{display:grid;grid-template-columns:max-content 1fr" in css
+    assert ".run-verdict-gloss{" in css
 
 
 def test_the_served_mirrors_are_byte_equal():
