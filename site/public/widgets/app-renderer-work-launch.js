@@ -129,6 +129,257 @@
     return '<div class="launch-row"><span class="launch-key">' + esc(key) + "</span><span class=\"launch-value\">" + esc(value == null ? "—" : value) + "</span></div>";
   }
 
+  /* ---- What a stopped Run means, in the operator's language (#469, #520) ----
+
+     Three separate facts reach the terminal panel, and the renderer used to
+     show only the first:
+
+       status         how the PROCESS terminated
+       outcome        what the WORKER reported it did (run.terminal.v1, #520)
+       evidence_gate  whether the Evidence Gate ACCEPTED the result
+
+     `status: "succeeded"` alone is not evidence that work was done: a worker
+     can exit zero having declined the task, produced nothing, or reported
+     nothing at all. The panel therefore states all three and never lets one
+     stand in for another.
+
+     This is presentation only. No outcome is derived from free text, no stored
+     status, outcome or gate decision is changed, and no workflow transition
+     lives here.
+
+     Provenance: the verdict block, the plain-language failure map, the next
+     step and the collapsed technical detail come from the unmerged #521 work
+     (local commit eab48d0, integration copy 0ad6c33), taken as-is where the
+     contract still holds. What is new: eab48d0 never read `term.outcome` at
+     all, so the worker outcome, its terminology and the three-fact list are
+     written here; and eab48d0's `data-run-outcome*` hooks are renamed to
+     `data-run-verdict*`, so that "outcome" in this file now means the schema
+     field and nothing else. */
+
+  /* The four values RUN_TERMINAL_SCHEMA admits today (widget_contract/
+     registry.py, WORKER_OUTCOME_SCHEMA). The schema also admits `null`, and
+     this map is consulted defensively so a value from a future contract is
+     shown verbatim and left uninterpreted rather than crashing or passing. */
+  var WORKER_OUTCOME_TERMS = {
+    completed: { label: "completed",
+                 gloss: "the worker reported that it finished the task" },
+    declined: { label: "declined",
+                gloss: "the worker refused the task and did not attempt it" },
+    no_result: { label: "no result",
+                 gloss: "the worker ran to the end without producing a result" },
+    unattested: { label: "unattested",
+                  gloss: "the worker reported nothing about what it did" },
+  };
+
+  function has(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
+
+  function workerOutcome(term) {
+    var raw = term && term.outcome;
+    if (raw == null) {
+      return { recorded: false, known: false, raw: null, label: "not recorded",
+               gloss: "no outcome was recorded for this run" };
+    }
+    raw = String(raw);
+    if (!has(WORKER_OUTCOME_TERMS, raw)) {
+      return { recorded: true, known: false, raw: raw, label: "not recognised",
+               gloss: "an outcome this view does not know how to read" };
+    }
+    return { recorded: true, known: true, raw: raw,
+             label: WORKER_OUTCOME_TERMS[raw].label,
+             gloss: WORKER_OUTCOME_TERMS[raw].gloss };
+  }
+
+  /* How the process terminated, named so the headline cannot be misread as a
+     statement about the work. An unlisted status is shown verbatim. */
+  var PROCESS_PHRASES = {
+    succeeded: "Process succeeded",
+    blocked: "Process blocked",
+    failed: "Process failed",
+    cancelled: "Process cancelled",
+    timed_out: "Process timed out",
+    review_submitted: "Process finished, review submitted",
+  };
+
+  function processPhrase(status) {
+    var s = status == null ? "" : String(status);
+    if (has(PROCESS_PHRASES, s)) return PROCESS_PHRASES[s];
+    return s ? "Process status " + s : "Process status not recorded";
+  }
+
+  /* Plain language for the refusal codes the dogfood actually produced, plus
+     the artifact-policy refusals. Taken from eab48d0. A code with no entry
+     still gets a sentence and a direction rather than a blank panel. */
+  var ERROR_GUIDANCE = {
+    commit_predates_run: {
+      /* States the evidence, not what the worker said. This sentence becomes
+         the worker sentence for a Run that recorded no outcome, and the old
+         wording -- "the worker reported that it finished" -- then asserted a
+         report beside a Worker-outcome row reading "not recorded". */
+      plain: "No new commit could be verified for this run. Its branch is still " +
+             "exactly where it started, so there is no change to review.",
+      next: "Open the run log to see whether the worker produced a result at all. " +
+            "If it did not, re-run. If it did but decided no change was needed, " +
+            "the task itself may already be done.",
+    },
+    commit_missing: {
+      plain: "No commit could be found for this run at all — not even a branch to " +
+             "look at.",
+      next: "The run's branch could not be resolved. Check that it still exists " +
+            "before re-running.",
+    },
+    no_attested_outcome: {
+      plain: "This run neither attested an outcome nor landed a commit, so there " +
+             "is nothing to verify.",
+      next: "Read the run log to see what the worker actually produced, then start " +
+            "a fresh run.",
+    },
+    artifact_policy_missing: {
+      plain: "This run was allowed to change the repository, but nothing recorded " +
+             "which files it was allowed to touch, so no change can be accepted.",
+      next: "Add an artifact policy naming the permitted paths to the Issue, then " +
+            "re-run.",
+    },
+    artifact_policy_unparsable: {
+      plain: "The approved artifact policy names no file that can be read as a " +
+             "path, so there is nothing to check the change against.",
+      next: "Name the permitted paths in backticks in the Issue's artifact policy, " +
+            "then re-run.",
+    },
+    worker_nonzero_exit: {
+      plain: "The worker stopped before finishing its task.",
+      next: "Open the run log for what it reported, then re-run.",
+    },
+  };
+
+  /* The whole decision, as data, so it can be exercised against fixtures
+     without a DOM. Total by construction: every branch returns. */
+  function terminalVerdict(term) {
+    var t = term || {};
+    var status = t.status == null ? null : String(t.status);
+    var code = (t.error && t.error.category) || null;
+    var guidance = (code && has(ERROR_GUIDANCE, String(code)))
+      ? ERROR_GUIDANCE[String(code)] : null;
+    var wo = workerOutcome(t);
+    var gate = t.evidence_gate || null;
+    var accepted = gate === "commit_correlated";
+    var refused = gate === "commit_correlation_failed";
+
+    /* A pass needs BOTH halves: the Evidence Gate accepted a commit, AND the
+       worker either reported completing the task or recorded nothing at all
+       (every Run predating #520). A recorded declination, a recorded absence
+       of a result, an unattested Run, and an outcome this build cannot read
+       are all kept out of the "ok" tone -- an unknown value is never read
+       optimistically. */
+    var ok = accepted && (wo.raw === "completed" || !wo.recorded);
+
+    var worker, next;
+    if (wo.raw === "completed") {
+      worker = "The worker reported that it finished the task. That is the " +
+               "worker's own report, not proof that anything was accepted.";
+      next = "Read the change, then decide whether to take it further.";
+    } else if (wo.raw === "declined") {
+      worker = "The worker declined this task, so it was never attempted. How " +
+               "the process ended says nothing about the work.";
+      next = "Read the run log for the reason it gave, then narrow the task or " +
+             "route it elsewhere before re-running.";
+    } else if (wo.raw === "no_result") {
+      worker = "The worker ran to the end and recorded no result. A process " +
+               "that terminates cleanly is not evidence that work was done.";
+      next = "Open the run log to see what the worker actually produced, then " +
+             "re-run with a clearer scope.";
+    } else if (wo.raw === "unattested") {
+      worker = "The worker reported nothing at all about what it did, so there " +
+               "is no report to read and nothing to take as a claim of success.";
+      next = "Open the run log for what the worker produced. If it produced " +
+             "nothing, re-run.";
+    } else if (wo.recorded) {
+      worker = "This run recorded the worker outcome “" + wo.raw + "”, which " +
+               "this view does not know how to read. It is left uninterpreted " +
+               "and is not read as a pass.";
+      next = "Read the run's durable record for what this outcome means before " +
+             "acting on it.";
+    } else if (guidance) {
+      /* No outcome was recorded, but the run did record a named failure code.
+         That code is then the only thing that can say what happened, so it
+         takes the worker sentence rather than being appended to one -- which
+         is what kept producing paragraphs that argued with themselves. */
+      worker = guidance.plain;
+      next = guidance.next;
+    } else {
+      worker = "No worker outcome was recorded for this run. The run may " +
+               "predate outcome recording, or it may never have reached a " +
+               "worker.";
+      next = "Open the technical detail below and read the run's durable record.";
+    }
+
+    /* THE RULE: exactly one sentence in this paragraph narrates the worker.
+       A recorded outcome is the worker's own attestation and always wins; a
+       named failure code speaks only when no outcome was recorded; the
+       fallback speaks when neither exists. Nothing appends a second worker
+       narration afterwards, so `completed` can never sit beside "the worker
+       stopped before finishing its task", and no gate verdict can restate
+       what the worker did.
+
+       Acceptance is the GATE's verdict, never the worker's status word, and
+       the gate sentence therefore describes the EVIDENCE only. A Run that
+       passed the gate and was then submitted for review reads
+       `review_submitted`, not `succeeded` (#515) -- keying on the status alone
+       rendered the one accepted Run in the dogfood as "outcome not recorded",
+       which is exactly backwards.
+
+       The failure code is never lost: it keeps the next step below, and the
+       raw category and message stay in the technical detail. */
+    var acceptance = accepted
+      ? "The Evidence Gate verified a commit on this run's own branch. " +
+        "Nothing has been pushed, merged, published or deployed — the change " +
+        "is waiting for your review."
+      : refused
+        ? "The Evidence Gate could not verify this run's result, so nothing " +
+          "was accepted."
+        : "No Evidence Gate verdict was recorded for this run. That is not a " +
+          "pass: an unverified result stays unverified.";
+
+    /* A named failure code is the most actionable thing there is, so it takes
+       the next step whenever the run recorded one -- including when a recorded
+       outcome kept it out of the narration above. */
+    if (guidance) next = guidance.next;
+    else if (refused) next = "Open the technical detail below for the exact " +
+                             "reason, then re-run.";
+
+    return {
+      tone: ok ? "ok" : "warn",
+      headline: processPhrase(status) + " · worker outcome " + wo.label,
+      statusLabel: status || "not recorded",
+      outcomeRaw: wo.raw,
+      outcomeLabel: wo.label,
+      outcomeGloss: wo.gloss,
+      gateLabel: accepted ? "accepted" : refused ? "refused" : "not recorded",
+      plain: worker + " " + acceptance,
+      next: next,
+    };
+  }
+
+  /* The three facts are listed as well as narrated: the operator should be
+     able to read status and outcome off the panel without parsing prose. */
+  function verdictBlock(term) {
+    var v = terminalVerdict(term);
+    return '<div class="run-verdict ' + esc(v.tone) + '" data-run-verdict="' + esc(v.tone) + '">' +
+      '<strong data-run-verdict-headline>' + esc(v.headline) + "</strong>" +
+      '<p data-run-verdict-plain>' + esc(v.plain) + "</p>" +
+      '<dl class="run-verdict-facts">' +
+        "<dt>Process status</dt>" +
+        '<dd data-run-status-fact="' + esc(v.statusLabel) + '">' + esc(v.statusLabel) + "</dd>" +
+        "<dt>Worker outcome</dt>" +
+        '<dd data-run-worker-outcome="' + esc(v.outcomeRaw == null ? "" : v.outcomeRaw) + '">' +
+          esc(v.outcomeLabel) +
+          ' <span class="run-verdict-gloss">' + esc(v.outcomeGloss) + "</span></dd>" +
+        "<dt>Evidence gate</dt>" +
+        '<dd data-run-gate-fact="' + esc(v.gateLabel) + '">' + esc(v.gateLabel) + "</dd>" +
+      "</dl>" +
+      '<p class="run-next-step" data-run-next-step><span>Next</span> ' + esc(v.next) + "</p>" +
+      "</div>";
+  }
+
   function policyText(policy) {
     if (!policy) return "—";
     var bits = [];
@@ -312,16 +563,29 @@
         var costText = term.cost_status === "unknown"
           ? "unknown"
           : money(term.cost) + " (" + esc(term.cost_status) + ")";
+        /* Verdict first, machine vocabulary second. Nothing is dropped: the
+           identifiers debugging needs -- run id, failure code, provider,
+           model, cost, gate rows -- move one click away instead of leading
+           the panel, and every evidence hook stays where it was. The two
+           warnings main showed at the top level stay at the top level: a
+           source disagreement and an incomplete-evidence flag are statements
+           about how much the panel itself can be trusted, so collapsing either
+           behind a summary would quietly downgrade it. */
         html += '<div data-run-terminal="' + esc(term.run_id) + '" data-run-status="' + esc(term.status) + '">' +
-          row("Status", term.status) + row("Engine", term.engine) +
+          verdictBlock(term) +
+          (term.conflicting ? '<p class="run-live-warn">Sources disagree on this run; not resolved.</p>' : "") +
+          (term.incomplete ? '<p class="run-live-warn">Incomplete or unverified evidence.</p>' : "") +
+          '<details class="run-detail"><summary>Technical detail</summary>' +
+          row("Run", term.run_id) +
+          row("Status", term.status) + row("Worker outcome", term.outcome) +
+          row("Engine", term.engine) +
           row("Provider", term.provider) + row("Model", term.model) +
           row("Cost", costText) +
           row("Artifacts", (term.artifacts || []).length) +
           row("Evidence", (term.evidence || []).length) +
-          (term.incomplete ? '<p class="run-live-warn">Incomplete or unverified evidence.</p>' : "") +
-          (term.conflicting ? '<p class="run-live-warn">Sources disagree on this run; not resolved.</p>' : "") +
-          (term.error ? '<p class="run-live-warn">' + esc(term.error.category) + ": " + esc(term.error.message) + "</p>" : "") +
+          (term.error ? '<p class="run-live-warn" data-run-error-code>' + esc(term.error.category) + ": " + esc(term.error.message) + "</p>" : "") +
           gateRows(term) +
+          "</details>" +
           "</div>";
       } else {
         html += '<div class="run-live-error">terminal result unavailable</div>';
@@ -415,5 +679,14 @@
 
   if (typeof OSRenderer !== "undefined") {
     OSRenderer.register("launch", renderLaunch);
+  }
+
+  /* The terminal verdict is exported so it can be exercised against fixtures
+     in node, the same way work-console.js exposes its layout maths. The
+     browser path is untouched: no OSRenderer, no DOM and no fetch is involved
+     in either export. */
+  if (typeof module === "object" && module.exports) {
+    module.exports = { terminalVerdict: terminalVerdict, verdictBlock: verdictBlock,
+                       WORKER_OUTCOME_TERMS: WORKER_OUTCOME_TERMS };
   }
 })();
