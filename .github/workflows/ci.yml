@@ -94,8 +94,20 @@ jobs:
   # are pure standard library. The suites use fake GitHub, fake providers,
   # injected subprocess runners and temporary state only -- no `gh`, no real
   # runtime, no provider call, no write to the repository.
+  #
+  # PYTHONPATH, however, is required. `worker_adapters.HermesFreeAdapter.invoke`
+  # imports `routing.worker_outcome` on its succeeded path (#520), and that
+  # package lives under `agent-platform/`, which is not on `sys.path` when
+  # `python scripts/test_*.py` puts `scripts/` there. A developer machine hides
+  # this: `agent-platform` is installed editable there, so the import resolves
+  # from site-packages and the suite passes locally while failing here. The
+  # module itself is stdlib-only, so this adds a path entry, not a dependency.
   dispatch-path-tests:
     runs-on: ubuntu-latest
+    # `scripts/` is sys.path[0] for each `python scripts/test_*.py`, so it still
+    # wins on any name it shares with agent-platform; this only adds a fallback.
+    env:
+      PYTHONPATH: agent-platform
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

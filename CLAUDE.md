@@ -125,7 +125,12 @@ kept out of the repository and archived locally.
   `sys.modules["dispatcher"]`, the process-wide `ADAPTER_REGISTRY` and
   `CORTXT_BOUNDED_WORKER` and are not isolated from one another in a single
   interpreter. They need no dependencies beyond the standard library and use
-  fake GitHub, fake providers and temporary state only.
+  fake GitHub, fake providers and temporary state only — but they do need
+  `PYTHONPATH=agent-platform`, because `worker_adapters` imports
+  `routing.worker_outcome` (#520) from a package `scripts/` does not put on
+  `sys.path`. An editable install of `agent-platform` supplies that import on a
+  developer machine, which is why a suite can pass locally and fail in CI; set
+  the variable rather than relying on the install.
 - **CI** (`.github/workflows/ci.yml`) also runs a site build from `site/`
   (Node 26, `npm ci && npm run build`) and a DCO sign-off gate on pull
   requests: every commit must carry a `Signed-off-by: Name <email>` trailer.
