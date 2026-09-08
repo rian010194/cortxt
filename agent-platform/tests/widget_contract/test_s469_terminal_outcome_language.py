@@ -39,6 +39,10 @@ def source() -> str:
     return RENDERER.read_text(encoding="utf-8")
 
 
+def source_of(path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
 def verdict(term):
     """Run the shipped renderer's verdict function over one fixture, in node."""
     script = (
@@ -162,9 +166,16 @@ def test_an_error_status_keeps_its_existing_failure_information():
     assert v["tone"] == "warn"
     assert v["statusLabel"] == "blocked"
     assert v["gateLabel"] == "refused"
-    assert "neither attested an outcome nor landed a commit" in v["plain"]
-    assert "start a fresh run" in v["next"]
-    assert 'data-run-next-step' in block(term)
+    # The worker's own attestation narrates; the gate states only the evidence.
+    assert "reported nothing at all about what it did" in v["plain"]
+    assert "could not verify this run's result" in v["plain"]
+    # The failure code is not lost: it takes the next step, and its raw
+    # category and message stay in the technical detail.
+    assert v["next"] == GUIDANCE_NEXT["no_attested_outcome"]
+    html = block(term)
+    assert 'data-run-next-step' in html
+    panel = source_of(RENDERER)[source_of(RENDERER).index("function renderTerminal("):]
+    assert "data-run-error-code" in panel
 
 
 @requires_node
@@ -181,59 +192,109 @@ def test_a_failure_before_the_gate_still_states_its_recorded_reason():
     assert v["next"] == "Open the run log for what it reported, then re-run."
 
 
+# Every sentence the renderer can emit ABOUT WHAT THE WORKER DID, one phrase
+# per claim. The rule the renderer holds is that a verdict paragraph carries
+# exactly one of these; two is a paragraph arguing with itself. The sweep below
+# asserts every key is actually reached, so a phrase that stops matching the
+# renderer's wording fails rather than silently guarding nothing.
+WORKER_CLAIMS = {
+    "finished": "reported that it finished the task",
+    "declined": "declined this task, so it was never attempted",
+    "no_result": "ran to the end and recorded no result",
+    "said_nothing": "reported nothing at all about what it did",
+    "unreadable": "which this view does not know how to read",
+    "not_recorded": "No worker outcome was recorded for this run",
+    "stopped_early": "The worker stopped before finishing its task",
+    "branch_unmoved": "the run's branch is still exactly where it started",
+    "no_branch": "not even a branch to look at",
+    "nothing_attested": "neither attested an outcome nor landed a commit",
+    "no_policy": "nothing recorded which files it was allowed to touch",
+    "unparsable_policy": "names no file that can be read as a path",
+}
+
+# The failure codes whose guidance may narrate, keyed to the sentence and the
+# next step the renderer produces for each.
+GUIDANCE_PLAIN = {
+    "worker_nonzero_exit": "The worker stopped before finishing its task.",
+    "commit_predates_run": "No new commit could be verified for this run.",
+    "no_attested_outcome": "This run neither attested an outcome nor landed a commit, "
+                           "so there is nothing to verify.",
+}
+GUIDANCE_NEXT = {
+    "worker_nonzero_exit": "Open the run log for what it reported, then re-run.",
+    "commit_predates_run": "Open the run log to see whether the worker produced a result at all. "
+                           "If it did not, re-run. If it did but decided no change was needed, "
+                           "the task itself may already be done.",
+    "no_attested_outcome": "Read the run log to see what the worker actually produced, then "
+                           "start a fresh run.",
+}
+
+
 @requires_node
-def test_a_recorded_outcome_is_never_contradicted_by_the_failure_code():
-    """Both sentences narrate the worker, so only one of them may speak.
+def test_a_recorded_outcome_keeps_the_failure_code_out_of_the_narration(tmp_path):
+    """A recorded outcome is the worker's own attestation and speaks alone.
 
-    A recorded outcome is the worker's own attestation and wins; pairing it
-    with a code-derived sentence produced paragraphs that argued with
-    themselves. The code is not lost -- it stays in the next step and in the
-    technical detail.
+    Pairing it with a code-derived sentence produced paragraphs that argued
+    with themselves. The code is not lost: it takes the next step, and its raw
+    category and message stay in the technical detail.
     """
-    contradictions = {
-        "completed": "The worker stopped before finishing its task.",
-        "declined": "The worker stopped before finishing its task.",
-        "no_result": "The worker stopped before finishing its task.",
-        "unattested": "The worker stopped before finishing its task.",
-    }
-    for outcome, sentence in contradictions.items():
-        for status in ("succeeded", "failed", "cancelled", "blocked"):
-            v = verdict(run(status, outcome,
-                            error={"category": "worker_nonzero_exit", "message": "exit 1"}))
-            assert sentence not in v["plain"], (status, outcome)
-            assert v["next"] == "Open the run log for what it reported, then re-run."
+    codes = ["worker_nonzero_exit", "commit_predates_run", "no_attested_outcome"]
+    cases = [run(status, outcome, gate=gate,
+                 error={"category": code, "message": "m"})
+             for outcome in ("completed", "declined", "no_result", "unattested", "future_value")
+             for status in ("succeeded", "failed", "cancelled", "blocked")
+             for gate in (None, "commit_correlated", "commit_correlation_failed")
+             for code in codes]
+    results = verdicts(cases, tmp_path)
+    assert len(results) == len(cases)
+    for term, v in zip(cases, results):
+        code = term["error"]["category"]
+        assert v["plain"], term
+        assert GUIDANCE_PLAIN[code] not in v["plain"], (term, code)
+        assert v["next"] == GUIDANCE_NEXT[code], (term, code)
 
 
 @requires_node
-def test_no_verdict_pairs_two_sentences_that_argue_with_each_other(tmp_path):
-    """Sweep the whole cross-product rather than trusting the branches read.
+def test_exactly_one_sentence_in_a_verdict_ever_narrates_the_worker(tmp_path):
+    """The invariant the contradictions all violated, swept over everything.
 
-    Each of the four recorded outcomes has a claim that no other outcome's
-    sentence may appear beside.
+    Every sentence this renderer can emit about what the worker did carries a
+    claim key below. Two of them in one paragraph is a paragraph arguing with
+    itself -- `completed` beside "the worker stopped before finishing its
+    task", or "no outcome was recorded" beside "the worker reported that it
+    finished". The claim phrases are lifted from the renderer's own source by
+    `test_the_claim_phrases_are_still_the_renderer_s_own_words`, so this cannot
+    drift into checking wordings the code no longer produces.
     """
-    exclusive = {
-        "completed": ["ran to the end and recorded no result", "declined this task",
-                      "reported nothing at all"],
-        "declined": ["reported that it finished the task", "ran to the end and recorded no result"],
-        "no_result": ["reported that it finished the task", "declined this task"],
-        "unattested": ["reported that it finished the task", "declined this task"],
-    }
+    outcomes = [None, "completed", "declined", "no_result", "unattested",
+                "future_value", "", "constructor"]
     codes = [None, "worker_nonzero_exit", "commit_predates_run", "no_attested_outcome",
-             "commit_missing", "artifact_policy_missing", "not_a_known_code"]
+             "commit_missing", "artifact_policy_missing", "artifact_policy_unparsable",
+             "not_a_known_code"]
     gates = [None, "commit_correlated", "commit_correlation_failed", "skipped"]
-    statuses = ("succeeded", "failed", "cancelled", "blocked", "review_submitted")
+    statuses = ("succeeded", "failed", "cancelled", "blocked", "review_submitted",
+                "timed_out", "surprising")
     cases = [run(status, outcome, gate=gate,
                  error=None if code is None else {"category": code, "message": "m"})
-             for outcome in exclusive
+             for outcome in outcomes
              for status in statuses
              for code in codes
              for gate in gates]
-    # One node process for the whole cross-product: 560 fixtures is a sweep,
-    # not 560 separate interpreter starts.
-    for term, v in zip(cases, verdicts(cases, tmp_path)):
-        for phrase in exclusive[term["outcome"]]:
-            assert phrase not in v["plain"], (term["status"], term["outcome"],
-                                              term["error"], term["evidence_gate"], phrase)
+    results = verdicts(cases, tmp_path)
+    # Without this the sweep would pass vacuously on an empty result list, and
+    # every assertion below it is negative.
+    assert len(results) == len(cases) == 1792
+    seen = set()
+    for term, v in zip(cases, results):
+        assert v["plain"], term
+        assert v["next"], term
+        claims = sorted(k for k, phrase in WORKER_CLAIMS.items() if phrase in v["plain"])
+        assert len(claims) == 1, (term["status"], term["outcome"],
+                                  term["evidence_gate"], term["error"], claims)
+        seen.update(claims)
+    # Anti-drift: a phrase that stops matching the renderer's wording would
+    # silently guard nothing, so every claim must actually be produced here.
+    assert seen == set(WORKER_CLAIMS), sorted(set(WORKER_CLAIMS) - seen)
 
 
 @requires_node

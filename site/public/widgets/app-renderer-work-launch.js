@@ -295,48 +295,50 @@
                "and is not read as a pass.";
       next = "Read the run's durable record for what this outcome means before " +
              "acting on it.";
+    } else if (guidance) {
+      /* No outcome was recorded, but the run did record a named failure code.
+         That code is then the only thing that can say what happened, so it
+         takes the worker sentence rather than being appended to one -- which
+         is what kept producing paragraphs that argued with themselves. */
+      worker = guidance.plain;
+      next = guidance.next;
     } else {
-      worker = "No worker outcome was recorded for this run, so nothing is " +
-               "claimed about what the worker did. The run may predate outcome " +
-               "recording, or it may never have reached a worker.";
+      worker = "No worker outcome was recorded for this run. The run may " +
+               "predate outcome recording, or it may never have reached a " +
+               "worker.";
       next = "Open the technical detail below and read the run's durable record.";
     }
 
-    /* Acceptance is the GATE's verdict, never the worker's status word. A Run
-       that passed the gate and was then submitted for review reads
+    /* THE RULE: exactly one sentence in this paragraph narrates the worker.
+       A recorded outcome is the worker's own attestation and always wins; a
+       named failure code speaks only when no outcome was recorded; the
+       fallback speaks when neither exists. Nothing appends a second worker
+       narration afterwards, so `completed` can never sit beside "the worker
+       stopped before finishing its task", and no gate verdict can restate
+       what the worker did.
+
+       Acceptance is the GATE's verdict, never the worker's status word, and
+       the gate sentence therefore describes the EVIDENCE only. A Run that
+       passed the gate and was then submitted for review reads
        `review_submitted`, not `succeeded` (#515) -- keying on the status alone
        rendered the one accepted Run in the dogfood as "outcome not recorded",
-       which is exactly backwards. */
-    var gateSentence = accepted
+       which is exactly backwards.
+
+       The failure code is never lost: it keeps the next step below, and the
+       raw category and message stay in the technical detail. */
+    var acceptance = accepted
       ? "The Evidence Gate verified a commit on this run's own branch. " +
         "Nothing has been pushed, merged, published or deployed — the change " +
         "is waiting for your review."
       : refused
-        ? (guidance ? guidance.plain
-                    : "The Evidence Gate could not verify this run's result, so " +
-                      "nothing was accepted.")
+        ? "The Evidence Gate could not verify this run's result, so nothing " +
+          "was accepted."
         : "No Evidence Gate verdict was recorded for this run. That is not a " +
           "pass: an unverified result stays unverified.";
 
-    /* When no gate verdict was recorded and the worker attested nothing, the
-       failure code is the only thing that says what happened -- without this,
-       `failed` + `worker_nonzero_exit` reads as a pure absence for a run that
-       did report something.
-
-       It is added ONLY when no worker outcome was recorded, because both
-       sentences narrate the worker and a recorded outcome always wins: the
-       worker's own attestation is the more direct report, and pairing it with
-       a code-derived sentence produces contradictions -- `completed` beside
-       "the worker stopped before finishing its task" being the plainest. A
-       recorded outcome therefore keeps the failure code in the next step and
-       in the technical detail, and out of the narration. */
-    var acceptance = (guidance && !wo.recorded && !accepted && !refused)
-      ? guidance.plain + " " + gateSentence
-      : gateSentence;
-
     /* A named failure code is the most actionable thing there is, so it takes
-       the next step whenever the run recorded one. The outcome-derived step
-       above is the fallback for every run that stopped without one. */
+       the next step whenever the run recorded one -- including when a recorded
+       outcome kept it out of the narration above. */
     if (guidance) next = guidance.next;
     else if (refused) next = "Open the technical detail below for the exact " +
                              "reason, then re-run.";
