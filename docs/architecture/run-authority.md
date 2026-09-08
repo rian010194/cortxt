@@ -67,9 +67,12 @@ without a canonical-writer decision and without any new mutation surface.
   (`GET /api/run-terminal?issue=owner/repo#N&run=<run_id>`) is a content-free
   projection of the last durable `run.engine_turn` for one exact issue+run:
   provider, model, usage, `{ref, sha256}` artifacts, redacted evidence
-  (`kind`/`ref`/`sha256` only), structured error, and `incomplete` /
-  `conflicting` flags. Missing cost is `cost: null` with
-  `cost_status: "unknown"` — never `0` by assumption.
+  (`kind`/`ref`/`sha256` only), structured error, the worker `outcome`
+  (`completed` / `declined` / `no_result` / `unattested`, or `null`), and
+  `incomplete` / `conflicting` flags. Missing cost is `cost: null` with
+  `cost_status: "unknown"` — never `0` by assumption. `outcome` is what the
+  worker did and is read separately from `status`, which is what the run
+  ended as.
 - **Safe activity.** `run.activity.v1`
   (`GET /api/run-activity?issue=...&run=<run_id>`) is a timeline of the four
   durable run event types with a whitelisted `detail` (status, `cost_status`,
