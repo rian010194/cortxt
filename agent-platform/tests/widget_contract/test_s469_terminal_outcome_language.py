@@ -174,8 +174,8 @@ def test_an_error_status_keeps_its_existing_failure_information():
     assert v["next"] == GUIDANCE_NEXT["no_attested_outcome"]
     html = block(term)
     assert 'data-run-next-step' in html
-    panel = source_of(RENDERER)[source_of(RENDERER).index("function renderTerminal("):]
-    assert "data-run-error-code" in panel
+    renderer = source_of(RENDERER)
+    assert "data-run-error-code" in renderer[renderer.index("function renderTerminal("):]
 
 
 @requires_node
@@ -198,14 +198,14 @@ def test_a_failure_before_the_gate_still_states_its_recorded_reason():
 # asserts every key is actually reached, so a phrase that stops matching the
 # renderer's wording fails rather than silently guarding nothing.
 WORKER_CLAIMS = {
-    "finished": "reported that it finished the task",
+    "finished": "reported that it finished",
     "declined": "declined this task, so it was never attempted",
     "no_result": "ran to the end and recorded no result",
     "said_nothing": "reported nothing at all about what it did",
     "unreadable": "which this view does not know how to read",
     "not_recorded": "No worker outcome was recorded for this run",
     "stopped_early": "The worker stopped before finishing its task",
-    "branch_unmoved": "the run's branch is still exactly where it started",
+    "branch_unmoved": "branch is still exactly where it started",
     "no_branch": "not even a branch to look at",
     "nothing_attested": "neither attested an outcome nor landed a commit",
     "no_policy": "nothing recorded which files it was allowed to touch",
@@ -262,9 +262,13 @@ def test_exactly_one_sentence_in_a_verdict_ever_narrates_the_worker(tmp_path):
     claim key below. Two of them in one paragraph is a paragraph arguing with
     itself -- `completed` beside "the worker stopped before finishing its
     task", or "no outcome was recorded" beside "the worker reported that it
-    finished". The claim phrases are lifted from the renderer's own source by
-    `test_the_claim_phrases_are_still_the_renderer_s_own_words`, so this cannot
-    drift into checking wordings the code no longer produces.
+    finished".
+
+    `WORKER_CLAIMS` is a hand-written table, not lifted from the source. What
+    stops it drifting into guarding wordings the code no longer produces is the
+    `seen == set(WORKER_CLAIMS)` assertion at the end: every phrase must be
+    produced by at least one fixture in this sweep, so a reworded sentence in
+    the renderer fails here rather than silently matching nothing.
     """
     outcomes = [None, "completed", "declined", "no_result", "unattested",
                 "future_value", "", "constructor"]
@@ -273,7 +277,7 @@ def test_exactly_one_sentence_in_a_verdict_ever_narrates_the_worker(tmp_path):
              "not_a_known_code"]
     gates = [None, "commit_correlated", "commit_correlation_failed", "skipped"]
     statuses = ("succeeded", "failed", "cancelled", "blocked", "review_submitted",
-                "timed_out", "surprising")
+                "timed_out", "surprising", None)
     cases = [run(status, outcome, gate=gate,
                  error=None if code is None else {"category": code, "message": "m"})
              for outcome in outcomes
@@ -283,7 +287,7 @@ def test_exactly_one_sentence_in_a_verdict_ever_narrates_the_worker(tmp_path):
     results = verdicts(cases, tmp_path)
     # Without this the sweep would pass vacuously on an empty result list, and
     # every assertion below it is negative.
-    assert len(results) == len(cases) == 1792
+    assert len(results) == len(cases) == 2048
     seen = set()
     for term, v in zip(cases, results):
         assert v["plain"], term

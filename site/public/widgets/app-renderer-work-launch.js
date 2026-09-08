@@ -211,9 +211,12 @@
      still gets a sentence and a direction rather than a blank panel. */
   var ERROR_GUIDANCE = {
     commit_predates_run: {
-      plain: "No new commit could be verified for this run. The worker reported " +
-             "that it finished, but the run's branch is still exactly where it " +
-             "started, so there is no change to review.",
+      /* States the evidence, not what the worker said. This sentence becomes
+         the worker sentence for a Run that recorded no outcome, and the old
+         wording -- "the worker reported that it finished" -- then asserted a
+         report beside a Worker-outcome row reading "not recorded". */
+      plain: "No new commit could be verified for this run. Its branch is still " +
+             "exactly where it started, so there is no change to review.",
       next: "Open the run log to see whether the worker produced a result at all. " +
             "If it did not, re-run. If it did but decided no change was needed, " +
             "the task itself may already be done.",
