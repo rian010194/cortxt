@@ -250,6 +250,28 @@ button,input{font:inherit}button{color:inherit}
 .run-live-age{font-size:11px;color:var(--dim)}
 .run-live-warn{font-size:12px;color:var(--warn);line-height:1.5;margin:8px 0 0}
 .run-live-error{font-size:12px;color:var(--warn);line-height:1.5}
+/* W2 (#469/#520): verdict-first terminal panel. The plain verdict, the three
+   facts (process status, worker outcome, gate verdict) and the next step lead;
+   the machine vocabulary lives in the collapsed detail block below them.
+   Canonical tokens only -- no new colour is introduced, so every preset stays
+   conformant. */
+.run-verdict{margin:10px 0 0;padding:10px 12px;border:1px solid var(--stroke);border-left-width:3px;border-radius:8px;background:var(--layer)}
+.run-verdict.ok{border-left-color:var(--good)}
+.run-verdict.warn{border-left-color:var(--warn)}
+.run-verdict strong{display:block;font-size:12.5px;color:var(--text);margin:0 0 4px}
+.run-verdict p{margin:0;font-size:12px;line-height:1.55;color:var(--muted)}
+.run-verdict-facts{display:grid;grid-template-columns:max-content 1fr;gap:2px 12px;margin:8px 0 0;font-size:11.5px}
+.run-verdict-facts dt{color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-size:10px;align-self:baseline}
+.run-verdict-facts dd{margin:0;color:var(--text);font-family:ui-monospace,Consolas,monospace}
+.run-verdict-gloss{color:var(--muted);font-family:var(--sans);font-size:11px}
+.run-next-step{margin:8px 0 0 !important;color:var(--text) !important}
+.run-next-step span{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:650;color:var(--dim);margin-right:6px}
+.run-detail{margin:10px 0 0}
+.run-detail summary{font-size:11px;color:var(--dim);cursor:pointer;letter-spacing:.04em}
+.run-detail summary:hover{color:var(--muted)}
+/* Narrow: the label/value pair stacks so a long gloss never forces the panel
+   to scroll sideways. */
+@media(max-width:720px){.run-verdict-facts{grid-template-columns:1fr;gap:0 0}.run-verdict-facts dd{margin:0 0 6px}}
 .run-activity{margin:10px 0 0;padding-left:18px;display:grid;gap:4px}
 .run-activity li{font-size:11.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
 .run-diff{margin:14px 0 0;border-top:1px solid var(--line);padding-top:12px}
