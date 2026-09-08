@@ -318,11 +318,19 @@
         : "No Evidence Gate verdict was recorded for this run. That is not a " +
           "pass: an unverified result stays unverified.";
 
-    /* A run that stopped before the gate was ever consulted still recorded a
-       reason. Say what it was, rather than only that no verdict exists --
-       otherwise `failed` + `worker_nonzero_exit` reads as an absence when the
-       run actually reported something. */
-    var acceptance = (guidance && !accepted && !refused)
+    /* When no gate verdict was recorded and the worker attested nothing, the
+       failure code is the only thing that says what happened -- without this,
+       `failed` + `worker_nonzero_exit` reads as a pure absence for a run that
+       did report something.
+
+       It is added ONLY when no worker outcome was recorded, because both
+       sentences narrate the worker and a recorded outcome always wins: the
+       worker's own attestation is the more direct report, and pairing it with
+       a code-derived sentence produces contradictions -- `completed` beside
+       "the worker stopped before finishing its task" being the plainest. A
+       recorded outcome therefore keeps the failure code in the next step and
+       in the technical detail, and out of the narration. */
+    var acceptance = (guidance && !wo.recorded && !accepted && !refused)
       ? guidance.plain + " " + gateSentence
       : gateSentence;
 

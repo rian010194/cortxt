@@ -51,6 +51,25 @@ def verdict(term):
     return json.loads(out.stdout)
 
 
+def verdicts(terms, tmp_path):
+    """The same, for a list of fixtures, in one node process.
+
+    The fixtures go through a file rather than the command line: a sweep of a
+    few hundred is past the Windows argument-length limit.
+    """
+    fixtures = tmp_path / "terms.json"
+    fixtures.write_text(json.dumps(terms), encoding="utf-8")
+    script = (
+        "const m=require(%s);"
+        "const t=require(%s);"
+        "process.stdout.write(JSON.stringify(t.map(function(x){return m.terminalVerdict(x);})));"
+        % (json.dumps(str(RENDERER)), json.dumps(str(fixtures)))
+    )
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, encoding="utf-8")
+    assert out.returncode == 0, out.stderr or out.stdout
+    return json.loads(out.stdout)
+
+
 def block(term):
     """Render one fixture's verdict block to HTML, in node."""
     script = (
@@ -160,6 +179,61 @@ def test_a_failure_before_the_gate_still_states_its_recorded_reason():
     assert "The worker stopped before finishing its task." in v["plain"]
     assert "No Evidence Gate verdict was recorded" in v["plain"]
     assert v["next"] == "Open the run log for what it reported, then re-run."
+
+
+@requires_node
+def test_a_recorded_outcome_is_never_contradicted_by_the_failure_code():
+    """Both sentences narrate the worker, so only one of them may speak.
+
+    A recorded outcome is the worker's own attestation and wins; pairing it
+    with a code-derived sentence produced paragraphs that argued with
+    themselves. The code is not lost -- it stays in the next step and in the
+    technical detail.
+    """
+    contradictions = {
+        "completed": "The worker stopped before finishing its task.",
+        "declined": "The worker stopped before finishing its task.",
+        "no_result": "The worker stopped before finishing its task.",
+        "unattested": "The worker stopped before finishing its task.",
+    }
+    for outcome, sentence in contradictions.items():
+        for status in ("succeeded", "failed", "cancelled", "blocked"):
+            v = verdict(run(status, outcome,
+                            error={"category": "worker_nonzero_exit", "message": "exit 1"}))
+            assert sentence not in v["plain"], (status, outcome)
+            assert v["next"] == "Open the run log for what it reported, then re-run."
+
+
+@requires_node
+def test_no_verdict_pairs_two_sentences_that_argue_with_each_other(tmp_path):
+    """Sweep the whole cross-product rather than trusting the branches read.
+
+    Each of the four recorded outcomes has a claim that no other outcome's
+    sentence may appear beside.
+    """
+    exclusive = {
+        "completed": ["ran to the end and recorded no result", "declined this task",
+                      "reported nothing at all"],
+        "declined": ["reported that it finished the task", "ran to the end and recorded no result"],
+        "no_result": ["reported that it finished the task", "declined this task"],
+        "unattested": ["reported that it finished the task", "declined this task"],
+    }
+    codes = [None, "worker_nonzero_exit", "commit_predates_run", "no_attested_outcome",
+             "commit_missing", "artifact_policy_missing", "not_a_known_code"]
+    gates = [None, "commit_correlated", "commit_correlation_failed", "skipped"]
+    statuses = ("succeeded", "failed", "cancelled", "blocked", "review_submitted")
+    cases = [run(status, outcome, gate=gate,
+                 error=None if code is None else {"category": code, "message": "m"})
+             for outcome in exclusive
+             for status in statuses
+             for code in codes
+             for gate in gates]
+    # One node process for the whole cross-product: 560 fixtures is a sweep,
+    # not 560 separate interpreter starts.
+    for term, v in zip(cases, verdicts(cases, tmp_path)):
+        for phrase in exclusive[term["outcome"]]:
+            assert phrase not in v["plain"], (term["status"], term["outcome"],
+                                              term["error"], term["evidence_gate"], phrase)
 
 
 @requires_node
@@ -282,11 +356,17 @@ def test_the_presentation_boundary_holds(source):
     above, which show the verdict is a pure function of its input.
     """
     terminal = source[source.index("function terminalVerdict("):source.index("function verdictBlock(")]
+    reader = source[source.index("function workerOutcome("):source.index("var PROCESS_PHRASES")]
     for forbidden in ("fetch(", "XMLHttpRequest", "POST", "workflow:", "localStorage",
-                      "innerHTML", "OSRenderer", "t.outcome ="):
+                      "innerHTML", "OSRenderer", "outcome ="):
         assert forbidden not in terminal, forbidden
+        assert forbidden not in reader, forbidden
     # The projection's own fields, read against fixed key sets and nothing else.
-    assert "term.outcome" in source
+    # Scoped to the two functions that do the reading -- asserted against the
+    # whole file, `term.outcome` would also be satisfied by this file's header
+    # comment and by the detail view's row.
+    assert "term.outcome" in reader
+    assert "has(WORKER_OUTCOME_TERMS" in reader
     for field in ("t.status", "t.error", "t.evidence_gate"):
         assert field in terminal, field
     assert "has(ERROR_GUIDANCE" in terminal and "ERROR_GUIDANCE[" in terminal
@@ -312,7 +392,13 @@ def test_the_narrow_layout_stacks_the_fact_list():
     css = CSS.read_text(encoding="utf-8")
     assert "@media(max-width:720px){.run-verdict-facts{grid-template-columns:1fr" in css
     assert ".run-verdict-facts{display:grid;grid-template-columns:max-content 1fr" in css
+
+
+def test_the_gloss_is_styled_apart_from_the_monospace_value():
+    """The outcome's plain-language gloss reads as prose, not as an identifier."""
+    css = CSS.read_text(encoding="utf-8")
     assert ".run-verdict-gloss{" in css
+    assert "font-family:var(--sans)" in css[css.index(".run-verdict-gloss{"):][:120]
 
 
 def test_the_served_mirrors_are_byte_equal():
