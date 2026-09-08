@@ -114,12 +114,128 @@ def run_all_checks():
     check("query has elapsed_seconds", q["elapsed_seconds"] >= 0)
     check("query on unknown run_id returns None", disp5.query("nope") is None)
 
-    print("== complete: terminal result recorded, label moves to review ==")
+    print("== complete: a terminal worker status alone does NOT move the Issue to review (#493) ==")
+    # The sanctioned order is: Evidence Gate -> durable `run.review_submitted`
+    # -> review-sync performs `in-progress -> review`. `new_dispatcher()` wires
+    # no review_submitter, so step 2 cannot happen and the transition is
+    # withheld. Before #493 this mapped every non-failing terminal status
+    # straight to LABEL_REVIEW, which is how #485 reached review with no
+    # submission event in any store. Asserting the label is unchanged here is
+    # what makes a reintroduced direct transition fail this suite.
     disp5.complete(run5.run_id, "succeeded", {"evidence": "tests passed"})
     q2 = disp5.query(run5.run_id)
     check("status now succeeded", q2["status"] == "succeeded")
     check("result envelope stored", q2["result"] == {"evidence": "tests passed"})
-    check("label moved to workflow:review", gh5.labels["o/r#7"] == ["workflow:review"])
+    check("label did NOT move to review on a terminal status alone",
+          gh5.labels["o/r#7"] == ["workflow:in-progress"])
+    check("no review submission recorded without a configured submitter",
+          q2["review_submission_id"] is None)
+
+    print("== the sanctioned review chain (#493): gate -> durable submission -> review-sync ==")
+    # Step 1 (Evidence Gate) and step 2 (the durable `run.review_submitted`)
+    # both live in complete(). Step 3 -- the actual `in-progress -> review`
+    # label change -- belongs to `daemon.review_sync.sync_review_submissions`
+    # alone and is covered by agent-platform/tests/daemon/test_review_sync.py,
+    # which CI already runs. What was untested, and is tested here, is the
+    # dispatcher's half: that a submission is written when it is earned, that
+    # the label still does not move, and that unverified evidence never gets
+    # that far.
+    submissions = []
+
+    def recording_submitter(run, envelope, evidence):
+        submissions.append((run.run_id, evidence))
+        return f"sub-{run.run_id}"
+
+    ws_ok = tempfile.mkdtemp(prefix="dispatcher-review-ok-")
+    gh_ok = FakeGitHub({"o/r#30": ["workflow:ready"]})
+    disp_ok = d.Dispatcher(d.RunRegistry(Path(ws_ok) / "runs.json"), gh_ok,
+                           review_submitter=recording_submitter)
+    run_ok = disp_ok.claim("o/r#30", "wedge-b", "builder", "hermes", 600)
+    disp_ok.complete(run_ok.run_id, "succeeded", {"evidence": "tests passed"})
+    q_ok = disp_ok.query(run_ok.run_id)
+    check("a durable review submission is recorded on the Run",
+          q_ok["review_submission_id"] == f"sub-{run_ok.run_id}")
+    check("exactly one submission was written", len(submissions) == 1)
+    check("the submission alone still does NOT move the label to review",
+          gh_ok.labels["o/r#30"] == ["workflow:in-progress"])
+
+    print("== Evidence Gate (#490): a mutating Run whose gate PASSES earns its submission ==")
+    # The case above is non-mutating, so `_gate_commit` returns early
+    # (dispatcher.py:450) and the gate is never consulted. This one drives the
+    # sanctioned order itself: gate passes -> evidence is written onto the
+    # envelope -> and only then is the submission written.
+    class _PassingOutcome:
+        def as_record(self):
+            return {"commit": "c" * 40, "branch": "work/run-x"}
+
+    submissions_gated = []
+    ws_gate = tempfile.mkdtemp(prefix="dispatcher-review-gated-")
+    gh_gate = FakeGitHub({"o/r#33": ["workflow:ready"]})
+    disp_gate = d.Dispatcher(
+        d.RunRegistry(Path(ws_gate) / "runs.json"), gh_gate,
+        commit_gate=lambda run, envelope: _PassingOutcome(),
+        review_submitter=lambda run, env, ev: submissions_gated.append(ev) or f"sub-{run.run_id}")
+    run_gate = disp_gate.claim("o/r#33", "wedge-b", "builder", "hermes", 600)
+    disp_gate.registry.update(run_gate.run_id, mutating=True)
+    disp_gate.complete(run_gate.run_id, "succeeded", {"evidence": "landed a commit"})
+    q_gate = disp_gate.query(run_gate.run_id)
+    check("a gated mutating Run stays succeeded", q_gate["status"] == "succeeded")
+    check("the correlated evidence is recorded on the envelope",
+          (q_gate["result"] or {}).get("evidence_gate") == "commit_correlated"
+          and (q_gate["result"] or {}).get("commit") == "c" * 40)
+    check("the submission was written, and received the gate's evidence",
+          q_gate["review_submission_id"] == f"sub-{run_gate.run_id}"
+          and len(submissions_gated) == 1)
+    check("even a fully gated success does NOT move the label to review",
+          gh_gate.labels["o/r#33"] == ["workflow:in-progress"])
+
+    print("== Evidence Gate (#490): a mutating Run whose commit cannot be verified is blocked ==")
+    # An unverifiable result is never relayed onward as success, and a run that
+    # the gate refused must never earn a review submission -- otherwise
+    # review-sync would move a refused Run to review on the next pass.
+    submissions_bad = []
+
+    def refusing_gate(run, envelope):
+        return d.CorrelationFailure(
+            "commit_predates_run",
+            "the branch tip is the Run's base_commit",
+            "Start a fresh run once the worker actually lands a commit.")
+
+    ws_bad = tempfile.mkdtemp(prefix="dispatcher-review-bad-")
+    gh_bad = FakeGitHub({"o/r#31": ["workflow:ready"]})
+    disp_bad = d.Dispatcher(d.RunRegistry(Path(ws_bad) / "runs.json"), gh_bad,
+                            commit_gate=refusing_gate,
+                            review_submitter=lambda run, env, ev: submissions_bad.append(run.run_id) or "sub-bad")
+    run_bad = disp_bad.claim("o/r#31", "wedge-b", "builder", "hermes", 600)
+    disp_bad.registry.update(run_bad.run_id, mutating=True)
+    disp_bad.complete(run_bad.run_id, "succeeded", {"evidence": "claimed success, nothing landed"})
+    q_bad = disp_bad.query(run_bad.run_id)
+    check("a refused mutating Run is recorded blocked, not succeeded",
+          q_bad["status"] == "blocked")
+    check("the refusal carries the gate's stable failure code",
+          (q_bad["result"] or {}).get("error", {}).get("category") == "commit_predates_run")
+    check("a refused Run earns NO review submission", submissions_bad == [])
+    check("a refused Run's label goes to blocked, never review",
+          gh_bad.labels["o/r#31"] == ["workflow:blocked"])
+
+    print("== Evidence Gate (#490): a gate that itself raises also blocks (fails closed) ==")
+    ws_raise = tempfile.mkdtemp(prefix="dispatcher-review-raise-")
+    gh_raise = FakeGitHub({"o/r#32": ["workflow:ready"]})
+
+    def exploding_gate(run, envelope):
+        raise RuntimeError("git is unreadable")
+
+    disp_raise = d.Dispatcher(d.RunRegistry(Path(ws_raise) / "runs.json"), gh_raise,
+                              commit_gate=exploding_gate,
+                              review_submitter=recording_submitter)
+    run_raise = disp_raise.claim("o/r#32", "wedge-b", "builder", "hermes", 600)
+    disp_raise.registry.update(run_raise.run_id, mutating=True)
+    disp_raise.complete(run_raise.run_id, "succeeded", {"evidence": "unverifiable"})
+    check("an unverifiable Run is blocked, not relayed as success",
+          disp_raise.query(run_raise.run_id)["status"] == "blocked")
+    check("an unverifiable Run's label goes to blocked, never review",
+          gh_raise.labels["o/r#32"] == ["workflow:blocked"])
+    check("no submission was written for an unverifiable Run", len(submissions) == 1)
 
     print("== complete: failing status moves label to workflow:blocked ==")
     disp6, gh6 = new_dispatcher({"o/r#8": ["workflow:ready"]})
@@ -288,7 +404,11 @@ def run_all_checks():
     check("gh_synced correctly False after the failed GitHub step", disp15.query(run15.run_id)["gh_synced"] is False)
     # swap_label already succeeded before the simulated comment() failure -- gh_synced=False
     # means "the GitHub step isn't fully done", not "nothing happened yet".
-    check("label already moved (swap_label succeeded before comment() failed)", gh15.labels["o/r#18"] == ["workflow:review"])
+    # No swap_label is issued at all for a succeeded run (#493: target is
+    # None), so the label is still the one claim() set. gh_synced=False means
+    # "the GitHub step is not fully done", not "the label moved".
+    check("label still workflow:in-progress after the failed comment",
+          gh15.labels["o/r#18"] == ["workflow:in-progress"])
     check("resync_pending skips a fresh claim (lease not yet stale)", disp15.resync_pending() == [])
     # Simulate the claim lease going stale, as a real deployment would after
     # GH_SYNC_CLAIM_LEASE_SECONDS -- otherwise a same-second retry would
@@ -297,7 +417,8 @@ def run_all_checks():
     synced15 = disp15.resync_pending()
     check("resync_pending retried and succeeded once the claim lease went stale", synced15 == [run15.run_id])
     check("gh_synced now True", disp15.query(run15.run_id)["gh_synced"] is True)
-    check("label finally moved to workflow:review", gh15.labels["o/r#18"] == ["workflow:review"])
+    check("label still workflow:in-progress after a successful resync (#493)",
+          gh15.labels["o/r#18"] == ["workflow:in-progress"])
 
     print("== _sync_github: two concurrent callers racing the same run post exactly one comment, not two ==")
     class SlowCommentGitHub(FakeGitHub):
@@ -338,7 +459,36 @@ def run_all_checks():
     # reference from here on.
     result_comments17 = [c for c in disp17.gh.comments if "Run result" in c[1]]
     check("exactly ONE result comment posted, not two", len(result_comments17) == 1)
-    check("label moved exactly once (idempotent swap, no duplicate append)", disp17.gh.labels["o/r#20"] == ["workflow:review"])
+    check("neither racing caller moved the label to review (#493)",
+          disp17.gh.labels["o/r#20"] == ["workflow:in-progress"])
+
+    print("== _sync_github: racing callers on a FAILING run swap the label exactly once ==")
+    # #493 removed the swap from the succeeded path, so the race check above no
+    # longer covers swap idempotency. A failing status still swaps
+    # (dispatcher.py:557-558), so the property is kept here rather than lost.
+    disp18, gh18 = new_dispatcher({"o/r#21": ["workflow:ready"]})
+    disp18.gh = SlowCommentGitHub(disp18.gh.labels)
+    run18 = disp18.claim("o/r#21", "wedge-b", "builder", "hermes", 600)
+    disp18.registry.update(run18.run_id, status="failed")
+
+    results18 = []
+
+    def race_sync_failed():
+        results18.append(disp18._sync_github(run18.run_id, run18.issue_id, "failed", {"error": "boom"}))
+
+    t18a = threading.Thread(target=race_sync_failed)
+    t18b = threading.Thread(target=race_sync_failed)
+    t18a.start()
+    time.sleep(0.02)
+    t18b.start()
+    t18a.join(timeout=2)
+    t18b.join(timeout=2)
+
+    check("exactly one caller performed the failing-run sync", sorted(results18) == [False, True])
+    check("label moved exactly once (idempotent swap, no duplicate append)",
+          disp18.gh.labels["o/r#21"] == ["workflow:blocked"])
+    check("exactly ONE result comment posted for the failing run",
+          len([c for c in disp18.gh.comments if "Run result" in c[1]]) == 1)
 
     print("== resync_pending: ignores runs that are already synced or still in_progress ==")
     disp16, gh16 = new_dispatcher({"o/r#19": ["workflow:ready"]})

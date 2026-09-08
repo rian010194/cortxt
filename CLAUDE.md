@@ -114,6 +114,18 @@ kept out of the repository and archived locally.
   docker_required"`. Opt-in markers: `real_inference` (real L0 model calls) and
   `docker_required` (needs a running Docker daemon) are excluded by default —
   a skip on `docker_required` is NOT a pass.
+- **`scripts/` suites are not covered by that command.** `pytest
+  agent-platform/` never descends into `scripts/`, and several `scripts/`
+  suites are `main()`-style programs that a `pytest` path would collect as
+  zero tests while still reporting green. Run them as programs:
+  `python scripts/<test_file>.py` (exit 0 = pass). The four dispatch-path
+  suites — `test_dispatcher.py`, `test_worker_adapters.py`,
+  `test_work_launcher.py`, `test_launcher_integration.py` — are run this way
+  by the `dispatch-path-tests` CI job, one process each, because they share
+  `sys.modules["dispatcher"]`, the process-wide `ADAPTER_REGISTRY` and
+  `CORTXT_BOUNDED_WORKER` and are not isolated from one another in a single
+  interpreter. They need no dependencies beyond the standard library and use
+  fake GitHub, fake providers and temporary state only.
 - **CI** (`.github/workflows/ci.yml`) also runs a site build from `site/`
   (Node 26, `npm ci && npm run build`) and a DCO sign-off gate on pull
   requests: every commit must carry a `Signed-off-by: Name <email>` trailer.

@@ -204,7 +204,13 @@ def run_all_checks():
     check("thread finished", not thread.is_alive())
     q = disp2.query(run2.run_id)
     check("run completed via complete()", q["status"] == "succeeded")
-    check("label moved to workflow:review (top-level run)", gh2.labels["o/r#3"] == ["workflow:review"])
+    # #493: dispatch_async completes through Dispatcher.complete(), which no
+    # longer maps a terminal worker status to workflow:review. The Issue stays
+    # where claim() put it until review-sync acts on a durable
+    # `run.review_submitted`; new_dispatcher() wires no submitter, so it does
+    # not move at all here.
+    check("label stays workflow:in-progress; a worker status cannot move it to review",
+          gh2.labels["o/r#3"] == ["workflow:in-progress"])
     check("result envelope has no leaked internal keys", "_status" not in q["result"] and "_elapsed_seconds" not in q["result"])
 
     print("== dispatch_async: end-to-end failed run moves label to workflow:blocked ==")
@@ -242,7 +248,8 @@ def run_all_checks():
     t5a.join(timeout=5)
     t5b.join(timeout=5)
     check("both runs reached succeeded", disp5.query(run5a.run_id)["status"] == "succeeded" and disp5.query(run5b.run_id)["status"] == "succeeded")
-    check("both labels moved independently", gh5.labels["o/r#6"] == ["workflow:review"] and gh5.labels["o/r#7"] == ["workflow:review"])
+    check("both runs completed independently, neither Issue moved to review (#493)",
+          gh5.labels["o/r#6"] == ["workflow:in-progress"] and gh5.labels["o/r#7"] == ["workflow:in-progress"])
 
     print("== DshWorkerAdapter.invoke: succeeded envelope, no raw stdout in evidence, cost unknown ==")
     dsh_log_dir = new_log_dir()
@@ -401,7 +408,8 @@ def run_all_checks():
     check("dsh thread finished", not thread_dsh.is_alive())
     q_dsh = disp_dsh.query(run_dsh.run_id)
     check("dsh run completed via complete()", q_dsh["status"] == "succeeded")
-    check("dsh label moved to workflow:review (top-level run)", gh_dsh.labels["o/r#8"] == ["workflow:review"])
+    check("dsh label stays workflow:in-progress, not review (#493)",
+          gh_dsh.labels["o/r#8"] == ["workflow:in-progress"])
     check("dsh result envelope has no leaked internal keys", "_status" not in q_dsh["result"] and "_elapsed_seconds" not in q_dsh["result"])
 
     print("== ADAPTER_REGISTRY: hermes-free registered by default (S7b #482) ==")
@@ -475,7 +483,20 @@ def run_all_checks():
     check("hermes-free error None on success", hf_env["error"] is None)
 
     print("== HermesFreeAdapter.invoke: env not configured -> failed envelope, never raises ==")
-    hf_env2 = wa.HermesFreeAdapter(log_dir=new_log_dir()).invoke(run, "do the thing", timeout_seconds=60)
+    # This adapter is built with no injected invoker, so it is the one place in
+    # this file where a *configured* environment would let `_call` import
+    # `routing.hermes_invoker` and shell out to the real hermes CLI. The check
+    # is about the unconfigured case, so clear the two routing vars explicitly
+    # rather than relying on the ambient environment happening to lack them.
+    _amb_model = os.environ.pop("CORTXT_FREE_MODEL", None)
+    _amb_provider = os.environ.pop("CORTXT_FREE_PROVIDER", None)
+    try:
+        hf_env2 = wa.HermesFreeAdapter(log_dir=new_log_dir()).invoke(run, "do the thing", timeout_seconds=60)
+    finally:
+        if _amb_model is not None:
+            os.environ["CORTXT_FREE_MODEL"] = _amb_model
+        if _amb_provider is not None:
+            os.environ["CORTXT_FREE_PROVIDER"] = _amb_provider
     check("hermes-free unconfigured status failed", hf_env2["_status"] == "failed")
     check("hermes-free unconfigured error category runtime_unavailable",
           hf_env2["error"]["category"] == "runtime_unavailable")
@@ -510,7 +531,8 @@ def run_all_checks():
     check("hermes-free thread finished", not thread_hf.is_alive())
     q_hf = disp_hf.query(run_hf.run_id)
     check("hermes-free run completed via complete()", q_hf["status"] == "succeeded")
-    check("hermes-free label moved to workflow:review", gh_hf.labels["o/r#12"] == ["workflow:review"])
+    check("hermes-free label stays workflow:in-progress, not review (#493)",
+          gh_hf.labels["o/r#12"] == ["workflow:in-progress"])
     check("hermes-free result envelope has no leaked internal keys",
           "_status" not in q_hf["result"] and "_elapsed_seconds" not in q_hf["result"])
 

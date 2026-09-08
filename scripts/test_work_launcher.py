@@ -73,6 +73,7 @@ def main():
     # consults `runtime_launch_config_ok` (registry membership) before any
     # claim (S7b #482 follow-on), so the synthetic "fake" runtime must be
     # registered for these fixtures to reach that far.
+    _prior_fake = wa.ADAPTER_REGISTRY.get("fake")
     wa.register_adapter("fake", SimpleNamespace(invoke=lambda *a, **k: {}))
 
     root = Path(tempfile.mkdtemp(prefix="launcher-test-"))
@@ -146,8 +147,29 @@ def main():
           gh3.labels["o/r#9"] == ["workflow:ready"])
     check("no worker was ever dispatched", dispatched3 == [])
 
+    # Leave ADAPTER_REGISTRY as it was found -- it is process-global and the
+    # pytest entry point below makes this module collectible alongside others.
+    if _prior_fake is None:
+        wa.ADAPTER_REGISTRY.pop("fake", None)
+    else:
+        wa.ADAPTER_REGISTRY["fake"] = _prior_fake
+
     print(f"\n{'PASS' if not fail else 'FAIL'}: {len(fail)} failure(s)")
     raise SystemExit(1 if fail else 0)
+
+
+def test_all_checks_pass():
+    """Pytest entry point: run the same checks as the standalone script.
+
+    Without this, `pytest scripts/` collects zero tests from this file and
+    reports green while running none of the checks below -- the exact "green
+    signal over a path nobody walked" shape this suite exists to catch.
+    """
+    try:
+        main()
+    except SystemExit as exc:  # main() ends with raise SystemExit(0|1)
+        assert exc.code == 0, f"{len(fail)} check(s) failed: {fail}"
+    assert not fail, f"{len(fail)} check(s) failed: {fail}"
 
 
 if __name__ == "__main__":
