@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
+import worker_adapters as wa
 from execution_map import SqliteClaimStore
 from work_launcher import ExecutionGateError, WorkLauncher
 
@@ -77,7 +78,16 @@ def launcher(root, issues, events, ids, *, store=None, issue_reader=None,
         OPEN_STORES.append(store)
     gh = FakeGitHub(issues, events)
     disp = FakeDispatcher(events)
+    # `repo_path` is bound to the temporary root rather than left at its
+    # `Path.cwd()` default. WorkLauncher.submit()'s success path passes
+    # `repo_path` to `enrich_run_correlation`, which runs real (read-only) `git`
+    # under it. Today that never fires here -- `_derive_branch_tip` returns None
+    # before touching git when the Run has no `branch`
+    # (`worker_adapters.py:835-837`), and `FakeRun` has no such field -- so this
+    # is a guard, not a fix for observed behaviour: give `FakeRun` a `branch`
+    # and the default would run git inside the real checkout.
     return WorkLauncher(disp, gh, dispatch=lambda d, r, p: events.append(("engine", r.run_id)),
+        repo_path=root,
         worktree_root=root / "trees",
         run_worktree=lambda argv, **k: SimpleNamespace(
             returncode=0, stdout=("0" * 40 if argv[1] == "rev-parse" else "")),
@@ -195,6 +205,20 @@ def check_no_forbidden_transitions(root):
 
 
 def main():
+    # These checks dispatch through an injected fake `dispatch` callable, not
+    # the real ADAPTER_REGISTRY -- but since the S7b #482 follow-on
+    # `WorkLauncher._launch` consults `runtime_launch_config_ok` (registry
+    # membership plus a carrier preflight) *before* any claim, so the
+    # synthetic runtimes used below must be registered for these fixtures to reach
+    # the behaviour they exist to check. Without it every check here dies on
+    # `ExecutionGateError: runtime_not_configured` at the first resume().
+    # scripts/test_work_launcher.py has carried the same registration since
+    # #482; this file was never run in CI, so it never caught up.
+    _synthetic = ("fake", "github-transition")
+    _prior = {name: wa.ADAPTER_REGISTRY.get(name) for name in _synthetic}
+    for _runtime in _synthetic:
+        wa.register_adapter(_runtime, SimpleNamespace(invoke=lambda *a, **k: {}))
+
     temp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
     try:
         root = Path(temp.name)
@@ -208,7 +232,27 @@ def main():
             store.close()
         OPEN_STORES.clear()
         temp.cleanup()
+        # Leave ADAPTER_REGISTRY as it was found. It is process-global, and the
+        # pytest entry point below makes this module collectible alongside
+        # others -- a synthetic runtime left registered would be visible to
+        # every later test in the same interpreter.
+        for name, prior in _prior.items():
+            if prior is None:
+                wa.ADAPTER_REGISTRY.pop(name, None)
+            else:
+                wa.ADAPTER_REGISTRY[name] = prior
     print("launcher integration checks passed")
+
+
+def test_all_checks_pass():
+    """Pytest entry point: run the same checks as the standalone script.
+
+    Without this, `pytest scripts/` collects zero tests from this file and
+    reports green while running none of the checks below. Every check here
+    raises AssertionError on failure, so simply calling main() is the whole
+    contract.
+    """
+    main()
 
 
 if __name__ == "__main__":

@@ -73,6 +73,55 @@ jobs:
       - name: Check global design-system conformance
         run: python scripts/design_system_conformance.py
 
+  # W1: the dispatch-path regression suites. These four files cover the
+  # claim -> Evidence Gate -> review-submission chain in scripts/dispatcher.py,
+  # scripts/worker_adapters.py and scripts/work_launcher.py, and until now no
+  # CI command executed any of them: every pytest invocation above names
+  # `agent-platform/`, which never descends into `scripts/`. Two of the four
+  # also define no `test_*` callable, so simply adding `scripts/` to a pytest
+  # path would have kept them dark while reporting green.
+  #
+  # They run as four separate `python` processes on purpose, matching the
+  # existing `python scripts/test_*.py` steps in this file. Sharing one
+  # interpreter is not safe here: test_worker_adapters.py replaces
+  # sys.modules["dispatcher"] at import time, several files mutate the
+  # process-wide ADAPTER_REGISTRY without restoring it, and two assert on a
+  # clean CORTXT_BOUNDED_WORKER. Separate processes make each suite's result
+  # its own, and a failure name the file that broke.
+  #
+  # No `pip install`: dispatcher/worker_adapters/work_launcher and their
+  # transitive imports (commit_evidence, execution_map, launcher_inventory)
+  # are pure standard library. The suites use fake GitHub, fake providers,
+  # injected subprocess runners and temporary state only -- no `gh`, no real
+  # runtime, no provider call, no write to the repository.
+  #
+  # PYTHONPATH, however, is required. `worker_adapters.HermesFreeAdapter.invoke`
+  # imports `routing.worker_outcome` on its succeeded path (#520), and that
+  # package lives under `agent-platform/`, which is not on `sys.path` when
+  # `python scripts/test_*.py` puts `scripts/` there. A developer machine hides
+  # this: `agent-platform` is installed editable there, so the import resolves
+  # from site-packages and the suite passes locally while failing here. The
+  # module itself is stdlib-only, so this adds a path entry, not a dependency.
+  dispatch-path-tests:
+    runs-on: ubuntu-latest
+    # `scripts/` is sys.path[0] for each `python scripts/test_*.py`, so it still
+    # wins on any name it shares with agent-platform; this only adds a fallback.
+    env:
+      PYTHONPATH: agent-platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dispatcher claim/complete contract (#122, #493)
+        run: python scripts/test_dispatcher.py
+      - name: Worker adapter envelopes and dispatch_async (#419, #482)
+        run: python scripts/test_worker_adapters.py
+      - name: Work launcher execution gate (#419, #482)
+        run: python scripts/test_work_launcher.py
+      - name: Launcher/execution-map integration (#262)
+        run: python scripts/test_launcher_integration.py
+
   dco-signoff:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
