@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline fake-injection tests for the parallel work launcher."""
+import contextlib
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -67,15 +68,45 @@ def fake_worktree_add(*args, **kwargs):
     return SimpleNamespace(returncode=0)
 
 
+_MISSING = object()
+
+
+@contextlib.contextmanager
+def _adapter_registered(name, adapter):
+    """Register `name` in the process-global ADAPTER_REGISTRY and put the
+    registry back exactly as it was found on the way out.
+
+    The restore lives in a `finally`: a check that raises must not leak a
+    synthetic runtime into every later test sharing this interpreter, and the
+    cleanup must not replace that check's own exception either. `_MISSING` is a
+    real sentinel rather than `None`, so "the key was absent" and "the key held
+    None" restore differently.
+    """
+    prior = wa.ADAPTER_REGISTRY.get(name, _MISSING)
+    wa.register_adapter(name, adapter)
+    try:
+        yield
+    finally:
+        if prior is _MISSING:
+            wa.ADAPTER_REGISTRY.pop(name, None)
+        else:
+            wa.ADAPTER_REGISTRY[name] = prior
+
+
 def main():
     # These offline tests dispatch through an injected fake `dispatch`
     # callable, not the real ADAPTER_REGISTRY -- but WorkLauncher._launch now
     # consults `runtime_launch_config_ok` (registry membership) before any
     # claim (S7b #482 follow-on), so the synthetic "fake" runtime must be
     # registered for these fixtures to reach that far.
-    _prior_fake = wa.ADAPTER_REGISTRY.get("fake")
-    wa.register_adapter("fake", SimpleNamespace(invoke=lambda *a, **k: {}))
+    with _adapter_registered("fake", SimpleNamespace(invoke=lambda *a, **k: {})):
+        _run_checks()
 
+    print(f"\n{'PASS' if not fail else 'FAIL'}: {len(fail)} failure(s)")
+    raise SystemExit(1 if fail else 0)
+
+
+def _run_checks():
     root = Path(tempfile.mkdtemp(prefix="launcher-test-"))
     gh = FakeGitHub()
     disp = d.Dispatcher(d.RunRegistry(root / "runs.json"), gh)
@@ -147,15 +178,39 @@ def main():
           gh3.labels["o/r#9"] == ["workflow:ready"])
     check("no worker was ever dispatched", dispatched3 == [])
 
-    # Leave ADAPTER_REGISTRY as it was found -- it is process-global and the
-    # pytest entry point below makes this module collectible alongside others.
-    if _prior_fake is None:
-        wa.ADAPTER_REGISTRY.pop("fake", None)
-    else:
-        wa.ADAPTER_REGISTRY["fake"] = _prior_fake
+    # main()'s registry restore is only worth anything if it survives a check
+    # that raises. Drive a controlled exception through the very same context
+    # manager and assert both halves: the registry comes back, and the original
+    # error is neither hidden nor replaced by the cleanup.
+    boom = RuntimeError("controlled failure after registration")
 
-    print(f"\n{'PASS' if not fail else 'FAIL'}: {len(fail)} failure(s)")
-    raise SystemExit(1 if fail else 0)
+    absent = "w1-registry-restore-probe"
+    check("the probe runtime is absent before the block", absent not in wa.ADAPTER_REGISTRY)
+    raised = None
+    try:
+        with _adapter_registered(absent, SimpleNamespace(invoke=lambda *a, **k: {})):
+            check("the probe runtime is registered inside the block",
+                  absent in wa.ADAPTER_REGISTRY)
+            raise boom
+    except RuntimeError as exc:
+        raised = exc
+    check("the original exception propagates unchanged, not swallowed", raised is boom)
+    check("a previously absent runtime is removed again after an exception",
+          absent not in wa.ADAPTER_REGISTRY)
+
+    prior_fake = wa.ADAPTER_REGISTRY["fake"]
+    replacement = SimpleNamespace(invoke=lambda *a, **k: {})
+    raised = None
+    try:
+        with _adapter_registered("fake", replacement):
+            check("the replacement adapter is in place inside the block",
+                  wa.ADAPTER_REGISTRY["fake"] is replacement)
+            raise boom
+    except RuntimeError as exc:
+        raised = exc
+    check("the original exception propagates from the occupied-key path too", raised is boom)
+    check("a previously present runtime is restored to its exact prior object",
+          wa.ADAPTER_REGISTRY["fake"] is prior_fake)
 
 
 def test_all_checks_pass():

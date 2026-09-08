@@ -183,9 +183,19 @@ def run_all_checks():
     check("the correlated evidence is recorded on the envelope",
           (q_gate["result"] or {}).get("evidence_gate") == "commit_correlated"
           and (q_gate["result"] or {}).get("commit") == "c" * 40)
-    check("the submission was written, and received the gate's evidence",
-          q_gate["review_submission_id"] == f"sub-{run_gate.run_id}"
-          and len(submissions_gated) == 1)
+    # `_submit_review` hands the submitter the gate's own evidence record as
+    # its third argument. Asserting only the submission id and the list length
+    # would still pass if that argument arrived as `None` or as some unrelated
+    # dict, which is exactly the claim the second check makes. It is a value
+    # comparison, so it does not distinguish the copy on the Run from the equal
+    # copy on the envelope -- `_gate_commit` writes the same record to both,
+    # and no assertion here could tell them apart.
+    check("the submission was written", len(submissions_gated) == 1
+          and q_gate["review_submission_id"] == f"sub-{run_gate.run_id}")
+    check("the submission received the gate's own evidence record",
+          submissions_gated[:1] == [{"commit": "c" * 40, "branch": "work/run-x"}])
+    check("the gate's record is persisted on the durable Run",
+          q_gate["commit_evidence"] == {"commit": "c" * 40, "branch": "work/run-x"})
     check("even a fully gated success does NOT move the label to review",
           gh_gate.labels["o/r#33"] == ["workflow:in-progress"])
 
