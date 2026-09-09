@@ -104,7 +104,12 @@ def test_refuses_when_port_already_bound():
     check("the refusal is prefixed and says it is refusing",
           r.out.startswith(f"{s.PREFIX} refusing to start:"))
     check("the refusal says what to do, not only what is wrong",
-          "--port" in r.out and "Ctrl+C" in r.out)
+          "Ctrl+C" in r.out)
+    # The probe is per-port but the registry is not: it resolves from the host
+    # module's location. Offering --port here would send the operator into the
+    # two-hosts-one-registry state the message exists to prevent.
+    check("the refusal does not offer another --port as the fix",
+          "Do not simply move to another" in r.out and "runs.json" in r.out)
 
 
 def test_refuses_outside_repo_root():
@@ -154,6 +159,12 @@ def test_no_free_route_skips_env_refusal():
         pass
     check("--no-free-route reaches the host with both variables unset", r.code == 0)
     check("--no-free-route skips the hermes check too", len(host.calls) == 1)
+    # The flag skips two checks; it does not unmount POST /api/action, and
+    # `action_host` has no flag that would. Help text that said "read-only"
+    # would drop the caution the mutation route requires.
+    flag_help = [a.help for a in s.build_parser()._actions if "--no-free-route" in a.option_strings]
+    check("--no-free-route does not describe the host as read-only",
+          len(flag_help) == 1 and "POST /api/action is mounted either way" in flag_help[0])
     check("the free-route line says it is disabled, and names the flag",
           "free route: disabled (--no-free-route)" in r.out)
     check("no unset variable is reported as a value",
@@ -219,7 +230,7 @@ def test_success_lines_are_exactly_the_five_documented_ones():
     check("exactly five lines are printed before the host takes over", len(lines) == 5)
     check("every line carries the prefix",
           all(line.startswith(f"{s.PREFIX} ") for line in lines))
-    prefixes = ["repo root:", "commit:", "registry:", "free route:", "url:"]
+    prefixes = ["repo root:", "commit:", "registry:", "free route:", "url ("]
     check("the lines are in the documented order",
           all(line.startswith(f"{s.PREFIX} {want}")
               for line, want in zip(lines, prefixes)) and len(lines) == len(prefixes))

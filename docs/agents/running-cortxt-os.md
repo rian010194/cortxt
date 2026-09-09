@@ -20,17 +20,21 @@ python scripts/start_cortxt_os.py
 
 Then open <http://127.0.0.1:8765/index.html>. Those two values are what the
 2026-09-04 dogfood used -- an example, not a default. The script never sets
-them, because choosing a model is an operator act. Add `--no-free-route` for
-read-only use where no dispatch is intended; `--port` and `--spec` change the
-listener and the served spec, and `--require-commit` / `--require-clean` pass
-through to the host's opt-in source-integrity checks.
+them, because choosing a model is an operator act. Add `--no-free-route` to
+start without dispatch -- it skips the free-route checks and does **not** make
+the host read-only, since `POST /api/action` is mounted either way. `--port`
+and `--spec` change the listener and the served spec, and `--require-commit` /
+`--require-clean` pass through to the host's opt-in source-integrity checks.
 
-## The three ways to start, and when each applies
+## The four commands that start something, and when each applies
+
+Three of them start the action host; the fourth starts the read-only server
+instead. Only the first is the documented way.
 
 | Command | Actions | Port/spec configurable |
 | --- | --- | --- |
 | `python scripts/start_cortxt_os.py` | yes | yes |
-| `python agent-platform/widget/action_host.py` | **yes, always -- there is no flag to disable them** | yes |
+| `python agent-platform/widget/action_host.py` | **yes, always -- there is no flag to disable them** | yes, but see the caveat below |
 | `cortxt widget --enable-actions` | yes | **no -- `--port`/`--spec` are not accepted on this command** |
 | `cortxt widget` | no (read-only `serve.py`) | -- |
 
@@ -43,6 +47,14 @@ and always serves `widget_contract/specs/candidates-0.1.yaml`; a `--port` typed
 on that command line is an argparse error and exits 2. Use the start script
 when either needs to be chosen.
 
+Running `action_host.py` directly also needs `widget_contract` on the import
+path, which that command does not provide: it puts `agent-platform/widget` on
+`sys.path[0]`, and the module imports `widget_contract.*` at module scope with
+no bootstrap of its own. It resolves on a machine that has run `pip install -e
+agent-platform/`, and dies with `ModuleNotFoundError: widget_contract` on a
+checkout that has not (unless `PYTHONPATH=agent-platform` is set). The start
+script inserts the path itself, which is why it works from a bare checkout.
+
 ## Refusals
 
 Each refusal prints one line beginning `[start-cortxt-os] refusing to start:`
@@ -50,7 +62,7 @@ and exits 2. They are checked in this order, before anything binds.
 
 | Refusal | Message says | Fix |
 | --- | --- | --- |
-| A host already answers on the port | a host is already listening, and that Cortxt OS requires exactly one listener | Stop the running host with Ctrl+C in its terminal, or start this one on another port with `--port` |
+| A host already answers on the port | a host is already listening, and why another `--port` is not the way around it | Stop the running host with Ctrl+C in its terminal |
 | The working directory is not the repository root | which directory was used, and that `agent-platform/widget/action_host.py` was expected beneath it | `cd` to the repository root and run `python scripts/start_cortxt_os.py` from there |
 | The free route is incomplete | which of `CORTXT_FREE_PROVIDER` and `CORTXT_FREE_MODEL` is unset or empty, with the dogfood values as an example | Set both, or pass `--no-free-route` |
 | `hermes` is not on PATH | that the free route cannot dispatch without it | Install `hermes` and reopen the shell, or pass `--no-free-route` |
@@ -59,6 +71,14 @@ The first refusal is a pre-bind connect to `127.0.0.1:<port>`, not a caught
 bind failure: the host serves through a socket with `SO_REUSEADDR` set, so on
 win32 a second process can bind an address a first is already listening on
 without any error at all.
+
+That probe is per-port, and the registry is not: it resolves from the host
+module's own location, so two hosts started on different ports still write the
+same `runs.json` and still disagree about the same Runs. The check therefore
+catches the common collision, not every second host -- which is why its message
+says to stop the running host rather than to move to another `--port`. One host
+at a time remains an operator discipline the script helps with; it does not
+enforce it.
 
 The free-route checks report presence only and never read, print or log the
 value of a credential-bearing variable. `provider` and `model` are routing

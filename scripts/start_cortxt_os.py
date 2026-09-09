@@ -138,8 +138,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Passed through to action_host: fail closed unless the worktree "
                              "is clean. Opt-in proof tooling, not a default.")
     parser.add_argument("--no-free-route", action="store_true",
-                        help="Skip the free-route environment and `hermes` checks. For "
-                             "read-only OS use where no dispatch is intended.")
+                        help="Skip the free-route environment and `hermes` checks, for use "
+                             "where no dispatch is intended. This does not make the host "
+                             "read-only: POST /api/action is mounted either way.")
     return parser
 
 
@@ -147,14 +148,18 @@ def main(argv: list[str] | None = None, *, host=None, connect=None, run=None, wh
     args = build_parser().parse_args(argv)
     cwd = Path.cwd()
 
-    # 1. Exactly one listener. This is the refusal every previous handoff
-    #    meant by "exactly one listener" and none of them enforced.
+    # 1. No second host on this port. Note what this does *not* prove: the
+    #    registry resolves from the host module's location, never from the
+    #    port, so a second host on a different port would write the same
+    #    runs.json. The probe cannot see that one, which is why the message
+    #    below offers Ctrl+C and not --port.
     if _port_is_listening(args.port, connect=connect):
         return _refuse(
-            f"a host is already listening on {LOOPBACK}:{args.port}. Cortxt OS requires "
-            f"exactly one listener -- two hosts on one registry disagree about the same "
-            f"Runs. Stop the running host (Ctrl+C in its terminal), or start this one on "
-            f"another port with --port.")
+            f"a host is already listening on {LOOPBACK}:{args.port}. Stop it (Ctrl+C in "
+            f"its terminal) before starting this one. Do not simply move to another "
+            f"--port: the registry resolves from the host module's location, not from "
+            f"the port, so a second host would write the same runs.json and the two "
+            f"would disagree about the same Runs.")
 
     # 2. Repository root. Getting this wrong is silent and expensive, so it is
     #    checked rather than documented.
@@ -177,14 +182,15 @@ def main(argv: list[str] | None = None, *, host=None, connect=None, run=None, wh
                 f"{FREE_ROUTE_VARS[0]} and {FREE_ROUTE_VARS[1]} must be set before starting. "
                 f"The 2026-09-04 dogfood used {example} -- an example, not a default; this "
                 f"script never sets them, because choosing a model is an operator act. Pass "
-                f"--no-free-route for read-only use where no dispatch is intended.")
+                f"--no-free-route to start without dispatch (the mutation route stays "
+                f"mounted).")
 
         # 4. The dispatcher binary the free route shells out to.
         if (which or shutil.which)("hermes") is None:
             return _refuse(
                 "`hermes` is not on PATH, so the free route cannot dispatch. Install it and "
-                "reopen the shell, or pass --no-free-route for read-only use where no "
-                "dispatch is intended.")
+                "reopen the shell, or pass --no-free-route to start without dispatch (the "
+                "mutation route stays mounted).")
 
     host = host if host is not None else _load_action_host(cwd)
     registry = _registry_path(host)
@@ -200,7 +206,11 @@ def main(argv: list[str] | None = None, *, host=None, connect=None, run=None, wh
         # reports both on the envelope for exactly this reason.
         _say(f"free route: provider={os.environ[FREE_ROUTE_VARS[0]]} "
              f"model={os.environ[FREE_ROUTE_VARS[1]]}")
-    _say(f"url: http://{LOOPBACK}:{args.port}/index.html")
+    # Labelled as intended, not as serving: `action_host.main` runs its own
+    # --require-commit / --require-clean gates after this line and returns 1
+    # without ever binding when either fails.
+    _say(f"url (serves once the host's own checks pass): "
+         f"http://{LOOPBACK}:{args.port}/index.html")
 
     return host.main(port=args.port, spec_path=args.spec,
                      require_commit=args.require_commit, require_clean=args.require_clean)
