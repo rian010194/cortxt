@@ -756,9 +756,17 @@ function renderHome(winEl,ctx){
         '<div class="rc-body">'+
           '<p class="rc-title">'+esc(resume.id)+' — '+esc(resume.title)+'</p>'+
           '<p class="rc-outcome">'+esc(resume.outcome)+'</p>'+
+          /* Plain language leads; the authoritative facts stay beside it. An
+             earlier pass replaced the raw workflow label, the phase and the
+             Workstream's own next action with a per-state sentence, which
+             read better and told the operator less -- Work keeps its raw
+             label for exactly this reason (`data-work-workflow-label`). */
           '<p class="rc-meta" data-mission-state="'+esc(rstate?rstate.key:"unknown")+'">'+
             esc(rstate?rstate.label:(resume.workflow||"no workflow label"))+
-            (rstate?(" · "+esc(rstate.next)):(resume.nextAction?(" · Next: "+esc(resume.nextAction)):""))+'</p>'+
+            (rstate?(" · "+esc(resume.workflow||"no workflow label")):"")+
+            (resume.phase?(" · "+esc(resume.phase)):"")+
+            (resume.nextAction?(" · Next: "+esc(resume.nextAction)):"")+'</p>'+
+          (rstate?'<p class="rc-guidance">'+esc(rstate.next)+'</p>':'')+
         '</div>'+
         '<button type="button" class="primary-action" data-resume-work>Resume Work →</button>'+
       '</div></div>';
@@ -843,8 +851,16 @@ var RUN_RESULT_WORKFLOWS=["in-progress","blocked","review","done"];
 function claimedWorkstream(x){
   return !!x&&String(x.workflow||"").replace(/^workflow:/,"")==="in-progress";
 }
-function runResultAvailable(x){
+function runResultAvailable(x,synthetic){
   if(!x||!x.issue_id)return false;
+  /* Preview/demo data never reaches a live host, so `renderLaunch` refuses
+     every non-launch Workstream in synthetic mode BEFORE it consults
+     `followable` -- the read-only follow path is unreachable there. Offering
+     the control anyway would put a button in front of the operator that can
+     only answer "this Workstream has no authorized launch": a dead control
+     making an authority claim, which is the pair of defects this delivery
+     removes rather than relocates. */
+  if(synthetic)return false;
   return RUN_RESULT_WORKFLOWS.indexOf(String(x.workflow||"").replace(/^workflow:/,""))!==-1;
 }
 function correlated(x) {
@@ -979,7 +995,7 @@ function renderWork(winEl,ctx){
                or is still running, the surface now offers the read-only run
                result. It opens the same read-only projection the launch app
                renders; it is not a launch and offers none. */
-            (runResultAvailable(x)
+            (runResultAvailable(x,!!(s.model&&s.model.synthetic))
               ?'<button type="button" class="'+(primaryKind?'chrome-button':'primary-action')+'" data-open-run-result>'+
                  (claimedWorkstream(x)?'Follow the running work →':'See what the last run did →')+'</button>'
               :'')+
@@ -1162,8 +1178,22 @@ function propagateContext(){
      dead-control shape this delivery removes. */
   var st=q("[data-start-body]");
   if(st)OSRenderer.render("start",st,ctx);
+  /* The launch window body is the one window body that costs a network read:
+     rendering it starts `api/runs` and, for a live Run, a 5s freshness
+     poller. #469 widened the read path from claimed-only to every terminal
+     Workstream, and most Workstreams are `done`, so rendering it while the
+     window is closed would fetch on nearly every selection, refresh and
+     resize. It is rendered when its window is actually open; the visible
+     deep surface has already been rendered by `renderDeep` above and is
+     unaffected. Closing the window stops the poller rather than leaving it
+     writing into a hidden node. */
   var l=q("[data-launch-body]");
-  if(l&&!OSRenderer.render("launch",l,ctx))l.innerHTML=x?empty("Launch review is unavailable for this Workstream."):empty("Select a Workstream to review and start a Run.");
+  if(l&&state.ui.open.launch){
+    if(!OSRenderer.render("launch",l,ctx))l.innerHTML=x?empty("Launch review is unavailable for this Workstream."):empty("Select a Workstream to review and start a Run.");
+  }else if(l){
+    if(typeof l._cortxtStopLiveRun==="function")l._cortxtStopLiveRun();
+    l.innerHTML="";
+  }
   var p=q("[data-policies-body]");
   if(p)p.innerHTML=x?'':'';
   qa("[data-studio-frame]").forEach(function(frame){
@@ -1254,12 +1284,15 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
     };
     window.ShellCommandHandlers=commandHandlers;
     /* The app-side bus (`OSRenderer.emit("command", ...)`) had no subscriber at
-       all. Bridging it to the same typed handler map keeps one router rather
-       than growing a second one, and an unknown command still fails closed. */
-    if(typeof OSRenderer!=="undefined"&&OSRenderer.on){
+       all. It is bridged through `ShellCommands.dispatch` -- the same router
+       every other caller uses -- rather than indexing the handler map
+       directly: dispatch checks the sanctioned APP_COMMANDS allow-list and
+       normalizes a non-object payload, and routing around it would leave two
+       routers free to disagree about which commands exist. An unknown or
+       unlisted command fails closed and never navigates. */
+    if(typeof OSRenderer!=="undefined"&&OSRenderer.on&&typeof ShellCommands!=="undefined"){
       OSRenderer.on("command",function(p){
-        var name=p&&p.command;
-        if(name&&Object.prototype.hasOwnProperty.call(commandHandlers,name))commandHandlers[name](p);
+        ShellCommands.dispatch(p&&p.command,p,commandHandlers);
       });
     }
     /* Read-only shell services an app renderer may call after its own
@@ -1346,5 +1379,9 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
     if(workEl)workEl.innerHTML=empty("Cortxt OS could not establish authoritative state. The shell failed closed: no evidence or decision action is exposed.");
   });
 }
-if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,migrateSavedState:migrateSavedState,migrateWorkConsole:migrateWorkConsole,LEGACY_APP_ALIASES:LEGACY_APP_ALIASES,isValidAttentionItem:isValidAttentionItem,AttentionItemProjection:AttentionItemProjection};
+/* #469: `runResultAvailable` decides whether the run-result control is
+   offered at all. It was reachable only by reading the source, which is
+   how it shipped offering a control that preview mode can never honour.
+   Exported so it can be exercised, exactly as the layout maths are. */
+if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,migrateSavedState:migrateSavedState,migrateWorkConsole:migrateWorkConsole,LEGACY_APP_ALIASES:LEGACY_APP_ALIASES,isValidAttentionItem:isValidAttentionItem,AttentionItemProjection:AttentionItemProjection,runResultAvailable:runResultAvailable,RUN_RESULT_WORKFLOWS:RUN_RESULT_WORKFLOWS};
 })();

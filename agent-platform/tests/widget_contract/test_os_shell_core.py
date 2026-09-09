@@ -979,7 +979,12 @@ def test_command_router_defines_typed_commands():
         assert cmd in SHELL_COMMANDS
     assert '"exit-workspace"' not in SHELL_COMMANDS
     assert 'dispatch: function (command, payload, handlers)' in SHELL_COMMANDS
-    assert 'if (!APP_COMMANDS[command]) return false;' in SHELL_COMMANDS
+    # The allow-list must be consulted as an OWN property. Plain indexing let
+    # "constructor" (and every other Object.prototype key) pass as a
+    # sanctioned command and then called the inherited function; #469 routes
+    # the app-side `command` bus through here, so app-supplied names reach it.
+    assert 'if (!has(APP_COMMANDS, command) || !APP_COMMANDS[command]) return false;' in SHELL_COMMANDS
+    assert 'if (!has(handlers, command)) return false;' in SHELL_COMMANDS
 
 
 def test_deep_link_parser_supports_app_ws_and_record():

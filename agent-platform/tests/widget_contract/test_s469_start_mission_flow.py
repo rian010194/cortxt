@@ -211,7 +211,10 @@ def test_command_bus_has_a_subscriber(shell_source):
     had no listener at all. Something must now subscribe to it and route
     into the same typed handler map, or the fix only half-exists."""
     assert 'OSRenderer.on("command",function(p){' in shell_source
-    assert "commandHandlers[name](p)" in shell_source
+    # Routed through the sanctioned router, not around it: dispatch checks the
+    # APP_COMMANDS allow-list and normalizes the payload. Indexing the handler
+    # map directly would leave two routers free to disagree about what exists.
+    assert "ShellCommands.dispatch(p&&p.command,p,commandHandlers)" in shell_source
 
 
 # --- registration: apps.json and both index.html carriers ------------------
@@ -273,7 +276,36 @@ LAUNCH = WIDGET / "app-renderer-work-launch.js"
 SITE_LAUNCH = MIRROR / "app-renderer-work-launch.js"
 
 
-@pytest.mark.parametrize("path", [LAUNCH, SITE_LAUNCH], ids=["widget", "site-mirror"])
+# These drive the module through node, so they load the `agent-platform/widget`
+# copy only: `site/package.json` declares `"type": "module"`, which makes node
+# treat the byte-identical mirror as ESM, where `module.exports` never runs and
+# `require` yields `{}`. The mirror carries these properties through the byte
+# parity assertion below, not through a second node run.
+
+NOTICE_SCRIPT = """
+const l = require(%(path)s);
+console.log(JSON.stringify({
+  noLaunch: l.noLaunchNotice("none"),
+  noRunRecord: l.noRunRecordNotice(),
+  unavailable: l.runProjectionUnavailableNotice(),
+  followable: {
+    claimed:   l.followable({workflow: "in-progress"}),
+    prefixed:  l.followable({workflow: "workflow:blocked"}),
+    blocked:   l.followable({workflow: "blocked"}),
+    review:    l.followable({workflow: "review"}),
+    done:      l.followable({workflow: "done"}),
+    ready:     l.followable({workflow: "ready"}),
+    inbox:     l.followable({workflow: "inbox"}),
+    unknown:   l.followable({workflow: "unknown"}),
+    missing:   l.followable({}),
+    nullish:   l.followable(null),
+  },
+}));
+"""
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+@pytest.mark.parametrize("path", [LAUNCH], ids=["widget"])
 def test_a_failed_run_projection_is_not_reported_as_an_authority_statement(path):
     """#469 widens this path from claimed-only to every terminal Workstream,
     so the control now reaches it for many more missions. A caught fetch
@@ -281,31 +313,44 @@ def test_a_failed_run_projection_is_not_reported_as_an_authority_statement(path)
     telling the operator a fact about their mandate on the strength of a
     failed GET. Verified live: when the host died mid-request the surface
     said exactly that about a Workstream whose Run record was intact."""
-    source = path.read_text(encoding="utf-8")
-    assert "runProjectionUnavailableNotice" in source
-    assert ".catch(function () { winEl.innerHTML = runProjectionUnavailableNotice(); });" in source
-    assert "nothing about its authority has been" in source
+    out = _run_node(NOTICE_SCRIPT % {"path": json.dumps(str(path))})
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert "could not be read" in got["unavailable"]
+    assert "nothing about its authority has been determined" in got["unavailable"]
+    assert "no authorized launch" not in got["unavailable"]
 
 
-@pytest.mark.parametrize("path", [LAUNCH, SITE_LAUNCH], ids=["widget", "site-mirror"])
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+@pytest.mark.parametrize("path", [LAUNCH], ids=["widget"])
 def test_no_recorded_run_is_named_as_such_not_as_a_missing_launch(path):
     """The Work control appears for any workflow in RUN_RESULT_WORKFLOWS, which
     does not prove a Run exists. When none does, the surface must say the Run
     record is missing rather than making a claim about launch authority."""
-    source = path.read_text(encoding="utf-8")
-    assert "noRunRecordNotice" in source
-    assert "if (!runs.length) { winEl.innerHTML = noRunRecordNotice(); return; }" in source
+    out = _run_node(NOTICE_SCRIPT % {"path": json.dumps(str(path))})
+    got = json.loads(out.stdout)
+    assert "No Run is recorded" in got["noRunRecord"]
+    assert "no authorized launch" not in got["noRunRecord"]
+    # The three refusals must remain distinguishable from one another.
+    assert len({got["noLaunch"], got["noRunRecord"], got["unavailable"]}) == 3
 
 
-@pytest.mark.parametrize("path", [LAUNCH, SITE_LAUNCH], ids=["widget", "site-mirror"])
-def test_the_launch_gate_itself_is_unchanged(path):
-    """Neither new message grants anything. The dispatch-request fetch stays
-    gated solely on a typed `launch` next action, and the widened read path
-    still refuses every Workstream that is neither claimed nor terminal."""
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+@pytest.mark.parametrize("path", [LAUNCH], ids=["widget"])
+def test_the_widened_read_path_is_bounded(path):
+    """`followable` is the entire boundary of the widening. A Workstream that
+    never ran anything must not become readable, and neither notice may grant
+    anything: the dispatch-request fetch stays gated on a typed `launch` next
+    action, which `followable` is never consulted for."""
+    out = _run_node(NOTICE_SCRIPT % {"path": json.dumps(str(path))})
+    f = json.loads(out.stdout)["followable"]
+    for k in ("claimed", "prefixed", "blocked", "review", "done"):
+        assert f[k] is True, f"{k} should be readable"
+    for k in ("ready", "inbox", "unknown", "missing", "nullish"):
+        assert f[k] is False, f"{k} must not become readable"
     source = path.read_text(encoding="utf-8")
     assert 'if (typed !== "launch" ||' in source
     assert "if (!followable(x)) { winEl.innerHTML = noLaunchNotice(typed); return; }" in source
-    assert 'var TERMINAL_WORKFLOWS = ["blocked", "review", "done"];' in source
 
 
 # --- site mirror parity -----------------------------------------------------
@@ -326,3 +371,168 @@ def test_site_mirror_is_byte_identical_to_the_agent_platform_copy():
     on which surface served the page -- exactly the kind of silent drift the
     rest of the suite already guards other shell files against."""
     assert RENDERER.read_bytes() == SITE_RENDERER.read_bytes()
+
+
+# --- behavioral: the controls the source-grep tests could not see -----------
+#
+# The review that found the preview-mode dead control noted that every click
+# handler and the run-result gate were asserted only by grepping the source
+# for literals. These drive the real functions instead.
+
+RUN_RESULT_SCRIPT = """
+const w = require(%(path)s);
+const cases = [
+  ["blocked live",   {id:"WS-1", issue_id:"o/r#1", workflow:"blocked"},     false],
+  ["review live",    {id:"WS-2", issue_id:"o/r#2", workflow:"review"},      false],
+  ["done live",      {id:"WS-3", issue_id:"o/r#3", workflow:"done"},        false],
+  ["running live",   {id:"WS-4", issue_id:"o/r#4", workflow:"in-progress"}, false],
+  ["prefixed live",  {id:"WS-5", issue_id:"o/r#5", workflow:"workflow:blocked"}, false],
+  ["ready live",     {id:"WS-6", issue_id:"o/r#6", workflow:"ready"},       false],
+  ["inbox live",     {id:"WS-7", issue_id:"o/r#7", workflow:"inbox"},       false],
+  ["unknown live",   {id:"WS-8", issue_id:"o/r#8", workflow:"unknown"},     false],
+  ["no issue live",  {id:"WS-9", workflow:"blocked"},                       false],
+  ["blocked synth",  {id:"WS-1", issue_id:"o/r#1", workflow:"blocked"},     true],
+  ["review synth",   {id:"WS-2", issue_id:"o/r#2", workflow:"review"},      true],
+  ["running synth",  {id:"WS-4", issue_id:"o/r#4", workflow:"in-progress"}, true],
+];
+const out = {};
+for (const [name, x, synthetic] of cases) out[name] = w.runResultAvailable(x, synthetic);
+console.log(JSON.stringify(out));
+"""
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_run_result_control_is_never_offered_in_preview_mode():
+    """The defect this covers: `renderLaunch` refuses every non-launch
+    Workstream in synthetic mode *before* it consults `followable`, so the
+    read-only follow path is unreachable there. Offering the control anyway
+    puts a button in front of the operator that can only answer "this
+    Workstream has no authorized launch" -- a dead control that also makes an
+    authority claim on a path that never asked about authority. The site
+    mirror serves exactly this mode from `fixtures/workstreams.json`."""
+    out = _run_node(RUN_RESULT_SCRIPT % {"path": json.dumps(str(SHELL))})
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    for name in ("blocked synth", "review synth", "running synth"):
+        assert got[name] is False, f"{name} offers a control preview mode cannot honour"
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_run_result_control_is_offered_for_exactly_the_workflows_with_a_run():
+    """A live Workstream that has been worked on gets the control; one that
+    never ran anything, or carries no Issue, does not -- otherwise the control
+    dead-ends on a Workstream with no Run to show."""
+    out = _run_node(RUN_RESULT_SCRIPT % {"path": json.dumps(str(SHELL))})
+    got = json.loads(out.stdout)
+    for name in ("blocked live", "review live", "done live", "running live", "prefixed live"):
+        assert got[name] is True, f"{name} should reach its run result"
+    for name in ("ready live", "inbox live", "unknown live", "no issue live"):
+        assert got[name] is False, f"{name} has no Run and must offer no control"
+
+
+CLICK_SCRIPT = """
+const m = require(%(path)s);
+const missions = [{id: "WS-1", title: "One", workflow: "ready"}];
+const state = {model: {repo: "org/repo", model: {}, workstreams: missions}};
+const rows = [];
+function stubButton(dataset) {
+  const handlers = [];
+  return {dataset, addEventListener: (_e, fn) => handlers.push(fn), click: () => handlers.forEach(f => f())};
+}
+const el = {
+  innerHTML: "",
+  querySelectorAll: function (sel) {
+    if (sel === "[data-mission-open]") return rows;
+    return [];
+  },
+};
+const calls = [];
+global.window = global;
+global.ShellCommandHandlers = {
+  "switch-workstream": p => calls.push(["switch", p.workstreamId]),
+  "open-app": p => calls.push(["open", p.appId]),
+};
+rows.push(stubButton({missionOpen: %(clicked)s}));
+m.render(el, {state});
+rows[0].click();
+console.log(JSON.stringify(calls));
+"""
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_clicking_a_mission_selects_it_and_opens_work():
+    """The whole point of the app. Nothing asserted this: the earlier stub
+    returned [] for every selector, so a misspelled payload key would have
+    shipped four more dead controls with the suite green."""
+    out = _run_node(CLICK_SCRIPT % {"path": json.dumps(str(RENDERER)), "clicked": '"WS-1"'})
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == [["switch", "WS-1"], ["open", "work"]]
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_a_row_whose_mission_is_gone_navigates_nowhere():
+    """`switch-workstream` fails closed on an unknown id, but it does so
+    silently -- so an unconditional `open-app` would land the operator in Work
+    looking at the previously selected Workstream, believing this row opened
+    it. The stale row must navigate nowhere at all."""
+    out = _run_node(CLICK_SCRIPT % {"path": json.dumps(str(RENDERER)), "clicked": '"WS-GONE"'})
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == []
+
+
+DISPATCH_SCRIPT = """
+const c = require(%(path)s);
+const seen = [];
+const handlers = {
+  "create-workstream": p => seen.push(["create", p]),
+  "open-external": p => seen.push(["external", p]),
+};
+const r = {
+  listed:      c.dispatch("create-workstream", {command: "create-workstream"}, handlers),
+  unknown:     c.dispatch("definitely-not-a-command", {}, handlers),
+  proto:       c.dispatch("constructor", {}, handlers),
+  nonString:   c.dispatch(null, {}, handlers),
+  badPayload:  c.dispatch("create-workstream", "not-an-object", handlers),
+};
+console.log(JSON.stringify({r, seen}));
+"""
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_command_bus_is_allow_listed_by_the_same_router_as_everything_else():
+    """The bridge routes through `ShellCommands.dispatch` rather than indexing
+    the handler map, so `create-workstream` has to be in APP_COMMANDS to work
+    at all -- one allow-list, not two that can disagree. Unknown names,
+    prototype keys and non-string commands still fail closed, and a
+    non-object payload is normalized rather than passed through."""
+    shell_commands = WIDGET / "shell-commands.js"
+    out = _run_node(DISPATCH_SCRIPT % {"path": json.dumps(str(shell_commands))})
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["r"]["listed"] is True, "create-workstream is not in APP_COMMANDS"
+    assert got["r"]["unknown"] is False
+    assert got["r"]["proto"] is False
+    assert got["r"]["nonString"] is False
+    assert got["r"]["badPayload"] is True
+    assert got["seen"][-1] == ["create", {}], "a non-object payload must be normalized"
+
+
+@pytest.mark.parametrize("shell_path", [SHELL, SITE_SHELL], ids=["widget", "site-mirror"])
+def test_the_launch_window_body_is_only_rendered_while_its_window_is_open(shell_path):
+    """Rendering the launch body costs a network read: `api/runs` plus, for a
+    live Run, a 5s poller. #469 widened that path from claimed-only to every
+    terminal Workstream and most Workstreams are `done`, so rendering it while
+    the window is closed would fetch on nearly every selection and refresh.
+    Closing the window must also stop the poller rather than leave it writing
+    into a hidden node.
+
+    This is a source assertion: `propagateContext` needs a real document and
+    is not exported, so the browser is the only place the rendered result can
+    be observed. `openWindow` sets `state.ui.open[id]` before it calls
+    `renderAll`, which is what makes the gate open in time."""
+    source = shell_path.read_text(encoding="utf-8")
+    assert "if(l&&state.ui.open.launch){" in source
+    assert 'if(typeof l._cortxtStopLiveRun==="function")l._cortxtStopLiveRun();' in source
+    ordering = source.index("state.ui.open[a.id]=true")
+    assert ordering < source.index("renderAll();", ordering), \
+        "openWindow must mark the window open before it renders"

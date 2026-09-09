@@ -4,8 +4,8 @@
    -------------------
    Every "New Workstream" control in the shell emitted
    `OSRenderer.emit("command", {command:"create-workstream"})`, and nothing
-   anywhere subscribed to the `command` event. Three buttons on two surfaces
-   did nothing at all when clicked. The flow the operator is supposed to walk --
+   anywhere subscribed to the `command` event. Three data attributes across
+   four call sites, on two surfaces, did nothing at all when clicked. The flow the operator is supposed to walk --
    start a mission, understand its terms, launch it, follow it, review it --
    had no first step.
 
@@ -224,10 +224,19 @@
         var handlers = global.ShellCommandHandlers;
         if (!handlers) return;
         /* Route through the shell's own typed command handlers rather than
-           reaching into its state: `switch-workstream` already validates that
-           the id is one the shell knows, so an id from a stale render cannot
-           select something that no longer exists. */
-        handlers["switch-workstream"]({ workstreamId: b.dataset.missionOpen });
+           reaching into its state. `switch-workstream` validates the id and
+           fails closed on one it does not know -- but it fails closed
+           SILENTLY, and `open-app` would then land the operator in Work
+           looking at whatever was selected before, believing this row opened.
+           `s` is the shell's live state object, so re-reading it here is a
+           check against the current projection, not the one this render saw.
+           A row whose mission is gone re-renders the list instead of
+           navigating to the wrong one. */
+        var id = b.dataset.missionOpen;
+        var current = (s.model && s.model.workstreams) || [];
+        var known = current.some(function (w) { return w && w.id === id; });
+        if (!known) { renderStart(winEl, ctx); return; }
+        handlers["switch-workstream"]({ workstreamId: id });
         handlers["open-app"]({ appId: "work" });
       });
     });

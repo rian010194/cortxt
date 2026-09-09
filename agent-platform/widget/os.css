@@ -92,6 +92,8 @@ button,input{font:inherit}button{color:inherit}
 .resume-card .rc-title{font-size:17px;font-weight:650;letter-spacing:-.01em;margin:0 0 4px}
 .resume-card .rc-outcome{color:var(--muted);font-size:12.5px;margin:0 0 2px;line-height:1.45}
 .resume-card .rc-meta{color:var(--dim);font-size:11px;margin:0}
+/* #469: the plain-language next step, under the technical facts. */
+.resume-card .rc-guidance{color:var(--muted);font-size:12px;margin:.25rem 0 0}
 .primary-action{border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:10px 16px;cursor:pointer;font-weight:650;font-size:13px}
 .primary-action:focus-visible{outline:2px solid var(--text);outline-offset:2px}
 .attention-preview{display:grid;gap:8px}

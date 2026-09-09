@@ -625,7 +625,7 @@
         var runs = ((d && d.runs) || []).filter(function (r) {
           return r && (!r.issue_ref || r.issue_ref === issue);
         });
-        if (!runs.length) { winEl.innerHTML = noRunRecordNotice(); return; }
+        if (!runs.length) { stopAnyLiveRun(winEl); winEl.innerHTML = noRunRecordNotice(); return; }
         /* The heading must not say "in progress" about a Run that has already
            stopped; the operator reading a refusal needs the surface to agree
            with what it is about to show them. */
@@ -639,7 +639,10 @@
           "</p>";
         attachLiveRun(winEl, ctx, issue, null);
       })
-      .catch(function () { winEl.innerHTML = runProjectionUnavailableNotice(); });
+      .catch(function () {
+        stopAnyLiveRun(winEl);
+        winEl.innerHTML = runProjectionUnavailableNotice();
+      });
   }
 
   /* A claim is what makes a Run exist to follow: the workflow label the
@@ -684,6 +687,16 @@
      operator a fact about their mandate on the strength of a failed GET.
      Neither message grants anything; both refuse. They differ only in
      naming what actually happened. */
+  /* Replacing the panel must also stop whatever was polling into it. Both
+     branches below can be reached while a live Run is being followed -- the
+     Issue moves to `review` mid-poll, or one `api/runs` read fails
+     transiently -- and without this the 5s poller keeps writing into a
+     detached node until it happens to read a terminal status. `attachLiveRun`
+     already does exactly this before it mounts. */
+  function stopAnyLiveRun(winEl) {
+    if (winEl && typeof winEl._cortxtStopLiveRun === "function") winEl._cortxtStopLiveRun();
+  }
+
   function noRunRecordNotice() {
     return empty(
       "No Run is recorded against this Workstream's Issue, so there is no run " +
@@ -740,7 +753,16 @@
      browser path is untouched: no OSRenderer, no DOM and no fetch is involved
      in either export. */
   if (typeof module === "object" && module.exports) {
+    /* #469 additions: `followable` is the whole boundary of the widened
+       read path, and the two notices are what an operator is told when there
+       is nothing to show. All three were previously assertable only by
+       scanning this file's text for a literal. */
     module.exports = { terminalVerdict: terminalVerdict, verdictBlock: verdictBlock,
-                       WORKER_OUTCOME_TERMS: WORKER_OUTCOME_TERMS };
+                       WORKER_OUTCOME_TERMS: WORKER_OUTCOME_TERMS,
+                       followable: followable,
+                       TERMINAL_WORKFLOWS: TERMINAL_WORKFLOWS,
+                       noLaunchNotice: noLaunchNotice,
+                       noRunRecordNotice: noRunRecordNotice,
+                       runProjectionUnavailableNotice: runProjectionUnavailableNotice };
   }
 })();
