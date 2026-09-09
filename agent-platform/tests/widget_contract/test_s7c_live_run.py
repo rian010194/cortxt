@@ -416,8 +416,13 @@ def test_live_renderer_asset_is_versioned_for_host_restart_cache_safety():
     root = Path(__file__).resolve().parents[2]
     host_html = (root / "widget" / "index.html").read_text(encoding="utf-8")
     site_html = (root.parent / "site" / "public" / "widgets" / "index.html").read_text(encoding="utf-8")
-    marker = 'app-renderer-work-launch.js?v=20260908-w2'
+    # Pinned deliberately: the renderer is cached by the browser across host
+    # restarts, so a delivery that changes it must consciously bump the query
+    # and update this literal. #469 changes it again, hence w3.
+    marker = 'app-renderer-work-launch.js?v=20260909-w3'
     assert marker in host_html and marker in site_html
+    start = 'app-renderer-start-mission.js?v=20260909-w3'
+    assert start in host_html and start in site_html
 
 
 def test_live_renderer_replaces_prior_panel_and_stops_prior_poller():

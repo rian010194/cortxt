@@ -176,19 +176,33 @@ def test_ineligible_workstream_cannot_open_launch_by_deep_link():
     # #472 AC9 narrowed this invariant rather than dropping it, and this test
     # states exactly what survived. An ineligible Workstream still returns
     # before either dispatch loader, so it never fetches a mandate. The ONE
-    # exception is a Workstream that actually holds a claim: it may follow its
-    # own already-correlated Run read-only, because a reload during a Run
-    # otherwise leaves the operator with no way back to the live panel.
+    # exception is a Workstream with a Run of its own to read: it may follow
+    # that already-correlated Run read-only, because otherwise a reload during
+    # a Run -- or, since #469, a Run that has simply STOPPED -- leaves the
+    # operator with no way back to its result. A refused Run whose Issue has
+    # left `in-progress` is exactly the case the operator most needs to read.
     body = LAUNCH[LAUNCH.index("function renderLaunch(winEl, ctx)"):]
     body = body[:body.index("OSRenderer.register")]
     guard = body.index("renderRunOnly(")
     assert guard < body.index("loadSynthetic(")
     assert guard < body.index("loadLive(")
     assert "return;" in body[guard:body.index("loadSynthetic(")]
-    # The claim is the gate on that exception: an ineligible Workstream that
-    # holds no claim still causes no fetch at all.
-    assert "if (!claimed(x)) { winEl.innerHTML = noLaunchNotice(typed); return; }" in body
-    assert body.index("if (!claimed(x))") < guard
+    # `followable` is the gate on that exception: an ineligible Workstream with
+    # no Run of its own to read still causes no fetch at all.
+    assert "if (!followable(x)) { winEl.innerHTML = noLaunchNotice(typed); return; }" in body
+    assert body.index("if (!followable(x))") < guard
+    # And the widening is bounded. `followable` is a claim OR a terminal
+    # workflow -- never an open-ended default. A Workstream that has not run
+    # anything (inbox, ready, or no recorded workflow) must stay unfollowable,
+    # or "no fetch at all" would quietly become "a fetch for everything".
+    assert "function followable(x)" in LAUNCH
+    assert 'var TERMINAL_WORKFLOWS = ["blocked", "review", "done"];' in LAUNCH
+    followable = LAUNCH[LAUNCH.index("function followable(x)"):]
+    followable = followable[:followable.index("function noLaunchNotice(")]
+    assert "claimed(x)" in followable
+    assert "TERMINAL_WORKFLOWS.indexOf(wf) !== -1" in followable
+    for never in ("inbox", "ready", "unknown"):
+        assert never not in followable
     # And that read-only path reaches no mandate and no mutation. It DOES call
     # attachLiveRun, whose reads are asserted below -- the claim here is about
     # which endpoints are reachable, never about how many fetches happen.

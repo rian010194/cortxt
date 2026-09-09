@@ -743,6 +743,7 @@ function renderHome(winEl,ctx){
   }
   /* Returning entry with a selection: resume-first (S6b). */
   var resume=x;
+  var rstate=missionState(resume);
   var attention=attentionItems().filter(function(it){return it.requiresAttention});
   var recent=recentWorkstreams().filter(function(w){return w.id!==x.id}).slice(0,3);
   var html2='<div class="home-inner">'+
@@ -755,7 +756,9 @@ function renderHome(winEl,ctx){
         '<div class="rc-body">'+
           '<p class="rc-title">'+esc(resume.id)+' — '+esc(resume.title)+'</p>'+
           '<p class="rc-outcome">'+esc(resume.outcome)+'</p>'+
-          '<p class="rc-meta">'+esc(resume.workflow||"no workflow label")+(resume.phase?(" · "+esc(resume.phase)):"")+(resume.nextAction?(" · Next: "+esc(resume.nextAction)):"")+'</p>'+
+          '<p class="rc-meta" data-mission-state="'+esc(rstate?rstate.key:"unknown")+'">'+
+            esc(rstate?rstate.label:(resume.workflow||"no workflow label"))+
+            (rstate?(" · "+esc(rstate.next)):(resume.nextAction?(" · Next: "+esc(resume.nextAction)):""))+'</p>'+
         '</div>'+
         '<button type="button" class="primary-action" data-resume-work>Resume Work →</button>'+
       '</div></div>';
@@ -824,6 +827,26 @@ function actAuthorized(s, actionId) {
    A fixture (or a server response) that carries another Workstream's Issue,
    Run, or evidence is a correlation failure and must fail closed rather than
    be relabelled with the selected Workstream's id. */
+/* #469: one plain-language mission state for the whole shell. The vocabulary
+   lives in app-renderer-start-mission.js (MissionState) so Start, Home and Work
+   say the same words for the same state. If that renderer is absent the shell
+   degrades to the raw workflow label rather than inventing a second mapping. */
+function missionState(x){
+  if(typeof MissionState!=="undefined"&&MissionState.missionState)return MissionState.missionState(x);
+  return null;
+}
+/* #469: which Workstreams have a Run of their own to read. Mirrors
+   `followable` in app-renderer-work-launch.js -- a claim, or a workflow that
+   has already reached a terminal state. A Workstream that never ran anything
+   is offered nothing, so the control never appears where it would dead-end. */
+var RUN_RESULT_WORKFLOWS=["in-progress","blocked","review","done"];
+function claimedWorkstream(x){
+  return !!x&&String(x.workflow||"").replace(/^workflow:/,"")==="in-progress";
+}
+function runResultAvailable(x){
+  if(!x||!x.issue_id)return false;
+  return RUN_RESULT_WORKFLOWS.indexOf(String(x.workflow||"").replace(/^workflow:/,""))!==-1;
+}
 function correlated(x) {
   if (!x || !x.issue_id) return false;
   var runs = x.runs || [], evidence = x.evidence || [];
@@ -907,6 +930,9 @@ function renderWork(winEl,ctx){
   var doneCount=milestones.filter(function(m){return m.done}).length;
   var pct=milestones.length?Math.round(doneCount/milestones.length*100):0;
   var phaseClass=phase.toLowerCase().indexOf("block")>=0?"blocked":(phase.toLowerCase().indexOf("accept")>=0||phase.toLowerCase().indexOf("done")>=0?"done":"");
+  /* The header leads with what the state MEANS for the operator; the raw
+     workflow label stays beside it as the technical fact it is. */
+  var mstate=missionState(x);
   var html='<div class="work-inner">'+
     '<div class="work-head">'+
       '<div>'+
@@ -914,10 +940,12 @@ function renderWork(winEl,ctx){
         '<h1 class="wh-title">'+esc(x.title)+'</h1>'+
         '<p class="wh-outcome">'+esc(x.outcome)+'</p>'+
       '</div>'+
-      '<div class="wh-status"><span class="work-phase '+phaseClass+'">'+esc(phase)+'</span><small style="color:var(--dim);font-size:11px">'+esc(x.workflow||"")+'</small>'+
+      '<div class="wh-status"><span class="work-phase '+phaseClass+'" data-mission-state="'+esc(mstate?mstate.key:"unknown")+'">'+esc(mstate?mstate.label:phase)+'</span>'+
+        '<small style="color:var(--dim);font-size:11px" data-work-workflow-label>'+esc(x.workflow||"no workflow label")+'</small>'+
         '<button type="button" class="chrome-button" data-work-refresh>Refresh authority</button>'+
         '<small data-work-refresh-note style="color:var(--dim);font-size:11px">Source '+esc((s.model&&s.model.status)||"unknown")+'</small></div>'+
     '</div>'+
+    (mstate?'<p class="work-meaning" data-mission-meaning>'+esc(mstate.meaning)+'</p>':'')+
     '<p class="work-mandate"><b>Mandate:</b> '+esc(x.mandate||x.acceptance_criteria||"No mandate recorded.")+'</p>'+
     '<div class="work-layout">'+
       '<div class="work-col">'+
@@ -945,6 +973,16 @@ function renderWork(winEl,ctx){
                 :(primaryKind==="decision"
                   ?'<button type="button" class="primary-action" data-deep-open="decisions">'+esc(nextLabel||"Open Decisions →")+'</button>'
                   :'')))+
+            /* #469: a Run that has already stopped had no control at all --
+               its result was reachable only by hand-editing the deep link.
+               For exactly the missions whose Run ended (blocked, review, done)
+               or is still running, the surface now offers the read-only run
+               result. It opens the same read-only projection the launch app
+               renders; it is not a launch and offers none. */
+            (runResultAvailable(x)
+              ?'<button type="button" class="'+(primaryKind?'chrome-button':'primary-action')+'" data-open-run-result>'+
+                 (claimedWorkstream(x)?'Follow the running work →':'See what the last run did →')+'</button>'
+              :'')+
             (primaryKind==="decision"?'':'<button type="button" class="chrome-button" data-deep-open="decisions">Open Decisions</button>')+
             '<button type="button" class="chrome-button" data-deep-open="evidence">Open Evidence</button>'+
             '<button type="button" class="chrome-button" data-deep-open="execution">Execution Inspector</button>'+
@@ -992,6 +1030,12 @@ function renderWork(winEl,ctx){
     });
   });
   qa("[data-launch-run]",winEl).forEach(function(b){
+    b.addEventListener("click",function(){openDeep("launch")});
+  });
+  qa("[data-open-run-result]",winEl).forEach(function(b){
+    /* Same app, read-only branch: the launch renderer refuses to fetch a
+       dispatch request for a Workstream that is not launchable, and shows the
+       correlated Run's record instead. No launch affordance is created here. */
     b.addEventListener("click",function(){openDeep("launch")});
   });
   qa("[data-work-refresh]",winEl).forEach(function(b){
@@ -1112,6 +1156,12 @@ function propagateContext(){
   if(d&&!OSRenderer.render("decisions",d,ctx))d.innerHTML=x?'<span class="eyebrow">'+esc(x.id)+'</span><h3>'+esc(x.title)+'</h3><p>'+(x.decision?esc(x.decision.summary):"No authoritative decision is pending for this Workstream.")+'</p>':empty("Select a Workstream to project its decision.");
   var e=q("[data-evidence-body]");
   if(e&&!OSRenderer.render("evidence",e,ctx))e.innerHTML=x?'<span class="eyebrow">'+esc(x.id)+'</span><h3>Evidence</h3><div class="projection-list">'+(x.evidence.length?x.evidence.map(function(ev){return'<article><strong>'+esc(ev.title)+'</strong><p>'+esc(ev.detail)+'</p></article>'}).join(""):empty("No authoritative evidence is attached."))+'</div>':empty("Select a Workstream to project its evidence.");
+  /* #469: Start is a window as well as a deep surface. `openWindow("start")`
+     is reachable from the launcher and from the deep window control, and a
+     window whose body is never rendered would open empty -- the same
+     dead-control shape this delivery removes. */
+  var st=q("[data-start-body]");
+  if(st)OSRenderer.render("start",st,ctx);
   var l=q("[data-launch-body]");
   if(l&&!OSRenderer.render("launch",l,ctx))l.innerHTML=x?empty("Launch review is unavailable for this Workstream."):empty("Select a Workstream to review and start a Run.");
   var p=q("[data-policies-body]");
@@ -1196,8 +1246,22 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
       },
       "open-window":function(p){if(p&&p.appId)openWindow(migrateWorkConsole(p.appId))},
       "return-primary":function(){returnToPrimary()},
+      /* #469: "New Workstream" / "Create a Workstream" emitted this command
+         from three controls on two surfaces and NOTHING subscribed to the
+         `command` event, so every click was silently dropped. The flow's first
+         step now resolves to the app that owns it. */
+      "create-workstream":function(){openDeep("start")},
     };
     window.ShellCommandHandlers=commandHandlers;
+    /* The app-side bus (`OSRenderer.emit("command", ...)`) had no subscriber at
+       all. Bridging it to the same typed handler map keeps one router rather
+       than growing a second one, and an unknown command still fails closed. */
+    if(typeof OSRenderer!=="undefined"&&OSRenderer.on){
+      OSRenderer.on("command",function(p){
+        var name=p&&p.command;
+        if(name&&Object.prototype.hasOwnProperty.call(commandHandlers,name))commandHandlers[name](p);
+      });
+    }
     /* Read-only shell services an app renderer may call after its own
        operator-gated action completes. Not an action port and not a mutation:
        `refreshAuthority` re-reads the same authoritative projection the shell
