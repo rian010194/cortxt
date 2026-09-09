@@ -34,12 +34,27 @@ def _run(tmp_path, run_id="run-test", mutating=False, **extra):
 
 
 def _adapter(tmp_path, *, status="succeeded", stdout="", stderr="", exit_code=0):
-    return HermesFreeAdapter(
-        invoke_hermes=lambda profile, prompt, timeout_seconds, model=None,
-        provider=None, cwd=None, session_id=None: {
+    def invoker(profile, prompt, timeout_seconds, model=None, provider=None,
+                cwd=None, session_id=None, usage_file=None):
+        # W6: `hermes-free` declares a structured completion channel, so the
+        # real adapter passes a per-invocation report path on every call and
+        # the classification consults it before attestation. A double that
+        # impersonates a successful run must both accept the path and write a
+        # `completed` report to it, or it would block the very success it is
+        # meant to stand in for (plan 3.1 / design 1.3: a test double does not
+        # set the production contract).
+        if status == "succeeded" and usage_file is not None:
+            from pathlib import Path
+            import json
+            Path(usage_file).write_text(
+                json.dumps({"completed": True, "failed": False, "report_version": 1}),
+                encoding="utf-8")
+        return {
             "status": status, "exit_code": exit_code, "stdout": stdout,
             "stderr": stderr, "elapsed_seconds": 0.1, "session_id": None,
-        },
+        }
+    return HermesFreeAdapter(
+        invoke_hermes=invoker,
         log_dir=tmp_path / "logs",
     )
 

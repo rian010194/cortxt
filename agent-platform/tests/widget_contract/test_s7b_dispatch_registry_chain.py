@@ -199,11 +199,24 @@ def test_eligible_engine_is_actually_dispatchable_through_real_registry(tmp_path
     launcher dispatch agree, and a confirmed launch completes end-to-end
     through dispatch_async -> the registered hermes-free adapter."""
     # Inject the shared invoker result into the REAL registry entry.
-    monkeypatch.setitem(ADAPTER_REGISTRY, "hermes-free", HermesFreeAdapter(
-        invoke_hermes=lambda profile, prompt, timeout_seconds, model=None, provider=None, cwd=None, session_id=None: {
+    # W6: `hermes-free` declares a structured channel, so the fake must accept
+    # the per-invocation report path and write a `completed` report. Without
+    # one the run would be blocked `unverifiable`/`completion_report_missing`
+    # before the Evidence Gate ever sorted the `unattested` case this test is
+    # about (design 1.3: a test double may not set the production contract).
+    def _invoker(profile, prompt, timeout_seconds, model=None, provider=None,
+                 cwd=None, session_id=None, usage_file=None):
+        if usage_file is not None:
+            (Path(usage_file).parent).mkdir(parents=True, exist_ok=True)
+            Path(usage_file).write_text(
+                '{"completed": true, "failed": false, "report_version": 1}',
+                encoding="utf-8")
+        return {
             "status": "succeeded", "stdout": "proof result", "stderr": "",
             "elapsed_seconds": 0.1, "session_id": None,
-        },
+        }
+    monkeypatch.setitem(ADAPTER_REGISTRY, "hermes-free", HermesFreeAdapter(
+        invoke_hermes=_invoker,
         log_dir=tmp_path / "logs",
     ))
     app, store, dispatcher, gh = _real_launcher(tmp_path)

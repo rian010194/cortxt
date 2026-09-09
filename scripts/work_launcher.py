@@ -718,8 +718,6 @@ class WorkLauncher:
                   + DEFAULT_ARTIFACT_POLICY)
         limits = {"max_cost_usd": max_cost_usd, "max_runtime_seconds": max_runtime_seconds,
                   "max_parallel_workers": "operator policy", "delegation_depth": 0}
-        prompt = generate_worker_prompt(scope, acceptance_criteria, limits,
-                                        artifact_policy=policy)
         body = (f"## Scope\n\n{scope}\n\n## Acceptance criteria\n\n"
                 + "\n".join(f"- {x}" for x in acceptance_criteria)
                 + f"\n\n## Artifact policy\n\n{policy}\n")
@@ -734,6 +732,14 @@ class WorkLauncher:
              "limits": {k: str(v) for k, v in sorted(limits.items())},
              "artifact_paths": list(artifact_paths)},
             sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        # W6: the versioned worker instruction is built only now, once the
+        # issue and its approved request snapshot exist, so the identity block
+        # the worker is taught carries the real `issue_id` and `request_id`
+        # rather than None (which the builder omits rather than renders).
+        from routing.worker_contract import build_worker_instruction
+        prompt = build_worker_instruction(
+            scope=scope, acceptance_criteria=acceptance_criteria, limits=limits,
+            artifact_policy=policy, issue_id=issue_id, request_id=request_id)
         return self._launch(issue_id, prompt, runtime=runtime, worker_role=worker_role,
                             workflow=workflow, max_runtime_seconds=max_runtime_seconds,
                             create_worktree=True, mutating=True,

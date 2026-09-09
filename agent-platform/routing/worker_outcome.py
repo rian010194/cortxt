@@ -41,11 +41,19 @@ TRUNCATION_MARKERS: tuple[str, ...] = (
 
 #: The verb a worker may attest, and what each means. `completed` and
 #: `declined` can only ever arrive by attestation; the other two are what the
-#: adapter concludes when no attestation is available.
-OUTCOMES: tuple[str, ...] = ("completed", "declined", "no_result", "unattested")
+#: adapter concludes when no attestation is available. W6 adds the two the
+#: completion-report contract produces, neither of which a worker may claim:
+#: `incomplete` is the runtime's own verdict and `unverifiable` is the
+#: platform's admission that it could not get one.
+OUTCOMES: tuple[str, ...] = ("completed", "declined", "no_result", "unattested",
+                             "incomplete", "unverifiable")
 
-_ATTESTATION_PREFIX = "CORTXT-OUTCOME:"
-_ATTESTABLE: tuple[str, ...] = ("completed", "declined")
+# W6: the grammar is owned by `worker_contract`, which is also what the
+# instruction producer renders for the worker. Restating it here is how a
+# producer teaching `CORTXT-OUTCOME:` and a parser accepting something else
+# diverge silently, in the direction of `unattested`, on every Run.
+from .worker_contract import ATTESTABLE as _ATTESTABLE  # noqa: E402
+from .worker_contract import ATTESTATION_PREFIX as _ATTESTATION_PREFIX  # noqa: E402
 
 
 def classify_transport_outcome(stdout: str, stderr: str) -> str:

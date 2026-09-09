@@ -518,7 +518,16 @@ EVIDENCE_GATE_SCHEMA = {"type": ["string", "null"],
 # `null` covers a process-level failure that never reached a worker, and every
 # Run recorded before this field existed.
 WORKER_OUTCOME_SCHEMA = {"type": ["string", "null"],
-                         "enum": [None, "completed", "declined", "no_result", "unattested"]}
+                         "enum": [None, "completed", "declined", "no_result", "unattested",
+                                  "incomplete", "unverifiable"]}
+# State of the Run's structured report channel, carried through to the terminal
+# projection so a reviewer can distinguish a route that never had one
+# (`not_requested`) from one whose channel returned garbage (`unreadable` /
+# `invalid`). `null` means no report state was recorded; an unknown value is
+# never shown as if it were a known one.
+REPORT_STATE_SCHEMA = {"type": ["string", "null"],
+                       "enum": [None, "not_requested", "requested_but_missing",
+                                "unreadable", "invalid", "incomplete", "completed"]}
 # The one place run-produced CONTENT crosses into a projection the OS renders
 # (#499). Everything else in this module is content-free; this is deliberately
 # not, because the operator cannot decide on a change they cannot read.
@@ -587,6 +596,14 @@ RUN_TERMINAL_SCHEMA = {"type": "object", "additionalProperties": False,
                            "evidence_gate": EVIDENCE_GATE_SCHEMA,
                            "commit_evidence": COMMIT_EVIDENCE_SCHEMA,
                            "outcome": WORKER_OUTCOME_SCHEMA,
+                           # The state of the run's structured report channel.
+                           # Lets a reviewer distinguish a route that never had
+                           # a structured channel (`not_requested`) from one
+                           # whose channel returned garbage
+                           # (`unreadable`/`invalid`). Additive and optional;
+                           # `additionalProperties: False` requires it be
+                           # declared here to validate.
+                           "report_state": REPORT_STATE_SCHEMA,
                        }}
 RUN_ACTIVITY_ITEM_SCHEMA = {"type": "object", "additionalProperties": False,
                             "required": ["seq", "event_type", "timestamp", "detail", "source"],

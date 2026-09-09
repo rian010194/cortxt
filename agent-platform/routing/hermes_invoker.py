@@ -81,6 +81,7 @@ def invoke_hermes(
     provider: str | None = None,
     cwd: Path | None = None,
     session_id: str | None = None,
+    usage_file: "str | Path | None" = None,
 ) -> dict:
     """Run `hermes -p <profile> -z <prompt>` (with optional -m/--provider
     overrides) and return a structured result.
@@ -93,6 +94,20 @@ def invoke_hermes(
         stdout / stderr: captured text
         elapsed_seconds: wall-clock time for the call
         session_id: the session id if captured or provided, None otherwise
+
+    `usage_file` requests the hermes CLI's machine-readable completion report
+    at that path (`hermes_cli/_parser.py:116`; the CLI writes `completed`,
+    `failed`, provider/model identity and cost fields there). This layer only
+    asks for it and never reads it: whether a report was owed, and what its
+    absence means, is a property of the route and the process class that only
+    the caller knows (`routing.completion_report`). Passing the argument is
+    therefore not a claim that a report exists -- hermes' writer is
+    best-effort and swallows every exception (`hermes_cli/oneshot.py:165-166`).
+
+    The path is deliberately outside the worker's `cwd`-bound worktree. That
+    is a sanctioned platform write, created per invocation, and it is NOT
+    artifact evidence the worker produced -- recorded here rather than
+    discovered later.
 
     `status: "succeeded"` here means **only that the process exited 0**. It is
     not a claim that the worker did the task -- this layer has no run context
@@ -115,6 +130,8 @@ def invoke_hermes(
         argv += ["-m", model]
     if provider:
         argv += ["--provider", provider]
+    if usage_file:
+        argv += ["--usage-file", str(usage_file)]
 
     started = time.time()
     try:

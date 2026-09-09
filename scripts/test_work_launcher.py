@@ -125,6 +125,13 @@ def _run_checks():
     check("issue moved through claim to in-progress", gh.labels["o/r#7"] == ["workflow:in-progress"])
     check("worker prompt includes scope, AC, limits, and policy", all(x in prompts[0] for x in
           ("Build a safe launcher", "Tests pass", "max_runtime_seconds", "Artifact policy")))
+    # W6 (plan 3.4): the versioned worker instruction -- not the legacy
+    # `generate_worker_prompt` -- is what `work new` hands to the dispatch
+    # boundary. It carries the contract version and the attestation grammar.
+    check("work new prompt is the versioned worker instruction",
+          "worker.result.v1" in prompts[0] and "CORTXT-OUTCOME: completed" in prompts[0])
+    check("work new prompt carries the real request snapshot identity",
+          "sha256:" in prompts[0])
     check("list returns active run metadata", launcher.list_active()[0]["worker"] == "builder")
     try:
         w.generate_worker_prompt("bad \u00e5", ["ok"], {})

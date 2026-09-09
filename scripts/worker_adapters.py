@@ -24,8 +24,10 @@ implemented second. First concrete adapter: Hermes Researcher.
 """
 import contextlib
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -137,6 +139,158 @@ def _log_references(run: Run, log_path: "str | None") -> list[str]:
     return [f"run-log:{run.run_id}"]
 
 
+# --- W6: the one classification order, stated once ------------------------
+# Precedence, and the reason each step is where it is:
+#
+#   P1  Process facts first. Never launched, raised, or timed out -> there was
+#       no worker outcome to have. Nothing below runs. (W4's distinction: a
+#       runtime that never started is not a worker that failed.)
+#   P2  Then the runtime's own completion report, where one was owed. Its four
+#       refusing states are terminal.
+#   P3  Then attestation (`CORTXT-OUTCOME:`), which is worker-authored text.
+#   P4  Then transport (`no_result` / `unattested`).
+#   P5  `unattested` is not resolved here. On a mutating Run the Evidence Gate
+#       settles it, because a correlated commit outranks a worker's word about
+#       itself.
+#
+# The monotonicity invariant is structural, not a convention: when P2 refuses,
+# `_classify_terminated` returns before `read_attested_outcome` or
+# `classify_transport_outcome` is called at all. There is no code path on which
+# their result can be assigned to `outcome`. `_conflicting_claim` may read the
+# same stdout afterwards, but its return value can only reach `evidence` -- it
+# is never an input to status, outcome or error.
+
+
+def _report_state_for(runtime, process_class, *, report_path, invoked_after):
+    """Assign the report state for a terminated Run, or None where the
+    question does not arise.
+
+    `None` is recorded for a Run that never reached a runtime: there was no
+    report to owe, in the same way and for the same reason that `outcome` is
+    `None` there. It is not the same fact as `not_requested`, which says a
+    route that DID run has no structured channel, and the two must not share a
+    constant."""
+    from routing import completion_report as cr
+    if process_class in cr.NO_RUNTIME_CLASSES:
+        return None
+    if not cr.report_required(runtime, process_class):
+        return cr.not_requested(runtime)
+    if report_path is None:
+        # The route owes a report and the adapter offered no channel to write
+        # it on. That is a platform defect, and it fails closed as the same
+        # unverifiable refusal a missing file produces -- never as an exemption.
+        return cr.ReportOutcome(
+            cr.REQUESTED_BUT_MISSING,
+            "the route declares a structured channel and none was requested of the runtime")
+    return cr.read_completion_report(report_path, invoked_after=invoked_after)
+
+
+def _conflicting_claim(report_outcome, stdout):
+    """Did the worker claim an outcome its own runtime contradicts?
+
+    Returns a short, content-free note or None. This runs only AFTER the
+    verdict is settled and its value reaches `evidence` alone. A worker
+    attesting `completed` while its runtime reports the task unfinished is a
+    conflict, recorded as such; the structured field wins and the attestation
+    is discarded, not averaged."""
+    from routing import completion_report as cr
+    if report_outcome is None or not report_outcome.refusing:
+        return None
+    try:
+        from routing.worker_outcome import read_attested_outcome
+        attested = read_attested_outcome(stdout or "")
+    except Exception:  # noqa: BLE001 - an evidence note may never change a verdict
+        return None
+    if attested is None or attested[0] != "completed":
+        return None
+    return (f"conflicting attestation: the worker attested completed while the "
+            f"report state is {report_outcome.state}; the report wins and the "
+            f"attestation is discarded")
+
+
+def _classify_terminated(runtime, *, stdout, stderr, log_note, report_outcome):
+    """Return `(status, outcome, error, evidence_note)` for a Run whose runtime
+    terminated, applying P2 -> P3 -> P4 in that order and stopping at the first
+    step that refuses."""
+    from routing import completion_report as cr
+
+    # P2. A refusing report state is terminal: return before attestation or
+    # transport is read.
+    if report_outcome is not None and report_outcome.refusing:
+        outcome, category = cr.REFUSAL_OUTCOME[report_outcome.state]
+        note = _conflicting_claim(report_outcome, stdout)
+        return (
+            "blocked",
+            outcome,
+            {"category": category,
+             # Names the violated rule, never the report's content: this text
+             # reaches a GitHub issue comment, where CLAUDE.md forbids model
+             # output. The report itself stays in the local run log.
+             "recovery": f"{report_outcome.detail}; {log_note}"},
+            f"report_state={report_outcome.state}" + (f"; {note}" if note else ""),
+        )
+
+    # P3 then P4.
+    from routing.worker_outcome import (classify_transport_outcome,
+                                        read_attested_outcome)
+    attested = read_attested_outcome(stdout)
+    outcome = attested[0] if attested is not None else classify_transport_outcome(stdout, stderr)
+    state_note = f"report_state={report_outcome.state}" if report_outcome is not None else ""
+
+    if outcome == "no_result":
+        # Nothing usable arrived -- a truncated or empty response is never a
+        # success for any Run shape, mutating or not. Refused here rather than
+        # left for the Evidence Gate to catch as a missing commit, which named
+        # the symptom and not the cause.
+        return ("blocked", outcome,
+                {"category": "provider_returned_no_result",
+                 "recovery": f"the provider returned no usable response; {log_note}"},
+                state_note)
+    if outcome == "declined":
+        # A structured, non-recoverable result needing an operator -- which is
+        # what `blocked` means per dispatch-contract.md. Not a worker failure.
+        #
+        # The attested reason is deliberately NOT carried here. It is
+        # worker-authored text and `recovery` reaches a GitHub issue comment,
+        # which CLAUDE.md rule 2 forbids for model output (#58/#71). The
+        # category tells the operator this was a decision rather than a
+        # failure; the log tells them what the decision was.
+        return ("blocked", outcome,
+                {"category": "worker_declined",
+                 "recovery": ("the worker understood the task and declined to act; "
+                              f"read its stated reason in the run log ({log_note})")},
+                state_note)
+    return ("succeeded", outcome, None, state_note)
+
+
+@contextlib.contextmanager
+def _requested_report_path(runtime: str):
+    """Allocate a per-invocation completion-report path, or None.
+
+    Yields `None` for a route that declares no structured channel, so the
+    adapter asks for nothing it will not read.
+
+    The directory is fresh per invocation and is removed afterwards. Freshness
+    is what makes correlation possible at all: `completion_report._correlated`
+    can only assert that the file was written during this call because no file
+    from a previous call can be in a directory that did not exist before it.
+
+    The path is in the system temp directory while the worker is `cwd`-bound
+    to its isolated worktree. That is a deliberate, recorded exception to
+    isolation: the platform creates the path per invocation and the file is
+    NOT artifact evidence the worker produced.
+    """
+    from routing import completion_report as cr
+    if cr.report_channel(runtime) != cr.CHANNEL_STRUCTURED:
+        yield None
+        return
+    directory = tempfile.mkdtemp(prefix="cortxt-report-")
+    try:
+        yield Path(directory) / "completion.json"
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
 class WorkerAdapter(Protocol):
     def invoke(self, run: Run, task_prompt: str, timeout_seconds: int,
                worktree: Path | None = None) -> dict:
@@ -189,9 +343,23 @@ class HermesAdapter:
     def invoke(self, run: Run, task_prompt: str, timeout_seconds: int,
                worktree: Path | None = None) -> dict:
         started = time.time()
+        # W6: `hermes` declares a structured completion channel, so this
+        # adapter asks for one. The channel is opened before the invocation so
+        # `started` bounds any legitimate write to it.
+        with _requested_report_path("hermes") as report_path:
+            return self._invoke_within_channel(
+                run, task_prompt, timeout_seconds, worktree=worktree,
+                report_path=report_path, started=started)
+
+    def _invoke_within_channel(self, run: Run, task_prompt: str, timeout_seconds: int,
+                               *, worktree: Path | None, report_path: "Path | None",
+                               started: float) -> dict:
+        argv = ["hermes", "-p", self.profile, "-z", task_prompt]
+        if report_path is not None:
+            argv += ["--usage-file", str(report_path)]
         try:
             proc = self.run_subprocess(
-                ["hermes", "-p", self.profile, "-z", task_prompt],
+                argv,
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
@@ -216,6 +384,12 @@ class HermesAdapter:
                 "cost": "unknown (not measured)",
                 "artifacts": _log_references(run, log_path),
                 "evidence": f"worker timed out after {timeout_seconds}s; no completion",
+                # P1: a timeout is settled by the timeout. No report is owed,
+                # and none may be read -- a file written by a process killed
+                # mid-write is exactly the truncated artifact `unreadable`
+                # exists to name.
+                "outcome": None,
+                "report_state": None,
                 "error": {
                     "category": "timeout",
                     "recovery": "retry with a fresh run_id, or raise lease_seconds if the task is legitimately long",
@@ -232,6 +406,8 @@ class HermesAdapter:
                 "cost": "unknown (not measured)",
                 "artifacts": [],
                 "evidence": "worker never started: hermes CLI not found on PATH",
+                "outcome": None,
+                "report_state": None,
                 "error": {
                     "category": "runtime_unavailable",
                     "recovery": f"hermes CLI not found on PATH: {exc}",
@@ -253,6 +429,8 @@ class HermesAdapter:
                 "cost": "unknown (not measured)",
                 "artifacts": [],
                 "evidence": f"worker invocation raised {type(exc).__name__} before returning",
+                "outcome": None,
+                "report_state": None,
                 "error": {
                     "category": "worker_invocation_error",
                     "recovery": f"{type(exc).__name__}: {exc}",
@@ -260,11 +438,22 @@ class HermesAdapter:
                 "_elapsed_seconds": time.time() - started,
             }
 
-        status = "succeeded" if proc.returncode == 0 else "failed"
+        reported_status = "succeeded" if proc.returncode == 0 else "failed"
+        status = reported_status
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
         log_path = self._write_run_log(run, stdout=proc.stdout, stderr=proc.stderr)
         log_note = "see local run log" if log_path else "local run log could not be written"
         error = None
-        if status != "succeeded":
+        outcome = None
+        # The runtime terminated, so the report question arises. Assigned for a
+        # non-zero exit too: the state is what the platform verified, and it
+        # can only lower a verdict, never raise one -- `status` is not
+        # reassigned on the failure branch at all.
+        report_outcome = _report_state_for(
+            "hermes", "terminated", report_path=report_path, invoked_after=started)
+        state_note = f"report_state={report_outcome.state}" if report_outcome is not None else ""
+        if reported_status != "succeeded":
             error = {
                 "category": "worker_nonzero_exit",
                 # Never the raw stderr tail here: it's the same "model
@@ -275,6 +464,14 @@ class HermesAdapter:
                 # local directory layout; see `_log_references`).
                 "recovery": f"hermes exited {proc.returncode}; {log_note}",
             }
+        else:
+            # W6: exiting 0 is not doing the task. Before this, this adapter
+            # emitted no `outcome` key at all, so a hermes profile that
+            # produced nothing was recorded a plain success.
+            status, outcome, error, state_note = _classify_terminated(
+                "hermes", stdout=stdout, stderr=stderr, log_note=log_note,
+                report_outcome=report_outcome)
+        chars = len(stdout)
         return {
             "_status": status,
             "runtime": "hermes",
@@ -283,7 +480,11 @@ class HermesAdapter:
             "usage": "unknown (not captured by this adapter)",
             "cost": "unknown (not measured)",
             "artifacts": _log_references(run, log_path),
-            "evidence": f"worker exited {proc.returncode}; {len(proc.stdout or '')} chars of stdout captured, {log_note}",
+            "evidence": (f"worker exited {proc.returncode}; {chars} chars of stdout captured"
+                         + (f", {state_note}" if state_note else "")
+                         + f", {log_note}"),
+            "outcome": outcome,
+            "report_state": report_outcome.state if report_outcome is not None else None,
             "error": error,
             "_elapsed_seconds": time.time() - started,
         }
@@ -399,6 +600,11 @@ class DshWorkerAdapter:
                 "artifacts": [],
                 "evidence": f"worker never started: {type(exc).__name__}: {exc}",
                 "outcome": None,
+                # P1: no runtime ran. W4's distinction is exactly this one --
+                # a runtime that never started is not a worker that failed --
+                # and it is not the same fact as `not_requested`, which says a
+                # route that DID run has no structured channel.
+                "report_state": None,
                 "error": {
                     "category": "runtime_unavailable",
                     "recovery": f"{type(exc).__name__}: {exc}",
@@ -407,19 +613,38 @@ class DshWorkerAdapter:
             }
 
         status = result.get("status", "failed")
+        reported_status = status
         stdout = result.get("stdout", "")
         stderr = result.get("stderr", "")
         log_path = self._write_run_log(run, stdout=stdout, stderr=stderr)
         log_note = "see local run log" if log_path else "local run log could not be written"
         error = None
-        if status != "succeeded":
+        outcome = None
+        # `dsh` declares no structured completion channel, citing this
+        # adapter's own terminal envelope below: the SDK result reports no
+        # usage. `not_requested` is NOT a refusal and must never be rendered as
+        # one -- it is recorded so a reviewer sees that the route never had a
+        # channel, rather than inferring agreement from silence.
+        report_outcome = _report_state_for(
+            "dsh", "terminated", report_path=None, invoked_after=started)
+        state_note = f"report_state={report_outcome.state}" if report_outcome is not None else ""
+        if reported_status != "succeeded":
             error = {
-                "category": "worker_nonzero_exit" if status == "failed" else status,
+                "category": "worker_nonzero_exit" if reported_status == "failed" else reported_status,
                 # Never the raw stderr tail here -- same "model reasoning in
                 # GitHub" problem evidence was fixed for; point at the local
                 # log, never its actual filesystem path.
-                "recovery": f"dsh reported status={status}; {log_note}",
+                "recovery": f"dsh reported status={reported_status}; {log_note}",
             }
+        else:
+            # W6: with no report to consult, classification proceeds to
+            # attestation and then transport exactly as the hermes-free route
+            # does -- the `not_requested` handling the contract specifies.
+            # Before this, this adapter's terminal branch emitted no `outcome`
+            # key at all.
+            status, outcome, error, state_note = _classify_terminated(
+                "dsh", stdout=stdout, stderr=stderr, log_note=log_note,
+                report_outcome=report_outcome)
         # The invocation actually started with these provider/model values
         # (read once here, matching what _call passed to invoke_dsh): report
         # them once the invocation began, rather than a blanket "unknown"
@@ -439,9 +664,13 @@ class DshWorkerAdapter:
             "cost": "unknown (not measured)",
             "artifacts": _log_references(run, log_path),
             "evidence": (
-                f"dsh reported status={status}; "
-                f"finish_reason={result.get('finish_reason')}; {log_note}"
+                f"dsh reported status={reported_status}; "
+                f"finish_reason={result.get('finish_reason')}"
+                + (f"; {state_note}" if state_note else "")
+                + f"; {log_note}"
             ),
+            "outcome": outcome,
+            "report_state": report_outcome.state if report_outcome is not None else None,
             "error": error,
             "_elapsed_seconds": time.time() - started,
         }
@@ -489,7 +718,8 @@ class HermesFreeAdapter:
     log_dir: Path = field(default=RUN_LOG_DIR)
 
     def _call(self, run: Run, task_prompt: str, timeout_seconds: int,
-              worktree: Path | None = None) -> dict | None:
+              worktree: Path | None = None,
+              usage_file: "Path | None" = None) -> dict | None:
         model = os.environ.get("CORTXT_FREE_MODEL")
         provider = os.environ.get("CORTXT_FREE_PROVIDER")
         if not model or not provider:
@@ -507,17 +737,35 @@ class HermesFreeAdapter:
                 run.worker_role, task_prompt, timeout_seconds=timeout_seconds,
                 model=model, provider=provider, cwd=cwd,
                 run_subprocess=_bounded_subprocess_run,
+                usage_file=usage_file,
             )
+        # W6: an injected invoker receives `usage_file` too. Omitting it for
+        # test doubles would leave the doubles impersonating a route that asks
+        # for no report while the real route asks for one -- and the contract
+        # would then be verified only on a call shape production never makes.
         return self.invoke_hermes(
             run.worker_role, task_prompt, timeout_seconds=timeout_seconds,
             model=model, provider=provider, cwd=cwd,
+            usage_file=usage_file,
         )
 
     def invoke(self, run: Run, task_prompt: str, timeout_seconds: int,
                worktree: Path | None = None) -> dict:
         started = time.time()
+        # W6: the channel is opened before the invocation so `started` is a
+        # true lower bound on any legitimate write to it, and the directory is
+        # fresh, which is what makes the correlation check meaningful.
+        with _requested_report_path("hermes-free") as report_path:
+            return self._invoke_within_channel(
+                run, task_prompt, timeout_seconds, worktree=worktree,
+                report_path=report_path, started=started)
+
+    def _invoke_within_channel(self, run: Run, task_prompt: str, timeout_seconds: int,
+                               *, worktree: Path | None, report_path: "Path | None",
+                               started: float) -> dict:
         try:
-            result = self._call(run, task_prompt, timeout_seconds, worktree=worktree)
+            result = self._call(run, task_prompt, timeout_seconds, worktree=worktree,
+                                usage_file=report_path)
         except Exception as exc:  # noqa: BLE001 - HermesInvocationError and friends
             return {
                 "_status": "failed",
@@ -529,6 +777,9 @@ class HermesFreeAdapter:
                 "artifacts": [],
                 "evidence": f"worker never started: {type(exc).__name__}: {exc}",
                 "outcome": None,
+                # P1: no runtime ran, so no report was owed and none was read.
+                # `null` here is not `not_requested` -- see `_report_state_for`.
+                "report_state": None,
                 "error": {
                     "category": "runtime_unavailable",
                     "recovery": f"{type(exc).__name__}: {exc}",
@@ -546,6 +797,7 @@ class HermesFreeAdapter:
                 "artifacts": [],
                 "evidence": "free route not configured; worker never started",
                 "outcome": None,
+                "report_state": None,
                 "error": {
                     "category": "runtime_unavailable",
                     "recovery": "set CORTXT_FREE_MODEL and CORTXT_FREE_PROVIDER, then retry with a fresh run",
@@ -563,50 +815,39 @@ class HermesFreeAdapter:
         log_note = "see local run log" if log_path else "local run log could not be written"
         error = None
         outcome = None
-        if status != "succeeded":
+        # P1: the invoker's `timed_out` is a process fact, and a timeout is
+        # settled by the timeout. No report is owed and none may be read: a
+        # file written by a process killed mid-write is exactly the truncated
+        # artifact `unreadable` exists to name, and reading its residue could
+        # only weaken a verdict that is already correct.
+        process_class = "timed_out" if reported_status == "timed_out" else "terminated"
+        # Assigned for any Run whose runtime terminated, including one that
+        # exited non-zero: the state is what the platform verified, and a
+        # failed exit does not make the question moot. It cannot raise that
+        # Run's verdict -- `status` is not reassigned on the failure branch at
+        # all -- and W9 reads usage and cost from the same report.
+        report_outcome = _report_state_for(
+            "hermes-free", process_class,
+            report_path=report_path, invoked_after=started)
+        state_note = (f"report_state={report_outcome.state}"
+                      if report_outcome is not None else "")
+        if reported_status != "succeeded":
             error = {
-                "category": "worker_nonzero_exit" if status == "failed" else status,
+                "category": "worker_nonzero_exit" if reported_status == "failed" else reported_status,
                 # Never the raw stderr tail: same "model reasoning in GitHub"
                 # problem `evidence` was fixed for; point at the local log,
                 # never its actual filesystem path.
-                "recovery": f"hermes-free reported status={status}; {log_note}",
+                "recovery": f"hermes-free reported status={reported_status}; {log_note}",
             }
         else:
-            # #520: the invoker's `succeeded` means the process exited 0, not
-            # that the worker did the task. Classify what actually came back
-            # before relaying a claimed success onward. The run log is already
-            # written above, so a Run blocked here still has its evidence.
-            from routing.worker_outcome import classify_transport_outcome, read_attested_outcome
-            attested = read_attested_outcome(stdout)
-            outcome = attested[0] if attested is not None else                 classify_transport_outcome(stdout, stderr)
-            if outcome == "no_result":
-                # Nothing usable arrived -- a truncated or empty response is
-                # never a success for any Run shape, mutating or not. Refused
-                # here rather than left for the Evidence Gate to catch as a
-                # missing commit, which named the symptom and not the cause.
-                status = "blocked"
-                error = {
-                    "category": "provider_returned_no_result",
-                    "recovery": f"the provider returned no usable response; {log_note}",
-                }
-            elif outcome == "declined":
-                # A structured, non-recoverable result needing an operator --
-                # which is what `blocked` means per dispatch-contract.md. Not a
-                # worker failure, and the comment must not read as one.
-                #
-                # The attested reason is deliberately NOT carried here. It is
-                # worker-authored text and `recovery` reaches a GitHub issue
-                # comment, which CLAUDE.md rule 2 forbids for model output --
-                # the same rule every other `recovery` in this module follows
-                # by pointing at the local log instead (#58/#71). The category
-                # tells the operator this was a decision rather than a failure;
-                # the log tells them what the decision was.
-                status = "blocked"
-                error = {
-                    "category": "worker_declined",
-                    "recovery": ("the worker understood the task and declined to act; "
-                                 f"read its stated reason in the run log ({log_note})"),
-                }
+            # #520 / W6: the invoker's `succeeded` means the process exited 0,
+            # not that the worker did the task. The runtime's own completion
+            # report is consulted first, and its refusing states are terminal.
+            # The run log is already written above, so a Run blocked here still
+            # has its evidence.
+            status, outcome, error, state_note = _classify_terminated(
+                "hermes-free", stdout=stdout, stderr=stderr, log_note=log_note,
+                report_outcome=report_outcome)
         # The invocation actually started with these provider/model values
         # (the same env vars _call read to build the invoke_hermes call);
         # report what was actually used once the invocation began, instead
@@ -632,7 +873,9 @@ class HermesFreeAdapter:
             # about the runtime in the one field that reaches GitHub -- the
             # exact misreporting #520 exists to stop.
             "evidence": (f"hermes-free reported status={reported_status}, "
-                         f"outcome={outcome}; {log_note}"),
+                         f"outcome={outcome}"
+                         + (f", {state_note}" if state_note else "")
+                         + f"; {log_note}"),
             # What the worker did, as distinct from how its process terminated
             # (#520). None on a process-level failure: there was no worker
             # outcome to have. `unattested` is the honest default for the
@@ -640,6 +883,11 @@ class HermesFreeAdapter:
             # a mutating Run's `unattested` is settled by the Evidence Gate,
             # because a correlated commit outranks a worker's word about itself.
             "outcome": outcome,
+            # What the platform managed to VERIFY, as distinct from what the
+            # worker did. Kept as its own field: collapsing it into `outcome`
+            # would destroy the difference between a route that never had a
+            # structured channel and one whose channel returned garbage.
+            "report_state": report_outcome.state if report_outcome is not None else None,
             "error": error,
             "_elapsed_seconds": time.time() - started,
         }

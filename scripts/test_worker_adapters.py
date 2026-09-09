@@ -66,8 +66,30 @@ def new_log_dir():
     return Path(tempfile.mkdtemp(prefix="worker-logs-"))
 
 
+def _write_usage_report(argv):
+    """Write a `completed` report to the `--usage-file` path if the argv
+    carries one and the run succeeded.
+
+    W6: the hermes-family adapters pass `--usage-file <path>` on a structured
+    channel and the classification now requires a report before it will call a
+    successful run `succeeded`. A double that returns a real argv must honour
+    its own `--usage-file` element or every exit-0 run it stands in for would
+    be blocked `unverifiable`/`completion_report_missing` instead of succeeding
+    (plan 3.1: a test double may not set the production contract).
+    """
+    if "--usage-file" in argv:
+        idx = argv.index("--usage-file")
+        if idx + 1 < len(argv):
+            Path(argv[idx + 1]).parent.mkdir(parents=True, exist_ok=True)
+            Path(argv[idx + 1]).write_text(
+                '{"completed": true, "failed": false, "report_version": 1}',
+                encoding="utf-8")
+
+
 def fake_completed(returncode=0, stdout="ok", stderr=""):
     def _run(*args, **kwargs):
+        if returncode == 0:
+            _write_usage_report(list(args[0]) if args else [])
         return subprocess.CompletedProcess(args, returncode, stdout=stdout, stderr=stderr)
     return _run
 
@@ -88,6 +110,7 @@ def recording_subprocess(seen):
     """Records (cmd, cwd) of every subprocess call; returns a success."""
     def _run(*args, **kwargs):
         seen.append((args[0], kwargs.get("cwd")))
+        _write_usage_report(list(args[0]) if args else [])
         return subprocess.CompletedProcess(args[0], 0, stdout="ok", stderr="")
     return _run
 
@@ -449,10 +472,13 @@ def run_all_checks():
     hf_log_dir = new_log_dir()
     hf_seen = []
     hf_adapter = wa.HermesFreeAdapter(
-        invoke_hermes=lambda profile, prompt, timeout_seconds, model=None, provider=None, cwd=None, session_id=None: (
+        invoke_hermes=lambda profile, prompt, timeout_seconds, model=None, provider=None, cwd=None, session_id=None, usage_file=None: (
             hf_seen.append((profile, model, provider, cwd)),
+            (Path(usage_file).write_text(
+                '{"completed": true, "failed": false, "report_version": 1}',
+                encoding="utf-8") if usage_file else None),
             {"status": "succeeded", "stdout": "free answer", "stderr": "",
-             "elapsed_seconds": 1.0, "session_id": None})[1],
+             "elapsed_seconds": 1.0, "session_id": None})[2],
         log_dir=hf_log_dir,
     )
     old_model, old_provider = os.environ.get("CORTXT_FREE_MODEL"), os.environ.get("CORTXT_FREE_PROVIDER")
@@ -506,10 +532,12 @@ def run_all_checks():
     print("== dispatch_async: end-to-end hermes-free run reaches dispatcher.complete() ==")
     disp_hf, gh_hf = new_dispatcher({"o/r#12": ["workflow:ready"]})
     wa.register_adapter("test-hf-ok", wa.HermesFreeAdapter(
-        invoke_hermes=lambda profile, prompt, timeout_seconds, model=None, provider=None, cwd=None, session_id=None: {
-            "status": "succeeded", "stdout": "worked", "stderr": "",
-            "elapsed_seconds": 1.0, "session_id": None,
-        },
+        invoke_hermes=lambda profile, prompt, timeout_seconds, model=None, provider=None, cwd=None, session_id=None, usage_file=None: (
+            (Path(usage_file).write_text(
+                '{"completed": true, "failed": false, "report_version": 1}',
+                encoding="utf-8") if usage_file else None),
+            {"status": "succeeded", "stdout": "worked", "stderr": "",
+             "elapsed_seconds": 1.0, "session_id": None})[1],
         log_dir=new_log_dir(),
     ))
     old_model2, old_provider2 = os.environ.get("CORTXT_FREE_MODEL"), os.environ.get("CORTXT_FREE_PROVIDER")
