@@ -905,6 +905,23 @@ function recoveryAvailable(s, x) {
   if (!correlated(x) || x.workflow !== "in-progress" || nextActionKind(x) !== "recover") return false;
   return s.model.synthetic ? viewAuthorized(x, "view:recovery") : actAuthorized(s, "recover-to-ready");
 }
+function withheldByStore(s, x) {
+  /* Which affordance the authority stores are currently hiding from THIS
+     Workstream, or null.
+
+     Work is the surface the operator starts from, and with the run authority
+     withheld there is no typed next action -- so the summary fell through to
+     "No next action pending.", actively asserting there is nothing to do on a
+     Workstream whose only problem is that the evidence needed to offer the
+     control is unreadable. That is precisely the silence `store_health` was
+     added to end, still being told by the first screen the operator reads. */
+  var health = s && s.model && s.model.store_health;
+  if (!health || health.status !== "degraded" || !x) return null;
+  var kind = x.workflow === "in-progress" ? "recover"
+           : (x.workflow === "blocked" ? "unblock" : null);
+  if (!kind) return null;
+  return (health.withheld || []).indexOf(kind) === -1 ? null : kind;
+}
 function unblockAvailable(s, x) {
   /* W7 (#519): the way back from a `workflow:blocked` Issue whose Run has
      been released. Same split as launch and recovery. Work does not own the
@@ -951,6 +968,7 @@ function renderWork(winEl,ctx){
   if(primaryKind==="recover"&&!recoveryAvailable(s,x))primaryKind=null;
   if(primaryKind==="unblock"&&!unblockAvailable(s,x))primaryKind=null;
   if(primaryKind==="decision"&&!decision)primaryKind=null;
+  var withheldStore=withheldByStore(s,x);
   var nextLabel=(x.next_action&&x.next_action.label)||null;
   var phase=x.phase||x.workflow||"in-progress";
   var milestones=(x.milestones&&x.milestones.length)?x.milestones:[];
@@ -987,7 +1005,12 @@ function renderWork(winEl,ctx){
              when no prose summary was projected. */
           '<p class="wc-main">'+(x.nextAction?esc(x.nextAction)
               :(primaryKind&&nextLabel?esc(nextLabel)
-              :(decision?esc(decision.summary):"No next action pending.")))+'</p>'+
+              :(decision?esc(decision.summary)
+              :(withheldStore?"An action on this Workstream is being withheld.":"No next action pending."))))+'</p>'+
+          /* Never "nothing to do" when the truth is "we cannot tell". The
+             detail, including which record to repair, stays in Decisions;
+             this says enough that the operator goes looking. */
+          (withheldStore?'<p class="wc-sub" data-work-store-degraded>The session store could not be read whole, so it cannot be established whether a Run still holds this Issue. Returning it to ready is withheld until the store is repaired &mdash; not because this Workstream is ineligible. Open Decisions for the failing record.</p>':'')+
           (decision?'<p class="wc-sub">'+esc(decision.summary)+'</p>':'')+
           '<div class="work-actions">'+
             /* Exactly one primary affordance, derived from the typed next
@@ -1413,5 +1436,5 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
    renderer exports its own (#469): they decide whether a mutation-oriented
    control is offered at all, and a test that greps this file for a string
    passes while the behaviour is broken. */
-if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,migrateSavedState:migrateSavedState,migrateWorkConsole:migrateWorkConsole,LEGACY_APP_ALIASES:LEGACY_APP_ALIASES,isValidAttentionItem:isValidAttentionItem,AttentionItemProjection:AttentionItemProjection,runResultAvailable:runResultAvailable,RUN_RESULT_WORKFLOWS:RUN_RESULT_WORKFLOWS,nextActionKind:nextActionKind,launchAvailable:launchAvailable,recoveryAvailable:recoveryAvailable,unblockAvailable:unblockAvailable};
+if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,migrateSavedState:migrateSavedState,migrateWorkConsole:migrateWorkConsole,LEGACY_APP_ALIASES:LEGACY_APP_ALIASES,isValidAttentionItem:isValidAttentionItem,AttentionItemProjection:AttentionItemProjection,runResultAvailable:runResultAvailable,RUN_RESULT_WORKFLOWS:RUN_RESULT_WORKFLOWS,nextActionKind:nextActionKind,launchAvailable:launchAvailable,recoveryAvailable:recoveryAvailable,unblockAvailable:unblockAvailable,renderWork:renderWork,withheldByStore:withheldByStore};
 })();

@@ -319,3 +319,72 @@ def test_unblock_does_not_borrow_another_workstreams_authority():
 
 def test_work_site_mirror_is_byte_identical():
     assert SHELL.read_bytes() == (MIRROR / "work-console.js").read_bytes()
+
+
+# --- Work's rendered output, not just its gate ------------------------------
+#
+# The re-review's point: finding 1 was literally "a label with no control
+# under it". That is the RENDERING, and a gate test cannot see it. These drive
+# `renderWork` against a stub element -- it only assigns `innerHTML` and calls
+# `querySelectorAll`, so a minimal stub is a faithful enough DOM.
+
+STUB_EL = ("function stub(){return {innerHTML:\"\", querySelectorAll:function(){return []}, "
+           "querySelector:function(){return null}};}")
+
+
+def _render_work(state_js, ws_js) -> str:
+    script = (
+        "const m = require(%s);\n%s\n"
+        "const el = stub();\n"
+        "m.renderWork(el, {state: %s, workstream: %s});\n"
+        "console.log(JSON.stringify({html: el.innerHTML}));"
+        % (json.dumps(str(SHELL)), STUB_EL, state_js, ws_js))
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)["html"]
+
+
+WS_FULL = WS_BLOCKED[:-1] + ', title:"T", outcome:"O", mandate:"M"}'
+WS_FULL_NO_AUTHORITY = WS_BLOCKED_NO_AUTHORITY[:-1] + ', title:"T", outcome:"O", mandate:"M"}'
+
+
+def test_work_renders_a_control_under_the_label_it_shows():
+    """The regression itself. Before the fix this HTML contained the label and
+    no control at all."""
+    html = _render_work(SHELL_LIVE, WS_FULL)
+    assert "Lift the block and return to ready" in html
+    assert "data-unblock-open" in html, "the label must not be a promise with no control"
+    # #469's control survives, and is not duplicated by a second route to it.
+    assert "data-open-run-result" in html
+    assert html.count('data-deep-open="decisions"') == 0, \
+        "the primary already opens Decisions; a second button is noise"
+
+
+def test_work_never_says_nothing_to_do_when_the_store_is_degraded():
+    """Re-review finding: with the authority withheld there is no typed next
+    action, so Work fell through to "No next action pending." -- asserting
+    there is nothing to do on a Workstream whose only problem is that the
+    evidence is unreadable. That is the silence the field exists to end, told
+    by the first screen the operator reads."""
+    degraded_shell = ('{model:{synthetic:false, status:"fresh", store_health:{status:"degraded", '
+                      'withheld:["recover","unblock"], unreadable_records:[]}}, '
+                      'capabilities:[{id:"unblock-to-ready"}]}')
+    html = _render_work(degraded_shell, WS_FULL_NO_AUTHORITY)
+
+    assert "No next action pending." not in html
+    assert "data-work-store-degraded" in html
+    assert "withheld until the store is repaired" in html
+    # Still no control: explaining the refusal must not soften it.
+    assert "data-unblock-open" not in html
+    # And the run result stays reachable, which is how the operator decides.
+    assert "data-open-run-result" in html
+
+
+def test_a_healthy_store_with_nothing_to_do_still_says_so():
+    """The notice must not fire where nothing is withheld, or it becomes
+    wallpaper."""
+    healthy = ('{model:{synthetic:false, status:"fresh", store_health:{status:"ok", '
+               'withheld:[], unreadable_records:[]}}, capabilities:[]}')
+    html = _render_work(healthy, WS_FULL_NO_AUTHORITY)
+    assert "data-work-store-degraded" not in html
+    assert "No next action pending." in html

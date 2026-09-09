@@ -278,15 +278,13 @@ class ActionHost:
         # repaired between the scans produced a projection whose affordances and
         # whose explanation of those affordances came from different states of
         # the store.
-        health: dict[str, Any] = {}
-        authority = self._next_action_authority(repo, raw["issues"], health_out=health)
+        authority, health = self._next_action_authority(repo, raw["issues"])
         return build_workstream_projection(
             repo, raw["issues"], status=raw["status"], error=raw["error"],
             authority=authority, store_health=health)
 
-    def _next_action_authority(self, repo: str, issues: Sequence[Mapping[str, Any]],
-                               *, health_out: dict[str, Any] | None = None
-                               ) -> dict[str, dict[str, Any]]:
+    def _next_action_authority(self, repo: str, issues: Sequence[Mapping[str, Any]]
+                               ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
         """Server-computed answers the typed `next_action` is derived from (#498).
 
         Work reads its primary affordance from the *list* projection, so the
@@ -342,8 +340,7 @@ class ActionHost:
             dispatcher_runs = None
             session_docs = None
 
-        if health_out is not None:
-            health_out.update(self._store_health(unreadable, skipped))
+        health = self._store_health(unreadable, skipped)
 
         now_iso = self._wall_clock()
         authority: dict[str, dict[str, Any]] = {}
@@ -376,7 +373,11 @@ class ActionHost:
                     grant["run_active"] = None
             if grant:
                 authority[issue_id] = grant
-        return authority
+        # Returned together, never through an out-parameter: the health and the
+        # affordances are two readings of one scan, and keeping them in one
+        # return makes that structural rather than something a reader has to
+        # prove by tracing a mutable dict.
+        return authority, health
 
     @staticmethod
     def _store_health(unreadable: Sequence[Mapping[str, str]],

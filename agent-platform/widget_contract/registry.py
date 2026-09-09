@@ -415,6 +415,35 @@ VIEW_CAPABILITIES_SCHEMA = {"type": "array",
                                       "enum": ["view:launch", "view:recovery", "view:decision",
                                                "view:unblock"]}}
 
+# Whether the authority stores could be read whole, and what the OS is
+# therefore withholding (#519/W7). Declared here rather than left as four
+# string literals inside the host, because the renderer branches on `status`
+# and treats `withheld` as an allowlist: a typo in either silently turns the
+# operator's explanation off rather than failing.
+#
+#   ok          -- read whole; nothing withheld.
+#   incomplete  -- a record was passed over for a non-integrity reason. The
+#                  store was not read whole, but run liveness stays
+#                  answerable, so nothing is withheld.
+#   degraded    -- an authority store (a session record's hash chain, or the
+#                  dispatcher runs registry) is unreadable, so run liveness is
+#                  unanswerable and `withheld` names what is being held back.
+#   unknown     -- nobody looked. Never asserted as healthy.
+STORE_HEALTH_RECORD_SCHEMA = {"type": "object", "additionalProperties": False,
+                              "required": ["record", "message"],
+                              "properties": {"record": {"type": "string"},
+                                             "message": {"type": "string"}}}
+STORE_HEALTH_SCHEMA = {"type": "object", "additionalProperties": False,
+                       "required": ["status", "unreadable_records", "skipped_records", "withheld"],
+                       "properties": {
+                           "status": {"enum": ["ok", "incomplete", "degraded", "unknown"]},
+                           "unreadable_records": {"type": "array",
+                                                  "items": STORE_HEALTH_RECORD_SCHEMA},
+                           "skipped_records": {"type": "array",
+                                               "items": STORE_HEALTH_RECORD_SCHEMA},
+                           "withheld": {"type": "array",
+                                        "items": {"enum": ["recover", "unblock"]}}}}
+
 WORKSTREAM_DETAIL_SCHEMA = {"type": "object", "additionalProperties": False,
                              "required": ["schema_version", "mode", "synthetic", "issue",
                                           "mandate", "relations", "runs", "evidence", "source",

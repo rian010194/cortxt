@@ -36,6 +36,7 @@ from widget.action_host import ActionHost, StoreUnavailable
 from widget_contract.next_action import resolve_next_action, run_holds_issue
 from widget_contract.registry import TYPES
 from widget_contract.validation import validate
+from widget_contract.workstreams import build_workstream_projection
 
 REPO = "owner/repo"
 
@@ -459,3 +460,42 @@ def test_every_store_this_suite_builds_lives_under_tmp_path(tmp_path,
     assert tmp_path in store.parents
     real = pathlib.Path(__file__).resolve().parents[2] / ".sessions"
     assert real != store
+
+
+def test_every_health_the_host_can_emit_satisfies_the_declared_schema(tmp_path):
+    """`store_health` steers a safety-relevant sentence in the OS and its
+    `withheld` list is consumed as an allowlist, so the shape is declared
+    rather than implied by whatever the host happened to build. A typo in
+    either field silently turns the operator's explanation off instead of
+    failing, which is why this pins all four states."""
+    from widget_contract.registry import STORE_HEALTH_SCHEMA
+    from widget.action_host import ActionHost
+
+    ok = ActionHost._store_health([], [])
+    incomplete = ActionHost._store_health([], [{"record": "session_x", "message": "not a session"}])
+    degraded = ActionHost._store_health([{"record": "session_y", "message": "event hash is invalid"}], [])
+    unknown = build_workstream_projection(REPO, [])["store_health"]
+
+    assert ok["status"] == "ok"
+    assert incomplete["status"] == "incomplete"
+    assert degraded["status"] == "degraded"
+    assert unknown["status"] == "unknown"
+    for health in (ok, incomplete, degraded, unknown):
+        validate(health, STORE_HEALTH_SCHEMA)
+    # Only `degraded` may withhold; the other three must offer no excuse for a
+    # missing control, because they are not hiding one.
+    assert ok["withheld"] == incomplete["withheld"] == unknown["withheld"] == []
+    assert set(degraded["withheld"]) == {"recover", "unblock"}
+
+
+def test_the_unavailable_projection_carries_the_same_health_shape(tmp_path):
+    """The 503 branch on `/api/workstreams` builds its own body. A consumer of
+    `store_health` must not have to special-case it, and a failed Issue read
+    says nothing about whether the session store is sound."""
+    from widget_contract.registry import STORE_HEALTH_SCHEMA
+
+    fallback = {"status": "unknown", "unreadable_records": [],
+                "skipped_records": [], "withheld": []}
+    validate(fallback, STORE_HEALTH_SCHEMA)
+    # Identical to what the projection defaults to when nobody looked.
+    assert build_workstream_projection(REPO, [])["store_health"] == fallback

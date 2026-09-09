@@ -277,13 +277,18 @@ def test_work_summary_falls_back_to_the_typed_label_not_fixture_prose():
 
     script = "\n".join([
         "function esc(s){return String(s);}",
-        "const summary = (x, primaryKind, nextLabel, decision) => (" + expression + ");",
+        "const summary = (x, primaryKind, nextLabel, decision, withheldStore) => ("
+        + expression + ");",
         "const out = {",
-        "  prose: summary({nextAction:'Prose summary'}, 'launch', 'Start the approved Run', null),",
-        "  typed: summary({}, 'launch', 'Start the approved Run', null),",
-        "  recover: summary({}, 'recover', 'Return this Issue to ready', null),",
-        "  none: summary({}, null, null, null),",
-        "  decision_only: summary({}, null, null, {summary:'Decide this'}),",
+        "  prose: summary({nextAction:'Prose summary'}, 'launch', 'Start the approved Run', null, null),",
+        "  typed: summary({}, 'launch', 'Start the approved Run', null, null),",
+        "  recover: summary({}, 'recover', 'Return this Issue to ready', null, null),",
+        "  none: summary({}, null, null, null, null),",
+        # W7 (#519): the authority stores are unreadable, so there is no typed
+        # next action -- but "nothing pending" would be a false statement, not a
+        # missing one. The withheld case must not reach that wording.
+        "  withheld: summary({}, null, null, null, 'unblock'),",
+        "  decision_only: summary({}, null, null, {summary:'Decide this'}, null),",
         "};",
         "console.log(JSON.stringify(out));",
     ])
@@ -301,6 +306,12 @@ def test_work_summary_falls_back_to_the_typed_label_not_fixture_prose():
     # without a primary control still surfaces its own summary.
     assert out["none"] == "No next action pending."
     assert out["decision_only"] == "Decide this"
+    # W7 (#519): "none" and "withheld" are different facts. When the authority
+    # stores cannot be read there is no typed next action either, but saying
+    # "nothing pending" there asserts something false about the Workstream
+    # rather than reporting that the platform cannot currently tell.
+    assert out["withheld"] != "No next action pending."
+    assert "withheld" in out["withheld"]
 
 
 def test_work_console_site_mirror_matches_canonical_source():

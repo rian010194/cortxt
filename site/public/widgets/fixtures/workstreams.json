@@ -309,6 +309,42 @@
         "reason": "Workstream is complete."
       },
       "view_capabilities": []
+    },
+    {
+      "id": "WS-057",
+      "issue_id": "owner/repo#57",
+      "number": 57,
+      "title": "Refused Run whose block can be lifted from the OS",
+      "outcome": "Return a refused Workstream to ready so a fresh Run can be approved",
+      "workflow": "blocked",
+      "url": null,
+      "attention": "The platform refused this Run on evidence.",
+      "phase": "Blocked on a recorded refusal",
+      "nextAction": null,
+      "decision": null,
+      "authority": {
+        "source": "Synthetic demonstration",
+        "workflow_label": "workflow:blocked",
+        "approval_recorded": true
+      },
+      "evidence": [],
+      "acceptance_criteria": [
+        "The block is lifted only with a stated justification.",
+        "Lifting it starts no Run."
+      ],
+      "mandate": "Operator approved this exact scope; the Evidence Gate refused the Run that ran it.",
+      "milestones": [],
+      "runs": [],
+      "related": [],
+      "blockers": [],
+      "next_action": {
+        "kind": "unblock",
+        "label": "Lift the block and return to ready",
+        "reason": "The Run that held this Issue has been released."
+      },
+      "view_capabilities": [
+        "view:unblock"
+      ]
     }
   ]
 }
