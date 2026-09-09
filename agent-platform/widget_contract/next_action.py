@@ -23,7 +23,11 @@ answers the server has *already* computed from its own authorities:
   re-open the dispatch gate underneath a running claim, and an Issue with no
   Run at all has no stranded Run to recover -- see ``run_holds_issue``;
 - decidable mirrors the projection's existing ``attention``/``decision`` rule:
-  ``workflow:review`` with recorded evidence.
+  ``workflow:review`` with recorded evidence;
+- unblockable is ``workflow:blocked`` plus the same positive run-liveness
+  evidence recovery requires (``workflow.unblock-to-ready.v1``, #519). The
+  port's other two requirements -- re-reading the label at write time and a
+  stated justification -- are its own and are not re-implemented here.
 
 Nothing here re-implements a policy. If a caller cannot supply an authority
 answer it passes ``None`` and the result is no next action at all -- absence of
@@ -45,20 +49,24 @@ from .run_authority import STORE_DISPATCHER
 KIND_LAUNCH = "launch"
 KIND_RECOVER = "recover"
 KIND_DECISION = "decision"
+KIND_UNBLOCK = "unblock"
 
 VIEW_LAUNCH = "view:launch"
 VIEW_RECOVERY = "view:recovery"
 VIEW_DECISION = "view:decision"
+VIEW_UNBLOCK = "view:unblock"
 
 _LABELS = {
     KIND_LAUNCH: "Start the approved Run",
     KIND_RECOVER: "Return this Issue to ready",
     KIND_DECISION: "Record the operator decision",
+    KIND_UNBLOCK: "Lift the block and return to ready",
 }
 _VIEWS = {
     KIND_LAUNCH: VIEW_LAUNCH,
     KIND_RECOVER: VIEW_RECOVERY,
     KIND_DECISION: VIEW_DECISION,
+    KIND_UNBLOCK: VIEW_UNBLOCK,
 }
 
 
@@ -148,6 +156,27 @@ def resolve_next_action(workflow: str | None, *,
         # the dispatch gate and must never do so on absence of evidence.
         if run_active is False:
             kind = KIND_RECOVER
+    elif state == "blocked":
+        # #519 registered `workflow.unblock-to-ready.v1` but nothing ever
+        # derived an affordance for it, so a blocked Issue had no way back
+        # through the OS at all. The gate is the SAME run-liveness evidence
+        # the recovery branch requires, and for the same reason: both end at
+        # `workflow:ready`, which re-opens the dispatch gate, and doing that
+        # while a claim is still held risks a second Run.
+        #
+        # It is deliberately not the recovery branch widened. The port keeps
+        # its own capability (`act:unblock-to-ready`), re-reads the label, and
+        # requires a stated justification, because lifting a block sets aside
+        # a recorded refusal -- something run liveness knows nothing about.
+        # Holding recovery grants nothing here, and holding this grants
+        # nothing about recovery.
+        #
+        # The `None` case is the documented, deliberate limit: an Issue
+        # blocked by triage rather than by a Run has no correlated Run, so
+        # `run_holds_issue` yields `None` and this offers nothing. Widening
+        # that would re-open the dispatch gate on absence of evidence.
+        if run_active is False:
+            kind = KIND_UNBLOCK
     elif state == "review":
         if has_evidence:
             kind = KIND_DECISION

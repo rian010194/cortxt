@@ -274,7 +274,8 @@ class ActionHost:
         raw = self._issues.read(repo)
         return build_workstream_projection(
             repo, raw["issues"], status=raw["status"], error=raw["error"],
-            authority=self._next_action_authority(repo, raw["issues"]))
+            authority=self._next_action_authority(repo, raw["issues"]),
+            store_health=self._session_store_health())
 
     def _next_action_authority(self, repo: str, issues: Sequence[Mapping[str, Any]]
                                ) -> dict[str, dict[str, Any]]:
@@ -298,10 +299,28 @@ class ActionHost:
         """
         dispatcher_runs: Mapping[str, Any] | None
         session_docs: list[Mapping[str, Any]] | None
+        corrupt: list[dict[str, str]] = []
         try:
             dispatcher_runs = self._read_dispatcher_runs()
-            session_docs = self._read_session_docs()
+            session_docs, corrupt = self._scan_session_docs()
         except StoreUnavailable:
+            dispatcher_runs = None
+            session_docs = None
+        if corrupt:
+            # Withhold every run-authority answer, and say so. Dropping an
+            # unreadable record and carrying on would be the one genuinely
+            # unsafe move available here: a record that failed integrity may
+            # have held a session summary for any Issue, and a *missing*
+            # summary can only move `run_holds_issue` from "not established"
+            # towards "released" -- offering a return-to-ready on an Issue
+            # whose worker is alive. Scoping the denial to the affected
+            # Issues is not possible either: nothing outside the corrupt
+            # record itself says which Issue it belonged to (the store is
+            # keyed by `session_<uuid>` and the dispatcher registry records no
+            # session id), and trusting a record that failed its own hash
+            # chain to name its owner is not a check.
+            #
+            # Launch and decision are untouched: neither reads this store.
             dispatcher_runs = None
             session_docs = None
 
@@ -320,7 +339,12 @@ class ActionHost:
                         self._build_dispatch_request(repo, number, issue=issue)["eligible"])
                 except Exception:
                     grant["launch_eligible"] = None
-            elif workflow == "in-progress" and dispatcher_runs is not None:
+            elif workflow in ("in-progress", "blocked") and dispatcher_runs is not None:
+                # #519/W7: `blocked` derives the SAME run-liveness answer as
+                # `in-progress`. `resolve_next_action` then routes it to the
+                # unblock or the recover kind; neither state can reach the
+                # other's action, because the ports carry different
+                # capabilities and each re-reads the label before its write.
                 try:
                     runs = correlate_run_summaries(
                         issue_id, dispatcher_runs,
@@ -333,6 +357,19 @@ class ActionHost:
                 authority[issue_id] = grant
         return authority
 
+    def _session_store_health(self) -> dict[str, Any]:
+        """What the OS needs to explain a withheld run-authority affordance."""
+        _, corrupt = self._scan_session_docs()
+        if not corrupt:
+            return {"status": "ok", "unreadable_records": [], "withheld": []}
+        return {
+            "status": "degraded",
+            "unreadable_records": [dict(item) for item in corrupt],
+            # Named explicitly rather than left for the reader to infer: these
+            # are the affordances the operator will find missing.
+            "withheld": ["recover", "unblock"],
+        }
+
     def _read_dispatcher_runs(self) -> Mapping[str, Any]:
         if not self._registry.exists():
             return {}
@@ -344,12 +381,22 @@ class ActionHost:
             raise StoreUnavailable("dispatcher runs registry is not a JSON object")
         return data
 
-    def _read_session_docs(self) -> list[Mapping[str, Any]]:
+    def _scan_session_docs(self) -> tuple[list[Mapping[str, Any]], list[dict[str, str]]]:
+        """Every readable session record, plus the ones that failed integrity.
+
+        Split out from `_read_session_docs` so the authority map can keep
+        failing closed *and* say why. One corrupt record among 91 used to
+        deny the run authority for every Issue with nothing shown anywhere:
+        recovery and unblock simply vanished from the whole OS, and the
+        operator was given no way to tell an absent affordance from a broken
+        store. The refusal was right; the silence was not.
+        """
         from runtime import session_state as state
 
         docs: list[Mapping[str, Any]] = []
+        corrupt: list[dict[str, str]] = []
         if not self._session_store.is_dir():
-            return docs
+            return docs, corrupt
         for child in sorted(self._session_store.iterdir()):
             if not child.is_dir():
                 continue
@@ -360,11 +407,25 @@ class ActionHost:
                 docs.append(state.load(self._session_store, child.name))
             except state.SessionError as error:
                 # A corrupt/hash-broken record is authoritative-data loss, not
-                # "no runs": fail closed rather than silently returning empty.
+                # "no runs". It is reported, never skipped silently.
                 if error.category == "integrity_error":
-                    raise StoreUnavailable(
-                        f"session store record {child.name} is corrupt: {error.message}") from error
+                    corrupt.append({"record": child.name, "message": error.message})
                 continue
+        return docs, corrupt
+
+    def _read_session_docs(self) -> list[Mapping[str, Any]]:
+        """The single-Issue read path: a corrupt record is a hard failure.
+
+        Unchanged behaviour, and deliberately so. These callers answer one
+        request about one Issue, so raising surfaces the fault directly to the
+        operator who asked. The list projection cannot do that -- it answers
+        for every Issue at once -- which is what `_scan_session_docs` is for.
+        """
+        docs, corrupt = self._scan_session_docs()
+        if corrupt:
+            first = corrupt[0]
+            raise StoreUnavailable(
+                f"session store record {first['record']} is corrupt: {first['message']}")
         return docs
 
     def _run_active(self, issue_ref: str) -> "bool | None":
@@ -399,7 +460,9 @@ class ActionHost:
                     self._build_dispatch_request(repo, number, issue=issue)["eligible"])
             except Exception:
                 launch_eligible = None
-        elif workflow == "in-progress":
+        elif workflow in ("in-progress", "blocked"):
+            # Same authority for both, so detail and list can never disagree
+            # about whether the Issue may be returned to ready (#519/W7).
             run_active = run_holds_issue(runs, freshness["status"])
         return read_workstream_detail_v1(
             issue, runs, repo=repo,

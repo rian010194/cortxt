@@ -408,11 +408,12 @@ SOURCE_STATE_SCHEMA = {"type": "object", "additionalProperties": False,
 NEXT_ACTION_SCHEMA = {"type": ["object", "null"], "additionalProperties": False,
                       "required": ["kind", "label"],
                       "properties": {"kind": {"type": "string",
-                                              "enum": ["launch", "recover", "decision"]},
+                                              "enum": ["launch", "recover", "decision", "unblock"]},
                                      "label": {"type": "string"}}}
 VIEW_CAPABILITIES_SCHEMA = {"type": "array",
                             "items": {"type": "string",
-                                      "enum": ["view:launch", "view:recovery", "view:decision"]}}
+                                      "enum": ["view:launch", "view:recovery", "view:decision",
+                                               "view:unblock"]}}
 
 WORKSTREAM_DETAIL_SCHEMA = {"type": "object", "additionalProperties": False,
                              "required": ["schema_version", "mode", "synthetic", "issue",

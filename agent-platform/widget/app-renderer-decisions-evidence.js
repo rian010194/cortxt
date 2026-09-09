@@ -117,6 +117,113 @@
     return intro + '<button data-r-recover class="chrome-button">Return to ready (recover)</button></section>';
   }
 
+
+  /* ---- Unblock (#519 / W7) --------------------------------------------
+     `workflow.unblock-to-ready.v1` has been registered since #519, with its
+     own capability, its own input schema and its own preconditions -- and
+     nothing in the OS ever offered it. A blocked Workstream had no way back
+     except `gh issue edit`, the exact hand-edit outside the action ports that
+     these transitions exist to replace.
+
+     This mirrors `recoverySection`'s visible/executable split and adds the one
+     thing recovery does not require: a stated justification. The minimum is
+     the server's (`MIN_UNBLOCK_JUSTIFICATION`); it is re-checked here so the
+     operator is told before the request rather than by a refusal, and the
+     server's check remains the authority either way. */
+  var MIN_UNBLOCK_JUSTIFICATION = 24;
+
+  function unblockVisible(s, x) {
+    if (!s || !s.model || !x) return false;
+    if (!correlated(x) || x.workflow !== "blocked") return false;
+    return isSynthetic(s) ? viewAuthorized(x, "view:unblock") : hasAction(s, "unblock-to-ready");
+  }
+  function unblockExecutable(s, x) {
+    return unblockVisible(s, x) && !isSynthetic(s) && hasAction(s, "unblock-to-ready");
+  }
+
+  function beginUnblock(winEl, ctx) {
+    var s = (ctx && ctx.state) || {}, x = (ctx && ctx.workstream) || {};
+    var dlg = document.createElement("dialog");
+    dlg.innerHTML =
+      '<form method="dialog"><p class="eyebrow">Reviewed action boundary</p><h2>Lift the block on this Workstream</h2>' +
+      "<p>This moves the authoritative GitHub Issue from <b>workflow:blocked</b> back to <b>workflow:ready</b> so a fresh Run can be approved. It approves, closes and completes nothing, and it starts no Run.</p>" +
+      "<p>A block is a recorded refusal. Setting it aside is recorded too: the reason is posted to the Issue before the label moves.</p>" +
+      '<label>Approval reference<input data-u-approval required autocomplete="off" placeholder="Operator approval record"></label>' +
+      '<label>Why the block is being set aside<textarea data-u-justification required rows="3" ' +
+      'placeholder="At least ' + MIN_UNBLOCK_JUSTIFICATION + ' characters"></textarea></label>' +
+      '<div data-u-error role="alert"></div><footer><button value="cancel">Cancel</button>' +
+      '<button value="confirm" class="primary-action">Confirm unblock</button></footer></form>';
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    dlg.addEventListener("close", async function () {
+      if (dlg.returnValue !== "confirm") { dlg.remove(); return; }
+      var approval = dlg.querySelector("[data-u-approval]").value.trim();
+      var justification = dlg.querySelector("[data-u-justification]").value.trim();
+      if (!approval) { dlg.querySelector("[data-u-error]").textContent = "Approval reference is required."; dlg.showModal(); return; }
+      if (justification.length < MIN_UNBLOCK_JUSTIFICATION) {
+        dlg.querySelector("[data-u-error]").textContent =
+          "A justification of at least " + MIN_UNBLOCK_JUSTIFICATION + " characters is required; the block is a recorded refusal.";
+        dlg.showModal();
+        return;
+      }
+      try {
+        var response = await fetch("api/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Cortxt-Token": s.token },
+          body: JSON.stringify({ action_id: "unblock-to-ready", issue_id: x.issue_id,
+                                 justification: justification, approval_ref: approval, confirm: true }),
+        });
+        var result = await response.json();
+        if (!response.ok) throw new Error((result.error && (result.error.recovery || result.error.message)) || "Unblock was denied");
+        winEl.innerHTML = '<span class="eyebrow">Unblocked</span><h3>Returned to workflow:ready</h3><p>' + esc(approval) + "</p>";
+        if (window.CortxtShell && window.CortxtShell.refreshAuthority) window.CortxtShell.refreshAuthority();
+      } catch (error) {
+        dlg.querySelector("[data-u-error]").textContent = error.message;
+        dlg.showModal();
+        return;
+      }
+      dlg.remove();
+    });
+  }
+
+  /* The session store is what the run authority reads to decide whether a Run
+     still holds the Issue. One record that fails its hash chain makes that
+     unanswerable for EVERY Issue, so recovery and unblock vanish from the
+     whole OS. Refusing is correct -- a missing summary can only make a live
+     Run look released -- but an operator staring at a Workstream with no
+     control must be able to tell a withheld affordance from nothing to do. */
+  function storeHealthNotice(s, kind) {
+    var health = (s && s.model && s.model.store_health) || null;
+    if (!health || health.status !== "degraded") return "";
+    if ((health.withheld || []).indexOf(kind) === -1) return "";
+    var records = health.unreadable_records || [];
+    return '<section class="review-actions" data-store-degraded><p><b>The session store could not be read whole.</b> ' +
+      esc(String(records.length)) + " record" + (records.length === 1 ? " " : "s ") +
+      "failed its integrity check, so the run authority cannot establish whether a Run still holds this Issue. " +
+      "Returning it to ready is withheld until the store is repaired -- not because this Workstream is ineligible, " +
+      "but because the evidence needed to say so safely is unreadable.</p>" +
+      '<ul class="store-degraded-list">' +
+      records.map(function (r) {
+        return "<li><code>" + esc(r.record) + "</code> - " + esc(r.message) + "</li>";
+      }).join("") +
+      "</ul></section>";
+  }
+
+  function unblockSection(s, x) {
+    if (!s || !s.model || !x || !correlated(x) || x.workflow !== "blocked") return "";
+    if (!unblockVisible(s, x)) return storeHealthNotice(s, "unblock");
+    var intro = '<section class="review-actions" data-unblock-section>' +
+      "<p>This Workstream is <b>workflow:blocked</b>: the platform refused it on evidence. Lifting the block returns it to ready so a fresh Run can be approved, and records why the refusal is being set aside. " +
+      "It re-opens the dispatch gate only: it approves, closes and completes nothing, and starts no Run.</p>";
+    if (!unblockExecutable(s, x)) {
+      /* Reachable explanation, inert control: no handler is bound and the
+         static host has no /api/action route to call. */
+      return intro + '<button data-u-unblock-disabled class="chrome-button" disabled aria-disabled="true">Requires live action host</button>' +
+        "<small>This preview is non-mutating. Lifting a block requires a live action host with the registered unblock-to-ready capability.</small></section>";
+    }
+    return intro + '<button data-u-unblock class="chrome-button">Lift the block (unblock)</button></section>';
+  }
+
   /* ---- Decisions ----------------------------------------------------- */
   function renderDecisions(winEl, ctx) {
     if (!winEl) return;
@@ -146,11 +253,15 @@
             : "Mutation requires an approval reference and explicit confirmation.") +
           "</small>"
         : "") +
-      recoverySection(s, x);
+      recoverySection(s, x) +
+      storeHealthNotice(s, "recover") +
+      unblockSection(s, x);
     var accept = winEl.querySelector("[data-d-accept]");
     if (accept) accept.addEventListener("click", function () { beginDecision(winEl, ctx); });
     var recover = winEl.querySelector("[data-r-recover]");
     if (recover) recover.addEventListener("click", function () { beginRecovery(winEl, ctx); });
+    var unblock = winEl.querySelector("[data-u-unblock]");
+    if (unblock) unblock.addEventListener("click", function () { beginUnblock(winEl, ctx); });
     /* #499: the decision is about a change the operator did not watch happen,
        so the change itself is rendered here, before the accept control. */
     if (!isSynthetic(s) && x.issue_id) attachRunDiff(winEl, x);
@@ -353,5 +464,19 @@
   if (typeof OSRenderer !== "undefined") {
     OSRenderer.register("decisions", renderDecisions);
     OSRenderer.register("evidence", renderEvidence);
+  }
+  /* Exported so the gates can be exercised in node rather than asserted by
+     scanning this file for string literals -- the review of #469 showed that
+     a source-grep test passes while the behaviour is broken, and these gates
+     decide whether a mutation control is offered at all. The browser path is
+     untouched: no OSRenderer, no DOM and no fetch is involved in the export. */
+  if (typeof module === "object" && module.exports) {
+    module.exports = { unblockVisible: unblockVisible,
+                       unblockExecutable: unblockExecutable,
+                       unblockSection: unblockSection,
+                       recoveryVisible: recoveryVisible,
+                       recoveryExecutable: recoveryExecutable,
+                       storeHealthNotice: storeHealthNotice,
+                       MIN_UNBLOCK_JUSTIFICATION: MIN_UNBLOCK_JUSTIFICATION };
   }
 })();
