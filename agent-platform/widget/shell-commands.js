@@ -19,6 +19,8 @@
      open-window{appId}         explicit opt-in: open the app as a window
      return-primary{}           collapse multi-window mode back to the
                               focused primary surface
+     create-workstream{}        open the first step of the work flow (#469).
+                              Selects existing work; it originates nothing.
 
    Deep links (#app=<id>[&ws=<id>][&record=<ref>]) resolve the legacy
    `work-console` app id to the first principal app `work` through a
@@ -38,6 +40,11 @@
     "focus-record": true,
     "open-window": true,
     "return-primary": true,
+    /* #469. An app renderer emits this on the `command` bus and the shell
+       bridges it here, so it must be in the same allow-list every other
+       command is checked against -- a second router with its own list is how
+       the two disagree. It navigates only; nothing is created by it. */
+    "create-workstream": true,
   };
 
   /* ADR-044: Work Console is retired. For one release cycle its app id
@@ -47,6 +54,10 @@
 
   function normalizeAppId(id) {
     return LEGACY_APP_ALIASES[id] || id;
+  }
+
+  function has(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj, key);
   }
 
   function isPlainObject(x) {
@@ -91,8 +102,16 @@
         or missing handlers are ignored (fail closed, no navigation). */
     dispatch: function (command, payload, handlers) {
       if (typeof command !== "string") return false;
-      if (!APP_COMMANDS[command]) return false;
+      /* Own-property lookups, not plain indexing. `APP_COMMANDS["constructor"]`
+         inherits a truthy value from Object.prototype and `handlers`
+         ["constructor"] inherits a *function*, so plain indexing accepted
+         "constructor" (and "toString", "valueOf", ...) as a sanctioned
+         command and then called it. Nothing reached this before #469, because
+         every caller passed a literal command name; the `command` bus now
+         carries whatever an app renderer emits. */
+      if (!has(APP_COMMANDS, command) || !APP_COMMANDS[command]) return false;
       if (!handlers || typeof handlers !== "object") return false;
+      if (!has(handlers, command)) return false;
       var fn = handlers[command];
       if (typeof fn !== "function") return false;
       fn(isPlainObject(payload) ? payload : {});

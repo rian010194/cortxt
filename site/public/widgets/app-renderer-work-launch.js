@@ -616,7 +616,7 @@
      The launch gate itself is untouched: no dispatch request is fetched, and
      neither the confirmation dialog nor the claim POST is reachable from
      here. Both still require `next_action.kind === "launch"` above. */
-  function renderRunOnly(winEl, ctx, issue, typed) {
+  function renderRunOnly(winEl, ctx, issue) {
     fetch("api/runs?issue=" + encodeURIComponent(issue), { cache: "no-store" })
       .then(function (r) { if (!r.ok) throw new Error("run projection unavailable (" + r.status + ")"); return r.json(); })
       .then(function (d) {
@@ -625,13 +625,24 @@
         var runs = ((d && d.runs) || []).filter(function (r) {
           return r && (!r.issue_ref || r.issue_ref === issue);
         });
-        if (!runs.length) { winEl.innerHTML = noLaunchNotice(typed); return; }
+        if (!runs.length) { stopAnyLiveRun(winEl); winEl.innerHTML = noRunRecordNotice(); return; }
+        /* The heading must not say "in progress" about a Run that has already
+           stopped; the operator reading a refusal needs the surface to agree
+           with what it is about to show them. */
+        var live = claimed(ctx.workstream);
         winEl.innerHTML = '<span class="eyebrow">' + esc(ctx.workstream.id) +
-          " · run in progress</span><h3>Following this Workstream's Run</h3>" +
-          "<p>This Workstream is claimed, so no launch is offered. Its correlated Run is followed read-only below.</p>";
+          (live ? " · run in progress" : " · run result") + "</span>" +
+          "<h3>" + (live ? "Following this Workstream's Run" : "The result of this Workstream's Run") + "</h3>" +
+          "<p>" + (live
+            ? "This Workstream is claimed, so no launch is offered. Its correlated Run is followed read-only below."
+            : "This Workstream is not startable right now, so no launch is offered. The record of the Run it already ran is shown read-only below.") +
+          "</p>";
         attachLiveRun(winEl, ctx, issue, null);
       })
-      .catch(function () { winEl.innerHTML = noLaunchNotice(typed); });
+      .catch(function () {
+        stopAnyLiveRun(winEl);
+        winEl.innerHTML = runProjectionUnavailableNotice();
+      });
   }
 
   /* A claim is what makes a Run exist to follow: the workflow label the
@@ -640,10 +651,65 @@
     return !!x && String(x.workflow || "").replace(/^workflow:/, "") === "in-progress";
   }
 
+  /* #469: a Run that STOPPED was the one thing the operator could not reach.
+     `claimed` alone gated this path, so the moment a Run ended -- refused by
+     the Evidence Gate, or finished and awaiting review -- the Issue left
+     `in-progress` and its result became unreachable from the OS. The dogfood
+     showed this exactly: #519 has a real blocked Run whose refusal is fully
+     projected by `/api/run-terminal`, and the surface answered "this
+     Workstream has no authorized launch" instead of explaining the stop.
+
+     Following is a READ-ONLY projection: `api/runs`, `api/run-terminal` and
+     `api/run-activity` are server-correlated GETs that fail closed on an
+     uncorrelated Run. Nothing about launching moves. The invariant that
+     matters is untouched and still asserted below: an ineligible Workstream
+     never fetches a dispatch request and is never offered a launch. What
+     changes is only that a Workstream which has reached a terminal state may
+     read the record of the Run it already ran. A Workstream that never ran
+     one (inbox, ready, unrecorded) still causes no fetch at all. */
+  var TERMINAL_WORKFLOWS = ["blocked", "review", "done"];
+  function followable(x) {
+    if (claimed(x)) return true;
+    var wf = String((x && x.workflow) || "").replace(/^workflow:/, "");
+    return TERMINAL_WORKFLOWS.indexOf(wf) !== -1;
+  }
+
   function noLaunchNotice(typed) {
     return empty(
       "This Workstream has no authorized launch. Its typed next action is " +
       String(typed || "none") + ", so no dispatch request is requested or rendered.");
+  }
+
+  /* #469: a Workstream reached through the run-result control HAS a workflow
+     that says a Run should exist, so the two ways of having nothing to show
+     must not both be reported as an authority statement. Saying "no
+     authorized launch" when the projection merely could not be read tells the
+     operator a fact about their mandate on the strength of a failed GET.
+     Neither message grants anything; both refuse. They differ only in
+     naming what actually happened. */
+  /* Replacing the panel must also stop whatever was polling into it. Both
+     branches below can be reached while a live Run is being followed -- the
+     Issue moves to `review` mid-poll, or one `api/runs` read fails
+     transiently -- and without this the 5s poller keeps writing into a
+     detached node until it happens to read a terminal status. `attachLiveRun`
+     already does exactly this before it mounts. */
+  function stopAnyLiveRun(winEl) {
+    if (winEl && typeof winEl._cortxtStopLiveRun === "function") winEl._cortxtStopLiveRun();
+  }
+
+  function noRunRecordNotice() {
+    return empty(
+      "No Run is recorded against this Workstream's Issue, so there is no run " +
+      "result to show. Its workflow state says it has been worked on; the Run " +
+      "record is what is missing.");
+  }
+
+  function runProjectionUnavailableNotice() {
+    return empty(
+      "The Run projection could not be read, so this Workstream's run result " +
+      "is unavailable right now. This is a failure to read the record, not a " +
+      "statement about the Workstream: nothing about its authority has been " +
+      "determined. Check that the host is still running, then reopen this.");
   }
 
   function renderLaunch(winEl, ctx) {
@@ -661,11 +727,12 @@
       /* Preview mode never reaches a live host, so there is no Run to follow
          and nothing is fetched. */
       if (syntheticMode) { winEl.innerHTML = noLaunchNotice(typed); return; }
-      /* Only a Workstream that actually holds a claim may follow a Run. Every
-         other ineligible Workstream still causes no fetch at all -- the
+      /* Only a Workstream that holds a claim or has reached a terminal state
+         may read a Run (see `followable`). Every other ineligible Workstream
+         -- inbox, ready, unrecorded -- still causes no fetch at all: the
          original deep-link invariant, narrowed rather than dropped. */
-      if (!claimed(x)) { winEl.innerHTML = noLaunchNotice(typed); return; }
-      renderRunOnly(winEl, ctx, x.issue_id, typed);
+      if (!followable(x)) { winEl.innerHTML = noLaunchNotice(typed); return; }
+      renderRunOnly(winEl, ctx, x.issue_id);
       return;
     }
     winEl.innerHTML = '<span class="eyebrow">' + esc(x.id) + '</span><h3>Loading the approved dispatch request…</h3>';
@@ -686,7 +753,16 @@
      browser path is untouched: no OSRenderer, no DOM and no fetch is involved
      in either export. */
   if (typeof module === "object" && module.exports) {
+    /* #469 additions: `followable` is the whole boundary of the widened
+       read path, and the two notices are what an operator is told when there
+       is nothing to show. All three were previously assertable only by
+       scanning this file's text for a literal. */
     module.exports = { terminalVerdict: terminalVerdict, verdictBlock: verdictBlock,
-                       WORKER_OUTCOME_TERMS: WORKER_OUTCOME_TERMS };
+                       WORKER_OUTCOME_TERMS: WORKER_OUTCOME_TERMS,
+                       followable: followable,
+                       TERMINAL_WORKFLOWS: TERMINAL_WORKFLOWS,
+                       noLaunchNotice: noLaunchNotice,
+                       noRunRecordNotice: noRunRecordNotice,
+                       runProjectionUnavailableNotice: runProjectionUnavailableNotice };
   }
 })();
