@@ -163,6 +163,37 @@ def _wait_claim_released(store, predicate, timeout=5.0):
     raise AssertionError("the execution-map claim was not released before the timeout")
 
 
+def _wait_label(gh, issue_ref, expected, timeout=5.0):
+    """Wait for the dispatcher's GitHub label sync, rather than assuming it.
+
+    The same asynchrony as `_wait_claim_released`, one step earlier and on a
+    different actor. `Dispatcher.complete()` (`scripts/dispatcher.py`) writes
+    the terminal status under `self._lock` and then, deliberately *outside*
+    the lock, calls `_sync_github()` to swap the label -- its own docstring
+    says so: "The registry transition (the only part that must be race-free)
+    is atomic under `self._lock`; the GitHub label swap/comment happen
+    afterward, unlocked, so a slow network call here cannot stall other runs'
+    heartbeat()/sweep_expired()."
+
+    `_wait_terminal` polls exactly the field that flips inside that lock, so it
+    returns while the label swap is still pending. Asserting the label on the
+    next line is therefore racing a window the production code creates on
+    purpose, and it lost under the extra load of a full-suite run.
+
+    Bounded, and it observes the real condition rather than sleeping a guessed
+    interval: on the expected path it returns as soon as the sync lands, and on
+    a genuine regression it still fails, reporting what the label actually was.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if gh.labels.get(issue_ref) == expected:
+            return
+        time.sleep(0.02)
+    raise AssertionError(
+        f"{issue_ref} did not reach {expected} before the timeout "
+        f"(last seen: {gh.labels.get(issue_ref)!r})")
+
+
 def test_eligible_engine_is_actually_dispatchable_through_real_registry(tmp_path, monkeypatch):
     """The dogfood fix: eligibility (hermes-free dispatchable) and the real
     launcher dispatch agree, and a confirmed launch completes end-to-end
@@ -240,7 +271,7 @@ def test_eligible_engine_is_actually_dispatchable_through_real_registry(tmp_path
     # And the issue goes to blocked, not review: a failing terminal status is
     # still the dispatcher's to sync, while `workflow:review` is review-sync's
     # alone and needs a durable review submission this run never earned (#493).
-    assert gh.labels["owner/repo#482"] == ["workflow:blocked"]
+    _wait_label(gh, "owner/repo#482", ["workflow:blocked"])
     assert run.review_submission_id is None
     # Terminal claim release (S7b dogfood fix): dispatch_async's background
     # thread completes the run directly through Dispatcher.complete(),
@@ -311,4 +342,4 @@ def test_chain_post_claim_failure_is_terminal_and_releases_claim(tmp_path, monke
     assert run.status == "blocked"
     assert run.result["error"]["category"] == "adapter_start_failed"
     _wait_claim_released(store, lambda claims: claims == ())
-    assert gh.labels["owner/repo#482"] == ["workflow:blocked"]
+    _wait_label(gh, "owner/repo#482", ["workflow:blocked"])
