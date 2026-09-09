@@ -28,6 +28,23 @@ hand-edited:
 - `src/content/docs/docs/adrs.md` — the Accepted-only ADR index, generated
   from `docs/adr/` by `scripts/docs_currency.py`.
 
+Every other docs page is **hand-maintained** and must be updated deliberately
+when its repository source changes. Each names its source at the top; these are
+the pages that repeat repository claims:
+
+| Site page | Repository source |
+| --- | --- |
+| `docs/operating-model.md` | `docs/agents/current-operating-model.md` |
+| `docs/architecture/dispatch-contract.md` | `docs/architecture/dispatch-contract.md` |
+| `docs/architecture/runtime-evaluation.md` | `docs/architecture/runtime-and-evaluation-harness.md` |
+| `docs/architecture/vertical-packages.md` | `docs/architecture/vertical-package-contract.md` |
+
+The site is a summary surface, not a second source of truth: when the two
+disagree, the repository wins and the page is wrong.
+`scripts/docs_semantic_currency.py` catches a few specific overclaims across
+these pages, but it cannot tell you a summary has gone stale -- that is on the change
+that made it stale.
+
 The repository root owns the regeneration script and the CI gate:
 
 ```bash

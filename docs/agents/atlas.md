@@ -12,7 +12,8 @@ remain the single source of truth; maps are derived views, never a second
 backlog.**
 
 Atlas replaces the earlier ad-hoc "wayfinder" convention
-(`docs/agents/issue-tracker.md`'s former Wayfinding section). The name
+(retained as historical context in
+`docs/agents/issue-tracker.md`'s Wayfinding operations section). The name
 "wayfinder" is deliberately not reused for Atlas -- it is a third-party skill
 name.
 
