@@ -57,6 +57,12 @@ pre-Atlas map issues that are still open: those used one issue labelled
 not create, dispatch from, or extend `wayfinder:*` issues; migrate anything
 still live to Atlas and the `workflow:*` carrier.
 
+Three unrelated things carry this name. Superseded here is only the `wayfinder:*`
+**label convention**. The **v.02 milestone wayfinder** is a separate phased
+planning document referenced by ADR-021 and the credential-broker threat model,
+and is untouched by this. **Wayfinder** is also a third-party skill name, which
+is why Atlas does not reuse the word.
+
 ## Safety
 
 - Creating or dispatching child work requires the operator-approved map and ticket.

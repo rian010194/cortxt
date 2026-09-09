@@ -16,6 +16,7 @@ the ADR wins and the document is wrong.
 | What is the scope, evidence, review and approval of a piece of work? | The GitHub issue, plus exactly one `workflow:*` label (ADR-018) | Any map, ledger, plan or runtime queue |
 | What was decided, and does it bind me? | Accepted ADRs in [`adr/`](adr/README.md) | A Proposed ADR, a plan, or a summary of one |
 | What can the system actually do today? | [`agents/current-operating-model.md`](agents/current-operating-model.md) | A merged UI change, a registered adapter, a green fixture |
+| What was it actually observed doing, and how was that proven? | A finding in [`findings/`](findings/README.md), read at the commit it cites | A worker's own success message |
 | Where is this going? | [`agents/goal-operating-model.md`](agents/goal-operating-model.md) | Anything that reads as a schedule or a commitment |
 | What must a dispatch satisfy? | [`architecture/dispatch-contract.md`](architecture/dispatch-contract.md) | A worker's own success message |
 | How do goals, areas, dependencies and progress relate? | [`agents/atlas.md`](agents/atlas.md) — derived views over Issues | Atlas is never a second backlog |
@@ -67,12 +68,16 @@ it when a term's exact meaning decides the answer.
 
 ## Historical evidence and registers
 
-These are **registers**: they record why something was decided or what was
-observed at one moment. They are never edited to match the present. A register
-that turns out to be wrong is superseded by a new one, not rewritten.
+These are **registers**: they record why something was decided, or what was
+observed, at one moment. They are never edited to match the present. A register
+that turns out to be wrong is superseded by a new one, not rewritten. Being
+under `docs/` does not settle which kind a document is -- `REVIEW_LOG.md` sits
+beside descriptions in `architecture/` and is append-only -- so check the
+document, not the directory.
 
 | Register | What it holds |
 | --- | --- |
+| [`findings/`](findings/README.md) | What the system was observed doing, traced to a mechanism, at one point in time (#533) |
 | [`adr/`](adr/README.md) | Every architecture decision, with its status |
 | [`architecture/REVIEW_LOG.md`](architecture/REVIEW_LOG.md) | Append-only log of changes to Accepted ADRs |
 | [`daemon-proof-log.md`](daemon-proof-log.md) | Recorded daemon proof runs |

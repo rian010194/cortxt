@@ -143,10 +143,15 @@ Any new adapter must preserve the dispatch contract and carry its own evidence
 for its runtime/model combination and task shape.
 
 The Supervisor Daemon has its own persisted claim tracking, worktree creation,
-runtime invocation, autonomy checks and review-sync. Its dispatch loop does not
-create the same durable Run chain as the WorkLauncher. Do not present it as
-equivalent to the OS path or require it for routine Milestone A delivery.
-Diagnostic daemon status is not OS end-to-end proof.
+autonomy checks and review-sync. Its dispatch loop invokes through the runtime
+`EngineContext` -- the second registry above, the one that *does* hold `claude`
+and `codex` -- and never through the WorkLauncher's `ADAPTER_REGISTRY`. It
+imports no Dispatcher and creates no durable Run: the lane it reports carries
+`run_id: None`. This is the concrete reason registration in the daemon's runtime
+context is not WorkLauncher eligibility, and why the two paths are not
+interchangeable. Do not present the daemon as equivalent to the OS path or
+require it for routine Milestone A delivery. Diagnostic daemon status is not OS
+end-to-end proof.
 
 ## What existing evidence establishes
 
@@ -171,7 +176,12 @@ Merged UI work, a registered adapter, a passing fixture and requested model
 metadata are **not** verified end-to-end capability. Unknown usage or cost stays
 unknown, never zero. A requested provider or model value is not an observation
 of what executed. A process exit or a worker's own success message is not
-sufficient delivery evidence.
+sufficient delivery evidence -- [`../findings/`](../findings/README.md) records
+a case where a worker that refused to act was classified as a success (#520).
+
+What a specific run was observed doing, and how that was traced to a mechanism,
+belongs in a finding, not here. A finding is read at the commit it cites; this
+file describes the present and changes with it.
 
 ## Selection rules
 
