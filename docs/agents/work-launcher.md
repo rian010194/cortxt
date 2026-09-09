@@ -262,7 +262,7 @@ runner; run them with `python scripts/test_parallel_dispatch.py`.
 
 The S7c live Run status surface reads its terminal facts (`engine`,
 `provider`, `model`, `usage`, `cost`, `cost_status`, `artifacts`, `evidence`,
-`error`, `incomplete`, `conflicting`) from ``run.terminal.v1`` as projected by
+`error`, `outcome`, `incomplete`, `conflicting`) from ``run.terminal.v1`` as projected by
 ``agent-platform/widget_contract/run_authority.py`` and served through
 ``read_run_terminal_v1`` in ``agent-platform/widget_contract/adapters/store_reads.py``.
 It never reads those fields from browser state. When a correlated MCP session

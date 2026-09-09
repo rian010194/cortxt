@@ -121,6 +121,12 @@ jobs:
         run: python scripts/test_work_launcher.py
       - name: Launcher/execution-map integration (#262)
         run: python scripts/test_launcher_integration.py
+      # W8. Same reasoning as the four above: this suite lives in `scripts/`,
+      # so no pytest invocation in this file reaches it. It is stdlib-only and
+      # injects `action_host.main`, so it binds no host and imports nothing
+      # from agent-platform.
+      - name: Cortxt OS start path refusals (W8)
+        run: python scripts/test_start_cortxt_os.py
 
   dco-signoff:
     if: github.event_name == 'pull_request'
