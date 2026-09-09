@@ -39,29 +39,39 @@ too, and read `CONTEXT.md` for the controlled vocabulary.
    state its delivery path prescribes (ADR-040 label invariant).
 
 6. **Do not infer the operating model from one experiment or one runtime
-   README.** Read the orientation documents in order before evaluating the
-   architecture, proposing a new execution path, or dispatching work.
+   README.** Before evaluating the architecture, proposing a new execution
+   path, or dispatching work, read the orientation documents in the order given
+   under "What to read for the work you have".
 
 7. **Accepted ADRs are normative.** When you change an Accepted ADR, add a row
    to `docs/architecture/REVIEW_LOG.md` in the same pull request (the
    `adr-doc-currency` CI gate enforces this).
 
-## Required orientation
+## What to read for the work you have
 
-Before evaluating the architecture, proposing a new execution path, or
-dispatching work, read these files in order:
+Read what your task needs. No worker has to load the whole roadmap.
+`docs/README.md` is the navigation and authority map for everything below.
+
+**A bounded fix** — a defect, a test, a documentation correction, one file or
+one contract you already know:
+
+1. The GitHub issue: scope, acceptance criteria and limits.
+2. The non-negotiable rules above and "Build and test" below.
+3. The contract or guide the change touches (`docs/README.md` names them).
+
+**Architecture, planning or dispatch** — proposing an execution path,
+evaluating the architecture, or starting work for someone else. Read in order:
 
 1. `docs/agents/current-operating-model.md`
 2. `docs/architecture/dispatch-contract.md`
 3. `docs/architecture/runtime-and-evaluation-harness.md`
-4. `docs/agents/atlas.md` — roadmap maps derived from GitHub Issues (#210); see
-   also `docs/agents/issue-tracker.md`'s Wayfinding section
-5. the GitHub issue and any explicitly designated current planning state
+4. `docs/agents/atlas.md` — roadmap maps derived from GitHub Issues (#210)
+5. The GitHub issue and any explicitly designated current planning state
 
 A limitation in one runtime's native delegation does not mean that platform
 routing is unverified or should be bypassed. The current operating model is the
-authority for what is verified now; accepted ADRs in `docs/adr/` are the
-normative record of decisions.
+authority for what is supported now; Accepted ADRs in `docs/adr/` are the
+normative record of decisions. A Proposed ADR binds nothing.
 
 ## Product surface and status
 
@@ -156,82 +166,53 @@ Three paths are sanctioned; every path upholds the label invariant:
 3. **Docs/ADR materialization** — no code; feature branch plus pull request
    plus operator merge (`review -> done` in step with the merge).
 
-## Daemon dogfood
+## Current execution boundary
 
-The Supervisor Daemon (`cortxt daemon`, `agent-platform/daemon/`) is the
-unattended dispatch loop: it scans GitHub for `workflow:ready` issues, claims
-them, routes them to an engine, invokes the worker in an isolated worktree,
-runs the Evidence Gate, and syncs review submissions (ADR-037). Dogfood it in
-every session that advances ready issues.
+Milestone A is **OS -> WorkLauncher -> Dispatcher**: start, follow, review and
+retry work that is *already approved*. Milestone B — originating and approving
+new mandates in the OS — comes after it and is not implied by finishing A.
+Adapting Supervisor Daemon dispatch to the mandate-and-Run chain is deferred to
+W15, outside Milestone A's acceptance: do not require daemon dispatch for
+routine work, and do not treat registration in the daemon's runtime context as
+WorkLauncher eligibility.
 
-Commands:
+Deferring daemon dispatch does **not** defer review-sync. Run `cortxt daemon
+sync-review --state-dir <dir>` against the intended state directory as the
+delivery path requires, so durably submitted reviews land on `workflow:review`.
+Never bypass the Evidence Gate, and never clean up or merge a `daemon/<issue-id>`
+branch or worktree without an operator decision. Diagnostic daemon status is not
+OS end-to-end proof.
 
-- `cortxt daemon start --repo owner/repo --state-dir <dir> --snapshot <file>`
-  — run the dispatch loop. `--once` runs a single iteration and exits
-  (testing/proof steps); `--unattended` skips forced supervised-mode pausing
-  (only after a class has earned autonomy: 3 consecutive clean runs per
-  engine/task-shape).
-- `cortxt daemon stop --state-dir <dir>` — request a stop.
-- `cortxt daemon status --snapshot <file>` — read the daemon section of the
-  widget snapshot (claimed issues, budget, last gate outcome, review-sync
-  counts).
-- `cortxt daemon sync-review --state-dir <dir>` — mechanically transition
-  submitted reviews to `workflow:review` (ADR-037); runs automatically at the
-  start of each daemon iteration.
+`docs/agents/current-operating-model.md` holds the detail: which adapter
+registries exist, why they are not interchangeable, and what today's evidence
+does and does not establish. `docs/agents/running-cortxt-os.md` and
+`docs/agents/work-launcher.md` are the practical guides.
 
-How the loop behaves (verified in `agent-platform/daemon/loop.py`):
+## Cost-effective use of harnesses and models
 
-- It lists issues via `gh issue list --label workflow:ready --state open` and
-  skips issues with no routable task tag — it never guesses.
-- It persists the claim **before** dispatching: a crash window produces a
-  stuck claim (visible in `claimed.json`, requires manual clear), never a
-  duplicate real-world dispatch.
-- Each dispatch gets its own git worktree and branch `daemon/<issue-id>`,
-  created from the daemon's working directory. The daemon **never removes
-  them**: branch cleanup and merge are operator decisions.
-- It sends the full issue body as the prompt and treats a "succeeded" report
-  with no landed commit as a failure — the Evidence Gate checks a real
-  signal, not self-reported status.
-- Default is supervised mode (`supervised=True`): a clean run pauses for
-  review rather than continuing unattended. Operator approval remains the
-  final gate; the default unattended path for real build issues is not yet
-  the exercised default (see `docs/agents/current-operating-model.md`).
+Optimize **accepted delivery** under the operator's quality, time and budget
+constraints — not cheapest-model-first. Weigh harness and model suitability,
+subscription quota, provider charges, retries, handoffs, review effort and
+operator time. The routing manifest is static bootstrap configuration, not a
+measured optimizer.
 
-Session discipline:
-
-- Advance `workflow:ready` issues through the daemon or `cortxt work`
-  (`docs/agents/work-launcher.md`) instead of ad-hoc manual execution, and
-  observe the loop via `cortxt daemon status`.
-- Run `cortxt daemon sync-review` before claiming new work so submitted
-  reviews land on `workflow:review` first.
-- Never clean up or merge a `daemon/<issue-id>` branch/worktree without an
-  operator decision; never bypass the Evidence Gate.
+Give a worker a coherent bounded unit with explicit acceptance criteria. Use
+scripts for mechanical checks and compact evidence at handoffs rather than
+having several premium sessions repeat every planning, execution and monitoring
+step. Required independent review still applies. Additional workers, paid calls,
+fallback routes and scope changes must fit an existing mandate; this guidance
+does not authorize them.
 
 ## Session coordination
 
 Parallel sessions coordinate deliveries through a file-based inbox outside the
-repository at `lab/inbox/` (workspace-local, never tracked). Conventions:
+repository at `lab/inbox/`, alongside handoffs in `lab/` — both workspace-local
+and never tracked. `AGENTS.md` states the conventions and the read-only checker
+that enforces them; that is the single copy, so change it there.
 
-- Each session has an `out/` and `in/` directory under `lab/inbox/`.
-- A session that produces something another session (or the coordinator)
-  should see writes a message file to `lab/inbox/<target>/in/` with YAML
-  frontmatter: `from`, `to`, `type` (`delivery` | `request` | `handoff`),
-  `created`, `artifact`, `affects`.
-- The coordinator reads `lab/inbox/*/in/` at the start of each work round and
-  presents new messages; consumed messages move to `lab/inbox/done/`.
-- Messages are English, zero a/o/u-with-diacritics, and contain no secrets,
-  prompts, or model reasoning — only artifact pointers plus a short
-  description.
-- See `lab/DESIGN-session-injection.md` for the design; this is its v1.
-- `scripts/session_inbox_contract.py` is a read-only checker for this
-  contract (frontmatter fields, `type`, diacritics, artifact existence). It
-  never writes to, moves, or deletes anything under `lab/inbox/`. Active
-  mailbox messages are strict; historical messages already under `done/`
-  retain visible findings as warnings and are never rewritten.
-
-Handoffs live in `lab/` (workspace-local, never tracked) and are the durable
-start point for each session; the inbox supplements them with live deliveries
-between running sessions.
+Handoffs and the inbox are **supplemental**. Everything required to do the work
+is in the repository: an agent starting from a clean checkout must not be
+missing an instruction because a local file is absent.
 
 ## Guardrails against common misreadings
 
