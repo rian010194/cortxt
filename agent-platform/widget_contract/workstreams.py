@@ -36,7 +36,8 @@ def _section(body: str, names: Sequence[str]) -> str | None:
 
 def build_workstream_projection(repo: str, issues: Sequence[Mapping[str, Any]], *,
                                 status: str = "fresh", error: Mapping[str, Any] | None = None,
-                                authority: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, Any]:
+                                authority: Mapping[str, Mapping[str, Any]] | None = None,
+                                store_health: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Map complete issue records to durable, non-invented Workstream views.
 
     ``authority`` carries the server-computed answers the typed ``next_action``
@@ -47,6 +48,13 @@ def build_workstream_projection(repo: str, issues: Sequence[Mapping[str, Any]], 
     caller that omits them gets no next action at all rather than a guess
     (#498). Work reads its primary affordance from *this* projection, so it is
     the projection that must carry the field.
+
+    ``store_health`` reports whether the session store could be read whole. A
+    corrupt record makes the run authority unanswerable for every Issue, so
+    recovery and unblock disappear from the OS; without this field the
+    operator cannot tell that from "there is nothing to do here". Omitted, it
+    is reported as ``unknown`` rather than as healthy -- a caller that never
+    looked has not established that the store is sound.
     """
     workstreams = []
     for issue in issues:
@@ -100,4 +108,8 @@ def build_workstream_projection(repo: str, issues: Sequence[Mapping[str, Any]], 
     order = {"review": 0, "blocked": 1, "in-progress": 2, "ready": 3, "inbox": 4, "done": 5, "unknown": 6}
     workstreams.sort(key=lambda item: (order.get(item["workflow"], 6), -item["number"]))
     return {"schema_version": 1, "mode": "local", "synthetic": False, "repo": repo,
-            "status": status, "error": dict(error) if error else None, "workstreams": workstreams}
+            "status": status, "error": dict(error) if error else None,
+            "store_health": dict(store_health) if store_health else
+                            {"status": "unknown", "unreadable_records": [],
+                             "skipped_records": [], "withheld": []},
+            "workstreams": workstreams}

@@ -905,6 +905,35 @@ function recoveryAvailable(s, x) {
   if (!correlated(x) || x.workflow !== "in-progress" || nextActionKind(x) !== "recover") return false;
   return s.model.synthetic ? viewAuthorized(x, "view:recovery") : actAuthorized(s, "recover-to-ready");
 }
+function withheldByStore(s, x) {
+  /* Which affordance the authority stores are currently hiding from THIS
+     Workstream, or null.
+
+     Work is the surface the operator starts from, and with the run authority
+     withheld there is no typed next action -- so the summary fell through to
+     "No next action pending.", actively asserting there is nothing to do on a
+     Workstream whose only problem is that the evidence needed to offer the
+     control is unreadable. That is precisely the silence `store_health` was
+     added to end, still being told by the first screen the operator reads. */
+  var health = s && s.model && s.model.store_health;
+  if (!health || health.status !== "degraded" || !x) return null;
+  var kind = x.workflow === "in-progress" ? "recover"
+           : (x.workflow === "blocked" ? "unblock" : null);
+  if (!kind) return null;
+  return (health.withheld || []).indexOf(kind) === -1 ? null : kind;
+}
+function unblockAvailable(s, x) {
+  /* W7 (#519): the way back from a `workflow:blocked` Issue whose Run has
+     been released. Same split as launch and recovery. Work does not own the
+     mutation boundary for it -- lifting a block requires a stated
+     justification, which is a form, not a button -- so this authorizes the
+     primary control that OPENS Decisions, where the reviewed dialog lives.
+     Without this, the typed `unblock` next action rendered its label with no
+     control under it, which is the dead affordance #469 was about. */
+  if (!s || !s.model || !x) return false;
+  if (!correlated(x) || x.workflow !== "blocked" || nextActionKind(x) !== "unblock") return false;
+  return s.model.synthetic ? viewAuthorized(x, "view:unblock") : actAuthorized(s, "unblock-to-ready");
+}
 function renderWork(winEl,ctx){
   var s=(ctx&&ctx.state)||state,x=(ctx&&ctx.workstream)||null;
   if(!x){
@@ -937,7 +966,9 @@ function renderWork(winEl,ctx){
   var primaryKind=nextActionKind(x);
   if(primaryKind==="launch"&&!launchAvailable(s,x))primaryKind=null;
   if(primaryKind==="recover"&&!recoveryAvailable(s,x))primaryKind=null;
+  if(primaryKind==="unblock"&&!unblockAvailable(s,x))primaryKind=null;
   if(primaryKind==="decision"&&!decision)primaryKind=null;
+  var withheldStore=withheldByStore(s,x);
   var nextLabel=(x.next_action&&x.next_action.label)||null;
   var phase=x.phase||x.workflow||"in-progress";
   var milestones=(x.milestones&&x.milestones.length)?x.milestones:[];
@@ -974,7 +1005,12 @@ function renderWork(winEl,ctx){
              when no prose summary was projected. */
           '<p class="wc-main">'+(x.nextAction?esc(x.nextAction)
               :(primaryKind&&nextLabel?esc(nextLabel)
-              :(decision?esc(decision.summary):"No next action pending.")))+'</p>'+
+              :(decision?esc(decision.summary)
+              :(withheldStore?"An action on this Workstream is being withheld.":"No next action pending."))))+'</p>'+
+          /* Never "nothing to do" when the truth is "we cannot tell". The
+             detail, including which record to repair, stays in Decisions;
+             this says enough that the operator goes looking. */
+          (withheldStore?'<p class="wc-sub" data-work-store-degraded>The session store could not be read whole, so it cannot be established whether a Run still holds this Issue. Returning it to ready is withheld until the store is repaired &mdash; not because this Workstream is ineligible. Open Decisions for the failing record.</p>':'')+
           (decision?'<p class="wc-sub">'+esc(decision.summary)+'</p>':'')+
           '<div class="work-actions">'+
             /* Exactly one primary affordance, derived from the typed next
@@ -986,9 +1022,14 @@ function renderWork(winEl,ctx){
               ?'<button type="button" class="primary-action" data-launch-run>'+esc(nextLabel||"Review and start Run →")+'</button>'
               :(primaryKind==="recover"
                 ?'<button type="button" class="primary-action" data-recover-ready>'+esc(nextLabel||"Return to ready (recover) →")+'</button>'
-                :(primaryKind==="decision"
-                  ?'<button type="button" class="primary-action" data-deep-open="decisions">'+esc(nextLabel||"Open Decisions →")+'</button>'
-                  :'')))+
+                :(primaryKind==="unblock"
+                  /* Opens Decisions, where the justification form is. The
+                     label is the server's own, so the control says the same
+                     thing the Next line above it says. */
+                  ?'<button type="button" class="primary-action" data-unblock-open>'+esc(nextLabel||"Lift the block and return to ready →")+'</button>'
+                  :(primaryKind==="decision"
+                    ?'<button type="button" class="primary-action" data-deep-open="decisions">'+esc(nextLabel||"Open Decisions →")+'</button>'
+                    :''))))+
             /* #469: a Run that has already stopped had no control at all --
                its result was reachable only by hand-editing the deep link.
                For exactly the missions whose Run ended (blocked, review, done)
@@ -999,7 +1040,9 @@ function renderWork(winEl,ctx){
               ?'<button type="button" class="'+(primaryKind?'chrome-button':'primary-action')+'" data-open-run-result>'+
                  (claimedWorkstream(x)?'Follow the running work →':'See what the last run did →')+'</button>'
               :'')+
-            (primaryKind==="decision"?'':'<button type="button" class="chrome-button" data-deep-open="decisions">Open Decisions</button>')+
+            /* `unblock` already opens Decisions as the primary control, so a
+               second button to the same place would just be noise. */
+            (primaryKind==="decision"||primaryKind==="unblock"?'':'<button type="button" class="chrome-button" data-deep-open="decisions">Open Decisions</button>')+
             '<button type="button" class="chrome-button" data-deep-open="evidence">Open Evidence</button>'+
             '<button type="button" class="chrome-button" data-deep-open="execution">Execution Inspector</button>'+
           '</div>'+
@@ -1060,6 +1103,12 @@ function renderWork(winEl,ctx){
   qa("[data-recover-ready]",winEl).forEach(function(b){
     /* The shell never calls an action port: it hands off to the app that owns
        `recover-to-ready` (Decisions), which runs the operator gate. */
+    b.addEventListener("click",function(){openDeep("decisions","#"+String(x.number||x.id))});
+  });
+  qa("[data-unblock-open]",winEl).forEach(function(b){
+    /* Same discipline as recovery: the shell never calls an action port. It
+       hands off to Decisions, which owns `unblock-to-ready` and runs the
+       operator gate (approval reference plus a stated justification). */
     b.addEventListener("click",function(){openDeep("decisions","#"+String(x.number||x.id))});
   });
   qa("[data-win-open]",winEl).forEach(function(b){
@@ -1383,5 +1432,9 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
    offered at all. It was reachable only by reading the source, which is
    how it shipped offering a control that preview mode can never honour.
    Exported so it can be exercised, exactly as the layout maths are. */
-if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,migrateSavedState:migrateSavedState,migrateWorkConsole:migrateWorkConsole,LEGACY_APP_ALIASES:LEGACY_APP_ALIASES,isValidAttentionItem:isValidAttentionItem,AttentionItemProjection:AttentionItemProjection,runResultAvailable:runResultAvailable,RUN_RESULT_WORKFLOWS:RUN_RESULT_WORKFLOWS};
+/* The affordance gates are exported for the same reason the Decisions
+   renderer exports its own (#469): they decide whether a mutation-oriented
+   control is offered at all, and a test that greps this file for a string
+   passes while the behaviour is broken. */
+if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,migrateSavedState:migrateSavedState,migrateWorkConsole:migrateWorkConsole,LEGACY_APP_ALIASES:LEGACY_APP_ALIASES,isValidAttentionItem:isValidAttentionItem,AttentionItemProjection:AttentionItemProjection,runResultAvailable:runResultAvailable,RUN_RESULT_WORKFLOWS:RUN_RESULT_WORKFLOWS,nextActionKind:nextActionKind,launchAvailable:launchAvailable,recoveryAvailable:recoveryAvailable,unblockAvailable:unblockAvailable,renderWork:renderWork,withheldByStore:withheldByStore};
 })();

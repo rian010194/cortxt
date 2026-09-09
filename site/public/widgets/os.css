@@ -160,6 +160,12 @@ button,input{font:inherit}button{color:inherit}
 .projection-list article p{margin:0;font-size:12px;color:var(--muted);line-height:1.5}
 .projection-list .eyebrow{display:block}
 .review-actions{margin-top:14px}
+/* #519/W7: the session-store degradation notice names each unreadable
+   record, so the operator can repair the one that is broken rather than
+   guessing which of 91 it is. */
+[data-store-degraded]{border-left:2px solid var(--warn);padding-left:10px}
+.store-degraded-list{margin:.4rem 0 0;padding-left:1.1rem;color:var(--muted);font-size:12px}
+.store-degraded-list code{font-size:11px}
 /* ---- windows (explicit multi-window opt-in) ---- */
 .app-window{position:absolute;border:1px solid var(--stroke);border-radius:12px;background:var(--surface);box-shadow:0 12px 34px #0005;display:flex;flex-direction:column;overflow:hidden}
 .app-window.focused{outline:1px solid var(--accent)}
