@@ -1,11 +1,11 @@
 ---
 title: Current operating model
-description: The verified execution path and present product boundaries.
+description: The supported execution path, its limits, and present product boundaries.
 ---
 
-This page summarizes the active operational baseline reconciled on 2026-08-21. [Read the authoritative source](https://github.com/rian010194/cortxt/blob/main/docs/agents/current-operating-model.md).
+This page is a hand-maintained summary of the repository's operating model, reconciled on 2026-09-10. It describes supported work paths and their limits, not end-to-end readiness. [Read the authoritative source](https://github.com/rian010194/cortxt/blob/main/docs/agents/current-operating-model.md) -- where the two disagree, the repository wins.
 
-## Verified path today
+## The supported path today
 
 ```mermaid
 flowchart LR
@@ -46,7 +46,10 @@ execution-resource meaning (the optional Git branch/worktree attached to a
 Workstream). Only the human operator approves scope, irreversible effects,
 merge, publication, deploy, and final completion.
 
-## Verified capabilities
+## What existing evidence establishes
+
+Code that exists, a controlled verification, real runtime evidence and routine
+daily use are four different things. None implies the others.
 
 - Dispatcher claim/run identity and workflow-label transitions.
 - Worker invocation adapters with injected subprocess boundaries.
@@ -57,4 +60,12 @@ merge, publication, deploy, and final completion.
 
 ## Current limits
 
-The full unattended issue-to-result workflow is not yet the default, and operator approval remains the final gate. A successful experiment or smoke test must not be described as a finished production workflow.
+These are exercised under controlled conditions -- fake runtimes, synthetic
+fixtures and recorded experiments -- which is not the same as live proof. The
+full unattended issue-to-result workflow is not the default, and operator
+approval remains the final gate.
+
+A successful experiment or smoke test is not a finished production workflow.
+Neither is merged UI work, a registered adapter, a passing fixture, or requested
+model metadata: none of those establishes verified end-to-end capability.
+Unknown usage or cost stays unknown, never zero.

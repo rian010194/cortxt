@@ -1,112 +1,142 @@
 # Goal operating model
 
 Status: target state, not current reality
-Authority: describes the destination defined by ADR-014/015; does not itself
-create or override decisions
-Last reconciled: 2026-08-21
+Authority: synthesis of Accepted ADRs and operator direction; it creates no
+decision and accepts no ADR
+Last reconciled: 2026-09-10
 
-## Why this file exists
+## What this file is for
 
-`current-operating-model.md` describes what is verified today. The accepted
-ADRs (014, 015, 016, 017, 018) each decide one bounded question — vision,
-wedge, bounded context, reasoning acceptance, workflow-state carrier — but no
-single file reads as "what does it look like when this works." This file is
-that synthesis. It creates no new authority: where it says something the
-ADRs do not, that is marked explicitly as open, not decided by writing it
-here.
+[`current-operating-model.md`](current-operating-model.md) describes what is
+supported now. This file describes the **stable direction**: the shape of the
+thing when it works. It is not a schedule, not a commitment with dates, and not
+a delivery ledger. Where it says something the ADRs do not, that is an open
+question, not a decision made by writing it down.
 
-Update this file when an ADR changes the destination. Do not treat it as a
-schedule or a commitment with dates — it describes shape, not timing.
+Update this file when a decision changes the destination — not when a work item
+moves. For navigation, see [`../README.md`](../README.md).
 
-## Milestone 1 — F1: Wedge B validated
+## Destination
 
-The nearer milestone. Reached when the validation plan in ADR-015 (T1–T5) is
-complete: Rikard uses it, a second developer uses it, it generalizes beyond
-proof environment B, it demonstrates provider neutrality, and provider assurance is
-verified for the data classes it actually handles.
+The operator creates, steers, resumes and verifies durable work while retaining
+ownership of mandate, state, memory, tools and evidence. Agent harnesses, models
+and inference providers are replaceable execution resources behind Cortxt-owned
+ports and contracts (ADR-014/016/042). Cortxt OS is the general shell; Work is
+its first principal app (ADR-044). The CLI and the MCP surface expose the same
+authority to their respective consumers.
 
-**What the product does:** delivers a provider-/data-class-governed,
-long-running research and analysis session as an auditable capability —
-resumable, evidenced, verified — through a repository-native + CLI surface.
-Not a chat window and not a revived Operator Cockpit/web surface (ADR-015
-premise 11).
+Coding, research, analysis and compliance exist as versioned **profiles** over
+one shared core — not four products, and not a boundary the platform is defined
+by (ADR-014 non-goal 3). Cortxt does not train a foundation model, does not
+compete as an inference provider, and is not defined by any one profile's domain.
 
-**How work flows at this point:**
+## What stays true at every milestone
 
-- The operator states intent in natural language; the coordinator turns it
-  into a scoped GitHub issue with acceptance criteria and budget, same as
-  today (`current-operating-model.md`).
-- The difference from today: once an issue is `workflow:ready`, agents
-  dispatch, run, and move work through review themselves. The operator is
-  not asked to approve each individual step.
-- The operator is pulled back in only when a decision is irreversible (push
-  to main, deploy, delete data), the cost crosses an explicit threshold, or
-  policy requires an explicit gate (a data-class boundary, a provider not yet
-  assured for the material in question). This matches the escalation
-  boundaries AGENTS.md already states as control-plane rules — the goal
-  state does not loosen them, it just means routine work no longer needs a
-  human in the loop to reach them.
-- No agent approves its own work, merges, deploys, publishes, or closes its
-  own issue. That constraint holds at every milestone, not just today's.
+- A durable issue record holds scope, evidence and approval. Today that is
+  GitHub Issues with `workflow:*` as the state carrier (ADR-018); Atlas maps and
+  runtime queues stay derived views or execution ledgers. Changing that
+  authority requires its own explicit decision.
+- The operator retains mandate over irreversible decisions. Broader autonomy is
+  about routine throughput, never about removing the human from consequential
+  decisions.
+- No worker approves, merges, deploys, publishes or closes its own work.
+- Provider neutrality and data-class gating are load-bearing: no profile,
+  however mature, bypasses the assurance gate InferencePort enforces (ADR-016).
 
-**Evidence that this milestone is real, not aspirational:** T1–T5 passing,
-each with recorded evidence in its GitHub issue — not a demo, not a single
-successful run.
+## How work should flow
 
-## Milestone 2 — F0: the full vision realized
+1. The operator states the outcome and its constraints. Preparation resolves
+   scope, acceptance criteria, dependencies, permitted effects, evidence and
+   budget into an approved mandate. A `workflow:ready` label alone never
+   authorizes execution.
+2. Cortxt selects an eligible combination of harness, model, context and tools
+   for a coherent work unit, respecting the mandate and demonstrated suitability
+   for the task — not token price alone.
+3. Workers execute and verify their units in the permitted workspace.
+   Independent units may run in parallel when authorized; dependent units get
+   explicit handoffs carrying artifact references, open questions and evidence.
+4. Mechanical checks, status collection and result correlation run without a
+   premium model interpreting every routine event. Agents are engaged at useful
+   boundaries: execution, a concrete blocker, a decision, or review.
+5. Evidence and any required independent review establish whether the result
+   satisfies the mandate. A retry or reassignment preserves prior Run evidence,
+   stays within approved limits, and never silently changes the allowed route.
+6. The operator approves merge, publication, deployment and final completion.
 
-The longer-horizon milestone. Cortxt is a provider-neutral platform on which
-the user (or organization) owns the working capability's state, reasoning,
-memory, tools, evidence, and evolution. Models, inference providers, and
-external agent engines are replaceable resources behind Cortxt-owned ports
-and contracts, not the product itself.
+## What a cost-effective combination means
 
-Coding, research, analysis, and compliance exist as versioned **profiles**
-on top of one shared core — not four separate products, and not a boundary
-the platform is defined by (ADR-014 non-goal 3). Wedge B (Milestone 1) is
-the first proof of that core; later profiles reuse it rather than
-reimplementing owned state, reasoning, and evidence per domain.
+The objective is **accepted delivery at the lowest total cost** under the
+operator's quality, time and policy constraints — not the cheapest model first.
+A more capable, more expensive model is the right choice when it avoids rework
+or reduces review effort. No harness or model holds a permanent role as planner,
+implementer or reviewer by brand.
 
-**What stays true at this milestone, not just at Milestone 1:**
+Evaluate the whole delivery: provider charges, subscription quota consumption,
+latency, operator attention, coordination, retries and review effort. These stay
+separate measurements and constraints rather than one fabricated figure, and
+unknown cost or missing provenance stays explicit. Quality and evidence gates
+are constraints, not something traded for a lower price.
 
-- GitHub Issues (or their successor durable record) remain the source of
-  truth for scope, evidence, and approval — Cortxt does not invent a second
-  backlog to feel more like a platform.
-- The operator retains mandate over irreversible decisions. Broader
-  autonomy at Milestone 1 is about routine throughput, not about removing
-  the human from consequential decisions at any milestone.
-- Provider neutrality and data-class gating are load-bearing, not
-  aspirational: no profile, however mature, gets to bypass the assurance
-  gate InferencePort enforces (ADR-016).
+Build evidence for **task shape x harness x model x verification approach**, and
+compare accepted outcomes and failure modes including handoff overhead. A strong
+model may own a difficult unit end to end while another combination handles a
+well-specified change more efficiently. A separate reviewer is warranted by risk
+or the approved workflow — not as automatic duplicate processing of every task
+by every available agent.
 
-**What this milestone explicitly is not** (ADR-014 non-goals, not repeated
-here — see that ADR): Cortxt does not train its own foundation model, does
-not compete as a GPU marketplace or inference provider, and is not defined
-by any single profile's problem domain.
+Claude Code, Codex, Hermes, DSH and possible additions such as Copilot are
+candidates behind contracts. Naming one here establishes no integration,
+reliability or authorization to call a paid provider. Routing and fallback must
+never silently consume a different subscription or cost route.
+
+The scoring method, telemetry coverage, retry thresholds and the degree of
+automatic selection remain open design questions. Nothing here claims that a
+learned cost optimizer or a seamless cross-harness session transfer exists.
+Portable work context and evidence are not portable hidden reasoning or native
+runtime session formats.
+
+## Stages between here and there
+
+The current operator-designated plan establishes the practical foundations:
+
+- **Milestone A** — start, follow, review and retry already-approved work
+  through OS -> WorkLauncher -> Dispatcher, verified by a scoped live acceptance
+  proof.
+- **Milestone B** — originate, prepare and approve new mandates in the OS.
+- A common versioned worker instruction/result contract, and usage/cost capture
+  from the route that already reports it, make execution comparable and
+  diagnosable.
+- Binding an approval to the actual execution configuration, and charge-policy
+  route eligibility, each require their own contract and budget decisions.
+- Daemon adaptation is deferred outside Milestone A. Required review-sync
+  remains in scope. Finishing Milestone A does not imply unattended
+  orchestration.
+
+Once the relevant contract and launch path are verified, bounded comparisons of
+harness/model combinations can inform routing without waiting for every deferred
+feature. A new adapter needs evidence for isolation, limits, cancellation,
+result correlation and failure behavior — not only useful output.
+
+ADR-015's validation criteria (T1-T5), provider and data-class assurance, and
+cross-user validation keep their own acceptance requirements. OS delivery does
+not declare them met.
 
 ## Open question: the wedge after B
 
-ADR-015 names compliance/gap-analysis (wedge C, via proof environment B) as "a
-natural second step," but this is explicitly **not decided**. The next
-wedge is chosen by what T1–T5 actually prove about Milestone 1, not
-pre-committed now. Do not treat wedge C as roadmap until a new ADR says so.
+ADR-015 names compliance and gap analysis (wedge C, via proof environment B) as
+"a natural second step", but this is explicitly **not decided**. The next wedge
+follows from what T1-T5 actually prove, not from a pre-commitment here. Do not
+treat wedge C as roadmap until a new ADR says so.
 
-## Relationship to other documents
+## Relationship to authority
 
-- **`current-operating-model.md`** — today's verified reality. Where the two
-  files disagree about what is true *now*, that file wins; this file only
-  speaks about the target.
-- **ADR-014 / ADR-015** — the decisions this file synthesizes. Where this
-  file and an ADR conflict, the ADR is authoritative and this file is wrong
+- [`current-operating-model.md`](current-operating-model.md) — what is supported
+  now. Where the two files disagree about the present, that file wins; this one
+  speaks only about the destination.
+- Accepted ADRs — normative, including 014-018, 040, 042, 043 and 044. Where
+  this file and an ADR conflict, the ADR is authoritative and this file is wrong
   and should be fixed.
-- **ADR-016 / ADR-017 / ADR-018** — the architectural decisions (bounded
-  context, reasoning acceptance, workflow-state carrier) that Milestone 1
-  and 2 depend on operationally.
-- **ADR-019/020/021/023/024/025/026/027/028/029/030/031** — later accepted
-  decisions this file references: permanent multi-engine routing (019),
-  proof-environment naming (020), admin surface + widget as CLI complement
-  (021), bottom-up and top-down integration (023), MCP server as the external
-  integration surface (024), engine adapter registry and service broker
-  (026/027), orchestrator multi-engine resume (028), unattended daemon
-  credential isolation (029), plan-vs-actual divergence tracking (030), and
-  the Apache-2.0 open-source license (031).
+- **ADR-045 is Proposed**, not Accepted. Neither it nor any profile or
+  confirmation design becomes accepted by being described here as a goal.
+- The operator-designated plan and subsequent issue evidence determine
+  implementation sequencing — not a stale status table and not this file.
