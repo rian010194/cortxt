@@ -272,12 +272,20 @@ class ActionHost:
 
     def workstreams(self, repo: str = DEFAULT_REPO) -> dict:
         raw = self._issues.read(repo)
+        # One scan, two consumers. Computing the health separately re-read and
+        # re-hashed every session record a second time per request, and -- worse
+        # than the cost -- let the two answers disagree: a record corrupted or
+        # repaired between the scans produced a projection whose affordances and
+        # whose explanation of those affordances came from different states of
+        # the store.
+        health: dict[str, Any] = {}
+        authority = self._next_action_authority(repo, raw["issues"], health_out=health)
         return build_workstream_projection(
             repo, raw["issues"], status=raw["status"], error=raw["error"],
-            authority=self._next_action_authority(repo, raw["issues"]),
-            store_health=self._session_store_health())
+            authority=authority, store_health=health)
 
-    def _next_action_authority(self, repo: str, issues: Sequence[Mapping[str, Any]]
+    def _next_action_authority(self, repo: str, issues: Sequence[Mapping[str, Any]],
+                               *, health_out: dict[str, Any] | None = None
                                ) -> dict[str, dict[str, Any]]:
         """Server-computed answers the typed `next_action` is derived from (#498).
 
@@ -300,12 +308,22 @@ class ActionHost:
         dispatcher_runs: Mapping[str, Any] | None
         session_docs: list[Mapping[str, Any]] | None
         corrupt: list[dict[str, str]] = []
+        skipped: list[dict[str, str]] = []
+        unreadable: list[dict[str, str]] = []
         try:
             dispatcher_runs = self._read_dispatcher_runs()
-            session_docs, corrupt = self._scan_session_docs()
-        except StoreUnavailable:
+            session_docs, corrupt, skipped = self._scan_session_docs()
+        except StoreUnavailable as error:
+            # The OTHER authority store. Reported the same way as a corrupt
+            # session record, because the consequence for the operator is
+            # identical: run liveness becomes unanswerable and every recover
+            # and unblock affordance disappears. Reporting `ok` here while
+            # withholding them was the same silence this field exists to end,
+            # left in place for the one store the field did not cover.
             dispatcher_runs = None
             session_docs = None
+            unreadable.append({"record": "dispatcher runs registry", "message": str(error)})
+        unreadable.extend(corrupt)
         if corrupt:
             # Withhold every run-authority answer, and say so. Dropping an
             # unreadable record and carrying on would be the one genuinely
@@ -323,6 +341,9 @@ class ActionHost:
             # Launch and decision are untouched: neither reads this store.
             dispatcher_runs = None
             session_docs = None
+
+        if health_out is not None:
+            health_out.update(self._store_health(unreadable, skipped))
 
         now_iso = self._wall_clock()
         authority: dict[str, dict[str, Any]] = {}
@@ -357,18 +378,35 @@ class ActionHost:
                 authority[issue_id] = grant
         return authority
 
-    def _session_store_health(self) -> dict[str, Any]:
-        """What the OS needs to explain a withheld run-authority affordance."""
-        _, corrupt = self._scan_session_docs()
-        if not corrupt:
-            return {"status": "ok", "unreadable_records": [], "withheld": []}
-        return {
-            "status": "degraded",
-            "unreadable_records": [dict(item) for item in corrupt],
-            # Named explicitly rather than left for the reader to infer: these
-            # are the affordances the operator will find missing.
-            "withheld": ["recover", "unblock"],
-        }
+    @staticmethod
+    def _store_health(unreadable: Sequence[Mapping[str, str]],
+                      skipped: Sequence[Mapping[str, str]]) -> dict[str, Any]:
+        """What the OS needs to explain a withheld run-authority affordance.
+
+        Derived from the authority pass's own scan rather than a second one,
+        so the explanation always describes the state the affordances were
+        computed from.
+
+        `unreadable` withholds; `skipped` does not. A record skipped for a
+        non-integrity reason -- a directory whose name is not a session id, or
+        a file that vanished between the listing and the read -- does not make
+        run liveness unanswerable, so the affordances stand. It does mean the
+        store was not read whole, and `status: "ok"` claimed otherwise, so it
+        is reported as `incomplete` and named.
+        """
+        if unreadable:
+            return {
+                "status": "degraded",
+                "unreadable_records": [dict(item) for item in unreadable],
+                "skipped_records": [dict(item) for item in skipped],
+                # Named explicitly rather than left for the reader to infer:
+                # these are the affordances the operator will find missing.
+                "withheld": ["recover", "unblock"],
+            }
+        if skipped:
+            return {"status": "incomplete", "unreadable_records": [],
+                    "skipped_records": [dict(item) for item in skipped], "withheld": []}
+        return {"status": "ok", "unreadable_records": [], "skipped_records": [], "withheld": []}
 
     def _read_dispatcher_runs(self) -> Mapping[str, Any]:
         if not self._registry.exists():
@@ -381,22 +419,31 @@ class ActionHost:
             raise StoreUnavailable("dispatcher runs registry is not a JSON object")
         return data
 
-    def _scan_session_docs(self) -> tuple[list[Mapping[str, Any]], list[dict[str, str]]]:
-        """Every readable session record, plus the ones that failed integrity.
+    def _scan_session_docs(self) -> tuple[list[Mapping[str, Any]],
+                                          list[dict[str, str]], list[dict[str, str]]]:
+        """Every readable session record, the ones that failed integrity, and
+        the ones that were passed over for any other reason.
 
         Split out from `_read_session_docs` so the authority map can keep
-        failing closed *and* say why. One corrupt record among 91 used to
+        failing closed *and* say why. One corrupt record among 90 used to
         deny the run authority for every Issue with nothing shown anywhere:
         recovery and unblock simply vanished from the whole OS, and the
         operator was given no way to tell an absent affordance from a broken
         store. The refusal was right; the silence was not.
+
+        The third list exists for the same reason. A record skipped because
+        its directory name is not a session id, or because the file went away
+        mid-scan, is not integrity loss and must not withhold anything -- but
+        it does mean the scan did not see the whole store, and reporting that
+        as `ok` is the same quiet lie in smaller print.
         """
         from runtime import session_state as state
 
         docs: list[Mapping[str, Any]] = []
         corrupt: list[dict[str, str]] = []
+        skipped: list[dict[str, str]] = []
         if not self._session_store.is_dir():
-            return docs, corrupt
+            return docs, corrupt, skipped
         for child in sorted(self._session_store.iterdir()):
             if not child.is_dir():
                 continue
@@ -410,8 +457,10 @@ class ActionHost:
                 # "no runs". It is reported, never skipped silently.
                 if error.category == "integrity_error":
                     corrupt.append({"record": child.name, "message": error.message})
+                else:
+                    skipped.append({"record": child.name, "message": error.message})
                 continue
-        return docs, corrupt
+        return docs, corrupt, skipped
 
     def _read_session_docs(self) -> list[Mapping[str, Any]]:
         """The single-Issue read path: a corrupt record is a hard failure.
@@ -421,7 +470,7 @@ class ActionHost:
         operator who asked. The list projection cannot do that -- it answers
         for every Issue at once -- which is what `_scan_session_docs` is for.
         """
-        docs, corrupt = self._scan_session_docs()
+        docs, corrupt, _skipped = self._scan_session_docs()
         if corrupt:
             first = corrupt[0]
             raise StoreUnavailable(
@@ -733,8 +782,14 @@ class ActionHandler(SimpleHTTPRequestHandler):
             try:
                 self._json(200, self.host.workstreams())
             except Exception as exc:
+                # Same shape as the success projection, `store_health`
+                # included: a consumer that reads the field must not have to
+                # special-case this branch, and "the issue read failed" says
+                # nothing about whether the session store is sound.
                 self._json(503, {"schema_version": 1, "mode": "local", "synthetic": False,
                                  "status": "unavailable", "workstreams": [],
+                                 "store_health": {"status": "unknown", "unreadable_records": [],
+                                                  "skipped_records": [], "withheld": []},
                                  "error": {"kind": getattr(exc, "kind", "github_read"), "message": str(exc)}})
             return
         if path in ("/api/workstream-detail", "/api/workstream-detail/"):

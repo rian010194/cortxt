@@ -110,5 +110,6 @@ def build_workstream_projection(repo: str, issues: Sequence[Mapping[str, Any]], 
     return {"schema_version": 1, "mode": "local", "synthetic": False, "repo": repo,
             "status": status, "error": dict(error) if error else None,
             "store_health": dict(store_health) if store_health else
-                            {"status": "unknown", "unreadable_records": [], "withheld": []},
+                            {"status": "unknown", "unreadable_records": [],
+                             "skipped_records": [], "withheld": []},
             "workstreams": workstreams}

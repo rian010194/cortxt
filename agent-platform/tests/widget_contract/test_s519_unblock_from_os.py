@@ -295,7 +295,78 @@ def test_a_non_integrity_read_problem_is_skipped_not_reported_as_corruption(tmp_
     _write_session(store, "intact-task", f"{REPO}#519", "r1")
     (store / "not_a_session").mkdir()
     host = _host(tmp_path, [_issue(519, "workflow:blocked")], registry_doc={})
-    assert host.workstreams(REPO)["store_health"]["status"] == "ok"
+    health = host.workstreams(REPO)["store_health"]
+    assert health["status"] == "ok"
+    assert health["withheld"] == []
+
+
+def test_a_record_skipped_for_a_non_integrity_reason_is_reported_but_withholds_nothing(tmp_path):
+    """Review finding: `state.load` also raises for a directory whose name is
+    not a session id, and that fell through to a silent `continue`. Before
+    `store_health` existed that was only a quiet skip in a list; afterwards the
+    field actively asserted the store "could be read whole", which was no
+    longer true. It is named -- and it withholds nothing, because a record that
+    was never a session record makes no run liveness unanswerable."""
+    store = tmp_path / ".sessions"
+    stray = store / "session_not-a-uuid"
+    stray.mkdir(parents=True)
+    (stray / "session.json").write_text("{}", encoding="utf-8")
+    host = _host(tmp_path, [_issue(519, "workflow:blocked")],
+                 registry_doc=_released("r1", f"{REPO}#519"), now=LATER)
+    projection = host.workstreams(REPO)
+    health = projection["store_health"]
+
+    assert health["status"] == "incomplete"
+    assert [r["record"] for r in health["skipped_records"]] == ["session_not-a-uuid"]
+    assert health["unreadable_records"] == []
+    assert health["withheld"] == []
+    # And the affordance it says nothing about is still offered.
+    assert projection["workstreams"][0]["next_action"] == {
+        "kind": "unblock", "label": "Lift the block and return to ready"}
+
+
+def test_an_unreadable_dispatcher_registry_is_reported_not_called_healthy(tmp_path):
+    """Review finding: the registry is the OTHER authority store. When it
+    cannot be read the authority map already withheld every recover and
+    unblock -- while `store_health` reported `ok`, which is the exact silence
+    this field exists to end, left in place for the store it did not cover."""
+    store = tmp_path / ".sessions"
+    _write_session(store, "intact-task", f"{REPO}#519", "r1")
+    host = _host(tmp_path, [_issue(519, "workflow:blocked")], now=LATER)
+    (tmp_path / "runs.json").write_text("{not json", encoding="utf-8")
+    projection = host.workstreams(REPO)
+    health = projection["store_health"]
+
+    assert health["status"] == "degraded"
+    assert set(health["withheld"]) == {"recover", "unblock"}
+    assert any("dispatcher runs registry" in r["record"] for r in health["unreadable_records"])
+    # The withholding it now explains was already happening.
+    assert projection["workstreams"][0]["next_action"] is None
+
+
+def test_the_health_and_the_affordances_come_from_one_scan(tmp_path,
+                                                           _store_with_one_corrupt_record):
+    """Review finding: health was computed by a SECOND full scan, re-reading
+    and re-hashing every record. Beyond the cost, the two scans could disagree
+    -- a record corrupted or repaired between them produced a projection whose
+    affordances and whose explanation of those affordances described different
+    states of the store."""
+    host = _host(tmp_path, [_issue(519, "workflow:blocked")],
+                 registry_doc=_released("r1", f"{REPO}#519"), now=LATER)
+    calls = []
+    real = host._scan_session_docs
+
+    def counting():
+        calls.append(1)
+        return real()
+
+    host._scan_session_docs = counting
+    projection = host.workstreams(REPO)
+
+    assert len(calls) == 1, "one projection must read the session store exactly once"
+    # And the two answers still agree with each other.
+    assert projection["store_health"]["status"] == "degraded"
+    assert projection["workstreams"][0]["next_action"] is None
 
 
 # --- the mutation, against isolated data ------------------------------------

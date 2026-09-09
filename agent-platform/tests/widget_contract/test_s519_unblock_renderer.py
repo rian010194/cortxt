@@ -45,10 +45,23 @@ def _js(**cases) -> dict:
 
 # A Workstream whose Issue, Run and evidence references correlate -- the
 # renderer refuses to offer anything at all on an uncorrelated one.
+#
+# It carries the server's typed `next_action`, because that is the only thing
+# saying the run authority currently permits the action. The declared
+# capability does not: `capabilities()` serves the widget spec's actions
+# statically, so on a live host it is constant.
 BLOCKED = ('{id:"WS-519", issue_id:"o/r#519", workflow:"blocked", '
+           'next_action:{kind:"unblock", label:"Lift the block and return to ready"}, '
            'runs:[{run_id:"r1", issue_ref:"o/r#519"}], evidence:[]}')
-IN_PROGRESS = BLOCKED.replace('workflow:"blocked"', 'workflow:"in-progress"')
-READY = BLOCKED.replace('workflow:"blocked"', 'workflow:"ready"')
+IN_PROGRESS = (BLOCKED.replace('workflow:"blocked"', 'workflow:"in-progress"')
+                      .replace('kind:"unblock"', 'kind:"recover"'))
+READY = (BLOCKED.replace('workflow:"blocked"', 'workflow:"ready"')
+                .replace('kind:"unblock"', 'kind:"launch"'))
+# Blocked, but the server established no run authority: a corrupt session
+# record, or an Issue blocked by triage that correlates no Run at all.
+BLOCKED_NO_AUTHORITY = BLOCKED.replace(
+    'next_action:{kind:"unblock", label:"Lift the block and return to ready"}, ',
+    'next_action:null, ')
 
 LIVE = ('{token:"t", model:{synthetic:false}, '
         'capabilities:[{id:"unblock-to-ready"},{id:"recover-to-ready"}]}')
@@ -123,19 +136,24 @@ def test_the_justification_minimum_matches_the_server():
 
 # --- the degraded-store notice ---------------------------------------------
 
-DEGRADED = ('{model:{synthetic:false, store_health:{status:"degraded", '
+# Both carry the FULL live capability list, because that is what a live host
+# always sends. A degraded fixture with `capabilities:[]` would prove the
+# notice under a premise that never occurs in production -- and would pass
+# just as happily while an executable control rendered beside it.
+DEGRADED = ('{token:"t", model:{synthetic:false, store_health:{status:"degraded", '
             'withheld:["recover","unblock"], '
             'unreadable_records:[{record:"session_abc", message:"event hash is invalid"}]}}, '
-            'capabilities:[]}')
-HEALTHY = ('{model:{synthetic:false, store_health:{status:"ok", withheld:[], '
-           'unreadable_records:[]}}, capabilities:[{id:"unblock-to-ready"}]}')
+            'capabilities:[{id:"unblock-to-ready"},{id:"recover-to-ready"}]}')
+HEALTHY = ('{token:"t", model:{synthetic:false, store_health:{status:"ok", withheld:[], '
+           'unreadable_records:[]}}, '
+           'capabilities:[{id:"unblock-to-ready"},{id:"recover-to-ready"}]}')
 
 
 def test_a_degraded_store_explains_the_missing_control_instead_of_showing_nothing():
     """The acceptance criterion's visible half. Without this the operator sees
     a blocked Workstream with no control and no reason, which reads as "there
     is nothing to do here" -- the opposite of what is true."""
-    got = _js(html="d.unblockSection(%s, %s)" % (DEGRADED, BLOCKED))
+    got = _js(html="d.unblockSection(%s, %s)" % (DEGRADED, BLOCKED_NO_AUTHORITY))
     assert "data-store-degraded" in got["html"]
     assert "session_abc" in got["html"], "the operator must be told which record to repair"
     assert "event hash is invalid" in got["html"]
@@ -146,8 +164,8 @@ def test_a_degraded_store_explains_the_missing_control_instead_of_showing_nothin
 
 
 def test_the_notice_is_silent_on_a_healthy_store():
-    got = _js(unblock='d.storeHealthNotice(%s, "unblock")' % HEALTHY,
-              recover='d.storeHealthNotice(%s, "recover")' % HEALTHY)
+    got = _js(unblock='d.storeHealthNotice(%s, "unblock", %s)' % (HEALTHY, BLOCKED),
+              recover='d.storeHealthNotice(%s, "recover", %s)' % (HEALTHY, IN_PROGRESS))
     assert got["unblock"] == ""
     assert got["recover"] == ""
 
@@ -156,8 +174,8 @@ def test_the_notice_only_speaks_for_the_affordances_actually_withheld():
     """`withheld` is the server's list. A notice that fired for an affordance
     the server did not withhold would be noise, and noise gets ignored."""
     partial = DEGRADED.replace('withheld:["recover","unblock"]', 'withheld:["recover"]')
-    got = _js(unblock='d.storeHealthNotice(%s, "unblock")' % partial,
-              recover='d.storeHealthNotice(%s, "recover")' % partial)
+    got = _js(unblock='d.storeHealthNotice(%s, "unblock", %s)' % (partial, BLOCKED),
+              recover='d.storeHealthNotice(%s, "recover", %s)' % (partial, IN_PROGRESS))
     assert got["unblock"] == ""
     assert "data-store-degraded" in got["recover"]
 
@@ -165,9 +183,139 @@ def test_the_notice_only_speaks_for_the_affordances_actually_withheld():
 def test_an_absent_store_health_field_renders_no_notice():
     """An older host that does not send the field must not produce a scary
     banner; it produces nothing, exactly as before."""
-    got = _js(html='d.storeHealthNotice({model:{synthetic:false}}, "unblock")')
+    got = _js(html='d.storeHealthNotice({model:{synthetic:false}}, "unblock", %s)' % BLOCKED)
     assert got["html"] == ""
+
+
+def test_a_degraded_store_withholds_the_control_on_a_live_host():
+    """The first of the two defects the independent review found.
+
+    The gates read `hasAction`, and `capabilities()` serves the widget spec's
+    actions statically -- so on any live host that check is always true. The
+    control therefore rendered as executable next to the notice saying it was
+    withheld: the operator was told the affordance was unavailable and handed
+    it in the same breath. The server's authority, the typed `next_action`, is
+    what has to decide, exactly as `work-console.js` has done since #498."""
+    got = _js(visible="d.unblockVisible(%s, %s)" % (DEGRADED, BLOCKED_NO_AUTHORITY),
+              recovery="d.recoveryVisible(%s, %s)" % (
+                  DEGRADED, IN_PROGRESS.replace('kind:"recover"', 'kind:"__none__"')),
+              html="d.unblockSection(%s, %s)" % (DEGRADED, BLOCKED_NO_AUTHORITY))
+    assert got["visible"] is False, "a declared capability is not a live permission"
+    assert got["recovery"] is False
+    assert "data-store-degraded" in got["html"]
+    assert "data-u-unblock class=" not in got["html"], \
+        "the notice and an executable control must never render together"
+
+
+def test_exactly_one_notice_renders_and_only_where_it_applies():
+    """The second: the recover notice was emitted unconditionally in
+    `renderDecisions`, so a blocked Workstream showed the same paragraph twice
+    -- once for recover, once for unblock -- and a `ready` or `done` one showed
+    it about a control that was never on offer there."""
+    got = _js(
+        blocked_recover='d.storeHealthNotice(%s, "recover", %s)' % (DEGRADED, BLOCKED_NO_AUTHORITY),
+        blocked_unblock='d.storeHealthNotice(%s, "unblock", %s)' % (DEGRADED, BLOCKED_NO_AUTHORITY),
+        ready_recover='d.storeHealthNotice(%s, "recover", %s)' % (DEGRADED, READY),
+        ready_unblock='d.storeHealthNotice(%s, "unblock", %s)' % (DEGRADED, READY))
+    # On a blocked Workstream only the unblock notice speaks.
+    assert got["blocked_recover"] == ""
+    assert "data-store-degraded" in got["blocked_unblock"]
+    # On a Workstream where neither control was ever offered, neither speaks.
+    assert got["ready_recover"] == ""
+    assert got["ready_unblock"] == ""
+
+
+def test_a_denial_that_is_not_json_still_reports_the_status():
+    """The port's refusals reach the operator only through this channel.
+    Parsing the body before checking `ok` replaced them with a JSON syntax
+    error whenever the response was not JSON."""
+    source = RENDERER.read_text(encoding="utf-8")
+    # Scoped to this dialog's own body: `beginRecovery` and `beginDecision`
+    # keep the older ordering, and asserting across the whole file would
+    # silently measure theirs instead of this one.
+    start = source.index("function beginUnblock(")
+    body = source[start:source.index("function storeHealthNotice(", start)]
+    # The response is read as text before `ok` is consulted, and a body that
+    # is not JSON leaves `result` null rather than throwing.
+    assert body.index("await response.text()") < body.index("if (!response.ok)")
+    assert "JSON.parse(body)" in body
+    assert "HTTP " in body, "a non-JSON denial must still name the status"
 
 
 def test_site_mirror_is_byte_identical():
     assert RENDERER.read_bytes() == SITE_RENDERER.read_bytes()
+
+
+# --- Work: the surface the operator actually starts from --------------------
+#
+# The independent review's first finding. `work-console.js` had no `unblock`
+# branch at all: the typed next action rendered its LABEL ("Lift the block and
+# return to ready") with no control underneath, and, because `primaryKind`
+# stayed truthy, it also demoted the run-result button from the primary
+# control to a secondary one. A blocked Workstream was told what to do and
+# given nothing to do it with -- the dead-affordance shape of #469, reproduced
+# in the surface that consumes the very field W7 added.
+
+SHELL = WIDGET / "work-console.js"
+
+
+def _shell(**cases) -> dict:
+    script = "const m = require(%s);\nconst out = {};\n" % json.dumps(str(SHELL))
+    for name, expr in cases.items():
+        script += "out[%s] = %s;\n" % (json.dumps(name), expr)
+    script += "console.log(JSON.stringify(out));"
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+WS_BLOCKED = ('{id:"WS-519", issue_id:"o/r#519", number:519, workflow:"blocked", '
+              'next_action:{kind:"unblock", label:"Lift the block and return to ready"}, '
+              'runs:[{run_id:"r1", issue_ref:"o/r#519"}], evidence:[]}')
+WS_BLOCKED_NO_AUTHORITY = WS_BLOCKED.replace(
+    'next_action:{kind:"unblock", label:"Lift the block and return to ready"}', 'next_action:null')
+SHELL_LIVE = ('{model:{synthetic:false}, '
+              'capabilities:[{id:"unblock-to-ready"},{id:"recover-to-ready"}]}')
+
+
+def test_work_authorizes_the_unblock_affordance_it_advertises():
+    """Work must have a gate for `unblock` at all. Without one the kind is
+    unrecognised, no control is derived, and the label above it is a promise
+    the surface cannot keep."""
+    got = _shell(kind="m.nextActionKind(%s)" % WS_BLOCKED,
+                 available="m.unblockAvailable(%s, %s)" % (SHELL_LIVE, WS_BLOCKED))
+    assert got["kind"] == "unblock"
+    assert got["available"] is True
+
+
+def test_work_withholds_it_when_the_server_established_no_authority():
+    """Same rule as every other affordance here: the typed kind is the
+    server's answer, and its absence is a refusal, not an invitation."""
+    got = _shell(available="m.unblockAvailable(%s, %s)" % (SHELL_LIVE, WS_BLOCKED_NO_AUTHORITY))
+    assert got["available"] is False
+
+
+def test_work_keeps_the_run_result_reachable_on_a_blocked_workstream():
+    """#469's control must survive W7. A blocked Workstream's Run has already
+    stopped, and reading what it did is how the operator decides whether to
+    lift the block at all."""
+    got = _shell(available="m.runResultAvailable(%s, false)" % WS_BLOCKED,
+                 workflows="m.RUN_RESULT_WORKFLOWS")
+    assert got["available"] is True
+    assert "blocked" in got["workflows"]
+
+
+def test_unblock_does_not_borrow_another_workstreams_authority():
+    """The kinds are separate authorities, not a family. A `blocked`
+    Workstream carrying a `recover` next action gets nothing, and vice
+    versa."""
+    crossed = WS_BLOCKED.replace('kind:"unblock"', 'kind:"recover"')
+    in_progress = WS_BLOCKED.replace('workflow:"blocked"', 'workflow:"in-progress"')
+    got = _shell(blocked_with_recover="m.unblockAvailable(%s, %s)" % (SHELL_LIVE, crossed),
+                 in_progress_with_unblock="m.unblockAvailable(%s, %s)" % (SHELL_LIVE, in_progress))
+    assert got["blocked_with_recover"] is False
+    assert got["in_progress_with_unblock"] is False
+
+
+def test_work_site_mirror_is_byte_identical():
+    assert SHELL.read_bytes() == (MIRROR / "work-console.js").read_bytes()

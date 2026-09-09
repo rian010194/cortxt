@@ -60,10 +60,29 @@
     return true;
   }
 
+  /* A declared capability is NOT a live permission. `capabilities()` returns
+     the actions the widget spec declares, statically, so on a live host
+     `hasAction("recover-to-ready")` is always true no matter what the
+     server's run authority currently says. The server's answer arrives as the
+     typed `next_action`: absent when the authority could not be established
+     (a session record that failed its hash chain, or a Run that may still
+     hold the Issue). Gating on the capability alone rendered an executable
+     control beside the very notice explaining that the control was withheld.
+     `work-console.js` has required the typed kind since #498; this surface
+     must agree, or the two disagree about the same Workstream.
+
+     The port re-checks at write time regardless. This is the affordance
+     telling the truth, never the thing that makes the write safe. */
+  function nextActionKind(x) {
+    var n = x && x.next_action;
+    return (n && n.kind) || null;
+  }
+
   function recoveryVisible(s, x) {
     if (!s || !s.model || !x) return false;
     if (!correlated(x) || x.workflow !== "in-progress") return false;
-    return isSynthetic(s) ? viewAuthorized(x, "view:recovery") : hasAction(s, "recover-to-ready");
+    return isSynthetic(s) ? viewAuthorized(x, "view:recovery")
+                          : (nextActionKind(x) === "recover" && hasAction(s, "recover-to-ready"));
   }
   function recoveryExecutable(s, x) {
     return recoveryVisible(s, x) && !isSynthetic(s) && hasAction(s, "recover-to-ready");
@@ -104,7 +123,10 @@
   }
 
   function recoverySection(s, x) {
-    if (!recoveryVisible(s, x)) return "";
+    /* Mirrors `unblockSection`: when the control is not offered, this is the
+       one place that may explain why, so exactly one notice can ever render
+       per Workstream. */
+    if (!recoveryVisible(s, x)) return storeHealthNotice(s, "recover", x);
     var intro = '<section class="review-actions" data-recover-section>' +
       "<p>This Workstream holds a <b>workflow:in-progress</b> claim. If its Run failed or stranded, return it to ready so a fresh Run can be approved. " +
       "Recovery re-opens the dispatch gate only: it approves, closes and completes nothing, and starts no Run.</p>";
@@ -135,7 +157,14 @@
   function unblockVisible(s, x) {
     if (!s || !s.model || !x) return false;
     if (!correlated(x) || x.workflow !== "blocked") return false;
-    return isSynthetic(s) ? viewAuthorized(x, "view:unblock") : hasAction(s, "unblock-to-ready");
+    /* Same split as recovery, and for the same reason: the declared
+       capability is constant, the server's authority is not. This is also
+       what keeps the documented limit real -- an Issue blocked by triage
+       rather than by a Run correlates no Run, so the server offers no
+       `unblock`, and offering one anyway would promise a write the port
+       always refuses. */
+    return isSynthetic(s) ? viewAuthorized(x, "view:unblock")
+                          : (nextActionKind(x) === "unblock" && hasAction(s, "unblock-to-ready"));
   }
   function unblockExecutable(s, x) {
     return unblockVisible(s, x) && !isSynthetic(s) && hasAction(s, "unblock-to-ready");
@@ -173,8 +202,17 @@
           body: JSON.stringify({ action_id: "unblock-to-ready", issue_id: x.issue_id,
                                  justification: justification, approval_ref: approval, confirm: true }),
         });
-        var result = await response.json();
-        if (!response.ok) throw new Error((result.error && (result.error.recovery || result.error.message)) || "Unblock was denied");
+        /* Read the body as text first. The port's three fail-closed refusals
+           reach the operator only through this channel, and parsing before
+           checking `ok` replaced them with a JSON syntax error whenever the
+           response was not JSON (an empty body, or a proxy's own error page). */
+        var body = await response.text();
+        var result = null;
+        try { result = JSON.parse(body); } catch (ignored) { result = null; }
+        if (!response.ok) {
+          throw new Error((result && result.error && (result.error.recovery || result.error.message)) ||
+                          ("Unblock was denied (HTTP " + response.status + ")"));
+        }
         winEl.innerHTML = '<span class="eyebrow">Unblocked</span><h3>Returned to workflow:ready</h3><p>' + esc(approval) + "</p>";
         if (window.CortxtShell && window.CortxtShell.refreshAuthority) window.CortxtShell.refreshAuthority();
       } catch (error) {
@@ -192,10 +230,17 @@
      whole OS. Refusing is correct -- a missing summary can only make a live
      Run look released -- but an operator staring at a Workstream with no
      control must be able to tell a withheld affordance from nothing to do. */
-  function storeHealthNotice(s, kind) {
+  function storeHealthNotice(s, kind, x) {
     var health = (s && s.model && s.model.store_health) || null;
     if (!health || health.status !== "degraded") return "";
     if ((health.withheld || []).indexOf(kind) === -1) return "";
+    /* Only where the affordance would otherwise have been offered. A
+       degraded store withholds recovery from `in-progress` and unblock from
+       `blocked`; saying so on a `ready` or `done` Workstream is noise about a
+       control that was never on offer there, and printing both notices on one
+       Workstream says the same thing twice. */
+    var workflow = kind === "recover" ? "in-progress" : "blocked";
+    if (!x || x.workflow !== workflow) return "";
     var records = health.unreadable_records || [];
     return '<section class="review-actions" data-store-degraded><p><b>The session store could not be read whole.</b> ' +
       esc(String(records.length)) + " record" + (records.length === 1 ? " " : "s ") +
@@ -211,7 +256,7 @@
 
   function unblockSection(s, x) {
     if (!s || !s.model || !x || !correlated(x) || x.workflow !== "blocked") return "";
-    if (!unblockVisible(s, x)) return storeHealthNotice(s, "unblock");
+    if (!unblockVisible(s, x)) return storeHealthNotice(s, "unblock", x);
     var intro = '<section class="review-actions" data-unblock-section>' +
       "<p>This Workstream is <b>workflow:blocked</b>: the platform refused it on evidence. Lifting the block returns it to ready so a fresh Run can be approved, and records why the refusal is being set aside. " +
       "It re-opens the dispatch gate only: it approves, closes and completes nothing, and starts no Run.</p>";
@@ -254,7 +299,6 @@
           "</small>"
         : "") +
       recoverySection(s, x) +
-      storeHealthNotice(s, "recover") +
       unblockSection(s, x);
     var accept = winEl.querySelector("[data-d-accept]");
     if (accept) accept.addEventListener("click", function () { beginDecision(winEl, ctx); });
