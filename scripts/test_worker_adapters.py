@@ -573,6 +573,75 @@ def run_all_checks():
     check("dsh worker cwd is the isolated worktree", dsh_seen == [wt])
     check("dsh worktree-bound run completed", disp_dsh_wt.query(run_dsh_wt.run_id)["status"] == "succeeded")
 
+    print("== #531: a runtime that never started is not a worker that ran and failed ==")
+    # The seam the defect lived in. `invoke_dsh` raising and DshWorkerAdapter
+    # mapping exceptions to runtime_unavailable were each already correct on
+    # their own -- the bug was that a launch failure never became an exception,
+    # so the two correct halves never met. Only composing them pins the
+    # operator-visible outcome, and this suite is where the composition belongs:
+    # it already owns the process-wide dispatcher/registry state that importing
+    # worker_adapters brings with it.
+    ap = str(REPO / "agent-platform")
+    if ap not in sys.path:
+        sys.path.insert(0, ap)
+    from routing.dsh_invoker import invoke_dsh as real_invoke_dsh
+
+    class _NoCarrierHarness:
+        def __enter__(self):
+            raise FileNotFoundError("no dsh-jsonrpc-agent binary for platform win32")
+
+        def __exit__(self, *_exc):
+            raise AssertionError("a harness whose __enter__ raised must not be exited")
+
+        def close(self):
+            pass
+
+    def _launch_fails(*_args, **_kwargs):
+        return real_invoke_dsh("do the thing", timeout_seconds=60,
+                               harness_factory=lambda _config: _NoCarrierHarness())
+
+    run_nc = d.Run(run_id="run-531", issue_id="o/r#531", workflow="build",
+                   worker_role="builder", claimed_at=time.time(),
+                   runtime="dsh", lease_seconds=60)
+    # A real log directory on purpose: with log_dir=None the adapter dies
+    # writing its run log, and the test would fail for an incidental reason
+    # instead of on the classification it exists to pin.
+    env_nc = wa.DshWorkerAdapter(invoke_dsh=_launch_fails, log_dir=new_log_dir()).invoke(
+        run_nc, "do the thing", timeout_seconds=60)
+
+    check("launch failure is a failed envelope, not an exception",
+          env_nc["_status"] == "failed")
+    check("a runtime that never started is runtime_unavailable, not worker_nonzero_exit",
+          env_nc["error"]["category"] == "runtime_unavailable", env_nc["error"])
+    check("the envelope says no worker started",
+          "worker never started" in env_nc["evidence"], env_nc["evidence"])
+    check("the SDK's platform diagnosis survives both hops to the operator",
+          "win32" in env_nc["error"]["recovery"], env_nc["error"]["recovery"])
+    check("no misclassification is upgraded to success",
+          env_nc.get("outcome") is None and env_nc["_status"] != "succeeded")
+
+    # The other arm, across the same seam: a worker that did start and then
+    # failed must keep reporting as a worker failure.
+    class _FailingWorkerHarness:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+        def run(self, input, session_id=None):
+            raise RuntimeError("model refused")
+
+    env_wf = wa.DshWorkerAdapter(
+        invoke_dsh=lambda *a, **k: real_invoke_dsh(
+            "do the thing", timeout_seconds=60,
+            harness_factory=lambda _config: _FailingWorkerHarness()),
+        log_dir=new_log_dir()).invoke(run_nc, "do the thing", timeout_seconds=60)
+
+    check("a worker that started and failed keeps its own category",
+          env_wf["error"]["category"] == "worker_nonzero_exit", env_wf["error"])
+
+
 def test_all_checks_pass():
     """Pytest entry point: run the same checks as the standalone script."""
     run_all_checks()
