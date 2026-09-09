@@ -82,7 +82,7 @@ continuity across those replaceable resources.
 | Path | Purpose |
 | --- | --- |
 | [`agent-platform/`](agent-platform/) | CLI, MCP, mandates, dispatch, state, policies, adapters, evidence, and UI contracts |
-| [`docs/`](docs/) | Architecture, operating model, security boundaries, and ADRs |
+| [`docs/`](docs/README.md) | Architecture, operating model, security boundaries, and ADRs -- start at the documentation map |
 | [`verticals/`](verticals/README.md) | Domain packages and evaluated workflow profiles |
 | [`contracts/`](contracts/README.md) | Shared interface contracts and schemas |
 | [`scripts/`](scripts/) | Repository automation, verification, and operational tooling |
@@ -90,9 +90,11 @@ continuity across those replaceable resources.
 Start with:
 
 1. [Quick start](https://cortxt.io/docs/quick-start/)
-2. [Current operating model](docs/agents/current-operating-model.md)
-3. [Dispatch contract](docs/architecture/dispatch-contract.md)
-4. [Accepted ADRs](docs/adr/README.md)
+2. [Documentation map](docs/README.md) -- what owns which question, and what to
+   read for the work you have
+3. [Current operating model](docs/agents/current-operating-model.md)
+4. [Dispatch contract](docs/architecture/dispatch-contract.md)
+5. [Accepted ADRs](docs/adr/README.md)
 
 ## Open source and collaboration
 
