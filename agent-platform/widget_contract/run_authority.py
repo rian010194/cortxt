@@ -666,7 +666,24 @@ def _safe_outcome(*candidates: Any) -> str | None:
     this projection does not know must not be shown as if it did.
     """
     for candidate in candidates:
-        if candidate in ("completed", "declined", "no_result", "unattested"):
+        if candidate in ("completed", "declined", "no_result", "unattested",
+                         "incomplete", "unverifiable"):
+            return str(candidate)
+    return None
+
+
+def _safe_report_state(*candidates: Any) -> str | None:
+    """The Run's structured-report state, projected for the operator.
+
+    Lets a reviewer distinguish a route that never had a structured channel
+    (``not_requested``) from one whose channel returned garbage
+    (``unreadable``/``invalid``). ``None`` means no report state was recorded;
+    an unrecognised value is also ``None`` so an unknown state is never shown
+    as if it were a known one.
+    """
+    for candidate in candidates:
+        if candidate in ("not_requested", "requested_but_missing",
+                         "unreadable", "invalid", "incomplete", "completed"):
             return str(candidate)
     return None
 
@@ -1000,6 +1017,13 @@ def run_terminal_projection(
     # reaches the operator as a declination rather than an unexplained block.
     outcome = _safe_outcome(turn.get("outcome"), dispatcher_result.get("outcome"))
 
+    # The Run's structured-report channel state, read envelope-first like the
+    # gate verdict and outcome, so a report state that outlives its envelope is
+    # still projected. Additive and optional; an unknown value projects as None.
+    report_state = _safe_report_state(turn.get("report_state"),
+                                      dispatcher_result.get("report_state"),
+                                      dispatcher_run.get("report_state"))
+
     return {
         "schema_version": 1,
         "issue_ref": issue_ref,
@@ -1024,6 +1048,7 @@ def run_terminal_projection(
         "evidence_gate": evidence_gate,
         "commit_evidence": commit_evidence,
         "outcome": outcome,
+        "report_state": report_state,
     }
 
 

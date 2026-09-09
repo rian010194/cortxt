@@ -138,6 +138,21 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
         raise StaleDispatchRequest(
             "dispatch request snapshot has changed; re-fetch and confirm the current request")
 
+    # W6: the versioned worker instruction is what actually reaches the worker
+    # on the OS path, not the one-line placeholder that taught no result
+    # contract (#520, plan 4.1). Built from the approved dispatch request's own
+    # fields so the scope, acceptance criteria, limits and artifact policy the
+    # worker is taught are exactly the ones the request snapshot bound.
+    from routing.worker_contract import build_worker_instruction
+    prompt = build_worker_instruction(
+        scope=request["scope"],
+        acceptance_criteria=request["acceptance_criteria"],
+        limits={key: request.get(key) for key in (
+            "max_runtime_seconds", "max_cost_usd", "max_parallel_workers",
+            "delegation_depth")},
+        artifact_policy=request["artifact_policy"],
+        issue_id=issue_id,
+        request_id=request["request_id"])
     launcher = launcher or default_launcher(registry)
     return launcher.resume(
         issue_id,
@@ -155,4 +170,4 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
         # by `request_id`, so the browser cannot choose whether the worker gets
         # its own worktree (#472 findings 6/8).
         isolate=request["isolation"] == "worktree",
-        prompt=f"Execute the approved dispatch request for {issue_id} per the issue body.")
+        prompt=prompt)

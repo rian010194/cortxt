@@ -130,6 +130,24 @@ def test_full_chain_launch_carries_every_dispatch_limit():
     assert call.get("approval_ref") is None  # approval binding stays in the projection adapter
 
 
+def test_full_chain_launch_prompt_is_the_versioned_worker_instruction():
+    """W6 (plan 3.4): the versioned worker contract -- not the one-line
+    placeholder -- is what actually reaches the launcher boundary on the OS
+    path. The wired instruction carries the contract version and the
+    CORTXT-OUTCOME attestation grammar a worker is meant to answer in."""
+    host, launcher = _chain(lambda repo, number: _issue(number))
+    request = _confirm(host)
+    _launch(host, request)
+    prompt = launcher.calls[0]["prompt"]
+    assert "worker.result.v1" in prompt
+    assert "CORTXT-OUTCOME: completed" in prompt
+    assert "CORTXT-OUTCOME: declined" in prompt
+    # The directive is no longer the pre-W6 one-line placeholder (#520, plan 4.1).
+    assert prompt != f"Execute the approved dispatch request for owner/repo#471 per the issue body."
+    # The identity block carries the real request snapshot id, not None.
+    assert request["request_id"] in prompt
+
+
 def test_full_chain_double_click_fails_closed_after_launch():
     """A second click after a successful launch must not create a second run:
     the issue left workflow:ready, so the re-read at confirmation rejects it."""

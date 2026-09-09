@@ -3037,7 +3037,7 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
             print(json.dumps(projection, indent=2, sort_keys=True))
             return ResultEnvelope(status="succeeded", evidence=[{"execution_map": projection}])
 
-        from work_launcher import default_launcher, generate_worker_prompt, parse_scope_file
+        from work_launcher import default_launcher, parse_scope_file
 
         registry = args.registry or (_get_agent_platform_path() / ".dispatch" / "runs.json")
         registry.parent.mkdir(parents=True, exist_ok=True)
@@ -3085,9 +3085,17 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
                 limits = {key: request.get(key) for key in (
                     "max_runtime_seconds", "max_cost_usd", "max_parallel_workers",
                     "delegation_depth")}
-                prompt = generate_worker_prompt(
-                    request.get("scope") or "", request.get("acceptance_criteria") or [],
-                    limits, artifact_policy=policy)
+                # W6 (#520, plan 4.1): `work resume --request-file` hands the
+                # worker the versioned result-contract instruction so it is
+                # actually taught the attestation form and the DCO/commit rule,
+                # not the unversioned prompt that stated none of it.
+                from routing.worker_contract import build_worker_instruction
+                prompt = build_worker_instruction(
+                    scope=request.get("scope") or "",
+                    acceptance_criteria=request.get("acceptance_criteria") or [],
+                    limits=limits, artifact_policy=policy,
+                    issue_id=args.issue_id,
+                    request_id=request.get("request_id"))
             else:
                 paths = None
                 prompt = args.prompt
