@@ -134,3 +134,61 @@ def test_missing_cost_is_still_unknown_never_zero():
 
     assert result["cost"] is None
     assert result["cost_status"] == "unknown"
+
+
+# --------------------------------------------------------------------------- #
+# W9: reported usage/cost on a structured route is no longer unconditionally
+# incomplete
+# --------------------------------------------------------------------------- #
+def _dispatcher_reported():
+    """A structured-route dispatcher whose completed report carried usage/cost,
+    tagged `reported` (W9)."""
+    run = _dispatcher()
+    run[RUN]["result"].update({
+        "cost_status": "estimated",
+        "cost": 0.5,
+        "api_calls": 3,
+        "provenance": {"cost": "reported", "cost_status": "estimated",
+                       "api_calls": "reported", "usage": "reported"},
+    })
+    return run
+
+
+def test_reported_cost_route_is_no_longer_unconditionally_incomplete():
+    """W9 criterion #3: a structured route with a `completed` report that
+    carries usage/cost is no longer unconditionally `incomplete`."""
+    summaries = correlate_run_summaries(ISSUE, _dispatcher_reported(), _session())
+    result = run_terminal_projection(ISSUE, RUN, summaries, [],
+                                     dispatcher_store=_dispatcher_reported())
+
+    validate(result, TYPES["run.terminal.v1"].schema)
+    assert result["cost"] == 0.5
+    assert result["cost_status"] == "estimated"
+    assert result["api_calls"] == 3
+    assert result["provenance"]["cost"] == "reported"
+    assert result["incomplete"] is False
+
+
+def test_reported_cost_route_without_artifacts_is_still_incomplete():
+    """The `incomplete` flag still reflects a genuinely incomplete run: a
+    reported cost does not mask a run that produced no artifacts."""
+    run = _dispatcher_reported()
+    run[RUN]["result"]["artifacts"] = []
+    summaries = correlate_run_summaries(ISSUE, run, _session())
+    result = run_terminal_projection(ISSUE, RUN, summaries, [],
+                                     dispatcher_store=run)
+
+    assert result["cost_status"] == "estimated"
+    assert result["incomplete"] is True
+
+
+def test_unknown_cost_route_remains_incomplete():
+    """A route with no report channel (or an unknown cost) stays `incomplete`
+    -- never blank, never defaulted, never inferred (W9 criterion #2)."""
+    summaries = correlate_run_summaries(ISSUE, _dispatcher(), _session())
+    result = run_terminal_projection(ISSUE, RUN, summaries, [],
+                                     dispatcher_store=_dispatcher())
+
+    assert result["cost"] is None
+    assert result["cost_status"] == "unknown"
+    assert result["incomplete"] is True

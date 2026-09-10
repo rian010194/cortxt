@@ -588,6 +588,19 @@ RUN_TERMINAL_SCHEMA = {"type": "object", "additionalProperties": False,
                            "cost": {"type": ["number", "null"], "minimum": 0},
                            "cost_currency": {"type": "string"},
                            "cost_status": {"type": "string", "enum": ["actual", "estimated", "unknown"]},
+                           # W9 additive telemetry read from the runtime's own
+                           # completion report on a structured route. `api_calls`
+                           # is absent/None when unknown (never a fabricated
+                           # count); `provenance` carries the per-field class
+                           # tag (`reported`/`unknown` for these telemetry
+                           # fields, `approved`/`requested`/`reported`/
+                           # `unknown` generally) as one additive object.
+                           "api_calls": {"type": ["integer", "null"], "minimum": 0},
+                           "provenance": {"type": "object",
+                                          "additionalProperties": {
+                                              "type": "string",
+                                              "enum": ["approved", "requested",
+                                                       "reported", "unknown"]}},
                            "artifacts": {"type": "array", "items": RUN_ARTIFACT_SCHEMA},
                            "evidence": {"type": "array", "items": RUN_EVIDENCE_SCHEMA},
                            "error": RUN_ERROR_SCHEMA,

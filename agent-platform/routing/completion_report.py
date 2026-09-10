@@ -293,6 +293,139 @@ def read_completion_report(path: "str | os.PathLike[str]", *,
         COMPLETED, "the runtime reported the task completed", payload)
 
 
+# --- W9: reported usage and cost -----------------------------------------
+# The one consumer reads usage, cost, `cost_status`, `api_calls` and token
+# counts from the decoded report payload (the `completed`-state payload
+# `read_completion_report` returns). The report vocabulary is hermes' --
+# `hermes_cli/oneshot.py` `_write_usage_file` writes `estimated_cost_usd`,
+# `cost_status`, `cost_source`, `input_tokens`, `output_tokens`,
+# `cache_read_tokens`, `cache_write_tokens`, `reasoning_tokens`,
+# `total_tokens`, `api_calls`, `model`, `provider` -- so the field names are
+# owned here, where the report reader lives, and are never re-invented at a
+# call site. This is the design's §3.2 "reported" class: the runtime's own
+# statement, exactly as strong as the runtime's honesty and no stronger.
+
+#: Token fields hermes writes in its usage report, in a stable reading order.
+_TOKEN_FIELDS: tuple[str, ...] = (
+    "input_tokens", "output_tokens", "cache_read_tokens",
+    "cache_write_tokens", "reasoning_tokens", "total_tokens",
+)
+
+#: The `cost_status` values the terminal projection understands
+#: (`RUN_TERMINAL_SCHEMA`). Hermes reports `estimated` / `unknown` from its
+#: own price table, and `included` for a subscription-included route; `actual`
+#: appears on a reconciled/external-checked path. Only these two recognised
+#: charge classes let a run carry a non-null amount.
+COST_STATUS_ESTIMATED = "estimated"
+COST_STATUS_ACTUAL = "actual"
+COST_STATUS_UNKNOWN = "unknown"
+_COST_STATUS_KNOWN = (COST_STATUS_ESTIMATED, COST_STATUS_ACTUAL)
+
+
+@dataclass(frozen=True)
+class ReportedUsageCost:
+    """Reported usage/cost telemetry pulled from a completed report.
+
+    Deliberately carries only the fields that are a measurement the runtime
+    made, never an identity or a narrative, so it maps one-to-one onto the
+    envelope's `usage` / `cost` / `cost_status` / `api_calls` and the
+    `provenance` map. `None` fields mean the runtime did not supply one, and
+    the caller renders `unknown` -- never a defaulted value, never a blank.
+    """
+
+    usage: dict
+    cost: "float | None"
+    cost_status: str
+    api_calls: "int | None"
+    provenance: dict
+
+
+def reported_usage_cost(payload) -> "ReportedUsageCost | None":
+    """Extract reported usage/cost from a decoded report payload, or None.
+
+    Returns `None` when no value of any class was obtained (a report that
+    carries only `completed`/`failed`/`report_version`, as test doubles and a
+    real runtime before it computed spend both do). The caller keeps the
+    `unknown` state in that case -- never a guessed amount, per #58/#71.
+
+    Rules that keep this honest rather than convenient:
+
+    - A numeric amount is reported as `cost` ONLY under a recognised charge
+      class (`estimated` / `actual`). Hermes' `included` status means a
+      subscription-included route whose amount hermes computed from the same
+      price table, so it surfaces as `estimated` when a numeric amount
+      accompanies it (hermes estimated it), and as `unknown` (no amount)
+      otherwise. This is a `reported` statement, never an enforcement claim.
+    - Token counts and `api_calls` are reported only when the field is a
+      non-negative number. Absence is `unknown`, and the field's provenance
+      entry records exactly which class it got.
+    """
+    if not isinstance(payload, dict):
+        return None
+
+    usage: dict = {}
+    any_reported = False
+    for name in _TOKEN_FIELDS:
+        value = payload.get(name)
+        if _is_count(value):
+            usage[name] = value
+            any_reported = True
+
+    api_calls_value = payload.get("api_calls")
+    api_calls: "int | None" = (
+        int(api_calls_value)
+        if _is_count(api_calls_value) and float(api_calls_value).is_integer()
+        else None
+    )
+    if api_calls is not None:
+        any_reported = True
+
+    raw_status = payload.get("cost_status")
+    raw_amount = payload.get("estimated_cost_usd")
+    has_amount = isinstance(raw_amount, (int, float)) and not isinstance(
+        raw_amount, bool)
+    if raw_status in _COST_STATUS_KNOWN:
+        cost_status = str(raw_status)
+    elif raw_status == "included" and has_amount:
+        # Hermes' subscription-included route: an amount computed from its
+        # price table with an `included` label. It is still the runtime's own
+        # estimate, so it is `reported` as `estimated`, never `approved`.
+        cost_status = COST_STATUS_ESTIMATED
+    else:
+        cost_status = COST_STATUS_UNKNOWN
+
+    reported_cost: "float | None" = None
+    if has_amount and cost_status in _COST_STATUS_KNOWN:
+        reported_cost = float(raw_amount)
+        any_reported = True
+
+    if not any_reported:
+        return None
+
+    provenance: dict = {}
+    for name in _TOKEN_FIELDS:
+        provenance[name] = "reported" if name in usage else "unknown"
+    provenance["api_calls"] = "reported" if api_calls is not None else "unknown"
+    provenance["cost"] = "reported" if reported_cost is not None else "unknown"
+    provenance["cost_status"] = cost_status
+    provenance["usage"] = "reported" if usage else "unknown"
+
+    return ReportedUsageCost(
+        usage=usage,
+        cost=reported_cost,
+        cost_status=cost_status,
+        api_calls=api_calls,
+        provenance=provenance,
+    )
+
+
+def _is_count(value) -> bool:
+    """A non-negative number a token/api count can be, never a bool."""
+    return (isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value >= 0)
+
+
 def not_requested(runtime: str) -> ReportOutcome:
     """The state for a route that declares no structured channel.
 

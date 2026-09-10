@@ -510,6 +510,47 @@ def _safe_usage(value: Any) -> dict[str, Any]:
     return result
 
 
+def _safe_count(value: Any) -> int | None:
+    """A non-negative whole-number count (`api_calls`), or None.
+
+    `None` is the absent/unknown state: never defaulted to a value, and a
+    non-number (including the `unknown` marker string) is rendered as None,
+    which the schema allows, rather than as a fabricated count.
+    """
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    if value < 0 or not float(value).is_integer():
+        return None
+    return int(value)
+
+
+#: The only provenance class tags the projection will carry, so an envelope
+#: that names a class the platform does not define is never surfaced as a real
+#: one (an invented fifth class would be exactly the kind of fabrication the
+#: design forbids).
+_PROVENANCE_CLASSES = ("approved", "requested", "reported", "unknown")
+
+
+def _safe_provenance(value: Any) -> dict[str, Any]:
+    """The additive provenance map: per-field class tags.
+
+    Carried through verbatim for the fields it names, but only tags the
+    projection knows (`approved`/`requested`/`reported`/`unknown`) and only
+    for fields that are safe tokens. Absence or garbage projects as an empty
+    map rather than a guessed set of classes.
+    """
+    if not isinstance(value, Mapping):
+        return {}
+    out: dict[str, Any] = {}
+    for key, item in value.items():
+        safe_key = _safe_token(key)
+        if safe_key is None:
+            continue
+        if isinstance(item, str) and item in _PROVENANCE_CLASSES:
+            out[safe_key] = item
+    return out
+
+
 def _safe_evidence_entry(item: Any) -> dict[str, Any]:
     """A content-free projection of one evidence entry: only a kind label and
     an opaque reference/hash survive; free text, log bodies, and reasoning are
@@ -1040,10 +1081,12 @@ def run_terminal_projection(
         "cost": cost,
         "cost_currency": "USD",
         "cost_status": cost_status,
+        "api_calls": _safe_count(turn.get("api_calls")),
+        "provenance": _safe_provenance(turn.get("provenance")),
         "artifacts": artifacts,
         "evidence": evidence,
         "error": error,
-        "incomplete": (not artifacts) or (not evidence) or cost_status == "unknown" or error is not None,
+        "incomplete": (not artifacts) or cost_status == "unknown" or error is not None,
         "conflicting": bool(summary.get("conflict")),
         "evidence_gate": evidence_gate,
         "commit_evidence": commit_evidence,

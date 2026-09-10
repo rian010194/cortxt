@@ -185,6 +185,65 @@ def _report_state_for(runtime, process_class, *, report_path, invoked_after):
     return cr.read_completion_report(report_path, invoked_after=invoked_after)
 
 
+# --- W9: reported usage and cost from the completed report -----------------
+# The envelope's usage/cost/`cost_status`/`api_calls`/token telemetry and the
+# `provenance` map. `_safe_usage` in the terminal projection projects `usage`
+# as an object of numeric telemetry, so these helpers return either a dict
+# (reported) or an honest `unknown` marker string (no value of any class was
+# obtained) -- never a blank and never a guessed number, per #58/#71.
+
+#: Unknown-state markers kept on the envelope for the no-report / nothing-
+#: reported case. They read as "not measured", not "zero".
+_UNKNOWN_USAGE = "unknown (not measured)"
+_UNKNOWN_COST = "unknown (not measured)"
+
+#: Every telemetry field the provenance map tags, so a route with no report
+#: channel still carries a full `unknown` provenance rather than an empty one.
+_USAGE_COST_PROVENANCE_KEYS: tuple[str, ...] = (
+    "usage", "cost", "cost_status", "api_calls",
+    "input_tokens", "output_tokens", "cache_read_tokens",
+    "cache_write_tokens", "reasoning_tokens", "total_tokens",
+)
+
+
+def _unknown_usage_cost() -> dict:
+    """The envelope telemetry for a route that obtained no value of any class."""
+    return {
+        "usage": _UNKNOWN_USAGE,
+        "cost": _UNKNOWN_COST,
+        "cost_status": "unknown",
+        "api_calls": None,
+        "provenance": {key: "unknown" for key in _USAGE_COST_PROVENANCE_KEYS},
+    }
+
+
+def _reported_usage_cost(report_outcome) -> dict:
+    """Envelope telemetry + provenance from a completed report.
+
+    Returns the fully `reported` form when the report is `completed` and
+    carries usable usage/cost, and the `unknown` form otherwise (no report,
+    not a completion, or a report that carried no usage/cost). The no-upgrade
+    invariant is untouched: this only ADDS recorded numbers to an already
+    `completed` verdict -- it never raises a blocked run.
+    """
+    from routing import completion_report as cr
+    if report_outcome is None or report_outcome.state != cr.COMPLETED:
+        return _unknown_usage_cost()
+    reported = cr.reported_usage_cost(report_outcome.payload)
+    if reported is None:
+        return _unknown_usage_cost()
+    proven = {key: "unknown" for key in _USAGE_COST_PROVENANCE_KEYS}
+    for key, tag in (reported.provenance or {}).items():
+        proven[key] = tag
+    return {
+        "usage": reported.usage or _UNKNOWN_USAGE,
+        "cost": reported.cost if reported.cost is not None else _UNKNOWN_COST,
+        "cost_status": reported.cost_status,
+        "api_calls": reported.api_calls,
+        "provenance": proven,
+    }
+
+
 def _conflicting_claim(report_outcome, stdout):
     """Did the worker claim an outcome its own runtime contradicts?
 
@@ -472,13 +531,21 @@ class HermesAdapter:
                 "hermes", stdout=stdout, stderr=stderr, log_note=log_note,
                 report_outcome=report_outcome)
         chars = len(stdout)
+        # W9: usage/cost/`cost_status`/`api_calls`/token telemetry read from
+        # the runtime's own `completed` report (tagged `reported`), or the
+        # honest `unknown` state when the route obtained none (no report, a
+        # non-completion, or a completed report that carried no usage/cost).
+        cost_fields = _reported_usage_cost(report_outcome)
         return {
             "_status": status,
             "runtime": "hermes",
             "worker_role": self.profile,
             "model": "unknown (not captured by this adapter)",
-            "usage": "unknown (not captured by this adapter)",
-            "cost": "unknown (not measured)",
+            "usage": cost_fields["usage"],
+            "cost": cost_fields["cost"],
+            "cost_status": cost_fields["cost_status"],
+            "api_calls": cost_fields["api_calls"],
+            "provenance": cost_fields["provenance"],
             "artifacts": _log_references(run, log_path),
             "evidence": (f"worker exited {proc.returncode}; {chars} chars of stdout captured"
                          + (f", {state_note}" if state_note else "")
@@ -650,18 +717,24 @@ class DshWorkerAdapter:
         # them once the invocation began, rather than a blanket "unknown"
         # that would misrepresent a real, observed invocation (S7b #482
         # dogfood defect -- provider=nous/model=... was used but the
-        # envelope claimed "unknown"). Usage/cost stay honestly "unknown"
-        # because the SDK result here does not report them.
+        # envelope claimed "unknown"). Usage/cost/`cost_status`/`api_calls`
+        # stay honestly `unknown` because the SDK result here reports none --
+        # the `dsh` route declares `report_channel: none`, and nothing is
+        # inferred (design §3.2; never blank, never defaulted).
         provider = os.environ.get("CORTXT_DSH_PROVIDER") or "unknown (provider-default; CORTXT_DSH_PROVIDER unset)"
         model = os.environ.get("CORTXT_DSH_MODEL") or "unknown (provider-default; CORTXT_DSH_MODEL unset)"
+        cost_fields = _unknown_usage_cost()
         return {
             "_status": status,
             "runtime": "dsh",
             "worker_role": run.worker_role,
             "provider": provider,
             "model": model,
-            "usage": "unknown (not reported by the dsh SDK result)",
-            "cost": "unknown (not measured)",
+            "usage": cost_fields["usage"],
+            "cost": cost_fields["cost"],
+            "cost_status": cost_fields["cost_status"],
+            "api_calls": cost_fields["api_calls"],
+            "provenance": cost_fields["provenance"],
             "artifacts": _log_references(run, log_path),
             "evidence": (
                 f"dsh reported status={reported_status}; "
@@ -854,18 +927,24 @@ class HermesFreeAdapter:
         # of the blanket "unknown" that misrepresented a real, observed
         # invocation (S7b #482 dogfood defect: provider=nous,
         # model=upstage/solar-pro4:free were used, envelope said "unknown").
-        # Usage/cost stay honestly "unknown" -- the hermes CLI's one-shot
-        # mode does not report them, so this adapter never guesses.
+        # Usage/cost/`cost_status`/`api_calls`/token telemetry are read from
+        # the runtime's own `--usage-file` report when it is `completed`
+        # (tagged `reported`); they stay honestly `unknown` when the report
+        # carried none -- this adapter never guesses a number.
         model = os.environ.get("CORTXT_FREE_MODEL") or "unknown"
         provider = os.environ.get("CORTXT_FREE_PROVIDER") or "unknown"
+        cost_fields = _reported_usage_cost(report_outcome)
         return {
             "_status": status,
             "runtime": "hermes-free",
             "worker_role": run.worker_role,
             "provider": provider,
             "model": model,
-            "usage": "unknown (not reported by the hermes CLI's one-shot mode)",
-            "cost": "unknown (not measured)",
+            "usage": cost_fields["usage"],
+            "cost": cost_fields["cost"],
+            "cost_status": cost_fields["cost_status"],
+            "api_calls": cost_fields["api_calls"],
+            "provenance": cost_fields["provenance"],
             "artifacts": _log_references(run, log_path),
             # What the RUNTIME reported, never what this adapter concluded from
             # it. `status` may have been rewritten to `blocked` above; saying
