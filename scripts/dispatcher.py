@@ -219,7 +219,17 @@ class Run:
 
     def is_expired(self, now: Optional[float] = None) -> bool:
         now = time.time() if now is None else now
-        return now - self.claimed_at > self.lease_seconds
+        # F-7: a run expires on its lease *from the last proof of life*, not
+        # from claim time. `claimed_at` is frozen when the run is dispatched;
+        # `heartbeat_at` advances while a live worker is in flight
+        # (Dispatcher.heartbeat, driven by worker_adapters.dispatch_async's
+        # periodic heartbeater). The max of the two is the latest moment the
+        # run was provably alive, so a long-running but progressing worker is
+        # not swept as timed out. It equals `claimed_at` when nothing has
+        # ever heartbeated, so the default behavior is unchanged for runs
+        # that never receive a heartbeat.
+        last_known_live = max(self.claimed_at, self.heartbeat_at or self.claimed_at)
+        return now - last_known_live > self.lease_seconds
 
 
 class RunRegistry:

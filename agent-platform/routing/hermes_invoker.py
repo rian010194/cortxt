@@ -62,6 +62,10 @@ def _capture_latest_hermes_session_id(
     try:
         proc = run_subprocess(
             argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+            # F-6 (review finding): this is a second subprocess on the
+            # success-without-resume path; it must not inherit the parent's
+            # stdin either, for the same reason as the primary worker call.
+            stdin=subprocess.DEVNULL,
             **no_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError):
@@ -138,6 +142,7 @@ def invoke_hermes(
         proc = run_subprocess(
             argv, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=timeout_seconds,
+            stdin=subprocess.DEVNULL,
             cwd=str(cwd) if cwd is not None else None,
             **no_window_kwargs(),
         )

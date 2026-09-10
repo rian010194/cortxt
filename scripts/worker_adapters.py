@@ -422,6 +422,13 @@ class HermesAdapter:
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
+                # F-6: never inherit the parent's stdin. A bounded worker is
+                # one-shot and non-interactive; a leftover stdin pipe (e.g. a
+                # parent that itself read from a TTY or a pipe) can block the
+                # worker or hang the whole dispatch on input it never consumes.
+                # DEVNULL matches the codex/claude adapters and the
+                # routing.hermes_invoker path (F-6).
+                stdin=subprocess.DEVNULL,
                 # Bound the worker to its run's isolated worktree (#419): the
                 # subprocess must never inherit the CLI's cwd, which may be an
                 # unrelated directory or another checkout.
@@ -1289,6 +1296,31 @@ def recover_expired_run_evidence(run: Run) -> "dict | None":
     return envelope
 
 
+# F-7: heartbeat cadence for a dispatched Run's proof of life. Well under a
+# typical lease, so an alive worker keeps its lease from expiring (see
+# Dispatcher.heartbeat and Run.is_expired). Tests may shorten this to make an
+# in-flight interval deterministic.
+_HEARTBEAT_INTERVAL_SECONDS = 10
+
+
+def _heartbeater(dispatcher: Dispatcher, run_id: str, stop: threading.Event) -> None:
+    """Stamp Dispatcher.heartbeat(run_id) at a bounded interval until `stop`.
+
+    F-7: makes the heartbeat real. Dispatcher.heartbeat is idempotent and
+    lock-protected, and Run.is_expired now measures the lease from the last
+    proof of life, so a periodic stamp keeps an alive worker from being swept
+    as timed out. Runs on a daemon thread owned by dispatch_async, so it never
+    blocks the worker thread and always stops (via `stop`) once the adapter
+    returns, whatever the outcome. A failed heartbeat must never crash or mask
+    a real result -- it is best-effort proof of life.
+    """
+    while not stop.wait(_HEARTBEAT_INTERVAL_SECONDS):
+        try:
+            dispatcher.heartbeat(run_id)
+        except Exception:  # noqa: BLE001 - proof of life is best-effort
+            pass
+
+
 def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str,
                    worktree: Path | None = None,
                    on_terminal: "Callable[[str, str], None] | None" = None) -> threading.Thread:
@@ -1329,6 +1361,24 @@ def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str,
         )
 
     def _run() -> None:
+        # F-7: keep this Run's heartbeat fresh while the adapter is in flight
+        # so heartbeat_at diverges from claimed_at and a long-running but
+        # alive worker is not swept as expired. The heartbeater is a daemon
+        # thread that stamps Dispatcher.heartbeat at a bounded interval; it is
+        # stopped in a finally so it always stops on success, failure, timeout
+        # or backstop, never leaving a stray thread stamping a dead run.
+        heartbeat_stop = threading.Event()
+        heartbeater = threading.Thread(
+            target=_heartbeater, args=(dispatcher, run.run_id, heartbeat_stop),
+            name=f"heartbeat-{run.run_id}", daemon=True,
+        )
+        heartbeater.start()
+        try:
+            _run_body()
+        finally:
+            heartbeat_stop.set()
+
+    def _run_body() -> None:
         try:
             envelope = adapter.invoke(run, task_prompt, timeout_seconds=run.lease_seconds,
                                       worktree=worktree)

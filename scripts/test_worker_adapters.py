@@ -115,6 +115,37 @@ def recording_subprocess(seen):
     return _run
 
 
+def recording_stdin_subprocess(seen):
+    """Records the `stdin` kwarg of every bounded subprocess call (F-6).
+
+    The adapter must pass `stdin=subprocess.DEVNULL` so a bounded worker never
+    inherits the parent's stdin; a leftover inherited pipe can block the worker
+    or hang the whole dispatch on input it never consumes. This records exactly
+    what the adapter handed to `run_subprocess` so the test can assert it is
+    DEVNULL, plus the cwd for the existing worktree assertions.
+    """
+    def _run(*args, **kwargs):
+        seen.append((args[0], kwargs.get("cwd"), kwargs.get("stdin")))
+        _write_usage_report(list(args[0]) if args else [])
+        return subprocess.CompletedProcess(args[0], 0, stdout="ok", stderr="")
+    return _run
+
+
+def recording_slow_subprocess(seen, delay=0.3):
+    """A recording subprocess that sleeps `delay` seconds first (F-7).
+
+    Keeps the worker "in flight" long enough for dispatch_async's periodic
+    heartbeater to stamp Dispatcher.heartbeat at least once, so the test can
+    observe heartbeat_at advanced past claimed_at.
+    """
+    def _run(*args, **kwargs):
+        time.sleep(delay)
+        seen.append((args[0], kwargs.get("cwd"), kwargs.get("stdin")))
+        _write_usage_report(list(args[0]) if args else [])
+        return subprocess.CompletedProcess(args[0], 0, stdout="ok", stderr="")
+    return _run
+
+
 run = d.Run(run_id="r1", issue_id="o/r#1", workflow="wedge-b", worker_role="researcher",
             runtime="hermes-researcher", claimed_at=time.time(), lease_seconds=60)
 
@@ -600,6 +631,42 @@ def run_all_checks():
     thread_dsh_wt.join(timeout=5)
     check("dsh worker cwd is the isolated worktree", dsh_seen == [wt])
     check("dsh worktree-bound run completed", disp_dsh_wt.query(run_dsh_wt.run_id)["status"] == "succeeded")
+
+    print("== F-6: HermesAdapter suppresses inherited stdin on its bounded subprocess (stdin is DEVNULL) ==")
+    seen_stdin = []
+    wa.register_adapter("test-stdin-hermes", wa.HermesAdapter(
+        profile="researcher", run_subprocess=recording_stdin_subprocess(seen_stdin), log_dir=new_log_dir()))
+    disp_stdin, gh_stdin = new_dispatcher({"o/r#23": ["workflow:ready"]})
+    run_stdin = disp_stdin.claim("o/r#23", "wedge-b", "researcher", "test-stdin-hermes", 60)
+    thread_stdin = wa.dispatch_async(disp_stdin, run_stdin, "do the thing")
+    thread_stdin.join(timeout=5)
+    check("hermes dispatch subprocess ran exactly once", len(seen_stdin) == 1)
+    check("hermes dispatch subprocess gets closed stdin (stdin is subprocess.DEVNULL)",
+          len(seen_stdin) == 1 and seen_stdin[0][2] is subprocess.DEVNULL)
+    check("stdin test run completed", disp_stdin.query(run_stdin.run_id)["status"] == "succeeded")
+
+    print("== F-7: dispatch_async drives Dispatcher.heartbeat so heartbeat_at diverges from claimed_at ==")
+    old_hb_interval = wa._HEARTBEAT_INTERVAL_SECONDS
+    wa._HEARTBEAT_INTERVAL_SECONDS = 0.05  # shorten the cadence so an in-flight interval is deterministic
+    try:
+        seen_slow = []
+        wa.register_adapter("test-slow-hermes", wa.HermesAdapter(
+            profile="researcher",
+            run_subprocess=recording_slow_subprocess(seen_slow, delay=0.3),
+            log_dir=new_log_dir()))
+        disp_f7b, gh_f7b = new_dispatcher({"o/r#24": ["workflow:ready"]})
+        run_f7b = disp_f7b.claim("o/r#24", "wedge-b", "researcher", "test-slow-hermes", lease_seconds=60)
+        claimed_at_f7b = run_f7b.claimed_at
+        thread_f7b = wa.dispatch_async(disp_f7b, run_f7b, "do the thing")
+        thread_f7b.join(timeout=5)
+    finally:
+        wa._HEARTBEAT_INTERVAL_SECONDS = old_hb_interval
+    q_f7b = disp_f7b.query(run_f7b.run_id)
+    check("dispatch_async completed the slow run", q_f7b["status"] == "succeeded")
+    check("heartbeat_at advanced past claimed_at while the run was in flight (F-7)",
+          q_f7b["heartbeat_at"] > claimed_at_f7b)
+    check("heartbeat_at diverged from claimed_at on the durable record",
+          q_f7b["heartbeat_at"] > q_f7b["claimed_at"])
 
     print("== #531: a runtime that never started is not a worker that ran and failed ==")
     # The seam the defect lived in. `invoke_dsh` raising and DshWorkerAdapter

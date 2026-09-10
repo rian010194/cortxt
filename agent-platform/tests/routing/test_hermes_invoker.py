@@ -107,10 +107,14 @@ _SESSIONS_TABLE = (
 
 def test_invoke_hermes_captures_new_session_id_on_fresh_success(monkeypatch):
     calls = []
+    capture_stdin = {}
 
     def fake_run(argv, **kwargs):
         calls.append(argv)
         if argv[:3] == ["hermes", "sessions", "list"]:
+            # F-6 (review finding): the session-id capture subprocess must not
+            # inherit the parent's stdin either, same as the primary worker call.
+            capture_stdin["stdin"] = kwargs.get("stdin")
             return _FakeCompletedProcess(0, stdout=_SESSIONS_TABLE)
         return _FakeCompletedProcess(0, stdout="ok")
 
@@ -119,6 +123,8 @@ def test_invoke_hermes_captures_new_session_id_on_fresh_success(monkeypatch):
     assert result["session_id"] == "20260820_112139_8c44cf"
     assert calls[0][:4] == ["hermes", "-p", "builder", "-z"]
     assert calls[1][:3] == ["hermes", "sessions", "list"]
+    assert capture_stdin.get("stdin") is subprocess.DEVNULL
+
 
 
 def test_invoke_hermes_echoes_back_resumed_session_id_without_a_lookup_call(monkeypatch):
@@ -199,3 +205,20 @@ def test_invoke_hermes_echoes_back_input_session_id_when_a_resumed_call_fails():
 
     assert result["status"] == "failed"
     assert result["session_id"] == "sess-existing"
+
+
+def test_invoke_hermes_suppresses_inherited_stdin_on_the_worker_subprocess():
+    # F-6: the bounded worker subprocess must never inherit the parent's
+    # stdin (a leftover inherited pipe can block the worker or hang the whole
+    # dispatch on input it never consumes). Mirrors codex_adapter.py /
+    # claude_adapter.py, which already pass stdin=subprocess.DEVNULL.
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["hermes", "sessions", "list"]:
+            return _FakeCompletedProcess(0, stdout="")
+        captured["stdin"] = kwargs.get("stdin")
+        return _FakeCompletedProcess(0, stdout="ok")
+
+    invoke_hermes("builder", "do the thing", timeout_seconds=60, run_subprocess=fake_run)
+    assert captured.get("stdin") is subprocess.DEVNULL
