@@ -1223,6 +1223,72 @@ def enrich_run_correlation(run, result_envelope, *, repo_dir=None, git=None,
     return envelope
 
 
+def recover_expired_run_evidence(run: Run) -> "dict | None":
+    """`Dispatcher.evidence_recovery` hook (#551).
+
+    A Run's dispatching process (the OS host / `cortxt work` invocation) can
+    die or restart while its bounded worker subprocess is still detached and
+    running -- `dispatch_async`'s background thread and the `complete()` call
+    it was going to make go with that process, but the worker's own OS
+    process and its isolated git worktree/branch do not. Without this hook,
+    `Dispatcher.sweep_expired()` is the only thing that ever settles such a
+    Run once its lease expires, and it always wrote `timed_out`, discarding
+    any commit the worker actually landed on its own branch in the meantime
+    (W13 evidence, `run-5ca71bf3...`: the worker committed `9078c6a` on its
+    registered branch, but the Run still settled `timed_out` because nothing
+    in-process was left to observe that commit).
+
+    Returns `None` -- leaving `sweep_expired()`'s plain `timed_out` behavior
+    unchanged -- when there is nothing to recover: no recorded worktree, no
+    recorded branch, the worktree directory no longer exists (a `cortxt work`
+    cleanup already ran), or the branch tip is still exactly the run's own
+    `base_commit` (nothing landed). Otherwise returns a result envelope
+    carrying the derived commit for `Dispatcher.complete()`'s own Evidence
+    Gate to independently verify (reachability, branch, a strictly-after-claim
+    timestamp, DCO, artifact policy) -- this hook only surfaces a candidate,
+    it never asserts the Run succeeded.
+    """
+    worktree = getattr(run, "worktree", None)
+    branch = getattr(run, "branch", None)
+    if not worktree or not branch:
+        return None
+    worktree_path = Path(worktree)
+    if not worktree_path.is_dir():
+        return None
+
+    def git(args, _wt=worktree_path):
+        return _worktree_git(_wt, args)
+
+    derived = _derive_run_branch_commit(run, worktree_path, git)
+    if not derived:
+        return None
+    base_commit = getattr(run, "base_commit", None)
+    if base_commit and derived == base_commit:
+        return None  # the branch never moved past its own baseline
+    envelope = enrich_run_correlation(
+        run,
+        {
+            "runtime": run.runtime,
+            "worker_role": run.worker_role,
+            "model": "unknown",
+            "usage": "unknown (recovered after the dispatching process lost this run)",
+            "cost": "unknown (not measured)",
+            "artifacts": [],
+            "outcome": "unattested",
+            "report_state": None,
+            "evidence": (
+                "recovered by lease-expiry reconciliation (#551): no live worker "
+                "report was observed by this process, but the run's own branch had "
+                "already landed a commit beyond its base_commit; the Evidence Gate "
+                "verifies it independently before this Run may read succeeded"
+            ),
+        },
+        repo_dir=worktree_path, git=git, landed=True,
+    )
+    envelope["commit"] = derived
+    return envelope
+
+
 def dispatch_async(dispatcher: Dispatcher, run: Run, task_prompt: str,
                    worktree: Path | None = None,
                    on_terminal: "Callable[[str, str], None] | None" = None) -> threading.Thread:

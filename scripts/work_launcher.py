@@ -25,7 +25,8 @@ from launcher_inventory import (InventoryUnavailable, daemon_claims_reader,
                                 lifecycle_sessions_reader, make_graph_reader,
                                 writer_domain_reader)
 from worker_adapters import (UnknownRuntimeError, dispatch_async,
-                             enrich_run_correlation, runtime_launch_config_ok)
+                             enrich_run_correlation, recover_expired_run_evidence,
+                             runtime_launch_config_ok)
 
 FORBIDDEN = re.compile(r"[\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6]")
 DEFAULT_ARTIFACT_POLICY = (
@@ -273,16 +274,26 @@ class WorkLauncher:
         """Sweep expired in-progress runs to timed_out and release their
         execution-map claims.
 
-        `Dispatcher.sweep_expired()` alone only moves the Run registry to
-        timed_out (a stuck worker thread that never itself completes, e.g. a
-        crashed subprocess whose adapter never returned); it has no
+        `Dispatcher.sweep_expired()` alone only moves the Run registry to a
+        terminal status (a stuck worker thread that never itself completes,
+        e.g. a crashed subprocess whose adapter never returned); it has no
         knowledge of the execution-map claim, so a caller that only ever
         calls `dispatcher.sweep_expired()` directly leaves those claims held
         forever. This wrapper is the sanctioned path for both.
+
+        #551: an expired run is not always settled `timed_out` any more --
+        `Dispatcher.evidence_recovery` (when wired, see `default_launcher`)
+        can settle it `succeeded` or `blocked` instead, when the worker's own
+        isolated branch shows a commit the dispatching process never
+        observed. The actual status this run landed on is read back from the
+        registry rather than assumed, so the claim-release reason and any
+        caller-visible status stay honest.
         """
         swept = self.dispatcher.sweep_expired()
         for run_id in swept:
-            self._on_worker_terminal(run_id, "timed_out")
+            run = self.dispatcher.registry.get(run_id)
+            status = run.status if run is not None else "timed_out"
+            self._on_worker_terminal(run_id, status)
         return swept
 
     def _release(self, claim: ClaimRecord, reason: str) -> None:
@@ -972,6 +983,10 @@ def default_launcher(registry_path: Path, *, daemon_state_dir: Path | None = Non
         # successful run and never reach review at all.
         review_submitter=make_review_submitter(
             review_store or lifecycle_store or default_review_store(registry_path)),
+        # #551: recover a detached worker's landed commit at lease expiry
+        # instead of discarding it as a bare `timed_out` (see
+        # `worker_adapters.recover_expired_run_evidence`).
+        evidence_recovery=recover_expired_run_evidence,
     )
     github = LauncherGitHub()
     return WorkLauncher(
