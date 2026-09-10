@@ -267,6 +267,7 @@ class Dispatcher:
         delegation_depth: Optional[int] = DEFAULT_DELEGATION_DEPTH,
         commit_gate: Optional[Callable] = None,
         review_submitter: Optional[Callable] = None,
+        evidence_recovery: Optional[Callable[["Run"], Optional[dict]]] = None,
     ):
         self.registry = registry
         self.gh = gh or GitHubOps()
@@ -277,6 +278,21 @@ class Dispatcher:
         # silently falling back to the old label-on-status behavior.
         self.commit_gate = commit_gate or verify_commit_correlation
         self.review_submitter = review_submitter
+        # #551: a Run's dispatching process (the launcher/OS host) can die or
+        # restart while a bounded worker subprocess is still detached and
+        # running -- `dispatch_async`'s background thread and its `complete()`
+        # call go with it, but the worker's OS process and its isolated git
+        # worktree/branch do not. Without this hook, sweep_expired() below is
+        # the only thing that ever settles such a Run, and it always writes
+        # `timed_out`, discarding a commit the worker may have actually
+        # landed (S7's #551, W13 evidence: run-5ca71bf3... committed 9078c6a
+        # on its own branch but still settled timed_out). Injected, like
+        # commit_gate/review_submitter, so a caller with no worktree to
+        # inspect (most tests) gets the unchanged plain-timeout behavior by
+        # leaving this None; `worker_adapters.recover_expired_run_evidence`
+        # is the production implementation `work_launcher.default_launcher`
+        # wires in.
+        self.evidence_recovery = evidence_recovery
         # RLock, not Lock: sweep_expired() holds the lock while calling
         # complete() on the same thread, and complete()/heartbeat() must
         # themselves be lock-protected once a caller other than claim() can
@@ -365,7 +381,12 @@ class Dispatcher:
             return d
 
     def sweep_expired(self) -> list[str]:
-        """Move expired in_progress claims (top-level or child) to timed_out.
+        """Move expired in_progress claims (top-level or child) to timed_out
+        -- unless `evidence_recovery` (#551) finds the worker actually landed
+        a commit nobody observed, in which case the Evidence Gate gets a
+        chance to settle this Run as `succeeded` (or, if the derived commit
+        does not verify, `blocked`) instead of discarding real evidence as a
+        bare `timed_out`.
 
         Only a top-level run's expiry moves the issue's label (see complete());
         a child run's expiry is recorded in the registry but leaves the label
@@ -373,12 +394,37 @@ class Dispatcher:
         """
         with self._lock:
             expired = [
-                (run.run_id, run.lease_seconds)
+                run.run_id
                 for run in self.registry._runs.values()
                 if run.status == "in_progress" and run.is_expired()
             ]
         swept = []
-        for run_id, lease_seconds in expired:
+        for run_id in expired:
+            recovered_envelope = None
+            if self.evidence_recovery is not None:
+                run = self.registry.get(run_id)
+                if run is not None:
+                    try:
+                        recovered_envelope = self.evidence_recovery(run)
+                    except Exception:  # noqa: BLE001 - recovery is best-effort,
+                        # never allowed to block the plain timeout fallback below.
+                        recovered_envelope = None
+            if recovered_envelope is not None:
+                try:
+                    # complete()'s own _gate_commit() re-verifies whatever
+                    # commit this carries (reachability, branch, timestamp,
+                    # DCO, artifact policy) -- requesting "succeeded" here is
+                    # not a claim it will be granted; an unverifiable commit
+                    # is still correctly written as `blocked`, never
+                    # `succeeded` on trust.
+                    self.complete(run_id, "succeeded", recovered_envelope)
+                    swept.append(run_id)
+                    continue
+                except RuntimeError:
+                    # Lost the race to a legitimate completion between the
+                    # snapshot above and this call -- not a bug.
+                    continue
+            lease_seconds = getattr(self.registry.get(run_id), "lease_seconds", None)
             try:
                 self.complete(
                     run_id,

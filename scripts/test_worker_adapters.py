@@ -670,6 +670,60 @@ def run_all_checks():
           env_wf["error"]["category"] == "worker_nonzero_exit", env_wf["error"])
 
 
+    print("== #551: recover_expired_run_evidence finds a landed commit nobody observed ==")
+    recover_repo = Path(tempfile.mkdtemp(prefix="recover-repo-"))
+    subprocess.run(["git", "init", "-q"], cwd=recover_repo, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=recover_repo, check=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=recover_repo, check=True)
+    (recover_repo / "README.md").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=recover_repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=recover_repo, check=True)
+    base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=recover_repo, check=True,
+                              capture_output=True, text=True).stdout.strip()
+    subprocess.run(["git", "checkout", "-q", "-b", "work/probe-551"], cwd=recover_repo, check=True)
+    (recover_repo / "PROBE.md").write_text("PROBE-OK\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=recover_repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "probe commit",
+                   "--author=Test <t@t.com>"], cwd=recover_repo, check=True)
+    landed_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=recover_repo, check=True,
+                                capture_output=True, text=True).stdout.strip()
+
+    run_recover = d.Run(run_id="run-551-recover", issue_id="o/r#551", workflow="work-launcher/v1",
+                        worker_role="builder", runtime="hermes-free", claimed_at=time.time(),
+                        lease_seconds=60, mutating=True, worktree=str(recover_repo),
+                        branch="work/probe-551", base_commit=base_sha, request_id="req-551")
+    recovered = wa.recover_expired_run_evidence(run_recover)
+    check("recovery returns an envelope when the branch landed a commit", recovered is not None)
+    check("recovered envelope carries the landed commit", recovered is not None and recovered.get("commit") == landed_sha)
+    check("recovered envelope carries the authoritative run_id/issue_id/request_id",
+          recovered is not None and recovered["run_id"] == "run-551-recover"
+          and recovered["issue_id"] == "o/r#551" and recovered["request_id"] == "req-551")
+    check("recovered evidence is honest about not being a live worker report",
+          recovered is not None and "recovered by lease-expiry reconciliation" in recovered["evidence"])
+
+    print("== #551: recover_expired_run_evidence returns None when nothing landed ==")
+    run_nowt = d.Run(run_id="run-551-nowt", issue_id="o/r#551b", workflow="work-launcher/v1",
+                     worker_role="builder", runtime="hermes-free", claimed_at=time.time(),
+                     lease_seconds=60, mutating=True)
+    check("no worktree/branch recorded -> None (unchanged plain timed_out)",
+          wa.recover_expired_run_evidence(run_nowt) is None)
+
+    run_missing_dir = d.Run(run_id="run-551-missingdir", issue_id="o/r#551c", workflow="work-launcher/v1",
+                            worker_role="builder", runtime="hermes-free", claimed_at=time.time(),
+                            lease_seconds=60, mutating=True,
+                            worktree=str(recover_repo / "does-not-exist"), branch="work/probe-551",
+                            base_commit=base_sha)
+    check("worktree directory gone (cleaned up) -> None",
+          wa.recover_expired_run_evidence(run_missing_dir) is None)
+
+    run_untouched = d.Run(run_id="run-551-untouched", issue_id="o/r#551d", workflow="work-launcher/v1",
+                          worker_role="builder", runtime="hermes-free", claimed_at=time.time(),
+                          lease_seconds=60, mutating=True, worktree=str(recover_repo),
+                          branch="work/probe-551", base_commit=landed_sha)  # base == tip: nothing landed
+    check("branch tip equals its own base_commit -> None (nothing landed)",
+          wa.recover_expired_run_evidence(run_untouched) is None)
+
+
 def test_all_checks_pass():
     """Pytest entry point: run the same checks as the standalone script."""
     run_all_checks()

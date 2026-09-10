@@ -19,6 +19,8 @@ spec = importlib.util.spec_from_file_location("dispatcher", MOD)
 d = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(d)
 
+import commit_evidence as ce  # noqa: E402 - scripts/ is sys.path[0] for this script
+
 fail = []
 
 
@@ -302,6 +304,82 @@ def run_all_checks():
     check("child status timed_out", disp8b.query(child8b.run_id)["status"] == "timed_out")
     check("parent still in_progress", disp8b.query(parent8b.run_id)["status"] == "in_progress")
     check("label untouched by child's expiry (parent still owns it)", gh8b.labels["o/r#10b"] == ["workflow:in-progress"])
+
+    print("== sweep_expired + evidence_recovery: a landed commit nobody observed settles succeeded, not timed_out (#551) ==")
+    ws12 = tempfile.mkdtemp(prefix="dispatcher-recover-")
+    reg12 = d.RunRegistry(Path(ws12) / "runs.json")
+    gh12 = FakeGitHub({"o/r#12": ["workflow:ready"]})
+
+    def recovery_returns_commit(run):
+        return {"commit": "deadbeef" * 5, "artifacts": []}
+
+    disp12 = d.Dispatcher(
+        reg12, gh12,
+        commit_gate=lambda run, envelope: ce.CommitEvidence(
+            run_id=run.run_id, issue_id=run.issue_id, commit=envelope["commit"],
+            branch="work/x", committed_at=int(time.time()), files=("a.py",),
+            verified_at=time.time()),
+        evidence_recovery=recovery_returns_commit,
+    )
+    run12 = disp12.claim("o/r#12", "wedge-b", "builder", "hermes-free", lease_seconds=1)
+    disp12.registry.update(run12.run_id, claimed_at=time.time() - 10, mutating=True)  # force expiry
+    swept12 = disp12.sweep_expired()
+    check("run swept via recovery", swept12 == [run12.run_id])
+    check("status succeeded, not timed_out", disp12.query(run12.run_id)["status"] == "succeeded")
+    check("result carries the recovered commit", disp12.query(run12.run_id)["result"]["commit"] == "deadbeef" * 5)
+    check("evidence_gate marks it commit_correlated (verified, not asserted)",
+          disp12.query(run12.run_id)["result"]["evidence_gate"] == "commit_correlated")
+
+    print("== sweep_expired + evidence_recovery: recovery returns None -> unchanged plain timed_out ==")
+    ws13 = tempfile.mkdtemp(prefix="dispatcher-norecover-")
+    reg13 = d.RunRegistry(Path(ws13) / "runs.json")
+    gh13 = FakeGitHub({"o/r#13": ["workflow:ready"]})
+    disp13 = d.Dispatcher(reg13, gh13, evidence_recovery=lambda run: None)
+    run13 = disp13.claim("o/r#13", "wedge-b", "builder", "hermes-free", lease_seconds=1)
+    disp13.registry.update(run13.run_id, claimed_at=time.time() - 10)
+    swept13 = disp13.sweep_expired()
+    check("run swept", swept13 == [run13.run_id])
+    check("status stays timed_out when recovery finds nothing", disp13.query(run13.run_id)["status"] == "timed_out")
+
+    print("== sweep_expired + evidence_recovery: recovery raises -> falls back to plain timed_out, never crashes the sweep ==")
+    ws13b = tempfile.mkdtemp(prefix="dispatcher-recover-raises-")
+    reg13b = d.RunRegistry(Path(ws13b) / "runs.json")
+    gh13b = FakeGitHub({"o/r#13b": ["workflow:ready"]})
+
+    def recovery_raises(run):
+        raise RuntimeError("git not readable")
+
+    disp13b = d.Dispatcher(reg13b, gh13b, evidence_recovery=recovery_raises)
+    run13b = disp13b.claim("o/r#13b", "wedge-b", "builder", "hermes-free", lease_seconds=1)
+    disp13b.registry.update(run13b.run_id, claimed_at=time.time() - 10)
+    swept13b = disp13b.sweep_expired()
+    check("run swept despite recovery raising", swept13b == [run13b.run_id])
+    check("status falls back to timed_out", disp13b.query(run13b.run_id)["status"] == "timed_out")
+
+    print("== sweep_expired + evidence_recovery: a derived commit that fails the gate settles blocked, not succeeded ==")
+    ws14 = tempfile.mkdtemp(prefix="dispatcher-recover-blocked-")
+    reg14 = d.RunRegistry(Path(ws14) / "runs.json")
+    gh14 = FakeGitHub({"o/r#14": ["workflow:ready"]})
+
+    class Unverifiable:
+        code = "commit_predates_run"
+        detail = "commit timestamp is before this run's claim"
+        recovery = "start a fresh run"
+
+    disp14 = d.Dispatcher(
+        reg14, gh14,
+        commit_gate=lambda run, envelope: ce.CorrelationFailure(
+            code="commit_predates_run",
+            detail="commit timestamp is before this run's claim",
+            recovery="start a fresh run"),
+        evidence_recovery=lambda run: {"commit": "cafebabe" * 5, "artifacts": []},
+    )
+    run14 = disp14.claim("o/r#14", "wedge-b", "builder", "hermes-free", lease_seconds=1)
+    disp14.registry.update(run14.run_id, claimed_at=time.time() - 10, mutating=True)
+    swept14 = disp14.sweep_expired()
+    check("run swept", swept14 == [run14.run_id])
+    check("an unverifiable recovered commit settles blocked, never succeeded on trust",
+          disp14.query(run14.run_id)["status"] == "blocked")
 
     print("== registry persistence: reload from disk keeps state ==")
     ws = tempfile.mkdtemp(prefix="dispatcher-persist-")
