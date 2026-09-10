@@ -15,7 +15,7 @@ from ..run_authority import (
     summaries_from_sessions,
 )
 from ..detail import build_workstream_detail_v1
-from ..dispatch_request import build_dispatch_request_v1
+from ..dispatch_request import build_dispatch_request_v1, build_dispatch_request_v2
 
 
 class ReadAdapterError(ValueError):
@@ -694,6 +694,31 @@ def read_dispatch_request_v1(issue: Mapping[str, Any],
         routable_tags=routable_tags)
     try:
         validate(result, TYPES["dispatch.request.v1"].schema)
+    except Exception as exc:
+        raise ReadAdapterError(str(exc)) from exc
+    return result
+
+
+def read_dispatch_request_v2(issue: Mapping[str, Any],
+                             choice: Any,
+                             *,
+                             repo: str,
+                             engine_registered: bool = True,
+                             routable_tags: Sequence[str] | None = None,
+                             provider: str | None = None,
+                             model: str | None = None) -> dict[str, Any]:
+    """Build and validate the dispatch.request.v2 projection (§2).
+
+    Extends v1 by binding the resolved execution configuration (provider, model,
+    profile via ``execution_profile_revision``) and the report channel into the
+    request digest. ``provider``/``model`` are resolved, non-secret execution
+    identifiers; ``None`` is bound as "not resolved at projection time".
+    """
+    result = build_dispatch_request_v2(
+        issue, choice, repo=repo, engine_registered=engine_registered,
+        routable_tags=routable_tags, provider=provider, model=model)
+    try:
+        validate(result, TYPES["dispatch.request.v2"].schema)
     except Exception as exc:
         raise ReadAdapterError(str(exc)) from exc
     return result

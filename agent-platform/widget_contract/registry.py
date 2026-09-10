@@ -717,6 +717,25 @@ DISPATCH_REQUEST_SCHEMA = {"type": "object", "additionalProperties": False,
                                "errors": {"type": "array", "items": ERROR_ENTRY_SCHEMA},
                            }}
 
+# dispatch.request.v2 (S#520, design §2): approval bound to the execution
+# configuration. Superset of v1 -- same fields plus `execution_profile_revision`
+# (immutable digest of the resolved execution configuration: route engine,
+# worker profile, provider, model, isolation) and `report_channel` (where the
+# worker's result is reported). Both are bound into the request digest, so an
+# approved request cannot be re-launched against a different model/provider/
+# profile/channel without invalidating the approval.
+DISPATCH_REQUEST_V2_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": DISPATCH_REQUEST_SCHEMA["required"] + [
+        "execution_profile_revision", "report_channel"],
+    "properties": dict(DISPATCH_REQUEST_SCHEMA["properties"], **{
+        "schema_version": {"const": 2},
+        "execution_profile_revision": {"type": "string"},
+        "report_channel": {"type": "string"},
+    }),
+}
+
 TYPES = {
     "sessions.snapshot.v2": TypeEntry(SNAPSHOT_SCHEMA, "operational"),
     "dispatcher.active-runs.v1": TypeEntry(ACTIVE_RUNS_SCHEMA, "operational"),
@@ -749,6 +768,7 @@ TYPES = {
     "run.activity.v1": TypeEntry(RUN_ACTIVITY_SCHEMA, "operational"),
     "run.review.v1": TypeEntry(RUN_REVIEW_SCHEMA, "operational"),
     "dispatch.request.v1": TypeEntry(DISPATCH_REQUEST_SCHEMA, "public-metadata"),
+    "dispatch.request.v2": TypeEntry(DISPATCH_REQUEST_V2_SCHEMA, "public-metadata"),
 }
 
 READ_OPERATIONS = {
@@ -775,6 +795,7 @@ READ_OPERATIONS = {
     "run.activity.v1": ReadOperation("store", {"type": "object", "additionalProperties": False, "required": ["issue_ref", "run_id"], "properties": {"issue_ref": {"type": "string"}, "run_id": {"type": "string"}}}, "run.activity.v1", "operational", 500, 30, 2, "read:run-activity"),
     "run.review.v1": ReadOperation("store", {"type": "object", "additionalProperties": False, "required": ["issue_ref"], "properties": {"issue_ref": {"type": "string"}}}, "run.review.v1", "operational", 500, 30, 2, "read:run-review"),
     "dispatch.request.v1": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo", "issue_number"], "properties": {"repo": {"type": "string"}, "issue_number": {"type": "integer", "minimum": 1}}}, "dispatch.request.v1", "public-metadata", 5000, 30, 30, "read:dispatch-request"),
+    "dispatch.request.v2": ReadOperation("github", {"type": "object", "additionalProperties": False, "required": ["repo", "issue_number"], "properties": {"repo": {"type": "string"}, "issue_number": {"type": "integer", "minimum": 1}}}, "dispatch.request.v2", "public-metadata", 5000, 30, 30, "read:dispatch-request"),
 }
 
 ISSUE_ID_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["issue_id"],
