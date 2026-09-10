@@ -330,6 +330,33 @@ def run_all_checks():
     check("evidence_gate marks it commit_correlated (verified, not asserted)",
           disp12.query(run12.run_id)["result"]["evidence_gate"] == "commit_correlated")
 
+    print("== complete timed_out + evidence_recovery: a live adapter timeout recovers through the same gate (F-8) ==")
+    ws12b = tempfile.mkdtemp(prefix="dispatcher-live-recover-")
+    reg12b = d.RunRegistry(Path(ws12b) / "runs.json")
+    gh12b = FakeGitHub({"o/r#12b": ["workflow:ready"]})
+    recovery_calls = []
+
+    def recovery_for_live_timeout(run):
+        recovery_calls.append(run.run_id)
+        return {"commit": "facefeed" * 5, "artifacts": []}
+
+    disp12b = d.Dispatcher(
+        reg12b, gh12b,
+        commit_gate=lambda run, envelope: ce.CommitEvidence(
+            run_id=run.run_id, issue_id=run.issue_id, commit=envelope["commit"],
+            branch="work/x", committed_at=int(time.time()), files=("a.py",),
+            verified_at=time.time()),
+        evidence_recovery=recovery_for_live_timeout,
+    )
+    run12b = disp12b.claim("o/r#12b", "wedge-b", "builder", "hermes-free", lease_seconds=1)
+    disp12b.registry.update(run12b.run_id, mutating=True)
+    disp12b.complete(run12b.run_id, "timed_out", {"error": "adapter deadline"})
+    check("live timeout invokes recovery once", recovery_calls == [run12b.run_id])
+    check("live timeout with valid evidence settles succeeded",
+          disp12b.query(run12b.run_id)["status"] == "succeeded")
+    check("live recovery remains Evidence-Gate verified",
+          disp12b.query(run12b.run_id)["result"]["evidence_gate"] == "commit_correlated")
+
     print("== sweep_expired + evidence_recovery: recovery returns None -> unchanged plain timed_out ==")
     ws13 = tempfile.mkdtemp(prefix="dispatcher-norecover-")
     reg13 = d.RunRegistry(Path(ws13) / "runs.json")
