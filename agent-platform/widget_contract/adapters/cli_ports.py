@@ -55,7 +55,10 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
                         engine_has_provider: Callable[[str], bool] | None = None,
                         launcher: Any = None,
                         approval_ref: str | None = None,
-                        request_id: str | None = None) -> dict[str, Any]:
+                        request_id: str | None = None,
+                        request_version: int = 1,
+                        provider: str | None = None,
+                        model: str | None = None) -> dict[str, Any]:
     """Resume a ready issue through the execution-map-gated launcher (gh-backed default).
 
     S7b (#471): the launcher values (runtime, worker role, workflow, every
@@ -69,13 +72,19 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
     It defaults closed (isolated) and is waived only by an approved artifact
     policy that explicitly says the run works in the shared checkout.
 
-    Approval binding (AC8): when `approval_ref` is provided it must equal the
-    issue-derived approval reference, and when `request_id` is provided it must
-    equal the server-derived digest of the current request snapshot -- a changed
-    Issue between preview and confirmation is rejected as stale, never silently
-    launched as a different mandate. A not-eligible dispatch request raises
-    `DispatchNotEligible` with the structured failures, so the browser cannot
-    widen scope or limits.
+    Approval binding (AC8; design §2 for v2): when `approval_ref` is provided it
+    must equal the issue-derived approval reference, and when `request_id` is
+    provided it must bind to the current request digest (via
+    `approval_binds_digest`) -- a request whose digest differs from the approved
+    digest, covering a changed Issue or resolved execution configuration, is
+    rejected as stale rather than silently launched as a different mandate. A
+    not-eligible dispatch request raises `DispatchNotEligible` with the
+    structured failures, so the browser cannot widen scope or limits.
+
+    `request_version=2` renders `dispatch.request.v2` and binds the resolved
+    execution configuration (`provider`, `model`) and the report channel into
+    the digest, so an approval cannot be replayed against a different execution
+    configuration.
     """
     import sys
     if str(scripts_dir) not in sys.path:
@@ -83,7 +92,12 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
     from work_launcher import default_launcher
 
     from .github_ports import read_issue_detail as _read_issue_detail
-    from ..dispatch_request import build_dispatch_request_v1, route_for_issue
+    from ..dispatch_request import (
+        build_dispatch_request_v1,
+        build_dispatch_request_v2,
+        route_for_issue,
+    )
+    from ..dispatch_request import approval_binds_digest
     from routing.engine_manifest import DEFAULT_FALLBACK_ENGINE, DEFAULT_MANIFESTS
 
     repo, number = issue_id.rsplit("#", 1)
@@ -125,16 +139,29 @@ def gh_claim_run_resume(issue_id: str, *, registry: Path, scripts_dir: Path,
             # code; it never fabricates one.
             unavailable_reason = None
 
-    request = build_dispatch_request_v1(
-        issue, choice, repo=repo,
-        engine_registered=registered,
-        engine_unavailable_reason=unavailable_reason,
-        routable_tags=tags)
+    if request_version == 2:
+        request = build_dispatch_request_v2(
+            issue, choice, repo=repo,
+            engine_registered=registered,
+            engine_unavailable_reason=unavailable_reason,
+            routable_tags=tags, provider=provider, model=model)
+    else:
+        request = build_dispatch_request_v1(
+            issue, choice, repo=repo,
+            engine_registered=registered,
+            engine_unavailable_reason=unavailable_reason,
+            routable_tags=tags)
     if not request["eligible"]:
         raise DispatchNotEligible(request)
     if approval_ref is not None and approval_ref != request["approval_reference"]:
         raise ApprovalMismatch("approval reference does not match the approved issue mandate")
-    if request_id is not None and request_id != request["request_id"]:
+    # Approval binds the request digest (design §2). v1 uses its own v1-digest;
+    # v2 uses the shared `approval_binds_digest` over the bound field set. Either
+    # way, a request whose digest differs from the approved digest is rejected as
+    # stale rather than launched as a different mandate.
+    digest_ok = (approval_binds_digest(request_id, request) if request_version == 2
+                 else request_id == request["request_id"])
+    if request_id is not None and not digest_ok:
         raise StaleDispatchRequest(
             "dispatch request snapshot has changed; re-fetch and confirm the current request")
 

@@ -381,3 +381,156 @@ def build_dispatch_request_v1(
     }
     payload["request_id"] = _request_id(payload)
     return payload
+
+
+# ---------------------------------------------------------------------------
+# dispatch.request.v2 (S#520, design §2): approval bound to the execution
+# configuration, not identifiers alone.
+# ---------------------------------------------------------------------------
+
+# Canonical bound field set for the v2 request digest, grouped by the six
+# dimensions design §2 names. Field ORDER here is the fixed canonical order the
+# digest serialises in (see `canonicalisation rule` below); do not reorder.
+#
+#   semantic content -> scope, acceptance_criteria
+#   route            -> engine, routing_reason, routable_task_tags, engine_policy
+#   model            -> execution_profile_revision  (binds provider + model)
+#   profile          -> worker_role, workflow_id
+#   limits           -> max_runtime_seconds, max_cost_usd, max_parallel_workers,
+#                       delegation_depth, artifact_policy
+#   report channel   -> report_channel
+#
+# `isolation` is bound through `execution_profile_revision` (it is a field of
+# the execution profile) rather than separately; `issue_id` and
+# `approval_reference` stay in the digest so the approval cannot be replayed
+# against a different issue or a changed mandate.
+REQUEST_V2_BOUND_FIELDS = (
+    "issue_id",
+    "approval_reference",
+    "scope",
+    "acceptance_criteria",
+    "engine",
+    "routing_reason",
+    "routable_task_tags",
+    "engine_policy",
+    "execution_profile_revision",
+    "worker_role",
+    "workflow_id",
+    "max_runtime_seconds",
+    "max_cost_usd",
+    "max_parallel_workers",
+    "delegation_depth",
+    "artifact_policy",
+    "report_channel",
+)
+
+# Canonicalisation rule (documented, shared with the execution-profile revision
+# in `routing/execution_profile`): select exactly `REQUEST_V2_BOUND_FIELDS`,
+# serialise with `json.dumps(sort_keys=True, separators=(",", ":"), default=str)`
+# so nested maps sort deterministically, `None` stays distinct from an absent
+# value, and non-JSON values fall back to `str`; digest =
+# "sha256:" + sha256(utf8(canonical)).hexdigest(). Two requests with the same
+# meaning over every bound field produce the same digest; any change to a bound
+# field produces a different one.
+DEFAULT_REPORT_CHANNEL = "issue-comment"
+
+
+def report_channel(body: str) -> str:
+    """The channel the worker's result is reported on (bound field).
+
+    Defaults to ``issue-comment`` (the dispatch contract's result channel: a
+    result envelope is posted to the issue). An explicit ``## Report channel``
+    section may override it deterministically; a missing section keeps the
+    default so an unstated channel cannot silently widen the approved report.
+    """
+    section = _section(body, ("Report channel", "Report Channel", "Result channel"))
+    if section:
+        value = section.splitlines()[0].strip().rstrip(".")
+        if value:
+            return value
+    return DEFAULT_REPORT_CHANNEL
+
+
+def build_dispatch_request_v2(
+    issue: Mapping[str, Any],
+    choice: Any | None,
+    *,
+    repo: str,
+    engine_registered: bool = True,
+    engine_unavailable_reason: str | None = None,
+    routable_tags: Sequence[str] | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Render the v2 dispatch request: approval bound to the execution profile.
+
+    ``dispatch.request.v2`` (design §2) extends v1 by binding an immutable
+    ``execution_profile_revision`` -- a digest of the resolved execution
+    configuration (route engine, worker profile, provider, model, isolation) --
+    and a ``report_channel`` into the request digest. The digest therefore
+    covers the semantic content plus the actual execution configuration, not
+    identifiers alone: an approved request cannot be re-launched against a
+    different model, provider, or profile without invalidating the approval.
+
+    ``provider`` and ``model`` are the resolved, non-secret execution
+    identifiers (the same class the routing manifest and launcher preflight
+    treat as routing configuration). ``None`` means "not resolved at projection
+    time" and is itself bound.
+    """
+    from routing.execution_profile import (
+        execution_profile,
+        execution_profile_revision,
+    )
+
+    base = build_dispatch_request_v1(
+        issue, choice, repo=repo,
+        engine_registered=engine_registered,
+        engine_unavailable_reason=engine_unavailable_reason,
+        routable_tags=routable_tags,
+    )
+    body = str(issue.get("body") or "")
+
+    isolation = base["isolation"]
+    profile = execution_profile(
+        engine_id=base["engine"] or "",
+        worker_role=base["worker_role"],
+        provider=provider,
+        model=model,
+        isolation=isolation,
+    )
+    revision = execution_profile_revision(profile)
+
+    payload = dict(base)
+    payload["schema_version"] = 2
+    payload["execution_profile_revision"] = revision
+    payload["report_channel"] = report_channel(body)
+    # The request digest now covers the bound field set (semantic content,
+    # route, model/profile via the revision, limits, report channel).
+    payload["request_id"] = request_digest_v2(payload)
+    return payload
+
+
+def request_digest_v2(payload: Mapping[str, Any]) -> str:
+    """The v2 request digest over the canonical bound field set.
+
+    Deterministic across semantically identical requests; any change to a bound
+    field -- including a change to the resolved execution profile (model,
+    provider, profile, isolation) or the report channel -- changes the digest.
+    """
+    from routing.execution_profile import canonical_json, sha256_digest
+
+    return sha256_digest(canonical_json(payload, REQUEST_V2_BOUND_FIELDS))
+
+
+def approval_binds_digest(approved_request_id: str | None, payload: Mapping[str, Any]) -> bool:
+    """True only when ``approved_request_id`` equals the request's own digest.
+
+    Design §2: the operator's approval is *recorded against the digest*. A
+    request whose digest differs from the approved digest is not treated as
+    approved -- regardless of whether its approval_reference text still reads
+    as positive. This is the fail-closed test the confirmation and launch paths
+    use: an approved id that does not match the current digest is stale.
+    """
+    if not approved_request_id:
+        return False
+    return approved_request_id == request_digest_v2(payload)
