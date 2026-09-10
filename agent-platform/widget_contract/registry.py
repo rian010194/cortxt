@@ -728,11 +728,18 @@ DISPATCH_REQUEST_V2_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": DISPATCH_REQUEST_SCHEMA["required"] + [
-        "execution_profile_revision", "report_channel"],
+        "execution_profile_revision", "report_channel",
+        "charge_policy_id", "charge_policy_revision", "charge_policy_route"],
     "properties": dict(DISPATCH_REQUEST_SCHEMA["properties"], **{
         "schema_version": {"const": 2},
         "execution_profile_revision": {"type": "string"},
         "report_channel": {"type": "string"},
+        # W11 (#542): the versioned charge policy and the confirmed charging
+        # regime, both bound into the request digest. Null when unresolved at
+        # projection time.
+        "charge_policy_id": {"type": ["string", "null"]},
+        "charge_policy_revision": {"type": ["string", "null"]},
+        "charge_policy_route": {"enum": ["zero_charge", "metered", None]},
     }),
 }
 

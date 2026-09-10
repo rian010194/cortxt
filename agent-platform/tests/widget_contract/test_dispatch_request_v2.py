@@ -254,3 +254,62 @@ def test_v2_stale_digest_rejected_at_launch_as_not_approved():
         provider=PROVIDER, model=MODEL)
     assert result["run_id"] == "run_v2"
     assert fake.calls
+
+
+# --- W11 (#542): charge policy revision + route bound into the request digest
+
+def _charge_policy(**overrides):
+    from routing.charge_policy import ChargePolicy
+    base = dict(
+        charge_policy_id="cp-nous-solar-pro4",
+        charging="zero_charge",
+        official_source="provider pricing, read 2026-09-10",
+        read_date="2026-09-10",
+        expiry="2026-12-10",
+        route="zero_charge",
+    )
+    base.update(overrides)
+    return ChargePolicy(**base)
+
+
+def test_v2_without_charge_policy_carries_null_fields_and_stays_schema_valid():
+    request = _v2()
+    validate(request, TYPES["dispatch.request.v2"].schema)
+    assert request["charge_policy_id"] is None
+    assert request["charge_policy_revision"] is None
+    assert request["charge_policy_route"] is None
+
+
+def test_v2_with_charge_policy_is_schema_valid_and_binds_the_revision():
+    request = _v2(charge_policy=_charge_policy())
+    validate(request, TYPES["dispatch.request.v2"].schema)
+    assert request["charge_policy_route"] == "zero_charge"
+    assert request["charge_policy_revision"].startswith("sha256:")
+    assert request_digest_v2(request) == request["request_id"]
+
+
+def test_v2_adding_a_charge_policy_changes_the_request_digest():
+    base = _v2()
+    with_policy = _v2(charge_policy=_charge_policy())
+    assert with_policy["request_id"] != base["request_id"]
+
+
+def test_v2_rebinding_charge_policy_route_invalidates_prior_confirmation():
+    """A route-binding change is a revision, not a silent mutation: the request
+    digest changes, so an approval bound to the old digest is stale."""
+    zero = _v2(charge_policy=_charge_policy(charging="zero_charge", route="zero_charge"))
+    metered = _v2(charge_policy=_charge_policy(charging="metered", route="metered"))
+    assert metered["charge_policy_revision"] != zero["charge_policy_revision"]
+    assert metered["request_id"] != zero["request_id"]
+    assert approval_binds_digest(zero["request_id"], metered) is False
+
+
+def test_v2_charge_policy_content_change_changes_the_digest():
+    base = _v2(charge_policy=_charge_policy())
+    changed = _v2(charge_policy=_charge_policy(expiry="2027-06-01"))
+    assert changed["request_id"] != base["request_id"]
+
+
+def test_v2_identical_charge_policy_keeps_a_stable_digest():
+    assert _v2(charge_policy=_charge_policy())["request_id"] == \
+        _v2(charge_policy=_charge_policy())["request_id"]
