@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from routing.completion_report import CHANNEL_STRUCTURED, REPORT_CHANNELS
+from routing.completion_report import CHANNEL_NONE, CHANNEL_STRUCTURED, REPORT_CHANNELS
 from routing.execution_profile import canonical_json, sha256_digest
 
 # The two charging regimes. `route` names which one a policy is bound to;
@@ -138,8 +138,19 @@ def zero_charge_eligible(runtime: str, policy: ChargePolicy) -> EligibilityResul
        runtime to ``structured`` so a new adapter still owes a report), an
        unregistered runtime here is refused ``zero_charge``. The regime rests
        on a verified model identity (design §1.3, §3.4), and a runtime whose
-       channel nobody has declared cannot supply one -- so a ``none``-channel
-       runtime (``dsh``) and an unknown runtime are both refused.
+       channel nobody has declared cannot supply one.
+
+    A refused runtime is classified by the code returned:
+
+    - ``none_channel`` -- the runtime explicitly declares ``report_channel:
+      none`` (``dsh`` today), so it can supply no completion report at all;
+    - ``undeclared_channel`` -- the runtime is absent from ``REPORT_CHANNELS``,
+      so nobody has declared its channel;
+    - ``unstructured_channel`` -- a declared channel that is neither
+      ``structured`` nor ``none`` (defensive; no such value exists today).
+
+    All three leave ``eligible`` ``False`` -- this is a code refinement, not a
+    change to eligibility.
     """
     if policy.route != ROUTE_ZERO_CHARGE:
         return EligibilityResult(
@@ -149,13 +160,20 @@ def zero_charge_eligible(runtime: str, policy: ChargePolicy) -> EligibilityResul
         )
     declared = REPORT_CHANNELS.get(runtime)
     if declared != CHANNEL_STRUCTURED:
-        detail = (f"declares report channel {declared!r}" if declared is not None
-                  else "has no declared completion channel")
+        if declared == CHANNEL_NONE:
+            code, detail = "none_channel", (
+                f"explicitly declares report channel {declared!r}")
+        elif declared is not None:
+            code, detail = "unstructured_channel", (
+                f"declares report channel {declared!r}")
+        else:
+            code, detail = "undeclared_channel", (
+                "has no declared completion channel")
         return EligibilityResult(
             False,
             f"runtime {runtime!r} {detail}; {ROUTE_ZERO_CHARGE!r} requires an "
             f"explicitly declared {CHANNEL_STRUCTURED!r} channel",
-            code="unstructured_channel" if declared is not None else "undeclared_channel",
+            code=code,
         )
     return EligibilityResult(
         True,
