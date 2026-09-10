@@ -48,10 +48,13 @@ def test_structured_channel_runtime_is_eligible_for_zero_charge():
     assert result.eligible is True
 
 
-def test_unknown_runtime_defaults_structured_and_is_eligible():
-    """An unrecognised runtime fails closed to `structured` in completion_report,
-    so it is eligible -- the exemption must be declared, never inferred."""
-    assert zero_charge_eligible("some-new-runtime", _policy()).eligible is True
+def test_unknown_runtime_is_refused_zero_charge():
+    """The zero_charge path fails closed: a runtime whose completion channel
+    nobody has declared cannot supply a verified model identity, so it is
+    refused even though `report_channel()` would default it to `structured`."""
+    result = zero_charge_eligible("some-new-runtime", _policy())
+    assert result.eligible is False
+    assert result.code == "undeclared_channel"
 
 
 def test_metered_policy_is_a_route_mismatch_not_a_silent_pass():
@@ -73,6 +76,14 @@ def test_route_binding_change_is_a_revision():
     zero = _policy(charging="zero_charge", route="zero_charge")
     metered = _policy(charging="metered", route="metered")
     assert zero.charge_policy_revision != metered.charge_policy_revision
+
+
+def test_pure_id_rename_does_not_change_the_revision():
+    """Design §2.1: the revision is over semantic content, not identifiers.
+    Renaming the record (same verdict/source/dates/route) is not a revision."""
+    base = _policy(charge_policy_id="cp-old-name")
+    renamed = _policy(charge_policy_id="cp-new-name")
+    assert renamed.charge_policy_revision == base.charge_policy_revision
 
 
 def test_content_change_under_same_id_changes_the_revision():

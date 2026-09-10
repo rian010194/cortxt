@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from routing.completion_report import CHANNEL_STRUCTURED, report_channel
+from routing.completion_report import CHANNEL_STRUCTURED, REPORT_CHANNELS
 from routing.execution_profile import canonical_json, sha256_digest
 
 # The two charging regimes. `route` names which one a policy is bound to;
@@ -42,10 +42,11 @@ ROUTE_ZERO_CHARGE = "zero_charge"
 ROUTE_METERED = "metered"
 VALID_ROUTES = frozenset({ROUTE_ZERO_CHARGE, ROUTE_METERED})
 
-# The semantic fields the revision digests. Order is load-bearing for the
-# canonical serialisation; keep it fixed.
+# The semantic fields the revision digests -- content, never identifiers
+# (design §2.1: the revision is over "semantic content, not identifiers", so a
+# pure rename of the record must not read as a material change). Order is
+# load-bearing for the canonical serialisation; keep it fixed.
 CHARGE_POLICY_FIELDS = (
-    "charge_policy_id",
     "charging",
     "official_source",
     "read_date",
@@ -131,11 +132,14 @@ def zero_charge_eligible(runtime: str, policy: ChargePolicy) -> EligibilityResul
     1. The policy's bound ``route`` is ``zero_charge``. A ``metered`` policy is
        not eligible for -- and does not need -- the check; it is reported as a
        route mismatch rather than silently passing.
-    2. ``runtime`` declares a ``structured`` completion channel
-       (``routing.completion_report.report_channel``). A ``none``-channel
-       runtime (``dsh`` today) is refused: ``zero_charge`` rests on a verified
-       model identity, which a route with no structured channel cannot
-       establish (design §1.3, §3.4).
+    2. ``runtime`` **explicitly** declares a ``structured`` completion channel
+       in ``routing.completion_report.REPORT_CHANNELS``. This path fails
+       *closed*: unlike ``report_channel()`` (which defaults an unregistered
+       runtime to ``structured`` so a new adapter still owes a report), an
+       unregistered runtime here is refused ``zero_charge``. The regime rests
+       on a verified model identity (design §1.3, §3.4), and a runtime whose
+       channel nobody has declared cannot supply one -- so a ``none``-channel
+       runtime (``dsh``) and an unknown runtime are both refused.
     """
     if policy.route != ROUTE_ZERO_CHARGE:
         return EligibilityResult(
@@ -143,14 +147,17 @@ def zero_charge_eligible(runtime: str, policy: ChargePolicy) -> EligibilityResul
             f"policy route is {policy.route!r}, not {ROUTE_ZERO_CHARGE!r}",
             code="route_mismatch",
         )
-    channel = report_channel(runtime)
-    if channel != CHANNEL_STRUCTURED:
+    declared = REPORT_CHANNELS.get(runtime)
+    if declared != CHANNEL_STRUCTURED:
+        detail = (f"declares report channel {declared!r}" if declared is not None
+                  else "has no declared completion channel")
         return EligibilityResult(
             False,
-            f"runtime {runtime!r} declares report channel {channel!r}; "
-            f"{ROUTE_ZERO_CHARGE!r} requires a {CHANNEL_STRUCTURED!r} channel",
-            code="unstructured_channel",
+            f"runtime {runtime!r} {detail}; {ROUTE_ZERO_CHARGE!r} requires an "
+            f"explicitly declared {CHANNEL_STRUCTURED!r} channel",
+            code="unstructured_channel" if declared is not None else "undeclared_channel",
         )
     return EligibilityResult(
-        True, f"runtime {runtime!r} declares a {CHANNEL_STRUCTURED!r} channel"
+        True,
+        f"runtime {runtime!r} explicitly declares a {CHANNEL_STRUCTURED!r} channel",
     )
