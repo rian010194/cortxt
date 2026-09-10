@@ -40,6 +40,55 @@ vocabulary invented at a call site (fixed by exporting the constants that the
 callers must use). None of its code is copied.
 
 Design record: `lab/cortxt-execution-confirmation-design-2026-09-08-corrected.md` §1.
+
+## The measured-cost invariant (issue #548)
+
+The `cost` this module reports is a **measurement**, and its provenance stays
+exactly two-valued: `reported` (the runtime's own statement, §3.2) or `unknown`
+(no statement of any class was obtained). A missing, malformed, or
+unrecognised cost is reported as `unknown` -- **never** back-filled from a
+price table, a manifest, an estimate, or any other source. Back-filling would
+convert `unknown` (an honest absence) into a guessed amount, which is the
+cross-class filling design §3.3 R3 forbids; no caller of this module may
+merge the two either. Any estimate computed by the platform lives in the
+separately-named advisory fields below, never in `cost`.
+
+## The advisory estimate path (issue #548)
+
+An estimate computed against a rate table is advisory, not measured. It is
+carried in deliberately separate fields -- `estimated_cost` (the amount),
+`estimate_source` (what produced it), `rate_date` (the date the rate was
+read) -- whose names are never `cost` and which are never merged into `cost`,
+never returned as the measured amount, and never bound into an approval
+digest (`REQUEST_V2_BOUND_FIELDS` excludes them by construction; see
+`widget_contract/dispatch_request.py`). An estimate is a *pre-flight budget
+check* and a *post-run sanity check* only.
+
+Provenance class: **advisory/estimate** -- distinct from `reported` and from
+`unknown`, per the ADR-045 provenance-class vocabulary. Comparing a reported
+or measured amount against an estimate is always **`unverified`**, because an
+estimate has no authority to confirm anything; tolerance-based numerical
+variance is advisory detail only. A reconciliation comparison is surfaced as
+evidence with a
+"binding unverified"-style warning; it never changes `status` and never
+touches the Evidence Gate (design §3.4 "warning / recorded" tiers).
+
+Design record: `lab/cortxt-execution-confirmation-design-2026-09-08-corrected.md` §1,
+Design record: `lab/cortxt-execution-confirmation-design-2026-09-08-corrected.md` §1.
+
+**The measured-cost invariant (#548).** Measured `cost` stays `reported` or
+`unknown` -- exactly what the runtime stated under a recognised charge class,
+or no value at all. It is never back-filled from a price table, a routing
+manifest, a charge-policy rate snapshot, or an estimate: the provenance
+vocabulary for this field is `reported` and `unknown` (design §3.1, the
+four-class vocabulary ADR-045's evidence contracts build on), and a guessed
+amount is not a third option for this field. An advisory estimate is carried
+in separate fields (`cost_estimate`, `estimate_source`, `rate_date` below;
+provenance class `estimate`), is never named `cost`, is never merged into
+`cost`, and never enters approval-bound content: the `dispatch.request.v2`
+digest (`REQUEST_V2_BOUND_FIELDS`) binds no estimate field. An estimate can
+inform a pre-flight budget check or a post-run sanity check, and a comparison
+made against one is `unverified`, never `agree` (design §3.4).
 """
 from __future__ import annotations
 
@@ -424,6 +473,128 @@ def _is_count(value) -> bool:
     return (isinstance(value, (int, float))
             and not isinstance(value, bool)
             and value >= 0)
+
+
+# --- #548: the advisory estimate path (separate fields, never `cost`) ------
+# An estimate computed against a rate table is advisory/estimate provenance --
+# distinct from `reported` and from `unknown`. It never enters `cost`, is
+# never returned as the measured amount, and is never bound into an approval
+# digest. Its only uses are a pre-flight budget check and a post-run sanity
+# check, both rendered per design §3.4's "warning / recorded" tiers.
+
+#: The advisory/estimate provenance class tag. Deliberately not a member of
+#: the four design §3.1 classes: an estimate is not a measurement (`reported`)
+#: and not an absence (`unknown`), and it must never be projected as either.
+PROVENANCE_ESTIMATE = "estimate"
+
+
+@dataclass(frozen=True)
+class EstimatedRunCost:
+    """The advisory cost estimate for a dispatch, with its rate provenance.
+
+    `amount` is the estimated USD cost; `estimate_source` names what produced
+    the number (e.g. a rate table or a manifest); `rate_date` is the date that
+    rate was read. All three are advisory: `amount` is never `cost`, and none
+    of the three participates in any approval-bound digest.
+    """
+
+    amount: float
+    estimate_source: str
+    rate_date: str
+
+    def provenance(self) -> dict:
+        """The per-field provenance map for the advisory fields.
+
+        Every advisory field carries the `estimate` class -- never `reported`
+        (nothing was measured) and never `unknown` (a value exists and is
+        honestly labelled as computed).
+        """
+        return {
+            "estimated_cost": PROVENANCE_ESTIMATE,
+            "estimate_source": PROVENANCE_ESTIMATE,
+            "rate_date": PROVENANCE_ESTIMATE,
+        }
+
+
+def compare_cost_against_estimate(
+    reported_cost: "float | None",
+    estimate: "EstimatedRunCost | None",
+    *,
+    tolerance: float = 0.10,
+) -> "tuple[str, str]":
+    """Advisory comparison of a reported/measured amount against an estimate
+    (design §3.4), for a post-run sanity check.
+
+    Returns `(comparison, warning)`. The comparison is:
+
+    - ``unverified`` in every case: comparing against an estimate yields
+      `unverified` by §3.4's rule, whether either amount is unknown, the
+      reported amount is within `tolerance`, or it exceeds the tolerance.
+      The warning retains that numerical detail only as advisory context.
+
+    The warning string carries the "binding unverified"-style wording §3.4
+    prescribes. This function is advisory evidence only: its result never
+    changes a Run's `status` and never enters the Evidence Gate.
+    """
+    if reported_cost is None or estimate is None:
+        return ("unverified",
+                "cost comparison is unverified: the reported cost or the "
+                "estimate is unknown; an estimate is advisory, not binding")
+    if reported_cost <= estimate.amount * (1.0 + tolerance):
+        return ("unverified",
+                "reported cost is within the estimate tolerance; the estimate "
+                "is advisory -- binding unverified, not verified agreement")
+    return ("unverified",
+            "reported cost exceeds the advisory estimate beyond tolerance; "
+            "the comparison is unverified, advisory, and does not change the "
+            "Run's status")
+
+
+# --- #548 (optional): post-hoc reconciliation against a billing surface ----
+
+def reconcile_cost_with_billing_surface(
+    reported_cost: "float | None",
+    billing_surface_cost: "float | None",
+    *,
+    billing_surface: str,
+) -> dict:
+    """Read a provider billing surface after the Run and compare it against the
+    reported/measured cost. **Evidence only -- never a gate.**
+
+    Where a provider's own billing surface (e.g. an InferX token-billing panel)
+    is readable, the amount it shows is the provider's own statement, not the
+    runtime's. The comparison is surfaced as an evidence record in the
+    terminal/run view per design §3.4's "warning / recorded" tiers: it records
+    `agree` / `diverge` / `unverified` and never changes `status`, never
+    upgrades or downgrades a Run, and never replaces the Evidence Gate or any
+    approval-bound field. A `None` amount on either side yields `unverified`
+    -- never `agree` -- because comparing against unknown or against an
+    estimate yields `unverified`, never agreement.
+
+    The record carries a `warning` with the "binding unverified"-style wording
+    whenever the comparison is not fully verified (`unverified`), and whenever
+    it `diverge`s. Callers render it read-only; nothing consumes it as a gate.
+    """
+    record: dict = {
+        "kind": "cost_reconciliation",
+        "billing_surface": billing_surface,
+        "comparison": "unverified",
+        "warning": None,
+    }
+    if reported_cost is None or billing_surface_cost is None:
+        record["warning"] = (
+            "cost reconciliation is unverified: the reported cost or the "
+            f"billing-surface amount is unknown ({billing_surface}); "
+            "recorded as evidence only")
+        return record
+    if reported_cost == billing_surface_cost:
+        record["comparison"] = "agree"
+    else:
+        record["comparison"] = "diverge"
+        record["warning"] = (
+            "reported cost diverges from the provider billing surface; this "
+            "comparison is evidence only and does not change the Run's status")
+    return record
 
 
 def not_requested(runtime: str) -> ReportOutcome:

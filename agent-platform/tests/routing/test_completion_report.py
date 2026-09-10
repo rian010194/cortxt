@@ -224,3 +224,100 @@ def test_reported_usage_cost_rejects_non_count_telemetry():
     assert "input_tokens" not in reported.usage
     assert reported.provenance["api_calls"] == "unknown"
     assert reported.provenance["input_tokens"] == "unknown"
+
+
+# --- W12/#548: the measured-cost invariant and the advisory estimate path ---
+
+def test_measured_cost_stays_reported_or_unknown_and_is_never_back_filled():
+    """The invariant: measured `cost` is reported-or-`unknown`, never back-
+    filled from a price table, manifest, or estimate. An unknown cost stays
+    unknown even when an estimate for the same run exists."""
+    # No cost statement of any class -> the caller keeps `unknown`.
+    payload = {"completed": True, "report_version": 1, "api_calls": 1}
+    reported = cr.reported_usage_cost(payload)
+    assert reported is not None
+    assert reported.cost is None
+    assert reported.cost_status == cr.COST_STATUS_UNKNOWN
+    assert reported.provenance["cost"] == "unknown"
+    # The advisory estimate path exists separately and never touches `cost`.
+    estimate = cr.EstimatedRunCost(
+        amount=0.5, estimate_source="rate table", rate_date="2026-09-10")
+    assert estimate.amount == 0.5
+    assert reported.cost is None  # the estimate did not back-fill it
+    assert reported.provenance["cost"] == "unknown"
+
+
+def test_estimate_class_is_distinct_from_reported_and_unknown():
+    """The advisory/estimate provenance class is its own value, distinct from
+    the design §3.1 classes, and is what the estimate fields carry."""
+    assert cr.PROVENANCE_ESTIMATE == "estimate"
+    assert cr.PROVENANCE_ESTIMATE != "reported"
+    assert cr.PROVENANCE_ESTIMATE != "unknown"
+    estimate = cr.EstimatedRunCost(
+        amount=0.4, estimate_source="rate table: inferx-published-2026-09-10",
+        rate_date="2026-09-10")
+    provenance = estimate.provenance()
+    assert set(provenance.values()) == {cr.PROVENANCE_ESTIMATE}
+    assert provenance["estimated_cost"] == "estimate"
+
+
+def test_estimate_comparison_against_unknown_is_unverified_never_agree():
+    """§3.4: comparing anything against an estimate or an unknown yields
+    `unverified` -- never `agree`."""
+    estimate = cr.EstimatedRunCost(
+        amount=0.5, estimate_source="rate table", rate_date="2026-09-10")
+    # Unknown reported cost against a known estimate: unverified.
+    comparison, warning = cr.compare_cost_against_estimate(None, estimate)
+    assert comparison == "unverified"
+    assert "unverified" in warning
+    # Known reported cost against no estimate: unverified too.
+    comparison, warning = cr.compare_cost_against_estimate(0.5, None)
+    assert comparison == "unverified"
+    assert "unverified" in warning
+    # Both unknown: unverified, never agree.
+    comparison, _ = cr.compare_cost_against_estimate(None, None)
+    assert comparison == "unverified"
+
+
+def test_estimate_comparison_within_tolerance_is_unverified():
+    """Numerical closeness to an estimate remains advisory and unverified."""
+    estimate = cr.EstimatedRunCost(
+        amount=0.50, estimate_source="rate table", rate_date="2026-09-10")
+    comparison, warning = cr.compare_cost_against_estimate(0.52, estimate)
+    assert comparison == "unverified"
+    assert "within the estimate tolerance" in warning
+    assert "binding unverified" in warning
+
+
+def test_estimate_comparison_beyond_tolerance_is_unverified():
+    estimate = cr.EstimatedRunCost(
+        amount=0.50, estimate_source="rate table", rate_date="2026-09-10")
+    comparison, warning = cr.compare_cost_against_estimate(1.20, estimate)
+    assert comparison == "unverified"
+    assert "exceeds the advisory estimate beyond tolerance" in warning
+    assert "does not change the Run's status" in warning
+
+
+def test_reconciliation_record_is_evidence_not_a_gate():
+    """The optional post-hoc reconciliation against a provider billing surface
+    emits an evidence record with a three-valued comparison; it never changes
+    `status` and never enters the Evidence Gate (design §3.4 tiers)."""
+    # Both amounts present and equal -> agree (numerical), still advisory.
+    record = cr.reconcile_cost_with_billing_surface(
+        0.50, 0.50, billing_surface="InferX token-billing panel")
+    assert record["kind"] == "cost_reconciliation"
+    assert record["comparison"] == "agree"
+    assert record["warning"] is None
+    # Divergence is recorded with the warning, never as a gate failure.
+    record = cr.reconcile_cost_with_billing_surface(
+        0.50, 0.90, billing_surface="InferX token-billing panel")
+    assert record["comparison"] == "diverge"
+    assert "does not change the Run's status" in record["warning"]
+    # Unknown on either side -> unverified, never agree.
+    record = cr.reconcile_cost_with_billing_surface(
+        None, 0.50, billing_surface="InferX token-billing panel")
+    assert record["comparison"] == "unverified"
+    assert "unverified" in record["warning"]
+    record = cr.reconcile_cost_with_billing_surface(
+        0.50, None, billing_surface="InferX token-billing panel")
+    assert record["comparison"] == "unverified"
