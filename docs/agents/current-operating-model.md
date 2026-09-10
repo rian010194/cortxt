@@ -148,11 +148,17 @@ The code has three separate concepts that current behaviour runs together:
 
 `HermesFreeAdapter` passes `run.worker_role` as the `-p` profile name and
 overrides that profile's model/provider with `CORTXT_FREE_MODEL` /
-`CORTXT_FREE_PROVIDER`, read from the host environment at invoke time. Via the OS
-eligibility path the only reachable runtime is `hermes-free`, so today "profile"
-in an OS launch means *worker role plus host-env override*, not a deliberately
-selected named profile. `hermes-researcher` / `hermes-coordinator` (which do bind
-a fixed `-p`) are reachable only from the CLI.
+`CORTXT_FREE_PROVIDER`, read from the host environment at invoke time. What the
+code shows about OS routing: `route()` over `DEFAULT_MANIFESTS` yields the
+engine ids `claude`, `hermes`, `hermes-free` and `dsh`; for a `background-task`
+issue the cheapest is `hermes-free`, and `dsh` is the other manifest id that a
+research/background shape can reach. `claude` and `hermes` route but have no
+adapter in the WorkLauncher `ADAPTER_REGISTRY`, so they fail at dispatch;
+`hermes-researcher` / `hermes-coordinator` — the adapters that *do* bind a fixed
+`-p <name>` — are not in the manifest at all and are reachable only from the CLI.
+So the only path to a Hermes run from the OS today is `hermes-free`, where
+"profile" means *worker role plus host-env override*, not a deliberately
+selected named profile.
 
 Consequences of the current state, all of which the target direction changes:
 

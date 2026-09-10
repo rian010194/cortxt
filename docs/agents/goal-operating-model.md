@@ -48,9 +48,12 @@ commitment made by writing it here.
   surface, ADR-042/044 for OS and Work, ADR-038 for the widget/action-port
   contract. The single-contract requirement across all three surfaces is the new
   part.)*
-- **MCP is not a shortcut past human approval.** The external surface carries the
-  mandate envelope (ADR-032) and the same operator gate over irreversible
-  effects; it never has a path that a human sign-off does not also govern.
+- **MCP follows the same applicable mandate controls.** The external surface is
+  bound by exactly the controls that apply to the operation it invokes — the
+  mandate envelope (ADR-032), the operator gate over irreversible effects, and
+  any standing autonomy the operator has already granted. It neither weakens
+  those controls nor adds a *new* manual per-call confirmation beyond them: it is
+  not a shortcut past approval, and it is not a second approval step either.
   *(Accepted basis: ADR-032/034/037.)*
 - **The deterministic control plane owns authority.** Mandate, policy, run
   identity, budget and evidence stay in Cortxt's deterministic control plane
@@ -83,18 +86,33 @@ read as the same thing.
   coordinator, Copilot review) are history, not product roles. *(Accepted basis:
   ADR-019 permanent multi-engine routing, ADR-022 capability manifest + `route()`,
   ADR-026/027 adapter registry separate from selection.)*
-- **Cortxt starts the right Hermes profile explicitly.** There are, per the
-  operator, 12 named Hermes profiles plus `default`. `default` must be able to
-  delegate to the right profile **without needing a model call**. Profile
-  selection, effective rights, model/provider route, fallback chain and cost
-  limits are handled consistently, bound into the approval digest (ADR-046
-  mechanism) and checked against run evidence.
-- **A profile name is not an immutable configuration.** The execution-relevant
-  fields a profile resolves to (model, provider, base URL, API mode, fallback)
-  can change between preview, confirm and start. The direction binds those fields
-  to the confirmed revision and refuses a start whose profile changed since
-  approval; a profile that cannot be pinned to the approved route refuses rather
-  than runs unpinned.
+- **Cortxt selects and starts the approved named profile directly.** There are,
+  per the operator, 12 named Hermes profiles plus `default`. `default` is not a
+  middleman: it does not need a model call and does not delegate onward — Cortxt
+  picks the right named profile and starts it. Profile selection, effective
+  rights, model/provider route, fallback chain and cost limits are handled
+  consistently, bound into the approval digest (ADR-046 mechanism) and checked
+  against run evidence.
+- **Declared configuration is not effective runtime configuration.** The routing
+  fields a profile *declares* (model, provider, base URL, API mode, fallback) can
+  change between preview, confirm and start, so a profile *name* alone fixes
+  nothing. The direction digests exactly those declared routing fields
+  (`profile_revision`) and re-checks them at start: a changed declaration is
+  refused as stale and needs a fresh confirm. That is **change-detection before
+  start** — it narrows but does not close the gap to whatever the runtime
+  actually loads from its own config at its load time. Closing that gap for the
+  routing fields needs an immutable approved snapshot consumed through a
+  runtime-supported load mechanism; model/provider flags alone are insufficient
+  while the other bound fields stay mutable. A profile that cannot be pinned to
+  the approved route refuses rather than runs unpinned.
+- **Delivered as ordered, separately-approved steps** (issue #555 tracks M1):
+  M1 = the shared resolver plus `profile_revision` over the declared routing
+  fields only; M2 = bind `profile` + `profile_revision` into the approval;
+  M3 = resolver **and** approval-binding **and** a runtime-supported mechanism
+  that makes the runtime consume exactly the approved configuration. Tool rights
+  and delegation stay outside `profile_revision`'s digest but remain bound by the
+  existing approved mandate at dispatch — a profile whose rights or delegation
+  would exceed the approved limits is refused, exactly as today.
 - **"Execution policy profile" (ADR-045) is a different object** from a runtime
   configuration profile. ADR-045 (Proposed, issue #495 in review) governs
   permitted effects, isolation, artifact scope and the evidence contract. A
@@ -188,15 +206,17 @@ broader OS build-out.
    become a gate in front of it.
 2. **Shared operations and explicit profile selection.** A shared profile
    resolver and start operation the CLI, MCP and OS all use; the profile's
-   execution-relevant route bound to the approval digest; `default` delegating
-   without a model call. Delivered as bounded, separately-approved steps
-   (issue draft: "select and start an approved Hermes profile directly"),
-   informed by but not equal to ADR-045 / #495.
+   declared routing fields bound to the approval digest; Cortxt selecting and
+   starting the approved named profile directly, with no `default` middleman.
+   Delivered as bounded, separately-approved steps — M1 tracked in #555, the
+   broader per-profile policy build (tool rights, delegation, budget, retry,
+   isolation) tracked in #557 and sequenced after #495 is decided. Informed by,
+   but not equal to, ADR-045 / #495.
 3. **Milestone B — originate, prepare and approve new mandates in the OS
    (#501).** Sequenced after step 1; explicitly not a prerequisite for it.
-4. **Broader OS build-out** — the typed renderer / app-manifest and TypeScript
-   foundation work (ADR-046 frontend; #503/#504) and cross-engine continuity
-   (S8; #477–#481).
+4. **Broader OS build-out** — the TypeScript build foundation and the typed
+   renderer / app-manifest contracts for the Cortxt OS frontend (#503/#504) and
+   cross-engine continuity (S8; #477–#481).
 5. **W14** — a deferred item whose original scope could not be recovered from
    any tracked source. It stays recorded as unresolved; its contents are not
    invented.
@@ -206,10 +226,20 @@ broader OS build-out.
    from step 2. Required review-sync stays in scope throughout; finishing
    Milestone A does not imply unattended orchestration.
 
-Supporting contracts that each still need their own decision and budget: a common
-versioned worker instruction/result contract with usage/cost capture from the
-route that already reports it; binding an approval to the actual execution
-configuration (ADR-046, Accepted); charge-policy route eligibility (#548).
+Supporting contracts, separating what is delivered from what is not:
+
+- **Delivered.** One versioned worker result contract across the three launch
+  paths (W6 / #538, merged). Binding an approval to the actual execution
+  configuration via the versioned request digest — ADR-046, Accepted; W10 / #541
+  merged; `dispatch.request.v2` exists but is not yet wired into the live
+  confirm/launch path. Charge policy and zero-charge route eligibility as a
+  contract — W11 / #542, merged.
+- **Not yet delivered.** Wiring `dispatch.request.v2` into the live path
+  (part of step 2). Cost basis and charge measurement for routed runs — #548
+  (open; scopes the field shape, explicitly **not** wiring
+  `zero_charge_eligible()` as a production gate). A common versioned worker
+  *instruction* contract with usage/cost capture from the route that already
+  reports it.
 
 Once the relevant contract and launch path are verified, bounded comparisons of
 harness/model combinations can inform routing without waiting for every deferred

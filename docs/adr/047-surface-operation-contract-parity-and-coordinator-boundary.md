@@ -72,9 +72,12 @@ surface, and a deliberately thin OS flow is maintained so a real user can verify
 the end-to-end journey. A surface may lag in what it exposes; it may not diverge
 in what a given operation checks or is allowed to do.
 
-MCP has no operation path that a human sign-off does not also govern. The mandate
-envelope (ADR-032) and the operator gate over irreversible effects apply to MCP
-exactly as to the CLI and OS. Remote state (ADR-041) does not change this.
+MCP is bound by exactly the controls that apply to the operation it invokes —
+the mandate envelope (ADR-032), the operator gate over irreversible effects, and
+any standing autonomy the operator has already granted — applied the same way as
+on the CLI and OS. This ADR does **not** add a new manual per-call confirmation
+on top of those controls: MCP is neither a shortcut past approval nor a second
+approval step. Remote state (ADR-041) does not change this.
 
 ### 2. Control plane, coordinator agent, native delegation
 
