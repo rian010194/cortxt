@@ -27,6 +27,26 @@ content, so re-binding a policy to a different route yields a different
 Canonicalisation reuses the shared rule in ``routing/execution_profile``
 (``canonical_json`` / ``sha256_digest``): a new digest mechanism is exactly what
 this item must not introduce.
+
+Rate provenance inside the policy (issue #548): the verdict rests on a
+**rate** the provider publishes, and the policy carries that rate so a price
+change is a revision, not a silent ride. ``rate_source`` names where the rate
+was read (the provider's own billing surface, e.g. the InferX token-billing
+panel); ``rate_snapshot`` is what it said, verbatim, on ``read_date``. Both are
+part of the digested semantic content, so a provider rate change produces a new
+``charge_policy_revision`` and invalidates any confirmation bound to the old
+one -- the same mechanism ADR-046 applies to the existing fields. The
+``official_source`` requirements per verdict are:
+
+- ``metered`` -- the provider's own billing surface (e.g. the InferX
+  token-billing panel). OpenRouter is acceptable only when the provider
+  publishes no billing surface of its own.
+- ``zero_charge`` -- still requires the provider's own free-tier statement
+  (unchanged from W11); a third-party page never suffices.
+
+The advisory cost estimate (``routing/completion_report.EstimatedRunCost``) is
+deliberately **not** a field of this policy and not digested: it is
+advisory/estimate provenance, never approval-bound content.
 """
 from __future__ import annotations
 
@@ -46,12 +66,21 @@ VALID_ROUTES = frozenset({ROUTE_ZERO_CHARGE, ROUTE_METERED})
 # (design §2.1: the revision is over "semantic content, not identifiers", so a
 # pure rename of the record must not read as a material change). Order is
 # load-bearing for the canonical serialisation; keep it fixed.
+#
+# W12/#548: `rate_source` + `rate_snapshot` carry the rate the charging verdict
+# rests on. Both are digested, so a provider rate change (a different price, a
+# different surface, a re-read) yields a new `charge_policy_revision` and
+# invalidates any confirmation bound to the old one -- the same mechanism as
+# ADR-046 for the existing fields. The advisory estimate is NOT here: estimates
+# never bind approvals.
 CHARGE_POLICY_FIELDS = (
     "charging",
     "official_source",
     "read_date",
     "expiry",
     "route",
+    "rate_source",
+    "rate_snapshot",
 )
 
 
@@ -68,6 +97,14 @@ class ChargePolicy:
     are launching under. A ``zero_charge`` route requires the verdict to agree
     (``charging == "zero_charge"``); a route/verdict mismatch is not a valid
     policy.
+
+    ``rate_source`` and ``rate_snapshot`` carry the rate the verdict rests on
+    (#548): where it was read (the provider's own billing surface for
+    ``metered``; the provider's own free-tier statement for ``zero_charge``)
+    and what it said. Both are digested content -- a rate change is a
+    revision. A third-party rate page (e.g. OpenRouter) is acceptable for
+    ``metered`` only when the provider publishes no billing surface of its
+    own, and never for ``zero_charge``.
     """
 
     charge_policy_id: str
@@ -76,6 +113,8 @@ class ChargePolicy:
     read_date: str
     expiry: str
     route: str
+    rate_source: str = ""
+    rate_snapshot: str = ""
 
     def __post_init__(self) -> None:
         if not self.charge_policy_id:
@@ -93,6 +132,19 @@ class ChargePolicy:
                 "a zero_charge route requires a zero_charge charging verdict; "
                 f"got charging={self.charging!r}"
             )
+        # #548: the rate the verdict rests on is part of the record. An empty
+        # rate source means the verdict rests on nothing readable, and a
+        # snapshot without a source (or the reverse) is not a rate at all.
+        if not self.rate_source:
+            raise ChargePolicyError(
+                "rate_source must be a non-empty string naming where the rate "
+                "was read (the provider's own billing surface, or a published "
+                "aggregator only when the provider publishes no billing "
+                "surface of its own)")
+        if not self.rate_snapshot:
+            raise ChargePolicyError(
+                "rate_snapshot must be a non-empty string recording what the "
+                "rate source said, verbatim, on read_date")
 
     def as_content(self) -> dict[str, Any]:
         """The semantic content the revision digests (never identifiers)."""
@@ -104,12 +156,13 @@ class ChargePolicy:
 
 
 def charge_policy_revision(policy: "ChargePolicy | Mapping[str, Any]") -> str:
-    """Immutable digest over the policy's semantic content, including its route.
+    """Immutable digest over the policy's semantic content, including its route
+    and the rate the verdict rests on.
 
     Deterministic across identical content; any change to a digested field --
-    the charging verdict, its source, the dates, or the bound ``route`` --
-    yields a different revision, so a confirmation bound to the old revision is
-    stale.
+    the charging verdict, its source, the dates, the bound ``route``, or the
+    rate source/snapshot (#548) -- yields a different revision, so a
+    confirmation bound to the old revision is stale.
     """
     content = policy.as_content() if isinstance(policy, ChargePolicy) else dict(policy)
     return sha256_digest(canonical_json(content, CHARGE_POLICY_FIELDS))

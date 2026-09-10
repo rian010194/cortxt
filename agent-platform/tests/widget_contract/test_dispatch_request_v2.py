@@ -267,6 +267,8 @@ def _charge_policy(**overrides):
         read_date="2026-09-10",
         expiry="2026-12-10",
         route="zero_charge",
+        rate_source="InferX token-billing panel (provider's own billing surface)",
+        rate_snapshot="USD 0.00 per 1k tokens (free tier), read 2026-09-10",
     )
     base.update(overrides)
     return ChargePolicy(**base)
@@ -313,3 +315,53 @@ def test_v2_charge_policy_content_change_changes_the_digest():
 def test_v2_identical_charge_policy_keeps_a_stable_digest():
     assert _v2(charge_policy=_charge_policy())["request_id"] == \
         _v2(charge_policy=_charge_policy())["request_id"]
+
+
+# --- W12/#548: the advisory estimate is never approval-bound ----------------
+
+def test_v2_rate_change_in_charge_policy_invalidates_prior_confirmation():
+    """The rate the verdict rests on is bound: a provider rate change moves
+    `charge_policy_revision` and the request digest, so an approval recorded
+    under the old rate is stale."""
+    from routing.charge_policy import charge_policy_revision
+    base = _v2(charge_policy=_charge_policy())
+    repriced = _v2(charge_policy=_charge_policy(
+        rate_snapshot="USD 0.002 per 1k tokens, read 2026-09-11"))
+    assert repriced["charge_policy_revision"] != base["charge_policy_revision"]
+    assert repriced["request_id"] != base["request_id"]
+    assert approval_binds_digest(base["request_id"], repriced) is False
+
+
+def test_advisory_estimate_fields_are_absent_from_the_bound_field_set():
+    """The measured-cost invariant, pinned at the digest boundary: no
+    advisory-estimate name is a bound field, so an estimate can never enter
+    the request digest or any approval-bound content. The estimate fields
+    never merge into `cost` or `max_cost_usd`."""
+    from widget_contract.dispatch_request import REQUEST_V2_BOUND_FIELDS
+    for name in ("cost", "estimated_cost", "estimate_source", "rate_date",
+                 "estimated_cost_usd", "cost_estimate"):
+        assert name not in REQUEST_V2_BOUND_FIELDS, name
+
+
+def test_advisory_estimate_does_not_change_the_request_digest():
+    """An estimate computed for a pre-flight budget check is advisory: it is
+    not bound, so computing/refreshing one must not invalidate a confirmation.
+    The digest covers only the bound field set, so a payload that additionally
+    carries estimate fields digests identically."""
+    from routing.completion_report import EstimatedRunCost
+    base = _v2(charge_policy=_charge_policy())
+    with_estimate = dict(base)
+    estimate = EstimatedRunCost(
+        amount=0.42, estimate_source="rate table: inferx-published-2026-09-10",
+        rate_date="2026-09-10")
+    # The advisory fields ride alongside the request payload, never inside the
+    # bound field set, so the digest is unchanged.
+    with_estimate["estimated_cost"] = estimate.amount
+    with_estimate["estimate_source"] = estimate.estimate_source
+    with_estimate["rate_date"] = estimate.rate_date
+    assert request_digest_v2(with_estimate) == base["request_id"]
+    assert estimate.provenance() == {
+        "estimated_cost": "estimate",
+        "estimate_source": "estimate",
+        "rate_date": "estimate",
+    }

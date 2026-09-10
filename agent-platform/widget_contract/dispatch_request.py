@@ -414,6 +414,20 @@ def build_dispatch_request_v1(
 # request digest changes and the confirmation is stale. Both are `None` when no
 # charge policy was resolved at projection time, and `None` is bound distinctly
 # from an absent field.
+#
+# W12/#548 -- the measured-cost invariant and the advisory estimate. The
+# advisory estimate (`routing.completion_report.EstimatedRunCost`: the amount
+# and its `estimate_source` + `rate_date`) is deliberately **absent** from this
+# bound field set, under any name, and is never merged into `cost` or into
+# `max_cost_usd`: it is advisory/estimate provenance, usable for pre-flight
+# budget checks and post-run sanity checks, and has no authority to bind an
+# approval. Binding it would (a) rename approval-relevant content into a
+# cost-like field the operator did not approve, and (b) convert a price-table
+# refresh into a spurious re-confirmation. `charge_policy_revision` already
+# binds the *rate* the charging verdict rests on (`rate_source` +
+# `rate_snapshot`, digested in `CHARGE_POLICY_FIELDS`), which is where rate
+# provenance belongs. A comparison against an estimate is `unverified` per
+# design §3.4, never `agree`; this module's digest machinery never sees it.
 REQUEST_V2_BOUND_FIELDS = (
     "issue_id",
     "approval_reference",
