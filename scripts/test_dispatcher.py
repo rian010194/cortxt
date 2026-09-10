@@ -288,7 +288,7 @@ def run_all_checks():
     print("== sweep_expired: expired lease -> timed_out, label -> blocked ==")
     disp8, gh8 = new_dispatcher({"o/r#10": ["workflow:ready"]})
     run8 = disp8.claim("o/r#10", "wedge-b", "builder", "hermes", lease_seconds=1)
-    disp8.registry.update(run8.run_id, claimed_at=time.time() - 10)  # force expiry
+    disp8.registry.update(run8.run_id, claimed_at=time.time() - 10, heartbeat_at=time.time() - 10)  # force expiry
     swept = disp8.sweep_expired()
     check("run swept", swept == [run8.run_id])
     check("status timed_out", disp8.query(run8.run_id)["status"] == "timed_out")
@@ -298,7 +298,7 @@ def run_all_checks():
     disp8b, gh8b = new_dispatcher({"o/r#10b": ["workflow:ready"]})
     parent8b = disp8b.claim("o/r#10b", "wedge-b", "builder", "hermes", lease_seconds=600)
     child8b = disp8b.spawn_child(parent8b.run_id, 1)
-    disp8b.registry.update(child8b.run_id, claimed_at=time.time() - 10, lease_seconds=1)  # force child expiry only
+    disp8b.registry.update(child8b.run_id, claimed_at=time.time() - 10, heartbeat_at=time.time() - 10, lease_seconds=1)  # force child expiry only
     swept8b = disp8b.sweep_expired()
     check("child run swept", swept8b == [child8b.run_id])
     check("child status timed_out", disp8b.query(child8b.run_id)["status"] == "timed_out")
@@ -322,7 +322,7 @@ def run_all_checks():
         evidence_recovery=recovery_returns_commit,
     )
     run12 = disp12.claim("o/r#12", "wedge-b", "builder", "hermes-free", lease_seconds=1)
-    disp12.registry.update(run12.run_id, claimed_at=time.time() - 10, mutating=True)  # force expiry
+    disp12.registry.update(run12.run_id, claimed_at=time.time() - 10, heartbeat_at=time.time() - 10, mutating=True)  # force expiry
     swept12 = disp12.sweep_expired()
     check("run swept via recovery", swept12 == [run12.run_id])
     check("status succeeded, not timed_out", disp12.query(run12.run_id)["status"] == "succeeded")
@@ -363,7 +363,7 @@ def run_all_checks():
     gh13 = FakeGitHub({"o/r#13": ["workflow:ready"]})
     disp13 = d.Dispatcher(reg13, gh13, evidence_recovery=lambda run: None)
     run13 = disp13.claim("o/r#13", "wedge-b", "builder", "hermes-free", lease_seconds=1)
-    disp13.registry.update(run13.run_id, claimed_at=time.time() - 10)
+    disp13.registry.update(run13.run_id, claimed_at=time.time() - 10, heartbeat_at=time.time() - 10)
     swept13 = disp13.sweep_expired()
     check("run swept", swept13 == [run13.run_id])
     check("status stays timed_out when recovery finds nothing", disp13.query(run13.run_id)["status"] == "timed_out")
@@ -378,7 +378,7 @@ def run_all_checks():
 
     disp13b = d.Dispatcher(reg13b, gh13b, evidence_recovery=recovery_raises)
     run13b = disp13b.claim("o/r#13b", "wedge-b", "builder", "hermes-free", lease_seconds=1)
-    disp13b.registry.update(run13b.run_id, claimed_at=time.time() - 10)
+    disp13b.registry.update(run13b.run_id, claimed_at=time.time() - 10, heartbeat_at=time.time() - 10)
     swept13b = disp13b.sweep_expired()
     check("run swept despite recovery raising", swept13b == [run13b.run_id])
     check("status falls back to timed_out", disp13b.query(run13b.run_id)["status"] == "timed_out")
@@ -402,7 +402,7 @@ def run_all_checks():
         evidence_recovery=lambda run: {"commit": "cafebabe" * 5, "artifacts": []},
     )
     run14 = disp14.claim("o/r#14", "wedge-b", "builder", "hermes-free", lease_seconds=1)
-    disp14.registry.update(run14.run_id, claimed_at=time.time() - 10, mutating=True)
+    disp14.registry.update(run14.run_id, claimed_at=time.time() - 10, heartbeat_at=time.time() - 10, mutating=True)
     swept14 = disp14.sweep_expired()
     check("run swept", swept14 == [run14.run_id])
     check("an unverifiable recovered commit settles blocked, never succeeded on trust",
@@ -434,10 +434,30 @@ def run_all_checks():
     print("== Dispatcher._lock is reentrant (RLock): sweep_expired() already calls complete() on the same thread ==")
     disp11, gh11 = new_dispatcher({"o/r#13": ["workflow:ready"]})
     run11 = disp11.claim("o/r#13", "wedge-b", "builder", "hermes", lease_seconds=1)
-    disp11.registry.update(run11.run_id, claimed_at=time.time() - 10)  # force expiry
+    disp11.registry.update(run11.run_id, claimed_at=time.time() - 10, heartbeat_at=time.time() - 10)  # force expiry
     check("_lock is reentrant (RLock, not plain Lock)", isinstance(disp11._lock, d.threading.RLock().__class__))
     swept11 = disp11.sweep_expired()  # holds self._lock, then calls self.complete() -> re-acquires it
     check("sweep_expired -> complete() succeeded without deadlocking", swept11 == [run11.run_id])
+
+    print("== F-7: a run with a fresh heartbeat but a stale claim is NOT expired, and is not swept ==")
+    disp_f7, gh_f7 = new_dispatcher({"o/r#22": ["workflow:ready"]})
+    run_f7 = disp_f7.claim("o/r#22", "wedge-b", "builder", "hermes", lease_seconds=1)
+    disp_f7.registry.update(run_f7.run_id, claimed_at=time.time() - 60)  # claim long stale...
+    disp_f7.heartbeat(run_f7.run_id)  # ...but proof of life is fresh
+    check("is_expired is False when heartbeat_at is fresh (lease from last proof of life)",
+          not run_f7.is_expired())
+    q_f7 = disp_f7.query(run_f7.run_id)
+    check("heartbeat_at diverged from claimed_at", q_f7["heartbeat_at"] > q_f7["claimed_at"])
+    check("sweep_expired does NOT treat a fresh-heartbeated run as expired",
+          disp_f7.sweep_expired() == [])
+    check("fresh-heartbeated run still in_progress after a sweep",
+          disp_f7.query(run_f7.run_id)["status"] == "in_progress")
+    # And once the heartbeat itself goes stale, the same run IS expired again.
+    disp_f7.registry.update(run_f7.run_id, heartbeat_at=time.time() - 60)
+    check("is_expired is True once both claim and heartbeat are stale",
+          run_f7.is_expired())
+    check("sweep_expired sweeps the run once its heartbeat also goes stale",
+          disp_f7.sweep_expired() == [run_f7.run_id])
 
     print("== spawn_child: mutates the registry under self._lock (was the unguarded gap) ==")
     disp12, gh12 = new_dispatcher({"o/r#14": ["workflow:ready"]})

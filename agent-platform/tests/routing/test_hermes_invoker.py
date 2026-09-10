@@ -199,3 +199,20 @@ def test_invoke_hermes_echoes_back_input_session_id_when_a_resumed_call_fails():
 
     assert result["status"] == "failed"
     assert result["session_id"] == "sess-existing"
+
+
+def test_invoke_hermes_suppresses_inherited_stdin_on_the_worker_subprocess():
+    # F-6: the bounded worker subprocess must never inherit the parent's
+    # stdin (a leftover inherited pipe can block the worker or hang the whole
+    # dispatch on input it never consumes). Mirrors codex_adapter.py /
+    # claude_adapter.py, which already pass stdin=subprocess.DEVNULL.
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["hermes", "sessions", "list"]:
+            return _FakeCompletedProcess(0, stdout="")
+        captured["stdin"] = kwargs.get("stdin")
+        return _FakeCompletedProcess(0, stdout="ok")
+
+    invoke_hermes("builder", "do the thing", timeout_seconds=60, run_subprocess=fake_run)
+    assert captured.get("stdin") is subprocess.DEVNULL
