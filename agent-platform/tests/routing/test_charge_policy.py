@@ -36,10 +36,11 @@ def _policy(**overrides):
 # --- zero_charge eligibility -------------------------------------------------
 
 def test_none_channel_runtime_is_refused_zero_charge():
-    """`dsh` declares `report_channel: none` -> not eligible for zero_charge."""
+    """`dsh` explicitly declares `report_channel: none` -> not eligible for
+    zero_charge, classified as `none_channel`."""
     result = zero_charge_eligible("dsh", _policy())
     assert result.eligible is False
-    assert result.code == "unstructured_channel"
+    assert result.code == "none_channel"
 
 
 def test_structured_channel_runtime_is_eligible_for_zero_charge():
@@ -55,6 +56,17 @@ def test_unknown_runtime_is_refused_zero_charge():
     result = zero_charge_eligible("some-new-runtime", _policy())
     assert result.eligible is False
     assert result.code == "undeclared_channel"
+
+
+def test_explicit_non_structured_non_none_channel_is_defensively_refused(monkeypatch):
+    """A declared channel that is neither `structured` nor `none` is refused
+    via `unstructured_channel`. Defensive: no such value exists in
+    `REPORT_CHANNELS` today, so this pins the fallback classification."""
+    from routing import completion_report as cr
+    monkeypatch.setitem(cr.REPORT_CHANNELS, "some-runtime", "unstructured")
+    result = zero_charge_eligible("some-runtime", _policy())
+    assert result.eligible is False
+    assert result.code == "unstructured_channel"
 
 
 def test_metered_policy_is_a_route_mismatch_not_a_silent_pass():
