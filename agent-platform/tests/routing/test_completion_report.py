@@ -149,3 +149,78 @@ def test_report_channel_fails_closed_for_unknown_runtime():
     # An unrecognised runtime is NOT exempt: a new runtime must state its
     # channel to be exempt from the contract.
     assert cr.report_channel("some-future-runtime") == cr.CHANNEL_STRUCTURED
+
+
+# --- W9: reported usage and cost from a completed report ------------------
+
+def test_reported_usage_cost_extracts_telemetry_from_completed_payload():
+    """A `completed` report that carries usage/cost yields the `reported`
+    class: the runtime's own statement, exactly as strong as its honesty."""
+    payload = {
+        "completed": True,
+        "report_version": 1,
+        "cost_status": "estimated",
+        "estimated_cost_usd": 0.5,
+        "api_calls": 3,
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_tokens": 150,
+    }
+    reported = cr.reported_usage_cost(payload)
+    assert reported is not None
+    assert reported.cost == 0.5
+    assert reported.cost_status == cr.COST_STATUS_ESTIMATED
+    assert reported.api_calls == 3
+    assert reported.usage == {"input_tokens": 100, "output_tokens": 50,
+                              "total_tokens": 150}
+    assert reported.provenance["cost"] == "reported"
+    assert reported.provenance["api_calls"] == "reported"
+    assert reported.provenance["input_tokens"] == "reported"
+
+
+def test_reported_usage_cost_unknown_when_no_value_of_any_class():
+    """A report that carries only `completed`/`failed`/`report_version` (as
+    test doubles and a real runtime before it computed spend both do) yields
+    None -- the caller keeps the `unknown` state, never a guessed amount."""
+    payload = {"completed": True, "report_version": 1}
+    assert cr.reported_usage_cost(payload) is None
+
+
+def test_reported_usage_cost_never_reports_a_fabricated_amount():
+    """A numeric amount is reported as `cost` ONLY under a recognised charge
+    class. An `unknown` status with an amount is not a reported cost."""
+    payload = {"completed": True, "report_version": 1,
+               "cost_status": "unknown", "estimated_cost_usd": 0.5,
+               "api_calls": 1}
+    reported = cr.reported_usage_cost(payload)
+    assert reported is not None
+    assert reported.cost is None
+    assert reported.cost_status == cr.COST_STATUS_UNKNOWN
+    assert reported.provenance["cost"] == "unknown"
+
+
+def test_reported_usage_cost_included_with_amount_is_estimated():
+    """Hermes' subscription-included route computes an amount from its own
+    price table; it is still the runtime's own estimate, so it is `reported`
+    as `estimated`, never `approved`."""
+    payload = {"completed": True, "report_version": 1,
+               "cost_status": "included", "estimated_cost_usd": 0.0,
+               "api_calls": 2}
+    reported = cr.reported_usage_cost(payload)
+    assert reported is not None
+    assert reported.cost == 0.0
+    assert reported.cost_status == cr.COST_STATUS_ESTIMATED
+
+
+def test_reported_usage_cost_rejects_non_count_telemetry():
+    """Token counts and `api_calls` are reported only when the field is a
+    non-negative number; a bool or a negative value is never a count."""
+    payload = {"completed": True, "report_version": 1,
+               "cost_status": "estimated", "estimated_cost_usd": 0.1,
+               "api_calls": True, "input_tokens": -5}
+    reported = cr.reported_usage_cost(payload)
+    assert reported is not None
+    assert reported.api_calls is None
+    assert "input_tokens" not in reported.usage
+    assert reported.provenance["api_calls"] == "unknown"
+    assert reported.provenance["input_tokens"] == "unknown"
