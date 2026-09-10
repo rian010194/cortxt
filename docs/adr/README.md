@@ -4,12 +4,16 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-09-02 (ADR-045 proposed: named, versioned execution policy
-profiles bind eligible work shapes to effects and evidence contracts; unknown
-or contradictory combinations fail closed). Previously updated 2026-08-28
-(ADR-044 accepted by operator approval: distinguish Cortxt OS system surfaces,
-first-party apps, and Core authority; retire Work Console in favor of the Work
-app while preserving Workspace as an execution-resource term).
+Updated: 2026-09-10 (ADR-046 accepted by operator approval: bind the
+confirmation to the semantic content and immutable revision of the execution
+configuration via a versioned request digest, `dispatch.request.v2`, not to
+identifiers; unblocks W10/W11). Previously updated 2026-09-02 (ADR-045
+proposed: named, versioned execution policy profiles bind eligible work shapes
+to effects and evidence contracts; unknown or contradictory combinations fail
+closed). Previously updated 2026-08-28 (ADR-044 accepted by operator approval:
+distinguish Cortxt OS system surfaces, first-party apps, and Core authority;
+retire Work Console in favor of the Work app while preserving Workspace as an
+execution-resource term).
 
 | # | Title | Status | Notes |
 | --- | --- | --- | --- |
@@ -48,6 +52,7 @@ app while preserving Workspace as an execution-resource term).
 | 043 | Global design-system source and consumer contract | **Accepted** (2026-08-27) | Platform-owned preset source, generated web artifact, consumer adapters, shared authority/execution grammar, compatibility, and CI conformance. |
 | 044 | Cortxt OS system surfaces and first-party app boundary | **Accepted** (2026-08-28) | Cortxt OS is a general first-party app runtime; Work is its first principal app; Home and Activity Center are system surfaces; Work Console retires through a compatibility alias; Workspace keeps its execution-resource meaning. Supersedes only ADR-042 amendment B/C where they require Work Console as the automatically opened default app. |
 | 045 | Execution policy profiles and evidence contracts | **Proposed** | Resolve every dispatch to a named, versioned effect/evidence contract; labels constrain but never grant authority, and unsupported combinations fail closed. |
+| 046 | Versioned request digest (dispatch.request.v2) | **Accepted** (2026-09-10) | Bind the confirmation to the semantic content and immutable revision of the execution configuration, not to identifiers; a material change invalidates a prior confirmation. Unblocks W10/W11. |
 
 ## Decisions and Authority
 
