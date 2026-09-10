@@ -66,10 +66,10 @@ check* and a *post-run sanity check* only.
 
 Provenance class: **advisory/estimate** -- distinct from `reported` and from
 `unknown`, per the ADR-045 provenance-class vocabulary. Comparing a reported
-or measured amount against an estimate is three-valued per design §3.4
-(`agree` / `diverge` / `unverified`): comparing against an estimate yields
-**`unverified`, never `agree`**, because an estimate has no authority to
-confirm anything. A reconciliation comparison is surfaced as evidence with a
+or measured amount against an estimate is always **`unverified`**, because an
+estimate has no authority to confirm anything; tolerance-based numerical
+variance is advisory detail only. A reconciliation comparison is surfaced as
+evidence with a
 "binding unverified"-style warning; it never changes `status` and never
 touches the Evidence Gate (design §3.4 "warning / recorded" tiers).
 
@@ -522,21 +522,15 @@ def compare_cost_against_estimate(
     *,
     tolerance: float = 0.10,
 ) -> "tuple[str, str]":
-    """Three-valued comparison of a reported/measured amount against an
-    advisory estimate (design §3.4), for a post-run sanity check.
+    """Advisory comparison of a reported/measured amount against an estimate
+    (design §3.4), for a post-run sanity check.
 
     Returns `(comparison, warning)`. The comparison is:
 
-    - ``unverified`` when either side is absent (an estimate or an amount
-      may be `unknown`) -- **never** `agree`: comparing anything against an
-      estimate or an unknown yields `unverified` by §3.4's rule;
-    - ``diverge`` when both exist and the reported amount exceeds the
-      estimate by more than the relative `tolerance`;
-    - ``agree`` only when both amounts exist and agree within tolerance --
-      which records *numerical* closeness only. It is NOT a verification:
-      an estimate has no authority to confirm a measured amount, so any
-      caller rendering this must render it as advisory ("within estimate
-      tolerance"), never as verified agreement.
+    - ``unverified`` in every case: comparing against an estimate yields
+      `unverified` by §3.4's rule, whether either amount is unknown, the
+      reported amount is within `tolerance`, or it exceeds the tolerance.
+      The warning retains that numerical detail only as advisory context.
 
     The warning string carries the "binding unverified"-style wording §3.4
     prescribes. This function is advisory evidence only: its result never
@@ -547,12 +541,13 @@ def compare_cost_against_estimate(
                 "cost comparison is unverified: the reported cost or the "
                 "estimate is unknown; an estimate is advisory, not binding")
     if reported_cost <= estimate.amount * (1.0 + tolerance):
-        return ("agree",
+        return ("unverified",
                 "reported cost is within the estimate tolerance; the estimate "
                 "is advisory -- binding unverified, not verified agreement")
-    return ("diverge",
+    return ("unverified",
             "reported cost exceeds the advisory estimate beyond tolerance; "
-            "the comparison is advisory and does not change the Run's status")
+            "the comparison is unverified, advisory, and does not change the "
+            "Run's status")
 
 
 # --- #548 (optional): post-hoc reconciliation against a billing surface ----

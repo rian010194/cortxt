@@ -279,22 +279,22 @@ def test_estimate_comparison_against_unknown_is_unverified_never_agree():
     assert comparison == "unverified"
 
 
-def test_estimate_comparison_agrees_only_numerically_with_binding_unverified_warning():
-    """Even when the amounts are close, the wording carries the §3.4
-    "binding unverified"-style warning: an estimate is advisory and never
-    verifies the reported amount."""
+def test_estimate_comparison_within_tolerance_is_unverified():
+    """Numerical closeness to an estimate remains advisory and unverified."""
     estimate = cr.EstimatedRunCost(
         amount=0.50, estimate_source="rate table", rate_date="2026-09-10")
     comparison, warning = cr.compare_cost_against_estimate(0.52, estimate)
-    assert comparison == "agree"
+    assert comparison == "unverified"
+    assert "within the estimate tolerance" in warning
     assert "binding unverified" in warning
 
 
-def test_estimate_comparison_diverges_beyond_tolerance():
+def test_estimate_comparison_beyond_tolerance_is_unverified():
     estimate = cr.EstimatedRunCost(
         amount=0.50, estimate_source="rate table", rate_date="2026-09-10")
     comparison, warning = cr.compare_cost_against_estimate(1.20, estimate)
-    assert comparison == "diverge"
+    assert comparison == "unverified"
+    assert "exceeds the advisory estimate beyond tolerance" in warning
     assert "does not change the Run's status" in warning
 
 
