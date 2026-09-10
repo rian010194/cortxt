@@ -107,10 +107,14 @@ _SESSIONS_TABLE = (
 
 def test_invoke_hermes_captures_new_session_id_on_fresh_success(monkeypatch):
     calls = []
+    capture_stdin = {}
 
     def fake_run(argv, **kwargs):
         calls.append(argv)
         if argv[:3] == ["hermes", "sessions", "list"]:
+            # F-6 (review finding): the session-id capture subprocess must not
+            # inherit the parent's stdin either, same as the primary worker call.
+            capture_stdin["stdin"] = kwargs.get("stdin")
             return _FakeCompletedProcess(0, stdout=_SESSIONS_TABLE)
         return _FakeCompletedProcess(0, stdout="ok")
 
@@ -119,6 +123,8 @@ def test_invoke_hermes_captures_new_session_id_on_fresh_success(monkeypatch):
     assert result["session_id"] == "20260820_112139_8c44cf"
     assert calls[0][:4] == ["hermes", "-p", "builder", "-z"]
     assert calls[1][:3] == ["hermes", "sessions", "list"]
+    assert capture_stdin.get("stdin") is subprocess.DEVNULL
+
 
 
 def test_invoke_hermes_echoes_back_resumed_session_id_without_a_lookup_call(monkeypatch):
