@@ -399,11 +399,21 @@ def build_dispatch_request_v1(
 #   limits           -> max_runtime_seconds, max_cost_usd, max_parallel_workers,
 #                       delegation_depth, artifact_policy
 #   report channel   -> report_channel
+#   charging         -> charge_policy_revision, charge_policy_route  (W11 / #542)
 #
 # `isolation` is bound through `execution_profile_revision` (it is a field of
 # the execution profile) rather than separately; `issue_id` and
 # `approval_reference` stay in the digest so the approval cannot be replayed
 # against a different issue or a changed mandate.
+#
+# W11 (design §2, §3.4): `charge_policy_revision` is an immutable digest over
+# the declared charging record's semantic content (verdict, source, dates, and
+# the route it binds); `charge_policy_route` is the confirmed regime
+# (`zero_charge` | `metered`). Binding both means an approval recorded under
+# `zero_charge` cannot silently ride a re-bound or revised charge policy -- the
+# request digest changes and the confirmation is stale. Both are `None` when no
+# charge policy was resolved at projection time, and `None` is bound distinctly
+# from an absent field.
 REQUEST_V2_BOUND_FIELDS = (
     "issue_id",
     "approval_reference",
@@ -422,6 +432,8 @@ REQUEST_V2_BOUND_FIELDS = (
     "delegation_depth",
     "artifact_policy",
     "report_channel",
+    "charge_policy_revision",
+    "charge_policy_route",
 )
 
 # Canonicalisation rule (documented, shared with the execution-profile revision
@@ -461,6 +473,7 @@ def build_dispatch_request_v2(
     routable_tags: Sequence[str] | None = None,
     provider: str | None = None,
     model: str | None = None,
+    charge_policy: Any | None = None,
 ) -> dict[str, Any]:
     """Render the v2 dispatch request: approval bound to the execution profile.
 
@@ -504,8 +517,22 @@ def build_dispatch_request_v2(
     payload["schema_version"] = 2
     payload["execution_profile_revision"] = revision
     payload["report_channel"] = report_channel(body)
+
+    # W11 (#542): the charging regime and the versioned policy it rests on.
+    # `None` when no charge policy was resolved -- bound distinctly from absent.
+    if charge_policy is not None:
+        from routing.charge_policy import charge_policy_revision
+        payload["charge_policy_id"] = charge_policy.charge_policy_id
+        payload["charge_policy_revision"] = charge_policy_revision(charge_policy)
+        payload["charge_policy_route"] = charge_policy.route
+    else:
+        payload["charge_policy_id"] = None
+        payload["charge_policy_revision"] = None
+        payload["charge_policy_route"] = None
+
     # The request digest now covers the bound field set (semantic content,
-    # route, model/profile via the revision, limits, report channel).
+    # route, model/profile via the revision, limits, report channel, and the
+    # charge-policy revision + route).
     payload["request_id"] = request_digest_v2(payload)
     return payload
 

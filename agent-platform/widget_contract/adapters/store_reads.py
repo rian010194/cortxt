@@ -710,9 +710,13 @@ def read_dispatch_request_v2(issue: Mapping[str, Any],
     """Build and validate the dispatch.request.v2 projection (§2).
 
     Extends v1 by binding the resolved execution configuration (provider, model,
-    profile via ``execution_profile_revision``) and the report channel into the
-    request digest. ``provider``/``model`` are resolved, non-secret execution
-    identifiers; ``None`` is bound as "not resolved at projection time".
+    profile via ``execution_profile_revision``), the report channel, and the
+    charge policy (``charge_policy_revision`` + ``charge_policy_route``, W11)
+    into the request digest. ``provider``/``model`` are resolved, non-secret
+    execution identifiers; ``None`` is bound as "not resolved at projection
+    time". This reader resolves no charge policy, so the three
+    ``charge_policy_*`` fields are ``None`` on this path until a resolver is
+    threaded through (follow-up to #542).
     """
     result = build_dispatch_request_v2(
         issue, choice, repo=repo, engine_registered=engine_registered,
