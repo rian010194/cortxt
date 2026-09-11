@@ -1,0 +1,100 @@
+name: Bug Report
+description: Rapportera ett fel eller en avvikelse i Cortxt.
+title: "[Bug]: "
+labels: []
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Beskrivning av felet
+      description: Beskriv tydligt vad som är fel och vad du förväntar dig.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-vs-expected
+    attributes:
+      label: Faktiskt beteende vs. förväntat beteende
+      description: Vad händer, och vad borde hända i stället?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduktionssteg
+      description: Numrerad lista över steg för att återskapa felet.
+      placeholder: |
+        1. Kör ...
+        2. Gör ...
+        3. Observera ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Komponent
+      description: Vilken del av Cortxt påverkas?
+      options:
+        - CLI
+        - MCP
+        - Dispatcher
+        - State
+        - Mandate
+        - Evidence Gate
+        - Adapter
+        - Docs
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: cortxt-identities
+    attributes:
+      label: Cortxt-identiteter
+      description: Workstream ID, Run ID, Request ID, Request digest – om kända.
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: Miljö
+      description: OS, Python-version, commit SHA.
+    validations:
+      required: true
+
+  - type: textarea
+    id: test-command
+    attributes:
+      label: Testkommando och utfall
+      description: Vilket kommando körde du och vad returnerades?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: mandate-impact
+    attributes:
+      label: Påverkar mandat, Evidence Gate eller dispatch-kontrakt?
+      description: Markera om detta rör dessa processer.
+      options:
+        - label: Ja, påverkar mandate/approval/Evidence Gate
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Säkerhet
+      description: Bekräfta att rapporten inte innehåller känslig information.
+      options:
+        - label: Ingen secret, token, kunddokument eller modelloutput finns i denna rapport
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        > **Säkerhetsvarning:** Om du rapporterar en säkerhetssårbarhet: använd
+        > SECURITY.md-processen. Öppna inte ett publikt issue.

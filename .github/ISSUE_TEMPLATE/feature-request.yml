@@ -1,0 +1,63 @@
+name: Feature Request
+description: Föreslå en ny funktion eller förbättring i Cortxt.
+title: "[Feature]: "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Vilket problem löser detta?
+      description: Beskriv problemet eller behovet som denna funktion adresserar.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Föreslagen lösning
+      description: Beskriv hur du tänker dig att funktionen ska fungera.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: model-impact
+    attributes:
+      label: Påverkar Cortxt-modellen
+      description: Vilken del av Cortxt-modellen påverkas?
+      options:
+        - Workstream/Run/Request
+        - Mandate
+        - Evidence Gate
+        - Dispatch
+        - Policy
+        - UI/UX
+        - Docs
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptanskriterier – observerbara villkor
+      description: Hur vet vi att funktionen är klar och korrekt? Ange observerbara villkor.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativ som övervägts
+      description: Vilka andra lösningar eller workarounds har du övervägt?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Säkerhet
+      description: Bekräfta att förslaget inte innehåller känslig information.
+      options:
+        - label: Ingen secret, token, kunddokument eller modelloutput finns i detta förslag
+    validations:
+      required: true
