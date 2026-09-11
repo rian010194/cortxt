@@ -1,6 +1,6 @@
 # ADR-026: Engine adapter-registry (cordis-inspired DI) is kept separate from `route()`'s selection
 
-**Status:** Accepted (amended 2026-08-19 for the service-broker pattern per ADR-027)
+**Status:** Accepted (amended 2026-08-19 for the service-broker pattern per ADR-027; amended 2026-09-11 by ADR-047)
 **Date:** 2026-08-19
 **Deciders:** Rikard (operator), Claude Code (draft)
 **Technical Story:** Follow-up on ADR-022 (capability manifest + `route()`), arising from a

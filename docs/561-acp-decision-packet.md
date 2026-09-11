@@ -19,7 +19,7 @@ The three ACP levels are kept distinct and are not one decision:
 
 | Level | Name | Decided by | Nature |
 | --- | --- | --- | --- |
-| Level 1 | Client-to-agent | D1/D3/D4 | Adopted (ACP v1 as client; agent role deferred) |
+| Level 1 | Client-to-agent | D1/D3/D4 | Adopted (Agent Client Protocol as client; agent role deferred) |
 | Level 2 | Result channel | D5/D6 | Derived (attestation retained for non-ACP; six states judge both paths) |
 | Level 3 | Coordination plane | D7 | Built (atomic claim owner; no scheduling policy) |
 
@@ -32,11 +32,13 @@ The three ACP levels are kept distinct and are not one decision:
 | sessionId issuer | CORRECTED in D4 (agent issues the ACP sessionId in response to `session/new`) |
 | Elicitation first-class | PASS (capability-gated) |
 | Remote HTTP/WebSocket transport | QUALIFIED (draft; do not implement now) |
-| v1 stable / v2 draft | **OPEN** — must be pinned against a version-locked source before recorded as passed; rendered v2 page != stable release |
+| v1 stable / v2 draft | **CLOSED** (2026-09-11, version-locked) — the pin is closed on a two-distinct-protocol basis: the adopted Agent Client Protocol (agentclientprotocol.com) has no explicit v1/v2 split (features stabilize per-RFD); the separate Agent Communication Protocol (i-am-bee/acp, IBM BeeAI) is archived and not adopted. The earlier "v1 stable / v2 draft" framing was incorrect in both directions |
 
 Four of six primary-source clusters pass, one is qualified (remote transport),
-one stays open (v1/v2 release-status pin). The open pin is explicitly held open
-in this packet and in the finding; it is not asserted.
+and the v1/v2 release-status pin was held open at publication and then CLOSED
+(2026-09-11) against version-locked, operator-supplied sources distinguishing the
+two protocols both called "ACP" (Agent Client Protocol vs Agent Communication
+Protocol). The pin is no longer open; see §D1 of ADR-047.
 
 ## C. Adopted vs rejected in #561 (from the complementary protocol review)
 
@@ -45,8 +47,9 @@ Adopted (sharpens and corroborates #561):
   standardize Run/Request/Workstream identity, Evidence Gate, mandate controls,
   request digest, claim ownership, or role-based approval — Cortxt owns all of
   these.
-- Cortxt heartbeat/timeout is necessary now: ACP v1 defers reconnect/replay/
-  keepalive to v2, so F-6/F-7/F-8 compensation stays on main and is not removed.
+- Cortxt heartbeat/timeout is necessary now: the Agent Client Protocol's
+  remote/reconnect semantics are still work-in-progress, so F-6/F-7/F-8
+  compensation stays on main and is not removed.
 - Cortxt ACP client role is preserved: editors/IDEs act as clients driving
   agents; Cortxt-as-ACP-client matches.
 
@@ -82,11 +85,12 @@ policy" boundary stands.
 
 - Recommended: ACCEPT the #561 decision (D1-D8) with (i) the D4
   sessionId-issuer correction, (ii) D7 owning a compared storage/ownership
-  choice, and (iii) the residual v1/v2 version pin noted as the one
-  criterion-4 item still to close.
-- Not accepted in this packet; no merge, no implementation.
-- The numbering collision is reconciled in this PR: 047 stays with #561;
-  #554/#556 reassign to ADR-048 (verified free).
+  choice, and (iii) the criterion-4 v1/v2 release-status pin CLOSED (2026-09-11)
+  on the two-distinct-protocol basis (Agent Client Protocol vs Agent
+  Communication Protocol).
+- Accepted by the operator 2026-09-11; ADR-047 Proposed -> Accepted (this follow-up).
+- The numbering collision is reconciled: 047 stays with #561; #554/#556 reassign
+  to ADR-048 (verified free).
 
 ## G. Separate track: M2
 

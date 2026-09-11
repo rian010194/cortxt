@@ -1,7 +1,8 @@
 # ADR-047: The three ACPs — client protocol, communication contract, and coordination plane
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-09-10
+**Amended:** 2026-09-11 (v1/v2 pin closed; §D1 wording corrected to the two-distinct-protocol basis)
 **Deciders:** Rikard (operator), Claude Code (draft)
 **Technical Story:** No originating issue. This ADR is written because ADR-026's and
 ADR-027's own review triggers have fired ahead of their shared 2026-09-19 review date;
@@ -133,15 +134,29 @@ does not claim to have root-caused that observation.
 
 ## Decision
 
-### D1 — Cortxt adopts ACP v1 as an ACP **client**; the agent role is deferred
+### D1 — Cortxt adopts the Agent Client Protocol as an ACP **client**; the agent role is deferred
 
 Cortxt OS drives ACP-speaking agents over the protocol instead of over per-adapter
 subprocess conventions. Exposing Cortxt *as* an ACP agent — so that Zed or another
 editor could drive it — is a named and intended direction that this ADR does **not**
 decide. It is deferred, not rejected.
 
-v1 is adopted. v2 is in draft and is not adopted; the draft's existence is a review
-trigger, not a reason to wait.
+The ACP adopted here is **Agent Client Protocol** (`agentclientprotocol.com`):
+the editor/IDE-to-coding-agent protocol transported over JSON-RPC over stdio for
+local agents, with remote HTTP/WebSocket transport still work-in-progress. That
+protocol has **no explicit v1/v2 split** — features stabilize per-RFD. It is the ACP
+relevant to Cortxt's client role (HIGH relevance).
+
+For clarity on the naming collision that previously existed: a separate, distinct
+protocol — **Agent Communication Protocol** (IBM BeeAI, `i-am-bee/acp`,
+agent-to-agent and agent-to-human over REST/HTTP + OpenAPI) — is **not** adopted.
+Its repository is archived (`archived: true`, latest release v1.0.3) and its README
+states "ACP is now part of A2A under the Linux Foundation". It has no v2 under active
+development and is out of scope here (LOW relevance).
+
+Consequently there is no "v2 draft" of the adopted protocol to wait on; the two
+protocols were previously conflated under the single label "ACP" and the earlier
+"v1 stable / v2 draft" framing was incorrect in both directions.
 
 ### D2 — `AcpAdapter` implements `EngineAdapter`; the registry is unchanged
 
