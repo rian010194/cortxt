@@ -37,7 +37,7 @@ from widget_contract.adapters.github_ports import (
 )
 from widget_contract.adapters.store_reads import (
     RunNotCorrelated,
-    read_dispatch_request_v1,
+    read_dispatch_request_v2,
     read_run_activity_v1,
     read_run_review_v1,
     read_run_summaries_v1,
@@ -236,9 +236,7 @@ class ActionHost:
         self._registry = Path(registry) if registry else (AGENT_PLATFORM_DIR / ".dispatch" / "runs.json")
         self._session_store = Path(session_store) if session_store else (AGENT_PLATFORM_DIR / ".sessions")
         self._issue_reader = issue_reader or read_issue_detail
-        self._resume = resume or (lambda issue_id, *, approval_ref=None, request_id=None: gh_claim_run_resume(
-            issue_id, registry=self._registry, scripts_dir=self._scripts_dir,
-            approval_ref=approval_ref, request_id=request_id))
+        self._resume = resume or self._default_resume
         self.token = token or secrets.token_urlsafe(32)
         self._clock = clock
         self._wall_clock = wall_clock or (lambda: datetime.now(timezone.utc).isoformat())
@@ -579,8 +577,50 @@ class ActionHost:
             sys.path.insert(0, str(self._scripts_dir))
         from worker_adapters import runtime_launch_config_ok
         engine_registered = bool(choice and runtime_launch_config_ok(choice.engine_id))
-        return read_dispatch_request_v1(
-            issue, choice, repo=repo, engine_registered=engine_registered, routable_tags=tags)
+        provider, model = self._resolved_provider_model(issue)
+        return read_dispatch_request_v2(
+            issue, choice, repo=repo, engine_registered=engine_registered,
+            routable_tags=tags, provider=provider, model=model)
+
+    def _resolved_provider_model(self, issue: Mapping[str, Any]) -> tuple[str | None, str | None]:
+        """Resolve the non-secret ``(provider, model)`` routing identifiers for
+        the issue's routed engine (M2 #564).
+
+        The same values are bound by ``_build_dispatch_request`` (preview and
+        confirmation) and by ``_default_resume`` (launch), so the v2 digest
+        binds what the engine's worker adapter would actually invoke. A change
+        to either routing value between confirmation and launch changes the
+        request digest and the launch is refused as stale.
+        """
+        from routing.execution_profile import resolve_execution_config
+        if issue.get("labels") is None:
+            return None, None
+        from routing.engine_manifest import DEFAULT_FALLBACK_ENGINE, DEFAULT_MANIFESTS
+        from widget_contract.dispatch_request import route_for_issue
+        choice, _tags = route_for_issue(issue, DEFAULT_MANIFESTS, fallback=DEFAULT_FALLBACK_ENGINE)
+        if choice is None:
+            return None, None
+        return resolve_execution_config(choice.engine_id)
+
+    def _default_resume(self, issue_id: str, *, approval_ref: str | None = None,
+                        request_id: str | None = None) -> dict[str, Any]:
+        """Launch a ready issue through the v2-bounded launcher (M2 #564).
+
+        Resolves the issue's routed engine so the launch rebinds the SAME
+        provider/model the confirmation bound via ``_build_dispatch_request``,
+        then calls ``gh_claim_run_resume`` with ``request_version=2`` so the
+        staleness check uses ``approval_binds_digest`` (the v2 bound-field set,
+        which includes the resolved execution configuration). A changed routing
+        config between confirmation and launch is therefore refused as stale
+        before any claim, Run, or worktree.
+        """
+        repo, number = self._issue_ref(issue_id)
+        issue = self._issue_reader(repo, number)
+        provider, model = self._resolved_provider_model(issue)
+        return gh_claim_run_resume(
+            issue_id, registry=self._registry, scripts_dir=self._scripts_dir,
+            approval_ref=approval_ref, request_id=request_id,
+            request_version=2, provider=provider, model=model)
 
     def dispatch_request(self, repo: str, number: int) -> dict:
         """The authoritative dispatch request a confirmation view must render."""
@@ -601,7 +641,12 @@ class ActionHost:
             raise DispatchDenied(
                 "dispatch request is not eligible; missing: " + ", ".join(request["missing"]),
                 code="dispatch_request_not_eligible", errors=request["errors"])
-        if request_id != request["request_id"]:
+        # v2 (#564): the request digest binds the resolved execution profile
+        # (provider/model through execution_profile_revision). The confirmation
+        # binds exactly that digest, so a changed bound field -- including a
+        # changed routing config -- is refused here, before any launch.
+        from widget_contract.dispatch_request import approval_binds_digest
+        if not approval_binds_digest(request_id, request):
             raise StaleDispatchDenied(
                 "dispatch request snapshot has changed; re-fetch and confirm the current request")
         if approval_ref != request["approval_reference"]:
