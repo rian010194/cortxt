@@ -301,6 +301,104 @@ def test_host_claim_run_adapter_start_failure_is_stable_with_recovery():
     assert exc.value.recovery == "register an adapter"
 
 
+# --- M2 (#564): dispatch.request.v2 on the live OS confirm/launch path --------
+
+def _set_free_config(monkeypatch, model="cognitive-run/test-model-a", provider="test-provider-a"):
+    monkeypatch.setenv("CORTXT_FREE_MODEL", model)
+    monkeypatch.setenv("CORTXT_FREE_PROVIDER", provider)
+
+
+def test_os_dispatch_request_is_v2_and_binds_resolved_config(monkeypatch):
+    """M2 (AC1/AC4): the OS preview/confirm path renders dispatch.request.v2 and
+    the digest binds the resolved provider/model through execution_profile_revision.
+    A routing-config change changes the confirmed digest; an unchanged one does not."""
+    _set_free_config(monkeypatch, model="cognitive-run/test-model-a", provider="test-provider-a")
+    host = _claim_host()
+    req = _claim_request(host)
+    assert req["schema_version"] == 2
+    assert req["execution_profile_revision"].startswith("sha256:")
+    assert req["request_id"].startswith("sha256:")
+    # The projection validates against the v2 schema (the reader enforces it).
+    from widget_contract.registry import TYPES
+    from widget_contract.validation import validate
+    validate(req, TYPES["dispatch.request.v2"].schema)
+    # Semantically identical re-read keeps the same digest (canonicalisation).
+    assert host.dispatch_request("owner/repo", 2)["request_id"] == req["request_id"]
+    # A different resolved model on the same issue -> different confirmed digest.
+    monkeypatch.setenv("CORTXT_FREE_MODEL", "cognitive-run/test-model-b")
+    assert host.dispatch_request("owner/repo", 2)["request_id"] != req["request_id"]
+
+
+def test_os_confirmation_refused_when_routing_config_changes_after_preview(monkeypatch):
+    """M2 (AC3, boundary 1): after preview, before confirmation, a changed routing
+    config requires a fresh confirmation -- no silent launch on the old preview."""
+    _set_free_config(monkeypatch, model="cognitive-run/test-model-a")
+    calls = []
+    host = _claim_host(
+        resume=lambda issue_id, **kw: calls.append(issue_id) or {"run_id": "x", "issue_id": issue_id})
+    req = host.dispatch_request("owner/repo", 2)  # preview under config A
+    monkeypatch.setenv("CORTXT_FREE_MODEL", "cognitive-run/test-model-b")  # change after preview
+    with pytest.raises(StaleDispatchDenied):
+        host.execute(action_id="claim-run", issue_id="owner/repo#2",
+                     approval_ref=req["approval_reference"], request_id=req["request_id"],
+                     confirm=True, token="test-token")
+    assert calls == []  # refused before any launch effect
+
+
+def test_os_launch_wires_request_version_2_and_current_resolved_config(monkeypatch):
+    """M2 (AC2, scope item 3): the OS launch path passes request_version=2 and the
+    CURRENT resolved provider/model into gh_claim_run_resume, so the launch gate
+    binds the same execution configuration the confirmation bound."""
+    captured = {}
+    launched = []
+
+    def _fake(issue_id, **kwargs):
+        captured.update(kwargs)
+        launched.append(issue_id)
+        return {"issue_id": issue_id, "run_id": "run-m2"}
+
+    monkeypatch.setattr("widget.action_host.gh_claim_run_resume", _fake)
+    _set_free_config(monkeypatch, model="cognitive-run/test-model-a", provider="test-provider-a")
+    host = _claim_host()
+    host._default_resume("owner/repo#2", approval_ref="approval-1", request_id="confirmed-digest")
+    assert captured["request_version"] == 2
+    assert captured["request_id"] == "confirmed-digest"
+    assert captured["approval_ref"] == "approval-1"
+    assert (captured["provider"], captured["model"]) == ("test-provider-a", "cognitive-run/test-model-a")
+    assert len(launched) == 1
+    # The launch rebinds the CURRENT resolved config: if the routing config
+    # changed since confirmation, the resolved provider/model passed to the gate
+    # differ, which is what makes the v2 digest refusal fire (does the launch wire).
+    monkeypatch.setenv("CORTXT_FREE_MODEL", "cognitive-run/test-model-b")
+    host._default_resume("owner/repo#2", approval_ref="approval-1", request_id="confirmed-digest")
+    assert captured["model"] == "cognitive-run/test-model-b"
+    assert len(launched) == 2
+
+
+def test_os_launch_stale_digest_surfaces_as_stale_denial_no_claim(monkeypatch):
+    """M2 (AC3, boundary 2): a launch whose rebuilt v2 digest no longer binds the
+    confirmed request is REFUSED and surfaces as StaleDispatchDenied with no claim/
+    run/worktree effect. The binding followup happens at the cli_ports gate (the
+    resolved config differs from confirmation); here the OS launch path is wired
+    through execute() with the default (v2-bounded) resume."""
+    from widget_contract.adapters.cli_ports import StaleDispatchRequest
+
+    def _stale(issue_id, **kwargs):
+        raise StaleDispatchRequest(
+            "dispatch request snapshot has changed; re-fetch and confirm the current request")
+
+    monkeypatch.setattr("widget.action_host.gh_claim_run_resume", _stale)
+    _set_free_config(monkeypatch, model="cognitive-run/test-model-a", provider="test-provider-a")
+    # resume=None selects the v2-bounded default resume so execute() drives the
+    # real launch path (the injected fake would bypass it).
+    host = _claim_host(resume=None)
+    req = _claim_request(host)
+    with pytest.raises(StaleDispatchDenied):
+        host.execute(action_id="claim-run", issue_id="owner/repo#2",
+                     approval_ref=req["approval_reference"], request_id=req["request_id"],
+                     confirm=True, token="test-token")
+
+
 def test_host_unknown_action_is_not_found():
     host = _host()
     with pytest.raises(NotFound):

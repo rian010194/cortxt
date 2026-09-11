@@ -103,3 +103,38 @@ def execution_profile_revision(profile: Mapping[str, Any]) -> str:
     so an approval cannot silently ride a different execution configuration.
     """
     return sha256_digest(canonical_json(profile, EXECUTION_PROFILE_FIELDS))
+
+
+# Non-secret routing environment variables that resolve the provider/model an
+# engine will run under, read at the confirm/launch boundary (M2 #564) so the
+# v2 digest can bind them. They are the same routing configuration the engine's
+# own worker adapter reads at invocation (see runtime/adapters/dsh_adapter.py
+# and hermes_free_adapter.py) -- identifiers, never credential values. An
+# engine with no explicit env-resolved config (the platform provider gateway
+# or an SDK/vendor default) has no entry here and resolves to (None, None),
+# which the v2 digest binds as "not resolved at projection time".
+_EXECUTION_CONFIG_ENV: dict[str, tuple[str, str]] = {
+    "dsh": ("CORTXT_DSH_PROVIDER", "CORTXT_DSH_MODEL"),
+    "hermes-free": ("CORTXT_FREE_PROVIDER", "CORTXT_FREE_MODEL"),
+}
+
+
+def resolve_execution_config(engine_id: str) -> tuple[str | None, str | None]:
+    """Resolve the non-secret ``(provider, model)`` routing identifiers for an
+    engine at the confirm/launch boundary (``dispatch.request.v2``, M2 #564).
+
+    Returns exactly the identifiers ``build_dispatch_request_v2`` should bind
+    via ``execution_profile_revision``: what the engine's worker adapter would
+    actually read from the routing environment. A change to either value between
+    confirmation and launch therefore changes the request digest and the launch
+    is refused as stale (the confirmation no longer binds the configuration).
+
+    An engine without an env-resolved config returns ``(None, None)``, which is
+    itself bound as "not resolved". Never reads or reports credential values.
+    """
+    import os
+
+    pair = _EXECUTION_CONFIG_ENV.get(engine_id)
+    if pair is None:
+        return None, None
+    return os.environ.get(pair[0]), os.environ.get(pair[1])

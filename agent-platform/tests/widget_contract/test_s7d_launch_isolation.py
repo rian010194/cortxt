@@ -13,6 +13,7 @@ It fails closed: anything that does not explicitly waive isolation gets an
 isolated worktree.
 """
 import sys
+import os
 from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
@@ -168,7 +169,10 @@ def _chain(issue_reader, launcher):
     """Real host + real gh_claim_run_resume wiring; only the issue reader and
     the launcher are injected."""
     resume = partial(gh_claim_run_resume, registry=Path("unused-runs.json"),
-                     scripts_dir=SCRIPTS_DIR, issue_reader=issue_reader, launcher=launcher)
+                     scripts_dir=SCRIPTS_DIR, issue_reader=issue_reader, launcher=launcher,
+                     request_version=2,
+                     provider=os.environ.get("CORTXT_FREE_PROVIDER"),
+                     model=os.environ.get("CORTXT_FREE_MODEL"))
     return ActionHost(issue_reader=issue_reader, resume=resume, token="test-token")
 
 

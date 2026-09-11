@@ -12,6 +12,7 @@ must all fail closed without a second launch.
 from functools import partial
 from pathlib import Path
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -92,7 +93,10 @@ def _chain(issue_reader, *, gate_codes=()):
     reader and the launcher are fakes."""
     launcher = _GateLauncher(gate_codes=gate_codes)
     resume = partial(gh_claim_run_resume, registry=Path("unused-runs.json"),
-                     scripts_dir=SCRIPTS_DIR, issue_reader=issue_reader, launcher=launcher)
+                     scripts_dir=SCRIPTS_DIR, issue_reader=issue_reader, launcher=launcher,
+                     request_version=2,
+                     provider=os.environ.get("CORTXT_FREE_PROVIDER"),
+                     model=os.environ.get("CORTXT_FREE_MODEL"))
     host = ActionHost(issue_reader=issue_reader, resume=resume, token="test-token")
     return host, launcher
 
@@ -271,7 +275,10 @@ def test_full_chain_http_double_click_returns_409_with_recovery():
 
     launcher = _GateLauncher()
     resume = partial(gh_claim_run_resume, registry=Path("unused-runs.json"),
-                     scripts_dir=SCRIPTS_DIR, issue_reader=reader, launcher=launcher)
+                     scripts_dir=SCRIPTS_DIR, issue_reader=reader, launcher=launcher,
+                     request_version=2,
+                     provider=os.environ.get("CORTXT_FREE_PROVIDER"),
+                     model=os.environ.get("CORTXT_FREE_MODEL"))
     host = ActionHost(issue_reader=reader, resume=resume, token="test-token")
     httpd = _ReusableThreadingHTTPServer(("127.0.0.1", 0), _make_handler(host))
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)

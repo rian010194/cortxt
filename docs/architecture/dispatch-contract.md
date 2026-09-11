@@ -36,6 +36,18 @@ snapshot. A confirmation binds to that digest and to the issue-derived approval
 reference; a changed Issue between preview and confirmation requires a fresh
 confirmation and is never silently launched as a different mandate.
 
+Since M2 (#564) the **live OS confirm/launch path binds `dispatch.request.v2`**:
+the confirmation view, the confirmation binding, and the launch
+(`action_host.py` preview + `_bind_claim_run`, and `gh_claim_run_resume` with
+`request_version=2`) all resolve the routed engine's provider/model and bind them
+through `execution_profile_revision`. A change to the resolved execution
+configuration (provider or model) after preview, or after confirmation before
+the claim, changes the v2 digest and is refused as stale before any claim, Run,
+or worktree is created. The v1 reader/builder and `request_version=1` remain
+available for the non-OS callers that select them explicitly. Worker-side
+invocation enforcement (re-reading provider/model from mutable env at invoke
+time) is tracked separately and is not part of this boundary.
+
 Secrets, customer content, prompts, and model reasoning must not be embedded in
 the request or copied into GitHub comments.
 
