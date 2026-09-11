@@ -1,2 +1,5 @@
 blank_issues_enabled: false
-contact_links: []
+contact_links:
+  - name: Frågor och diskussion
+    url: mailto:rikard@cortxt.io
+    about: Ställ frågor och diskutera idéer via e-post i stället för Issues.
