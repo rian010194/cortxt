@@ -28,6 +28,8 @@ export default defineConfig({
       sidebar: [
         { label: 'Overview', items: [{ label: 'Documentation', link: '/docs/' }, { label: 'Current product vs. direction', link: '/docs/product-status/' }, { label: 'Quick start', link: '/docs/quick-start/' }, { label: 'Widgets', link: '/docs/widgets/' }] },
         { label: 'Architecture', items: [{ autogenerate: { directory: 'docs/architecture' } }] },
+        { label: 'Concepts', items: [{ autogenerate: { directory: 'docs/concepts' } }] },
+        { label: 'Protocols', items: [{ autogenerate: { directory: 'docs/protocols' } }] },
         { label: 'Operating model', items: [
             { label: 'Current operating model', link: '/docs/operating-model/' },
             { label: 'Verified dispatch path', link: '/docs/verified-dispatch-path/' },
