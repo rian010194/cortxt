@@ -6,6 +6,10 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-09-11 | ADR-047 | Accepted - status Proposed -> Accepted by operator approval 2026-09-11; the three ACPs decision (client protocol / communication contract / coordination plane) adopted, including the v1/v2 pin closure (two-distinct-protocol basis) | #561 |
+| 2026-09-11 | ADR-026 | Amended - Status line receives `amended by ADR-047` marker (session / client-protocol dimension); no other edit | #561 |
+| 2026-09-11 | ADR-027 | Amended - Status line receives `amended by ADR-047` marker (session / client-protocol dimension); no other edit | #561 |
+| 2026-09-11 | ADR-028 | Amended - Status line receives `amended by ADR-047` marker (session / client-protocol dimension); no other edit | #561 |
 | 2026-09-10 | ADR-046 | Accepted - status Proposed -> Accepted by operator approval 2026-09-10 (W-series operator decision 2); versioned request digest `dispatch.request.v2` adopted as the confirmation contract direction, unblocking W10 and W11 | #543 |
 | 2026-08-28 | ADR-044 | Accepted - operator approved the Cortxt OS system-surface and first-party app boundary; Work replaces Work Console as the first principal app, Workspace retains its execution-resource meaning, and Activity Center remains a shell-owned attention projection | #448 |
 | 2026-08-26 | ADR-042 | Accepted - status Proposed -> Accepted by operator approval 2026-08-26, including a pre-acceptance amendment (A-F) that retains the existing Cortxt OS canvas/window/app-shell model, names Work Console the default app, and canonicalizes the cockpit's role as Execution Inspector (superseding the "Run Inspector" working name) | #401 |

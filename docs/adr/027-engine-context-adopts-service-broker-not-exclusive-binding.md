@@ -1,6 +1,6 @@
 # ADR-027: `EngineContext` adopts the service-broker pattern (Cordis §6.2), not exclusive binding
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-09-11 by ADR-047)
 **Date:** 2026-08-19
 **Deciders:** Rikard (operator), Claude Code (draft)
 **Technical Story:** Amends ADR-026 after reading the Cordis v4 paper "A Programming

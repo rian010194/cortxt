@@ -1,6 +1,6 @@
 # ADR-028: Orchestrator multi-engine resume via opaque per-adapter session_id, CodexAdapter added
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-09-11 by ADR-047)
 **Date:** 2026-08-20
 **Deciders:** Rikard Andersson (operator)
 **Technical Story:** (internal design archive)

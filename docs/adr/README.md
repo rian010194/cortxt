@@ -4,7 +4,15 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-09-10 (ADR-047 proposed: a session was always missing at three
+Updated: 2026-09-11 (ADR-047 accepted by operator approval: the three ACPs --
+client protocol, communication contract, and coordination plane -- adopted as a
+decision; ACP = Agent Client Protocol (agentclientprotocol.com), adopted as a
+client with the agent role deferred (no v1/v2 split; the separate, archived
+Agent Communication Protocol i-am-bee/acp is not adopted); attestation channel
+retained for non-ACP workers; cross-process claim ownership decided while
+scheduling policy is not; amends ADR-026/027/028; v1/v2 pin closed on a
+two-distinct-protocol basis). Previously updated 2026-09-10 (ADR-047 proposed:
+a session was always missing at three
 levels -- client protocol, result contract, and coordination plane; ACP v1 is
 adopted as a client, the attestation channel is retained for non-ACP workers, and
 cross-process claim ownership is decided while scheduling policy is not; amends
@@ -37,9 +45,9 @@ execution-resource term).
 | 023 | Cortxt supports both bottom-up and top-down integration, not one exclusively | **Accepted** | Top-down permanently internal + deliberately bottom-up-consumable outward; decides the direction, not the surface (deferred to Phase 6) |
 | 024 | External integration surface takes the form of an MCP server | **Accepted** | Decides ADR-023's deferred surface form: MCP server, not SDK/REST, for the initial slice |
 | 025 | Geometric Reasoning's decisive vs. diagnostic metrics (§27 #8) | **Accepted** | Formalizes which of §12.2's ten metrics drive decisions today (5) versus merely report (5); resolves the `w1`/`information_gain` name collision; resolves Phase 6's blocking exit criterion |
-| 026 | Engine adapter-registry (Cordis-inspired DI) kept separate from `route()`'s selection | **Accepted** (amended 2026-08-19 for service-broker pattern per ADR-027) | `route()`/`engine_manifest.py` untouched; new `EngineAdapter`/`EngineContext` layer replaces `unified_cli.py`'s if/elif dispatch, not the selection logic |
-| 027 | `EngineContext` adopts the service-broker pattern (Cordis §6.2), not exclusive binding | **Accepted** | `engine_id` becomes a broker key that can carry multiple providers without disturbing consumers; v1 builds only the skeleton (one provider = passthrough), no routing policy until a second provider is actually registered |
-| 028 | Orchestrator multi-engine resume via opaque per-adapter `session_id`, CodexAdapter added | **Accepted** | `EngineAdapter.invoke()` gains additive `session_id`; `/engine` command in chat-REPL; implemented and merged 2026-08-20 |
+| 026 | Engine adapter-registry (Cordis-inspired DI) kept separate from `route()`'s selection | **Accepted** (amended 2026-08-19 for service-broker pattern per ADR-027; amended 2026-09-11 by ADR-047) | `route()`/`engine_manifest.py` untouched; new `EngineAdapter`/`EngineContext` layer replaces `unified_cli.py`'s if/elif dispatch, not the selection logic |
+| 027 | `EngineContext` adopts the service-broker pattern (Cordis §6.2), not exclusive binding | **Accepted** (amended 2026-09-11 by ADR-047) | `engine_id` becomes a broker key that can carry multiple providers without disturbing consumers; v1 builds only the skeleton (one provider = passthrough), no routing policy until a second provider is actually registered |
+| 028 | Orchestrator multi-engine resume via opaque per-adapter `session_id`, CodexAdapter added | **Accepted** (amended 2026-09-11 by ADR-047) | `EngineAdapter.invoke()` gains additive `session_id`; `/engine` command in chat-REPL; implemented and merged 2026-08-20 |
 | 029 | Unattended daemon credential isolation — allowlisted subprocess-env, shared launch discipline, broker as read-only caller | **Proposed** | Spec-only, not implemented; closes the env-inheritance gap in `invoke_hermes()`/`CodexAdapter.invoke()` and generalizes the Windows shim fix |
 | 030 | Plan-vs-actual divergence tracking — YAML-sidecar + explicit-only correlation, ghost markers on real timeline | **Proposed** (Part 1 implemented) | `plan_task_ref` field exists and flows through the pipeline (Part 1, 2026-08-20); reconciliation/rendering (Part 2) still spec-only |
 | 031 | Open-source license — Apache-2.0 | **Accepted** | `LICENSE` → verbatim Apache-2.0 (copyright Rikard Andersson); replaces "viewable, not open source"; basis for product packaging/contributions |
@@ -58,7 +66,7 @@ execution-resource term).
 | 044 | Cortxt OS system surfaces and first-party app boundary | **Accepted** (2026-08-28) | Cortxt OS is a general first-party app runtime; Work is its first principal app; Home and Activity Center are system surfaces; Work Console retires through a compatibility alias; Workspace keeps its execution-resource meaning. Supersedes only ADR-042 amendment B/C where they require Work Console as the automatically opened default app. |
 | 045 | Execution policy profiles and evidence contracts | **Proposed** | Resolve every dispatch to a named, versioned effect/evidence contract; labels constrain but never grant authority, and unsupported combinations fail closed. |
 | 046 | Versioned request digest (dispatch.request.v2) | **Accepted** (2026-09-10) | Bind the confirmation to the semantic content and immutable revision of the execution configuration, not to identifiers; a material change invalidates a prior confirmation. Unblocks W10/W11. |
-| 047 | The three ACPs: client protocol, communication contract, and coordination plane | **Proposed** | Adopt Agent Client Protocol v1 as a client (agent role deferred); `AcpAdapter` implements the existing `EngineAdapter` so `route()` and the broker are untouched; `invoke()` gains an additive `on_event` with a declared `supports_events` capability and no silent degradation; ACP `sessionId` and engine-native `session_id` occupy separate namespaces that never meet; `CORTXT-OUTCOME:` is retained for non-ACP workers and `completion_report`'s six states judge both paths; a cross-process claim owner replaces `RunRegistry`'s read-once/write-all store with atomic compare-and-swap, with no scheduling policy. Amends ADR-026/027/028. (See docs/findings/2026-09-11-acp-primary-source-review.md and docs/561-acp-decision-packet.md for the review and decision basis.) |
+| 047 | The three ACPs: client protocol, communication contract, and coordination plane | **Accepted** (2026-09-11) | Adopt Agent Client Protocol (agentclientprotocol.com) as a client (agent role deferred); the separate archived Agent Communication Protocol (i-am-bee/acp) is not adopted; `AcpAdapter` implements the existing `EngineAdapter` so `route()` and the broker are untouched; `invoke()` gains an additive `on_event` with a declared `supports_events` capability and no silent degradation; ACP `sessionId` and engine-native `session_id` occupy separate namespaces that never meet; `CORTXT-OUTCOME:` is retained for non-ACP workers and `completion_report`'s six states judge both paths; a cross-process claim owner replaces `RunRegistry`'s read-once/write-all store with atomic compare-and-swap, with no scheduling policy. Amends ADR-026/027/028. v1/v2 pin closed on a two-distinct-protocol basis. (See docs/findings/2026-09-11-acp-primary-source-review.md and docs/561-acp-decision-packet.md for the review and decision basis.) |
 
 ## Decisions and Authority
 
