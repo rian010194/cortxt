@@ -46,10 +46,16 @@ def _run_git_correlation(repo_path, args):
 
 
 class ExecutionGateError(RuntimeError):
-    """Stable, content-free launcher rejection."""
+    """Stable, content-free launcher rejection.
 
-    def __init__(self, code: str):
+    `detail` may name the store identifiers behind the rejection (e.g. the
+    conflicting resource_key/claim_id for `resource_collision`); it never
+    carries issue body/title content.
+    """
+
+    def __init__(self, code: str, detail: str | None = None):
         self.code = code
+        self.detail = detail
         super().__init__(code)
 
 
@@ -223,7 +229,8 @@ class WorkLauncher:
             if result.collision_codes != ("resource_collision",):
                 break
         if result.decision != "allow" or result.receipt is None:
-            raise ExecutionGateError(result.collision_codes[0] if result.collision_codes else "gate_rejected")
+            raise ExecutionGateError(result.collision_codes[0] if result.collision_codes else "gate_rejected",
+                                     detail=getattr(result, "conflict", None))
         claim = next((x for x in self.claim_store.active_claims(self.clock())
                       if x.claim_id == result.receipt.claim_id), None)
         if claim is None:

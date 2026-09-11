@@ -147,11 +147,14 @@ class GateDenied(ActionHostError):
     http_status = 409
     kind = "execution_map_gate"
 
-    def __init__(self, code: str, message: str | None = None) -> None:
+    def __init__(self, code: str, message: str | None = None, detail: str | None = None) -> None:
         super().__init__(message or code, code=code)
         category, recovery = GATE_RECOVERY.get(code, ("execution_map", "Re-run the execution-map gate and retry."))
         self.category = category
-        self.recovery = recovery
+        # `detail` names the concrete blocker (e.g. the holding claim_id /
+        # resource_key) when the launcher can supply it, so the operator is not
+        # told a generic "another Run owns this" for a stale or orphaned holder.
+        self.recovery = f"{recovery} ({detail})" if detail else recovery
 
 
 class RateLimited(ActionHostError):
@@ -185,7 +188,8 @@ class AdapterStartFailure(ActionHostError):
 # Stable recovery guidance per execution-map gate code (AC5).
 GATE_RECOVERY = {
     "resource_collision": ("claim_conflict",
-                           "Another active Run owns this issue or its resources; wait for it to finish or cancel it."),
+                           "This issue or one of its resources is already held by another claim. "
+                           "Release that claim (or wait for its Run to finish), then retry."),
     "stale_receipt": ("execution_map",
                       "The execution-map receipt is stale; refresh it and retry."),
     "stale_issue_generation": ("execution_map",
@@ -748,7 +752,7 @@ class ActionHost:
             raise InvalidRequest(str(exc)) from exc
         except Exception as exc:
             if exc.__class__.__name__ == "ExecutionGateError" and hasattr(exc, "code"):
-                raise GateDenied(exc.code) from exc
+                raise GateDenied(exc.code, detail=getattr(exc, "detail", None)) from exc
             if exc.__class__.__name__ == "LauncherDispatchError" and hasattr(exc, "code"):
                 raise AdapterStartFailure(
                     exc.code, message=str(exc),
