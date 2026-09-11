@@ -374,7 +374,15 @@ class WorkLauncher:
             # unchanged.
             if "on_terminal" in inspect.signature(self.dispatch).parameters:
                 kwargs["on_terminal"] = self._on_worker_terminal
-            self.dispatch(self.dispatcher, run, prompt, **kwargs)
+            thread = self.dispatch(self.dispatcher, run, prompt, **kwargs)
+            # Join the worker thread to ensure it reaches terminal status and
+            # calls Dispatcher.complete() before this method returns. Without
+            # this, a daemon thread can be killed by process exit before the
+            # run is closed, leaving it stuck in_progress (W13 #568 defect).
+            # The thread return is not guaranteed for all injectable dispatch
+            # callables (legacy test fakes); skip join if not returned.
+            if thread is not None and hasattr(thread, "join"):
+                thread.join(timeout=run.lease_seconds)
         except UnknownRuntimeError as exc:
             raise LauncherDispatchError(
                 "adapter_not_registered",

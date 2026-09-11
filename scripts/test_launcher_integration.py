@@ -2,12 +2,14 @@
 """Network-free checks for execution-map launcher integration (#262)."""
 from __future__ import annotations
 
+import sys
 import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
+import dispatcher
 import worker_adapters as wa
 from execution_map import SqliteClaimStore
 from work_launcher import ExecutionGateError, WorkLauncher
@@ -23,12 +25,28 @@ class FakeRun:
     claimed_at: float = 100.0
     heartbeat_at: float = 100.0
     status: str = "in_progress"
+    lease_seconds: int = 60
+    finished_at: Optional[float] = None
+    result: Optional[dict] = None
 
 
 class FakeDispatcher:
+    class Registry:
+        def __init__(self):
+            self._runs = {}
+
+        def get(self, run_id):
+            return self._runs.get(run_id)
+
+        def update(self, run_id, **fields):
+            run = self._runs.get(run_id)
+            if run:
+                for k, v in fields.items():
+                    setattr(run, k, v)
+
     def __init__(self, events):
         self.events = events
-        self.registry = SimpleNamespace(_runs={})
+        self.registry = self.Registry()
 
     def claim(self, issue_id, workflow, worker_role, runtime, lease_seconds, *, run_id):
         self.events.append(("dispatcher.claim", run_id))
@@ -51,6 +69,30 @@ class FakeGitHub:
         self.events.append(("issue.read", issue_id))
         return dict(self.issues[issue_id])
 
+    def get_labels(self, repo, issue_num):
+        self.events.append(("issue.get_labels", repo, issue_num))
+        # Build issue_id from repo and issue_num (e.g., "acme/repo#90")
+        issue_id = f"{repo}#{issue_num}"
+        issue = self.issues.get(issue_id)
+        if issue:
+            return list(issue.get("labels", ()))
+        return []
+
+    def swap_label(self, repo, issue_num, remove, add):
+        self.events.append(("issue.swap_label", repo, issue_num, remove, add))
+        # Extract issue_id from repo and issue_num
+        issue_id = f"{repo}#{issue_num}"
+        if issue_id in self.issues:
+            labels = list(self.issues[issue_id].get("labels", ()))
+            if remove in labels:
+                labels.remove(remove)
+            if add not in labels:
+                labels.append(add)
+            self.issues[issue_id]["labels"] = tuple(labels)
+
+    def comment(self, repo, issue_num, body):
+        self.events.append(("issue.comment", repo, issue_num, body))
+
     def create_issue(self, repo, title, body):
         self.events.append(("issue.create", repo))
         self.next_number += 1
@@ -69,6 +111,41 @@ def issue(issue_id, labels=("workflow:ready",), body=""):
 
 
 OPEN_STORES = []
+
+
+def fake_completed_hermes_adapter(stdout="worked", stderr="", returncode=0):
+    """Factory for a mock adapter that returns a fixed completion envelope."""
+    import time
+    from pathlib import Path
+
+    class MockAdapter:
+        """Simple adapter that returns a fixed completion envelope without invoking hermes."""
+
+        def __init__(self):
+            self.profile = "mock"
+            self.log_dir = Path(tempfile.gettempdir()) / "cortxt-test-logs"
+            self.log_dir.mkdir(exist_ok=True)
+
+        def invoke(self, run, task_prompt, timeout_seconds, worktree=None):
+            started = time.time()
+            print(f"DEBUG MockAdapter.invoke: run={run.run_id}, worktree={worktree}", file=sys.stderr)
+            return {
+                "_status": "succeeded",
+                "runtime": run.runtime,
+                "worker_role": run.worker_role,
+                "model": "test-model",
+                "usage": "measured",
+                "cost": 0.001,
+                "artifacts": [],
+                "evidence": "fake hermes completed",
+                "commit": "a" * 40,  # A dummy commit for mutating runs
+                "issue_id": run.issue_id,
+                "run_id": run.run_id,
+                "request_id": getattr(run, "request_id", None),
+                "_elapsed_seconds": time.time() - started,
+            }
+
+    return MockAdapter()
 
 
 def launcher(root, issues, events, ids, *, store=None, issue_reader=None,
@@ -204,6 +281,126 @@ def check_no_forbidden_transitions(root):
                                    "recover", "review_sync", "mark_done"})
 
 
+def check_dispatcher_completion_loop_closes(root):
+    """AC4: Dispatcher/WWorkLauncher join path closes to terminal succeeded.
+
+    When a worker adapter returns quickly with a landed commit, the run must
+    reach terminal succeeded with commit_evidence. The fix joins the worker
+    thread in WorkLauncher._dispatch so a daemon thread isn't killed by
+    process exit before Dispatcher.complete() fires.
+
+    This is the integration gap the previous suites missed: the adapter tests
+    call dispatch_async and join() themselves; the launcher tests use a fake
+    dispatch that doesn't return a thread. This check uses a real adapter to
+    exercise the actual join path.
+    """
+    # Register a real adapter that returns quickly with a commit
+    mock_adapter = fake_completed_hermes_adapter()
+    print(f"DEBUG: mock_adapter={mock_adapter}, profile={mock_adapter.profile}", file=sys.stderr)
+    wa.register_adapter("test-quick-complete", mock_adapter)
+    print(f"DEBUG: registry={wa.ADAPTER_REGISTRY.get('test-quick-complete')}", file=sys.stderr)
+
+    # Create a mock commit_gate that always succeeds for this test
+    def mock_commit_gate(run, result_envelope):
+        """Mock commit_gate that accepts the commit without actual git verification."""
+        from commit_evidence import CommitEvidence
+        commit = result_envelope.get("commit")
+        branch = "work/" + run.run_id
+        return CommitEvidence(
+            run_id=run.run_id,
+            issue_id=run.issue_id,
+            commit=commit,
+            branch=branch,
+            committed_at=int(100.0),
+            files=(),
+            verified_at=100.0,
+            worktree=str(root / "trees" / run.run_id),
+        )
+
+    store = SqliteClaimStore(root / "completion-loop.sqlite3")
+    if store not in OPEN_STORES:
+        OPEN_STORES.append(store)
+
+    issues = {"acme/repo#9": issue("acme/repo#9", ("workflow:ready",))}
+    events = []
+    gh = FakeGitHub(issues, events)
+    disp = FakeDispatcher(events)
+
+    # Create a Dispatcher with the mock commit_gate
+    from dispatcher import RunRegistry
+    registry_path = root / "registry.json"
+    registry = RunRegistry(registry_path)
+    disp_with_gate = dispatcher.Dispatcher(
+        registry,
+        gh,
+        commit_gate=mock_commit_gate,
+    )
+
+    # Use a launcher with the real dispatch_async to exercise the join path
+    # The run_worktree mock must also create the actual worktree directory
+    # so that worktree.is_dir() returns True in _create_worktree
+    def _mock_run_worktree(argv, **kwargs):
+        cwd = kwargs.get("cwd", str(root))
+        if len(argv) >= 3 and argv[1] == "worktree" and argv[2] == "add":
+            # Create the worktree directory to satisfy the is_dir() check
+            worktree_path = Path(argv[argv.index("HEAD") - 1])
+            worktree_path.mkdir(parents=True, exist_ok=True)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=("0" * 40 if len(argv) >= 2 and argv[1] == "rev-parse" else ""),
+        )
+
+    launcher = WorkLauncher(
+        disp_with_gate, gh,
+        dispatch=wa.dispatch_async,
+        worktree_root=root / "trees",
+        run_worktree=_mock_run_worktree,
+        repo_path=root,
+        claim_store=store,
+        issue_reader=gh.get_issue,
+        inventory_readers={name: (lambda: ()) for name in WorkLauncher.INVENTORY_NAMES},
+        clock=lambda: 100.0,
+        id_generator=lambda: next(iter(("run-9",))),
+        store_session_id="store-session-1",
+        engine_session_id="engine-session-1",
+    )
+
+    # First, create and dispatch a mutating run (it needs a worktree + commit)
+    # The adapter returns a commit, so the run should reach succeeded
+    result = launcher.resume(
+        "acme/repo#9",
+        runtime="test-quick-complete",
+        worker_role="builder",
+        workflow="wf/v1",
+        max_runtime_seconds=60,
+        prompt="bounded",
+        isolate=True,  # mutating run needs isolation
+        mutating=True,
+    )
+
+    assert result["run_id"] == "run-9"
+
+    # The critical check: after resume() returns, the run must be terminal
+    # (not in_progress), because the worker thread was joined.
+    run = disp_with_gate.registry.get("run-9")
+    print(f"DEBUG: run.status={run.status}, run.result={run.result}", file=sys.stderr)
+    assert run.status == "succeeded", f"expected succeeded, got {run.status}"
+    assert run.finished_at is not None, "finished_at must be set on terminal run"
+
+    # For a mutating run that succeeded, commit_evidence should be present
+    # (the adapter returned a commit: "a" * 40)
+    assert run.result is not None
+    assert "commit_evidence" in run.result, "mutating succeeded run must have commit_evidence"
+    ce = run.result["commit_evidence"]
+    assert ce["commit"] == "a" * 40, "commit_evidence must carry the commit"
+
+    # Claim should be released (not active)
+    assert not store.active_claims(100.0), "claim must be released after terminal run"
+
+    # Clean up adapter registration
+    wa.ADAPTER_REGISTRY.pop("test-quick-complete", None)
+
+
 def main():
     # These checks dispatch through an injected fake `dispatch` callable, not
     # the real ADAPTER_REGISTRY -- but since the S7b #482 follow-on
@@ -227,6 +424,7 @@ def main():
         check_disjoint_parallel_and_overlap(root)
         check_identity_retry_status_and_no_payload(root)
         check_no_forbidden_transitions(root)
+        check_dispatcher_completion_loop_closes(root)
     finally:
         for store in OPEN_STORES:
             store.close()
