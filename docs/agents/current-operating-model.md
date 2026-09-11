@@ -136,6 +136,48 @@ distinct surfaces exist in today's code and they are not the same registry:
   and mainly cover research and background shapes. These are evidence-based
   bootstrap configuration, not a measured optimizer.
 
+### "Profile" today is three conflated things
+
+The code has three separate concepts that current behaviour runs together:
+
+- **runtime identity** (`engine_id`, e.g. `hermes-free`, `hermes`, `dsh`,
+  `claude`) — which adapter executes, resolved by `route()`;
+- **worker role** (`builder`, `researcher`) — the approved role from the issue;
+- **Hermes configuration profile** (`hermes -p <name>`) — the named config the
+  Hermes CLI loads.
+
+`HermesFreeAdapter` passes `run.worker_role` as the `-p` profile name and
+overrides that profile's model/provider with `CORTXT_FREE_MODEL` /
+`CORTXT_FREE_PROVIDER`, read from the host environment at invoke time. What the
+code shows about OS routing: `route()` over `DEFAULT_MANIFESTS` yields the
+engine ids `claude`, `hermes`, `hermes-free` and `dsh`; for a `background-task`
+issue the cheapest is `hermes-free`, and `dsh` is the other manifest id that a
+research/background shape can reach. `claude` and `hermes` route but have no
+adapter in the WorkLauncher `ADAPTER_REGISTRY`, so they fail at dispatch;
+`hermes-researcher` / `hermes-coordinator` — the adapters that *do* bind a fixed
+`-p <name>` — are not in the manifest at all and are reachable only from the CLI.
+So the only path to a Hermes run from the OS today is `hermes-free`, where
+"profile" means *worker role plus host-env override*, not a deliberately
+selected named profile.
+
+Consequences of the current state, all of which the target direction changes:
+
+- `CORTXT_FREE_*` values are **requested** configuration — what the platform asked
+  for — not evidence of what executed. The executed model/provider comes only
+  from runtime evidence (completion report / `--usage-file`), else `unknown`. A
+  runtime fallback (init-time or on a 429) can run a different model than
+  requested.
+- A profile **name** alone does not fix an immutable effective configuration:
+  the profile's model/provider/base-URL/fallback can change between preview,
+  confirm and start, and nothing today binds those fields to the confirmed
+  revision.
+- The live confirm/launch path (`action_host`, `unified_cli`) reads
+  `dispatch.request.v1`, whose digest does **not** include provider/model.
+  ADR-046 (Accepted 2026-09-10) decided `dispatch.request.v2`, which does, but v2
+  is not yet wired into the live claim/launch path. A W13 evidence note that
+  reads a changed digest as proof of model/provider binding is therefore
+  **not yet supported by the code that path runs**; the reconciliation is open.
+
 So a `claude` routing outcome is **not** evidence of an eligible paid OS launch:
 the default WorkLauncher registry has no `claude` adapter, and the launch path
 refuses before any claim. Copilot is not integrated into this supported path.

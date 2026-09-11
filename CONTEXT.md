@@ -63,8 +63,24 @@ The intended outcome category of an Issue used for planning and rendering. Its c
 _Avoid_: Issue type (when it implies authorization), workflow state
 
 **Execution policy profile**:
-A named, versioned contract that binds an eligible work shape to permitted effects, isolation, limits, artifact scope, and required evidence. It must be resolved before dispatch and recorded on the Run.
-_Avoid_: Label combination, agent preset
+A named, versioned contract that binds an eligible work shape to permitted effects, isolation, limits, artifact scope, and required evidence. It must be resolved before dispatch and recorded on the Run. This is a Cortxt-owned policy object (ADR-045, Proposed; issue #495); it is **not** a runtime's own configuration file.
+_Avoid_: Label combination, agent preset, runtime configuration profile
+
+**Runtime** (also **harness**):
+A replaceable external execution environment that runs agent work behind a Cortxt-owned port (Hermes, Codex, GitHub Copilot, Claude Code, Deepseek Harness, Pi). A runtime is a resource, never the product, and holds no platform authority.
+_Avoid_: Engine (when the adapter is meant), "the product"
+
+**Engine adapter**:
+The Cortxt-owned module that translates one runtime into the shared Cortxt contracts (claim/run identity, result envelope, limits, evidence). One adapter per runtime; several profiles may drive the same adapter. Adapter registration is not route selection (ADR-026) and not launch eligibility (`docs/agents/current-operating-model.md`).
+_Avoid_: Profile, engine selection, `route()`
+
+**Runtime configuration profile** (for Hermes: **Hermes profile**):
+A named configuration owned by a runtime (for Hermes: `-p <name>`, e.g. `builder`, `researcher`, `coordinator`, `default`), declaring that runtime's model/provider route, base URL, fallback chain, skills, and toolsets. A profile name alone does not fix an immutable effective configuration; the execution-relevant fields must be bound to the approval digest and checked against run evidence. Distinct from an **execution policy profile**.
+_Avoid_: Execution policy profile, worker role, engine id
+
+**Coordinator agent** (also **orchestrator agent**):
+An optional agent that helps the operator break down and follow work through Cortxt OS. It is engaged per work need, never mandatorily per runtime, and owns no platform authority. Cortxt's deterministic control plane retains mandate, policy, run identity, budget, and evidence; native runtime delegation stays subject to Cortxt controls and must be explicitly qualified before use.
+_Avoid_: Control plane, dispatcher, Supervisor Daemon
 
 **Evidence contract**:
 The minimum independently verifiable proof required for a Run's claimed outcome under its execution policy profile. The worker produces evidence but does not choose or weaken this contract.
