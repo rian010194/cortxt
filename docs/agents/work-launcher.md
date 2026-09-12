@@ -127,6 +127,41 @@ presented commit. Anything else — a missing SHA, a foreign commit, a policy
 breach, or a gate that cannot read the repository — converts the claimed
 `succeeded` into `blocked` with a stable failure code.
 
+The stable refusal codes `scripts/commit_evidence.py` reports follow: for each,
+the condition that produces it and what the operator should do about it.
+
+| Code | Produced when | What the operator should do |
+| --- | --- | --- |
+| `run_not_recorded` / `issue_not_recorded` / `request_not_recorded` | The Run record carries no `run_id`, `issue_id` or `request_id`, so nothing can be correlated against it | Re-launch through the sanctioned path so the Run records its approved identity |
+| `run_correlation_mismatch` / `issue_correlation_mismatch` / `request_correlation_mismatch` | The result envelope omits, or reports differently from, the Run record's `run_id`, `issue_id` or `request_id` | The worker answered for a different Run, Issue or request; discard the result and re-run this Run |
+| `commit_missing` | The result envelope carries no full 40-hex commit SHA | A mutating Run must return the SHA it landed; self-reported status is not evidence |
+| `isolation_not_recorded` | The Run records `isolation` other than `worktree`, or no branch | Launch with isolation so the Run runs in its own registered worktree |
+| `commit_not_found` | The reported SHA is not a commit object in the repository | Nothing landed; treat the Run as failed |
+| `commit_not_on_run_branch` | The reported commit is not reachable from `refs/heads/<branch>` | A commit made outside the Run's worktree is not its evidence; re-run inside it |
+| `commit_time_unreadable` | git cannot read the commit's timestamp | Re-run the gate against a readable repository |
+| `commit_predates_run` | The commit was made at or before the second the Run was claimed; same-second commits are refused | The Run landed nothing that can be ordered after its claim |
+| `commit_message_unreadable` | git cannot read the commit message | Re-run the gate against a readable repository |
+| `dco_trailer_missing` | The commit carries no `Signed-off-by:` trailer | Amend the commit with a DCO sign-off and re-run |
+| `commit_files_unreadable` | git cannot list the files the commit changed | Re-run the gate against a readable repository |
+| `no_files_changed` | The commit changes no files | An empty commit is not an artifact; the Run produced nothing to review |
+| `artifact_policy_missing` | The Run carries neither `artifact_paths` nor an artifact policy | Record the approved scope on the Run before dispatch |
+| `artifact_policy_unparsable` | The policy names no path the gate can read | Name permitted paths in backticks, or record them as `artifact_paths` |
+| `artifact_policy_unsafe_path` | The approved scope contains an entry that is not a repository-relative path (absolute, drive letter, `..`) | Correct the approved scope |
+| `artifact_path_unsafe` | A commit touches paths that are not repository-relative | A path that cannot be normalized cannot be bounded by any policy |
+| `artifact_policy_violation` | A commit touches paths outside the approved artifact policy | Re-run within the approved scope |
+| `base_commit_not_recorded` | The Run carries no usable `base_commit` | Re-launch through the sanctioned path so the branch's creation base is recorded |
+| `base_commit_not_found` | The recorded base is not a commit object in the repository | The contributed change cannot be bounded; treat the result as unproven |
+| `branch_not_from_recorded_base` | The branch does not descend from its recorded base | The branch was rewritten, or is not the branch its base was recorded for; re-launch |
+| `contributed_range_unreadable` | git cannot list the commits between `base_commit` and the branch | Re-run the gate against a readable repository |
+| `no_contributed_commits` | The branch is unchanged from its recorded base | The Run landed nothing on its own branch to verify |
+| `commit_not_contributed_by_run` | The presented commit is reachable from the branch but is not among the commits the Run added | The commit is inherited history, not this Run's output |
+
+A breach found in **any** commit in the contributed range — `base_commit..work/<run_id>`
+beyond the presented commit — is reported with the `contributed_` prefix on the
+same code (for example `contributed_artifact_policy_violation`), so a reviewer
+can tell a fault in the commit the Run presented from a fault in another commit
+on its branch. The code otherwise reads exactly as described above.
+
 The producer side supplies the correlation from the durable Run record, never
 from worker prose (#506). Both `worker_adapters.dispatch_async` and
 `work_launcher.submit()` inject the authoritative `run_id` / `issue_id` /
