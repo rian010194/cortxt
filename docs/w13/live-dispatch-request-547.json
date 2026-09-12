@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "issue_id": "rian010194/cortxt#547",
+  "eligible": false,
+  "workflow": "in-progress",
+  "request_id": "sha256:ecbcbf160ae30950abfbd57b6c360c8041de574d7c9ef69980b647fdbc2bfbcf",
+  "execution_profile_revision": "sha256:ea53655eece16305cc3e89bca3fba68f22b343b849ec6e35c8586da0b9be73d4",
+  "engine": "hermes-free",
+  "worker_role": "builder",
+  "max_runtime_seconds": 7200,
+  "max_cost_usd": 2.0,
+  "max_parallel_workers": 1,
+  "delegation_depth": 1,
+  "isolation": "worktree",
+  "workflow_id": "work-launcher/v1"
+}
