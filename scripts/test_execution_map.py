@@ -206,11 +206,69 @@ def test_cli(root=None):
           '"role": "observer"' in proc.stdout and '"waves"' in proc.stdout)
 
 
+def test_acquire_reclaims_orphaned_resources(root=None):
+    """#547 regression: an out-of-band release must not deadlock an issue.
+
+    A release that bypasses `_transition` (raw SQL UPDATE, so no `released`
+    history event) leaves the claim's rows in `resources`. Because
+    `resource_key` is a global PRIMARY KEY, each orphaned row would otherwise
+    reject every later acquire that shares the key (`issue:owner/repo#1`, ...)
+    -- exactly how #547 became permanently un-launchable. `acquire` must
+    reclaim rows owed by claims that are no longer active before inserting.
+    Fails RED (ClaimConflict) before the fix; passes once acquire reclaims.
+    """
+    if root is None:
+        root = Path(tempfile.mkdtemp(prefix="execution-map-test-"))
+    store = em.SqliteClaimStore(root / "orphan.db")
+
+    def keys_for(record):
+        return em.collision_keys(issue_id=record.issue_id, run_id=record.run_id,
+            worktree=record.worktree_path, workflow_label="workflow:ready",
+            store_session_id=record.store_session_id,
+            engine_session_id=record.engine_session_id)
+
+    orphaned = claim(1, "orphan-run-1")
+    store.acquire(orphaned, keys_for(orphaned), 0)
+    store.db.execute("UPDATE claims SET state='released' WHERE claim_id=?", (orphaned.claim_id,))
+    check("out-of-band release leaves no 'released' history event",
+          [x["event"] for x in store.history(orphaned.claim_id)] == ["acquired"])
+    check("out-of-band release leaves the resource rows behind",
+          store.db.execute("SELECT COUNT(*) FROM resources WHERE claim_id=?",
+                           (orphaned.claim_id,)).fetchone()[0] > 0)
+
+    successor = claim(1, "orphan-run-2")
+    try:
+        store.acquire(successor, keys_for(successor), store.generation())
+        reclaimed = True
+    except em.ClaimConflict:
+        reclaimed = False
+    check("acquire reclaims resource rows orphaned by an out-of-band release", reclaimed)
+    check("reclaimed key is now owned by the live claim",
+          store.db.execute("SELECT claim_id FROM resources WHERE resource_key='issue:owner/repo#1'")
+          .fetchone()[0] == successor.claim_id)
+
+    # A genuine, still-active holder must keep naming its claim_id/resource_key
+    # instead of failing opaquely ("exclusive resource already claimed").
+    blocked = claim(2, "orphan-run-3")
+    active = claim(2, "orphan-run-4")
+    store.acquire(active, keys_for(active), store.generation())
+    named = None
+    try:
+        store.acquire(blocked, keys_for(blocked), store.generation())
+    except em.ClaimConflict as conflict:
+        named = conflict.conflicts
+    check("live collision names the conflicting resource_key and claim_id",
+          named is not None and ("issue:owner/repo#2", active.claim_id) in named)
+    store.close()
+    assert reclaimed, "orphaned resource rows from an out-of-band release must not block acquire"
+
+
 if __name__ == "__main__":
     root = Path(tempfile.mkdtemp(prefix="execution-map-test-"))
     test_graph_and_plan()
     test_collision_and_preflight(root)
     test_store_and_receipt(root)
+    test_acquire_reclaims_orphaned_resources(root)
     test_projection()
     test_cli(root)
     print("")

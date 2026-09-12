@@ -27,7 +27,18 @@ class ExecutionMapError(RuntimeError):
 
 
 class ClaimConflict(ExecutionMapError):
-    pass
+    """Exclusive-resource rejection.
+
+    `conflicts` names the `(resource_key, claim_id)` pairs that already hold a
+    requested key, so a rejection can point at the exact owner instead of an
+    opaque "already claimed" message. Empty when the conflict is unrelated to
+    the resource table (e.g. an ownership/generation mismatch).
+    """
+
+    def __init__(self, message: str = "exclusive resource already claimed",
+                 conflicts: Sequence[tuple[str, str]] = ()) -> None:
+        super().__init__(message)
+        self.conflicts: tuple[tuple[str, str], ...] = tuple(conflicts)
 
 
 class GenerationConflict(ClaimConflict):
@@ -398,6 +409,18 @@ class SqliteClaimStore(ClaimStore):
             if self.generation() != expected_generation:
                 raise GenerationConflict("claim generation changed")
             generation = self._bump()
+            # Reclaim resource rows owed by claims that are no longer live.
+            # `_transition` frees them only on a `released` event, so a release
+            # that bypassed it (an out-of-band SQL UPDATE, e.g. manual recovery)
+            # leaves orphans behind -- and because `resource_key` is a global
+            # PRIMARY KEY, a single orphan permanently rejects every future
+            # acquire that shares the key (#547). Rows for active and
+            # pending-reconciliation claims stay exclusive; `_expire_locked`
+            # deliberately keeps them until reconciliation. The reclaim runs in
+            # this same BEGIN IMMEDIATE, so it commits only with the acquire.
+            self.db.execute(
+                "DELETE FROM resources WHERE claim_id IN "
+                "(SELECT claim_id FROM claims WHERE state NOT IN (?,?))", ACTIVE_STATES)
             value = asdict(claim); value["claim_generation"] = generation
             columns = ",".join(CLAIM_FIELDS); marks = ",".join("?" for _ in CLAIM_FIELDS)
             self.db.execute(f"INSERT INTO claims({columns}) VALUES({marks})", tuple(value[x] for x in CLAIM_FIELDS))
@@ -409,9 +432,22 @@ class SqliteClaimStore(ClaimStore):
             self.db.commit()
             return ClaimRecord(**value)
         except sqlite3.IntegrityError as error:
-            self.db.rollback(); raise ClaimConflict("exclusive resource already claimed") from error
+            conflicts = self._resource_conflicts(resources)
+            self.db.rollback()
+            raise ClaimConflict("exclusive resource already claimed", conflicts) from error
         except Exception:
             self.db.rollback(); raise
+
+    def _resource_conflicts(self, resources: Sequence[str]) -> tuple[tuple[str, str], ...]:
+        """`(resource_key, claim_id)` pairs already holding any requested key."""
+        keys = sorted(set(resources))
+        if not keys:
+            return ()
+        marks = ",".join("?" for _ in keys)
+        rows = self.db.execute(
+            f"SELECT resource_key, claim_id FROM resources WHERE resource_key IN ({marks})"
+            " ORDER BY resource_key", tuple(keys)).fetchall()
+        return tuple((row[0], row[1]) for row in rows)
 
     def _transition(self, claim_id: str, run_id: str, driver_id: str, generation: int,
                     event: str, now: float, updates: Mapping[str, Any]) -> ClaimRecord:
@@ -492,6 +528,23 @@ class PreflightResult:
     decision: str
     collision_codes: tuple[str, ...]
     receipt: ValidationReceipt | None = None
+    # Names the exact holder(s) behind a `resource_collision` (resource_key and,
+    # when known, claim_id) so the rejection can point at the real owner rather
+    # than a generic "another active Run owns this" -- see #547.
+    conflict: str | None = None
+
+
+def _describe_resource_conflict(conflicts: Sequence[tuple[str, str]] = (),
+                                keys: Sequence[str] = ()) -> str | None:
+    """Human-readable pointer at the colliding resource_key(s).
+
+    `conflicts` are `(resource_key, claim_id)` pairs whose owner is known;
+    `keys` are colliding keys with no identified owner. Returns None when
+    there is nothing to name.
+    """
+    rendered = [f"{key} (held by claim {claim_id})" for key, claim_id in conflicts]
+    rendered += [f"{key} (holder unknown)" for key in sorted(set(keys))]
+    return "conflicting resource(s): " + ", ".join(rendered) if rendered else None
 
 
 def fingerprint(snapshot: Mapping[str, Any]) -> str:
@@ -548,6 +601,8 @@ def preflight_validate(*, issue: Issue, graph: Graph, run_id: str, worktree: str
     except ValueError:
         return PreflightResult("reject", ("malformed_request",))
     occupied: set[str] = set()
+    active_owner: dict[str, str] = {}
+    conflict: str | None = None
     for source, records in sorted(inventories.items()):
         found, errors = _inventory_keys(records, source)
         occupied.update(found); codes.extend(errors)
@@ -557,13 +612,19 @@ def preflight_validate(*, issue: Issue, graph: Graph, run_id: str, worktree: str
     except Exception:
         return PreflightResult("reject", ("store_unavailable",))
     for claim in active:
-        occupied.update(collision_keys(issue_id=claim.issue_id, run_id=claim.run_id,
-                                       worktree=claim.worktree_path,
-                                       workflow_label=claim.expected_workflow_label,
-                                       store_session_id=claim.store_session_id,
-                                       engine_session_id=claim.engine_session_id))
-    if occupied.intersection(resources):
+        for key in collision_keys(issue_id=claim.issue_id, run_id=claim.run_id,
+                                  worktree=claim.worktree_path,
+                                  workflow_label=claim.expected_workflow_label,
+                                  store_session_id=claim.store_session_id,
+                                  engine_session_id=claim.engine_session_id):
+            occupied.add(key)
+            active_owner.setdefault(key, claim.claim_id)
+    collided = sorted(occupied.intersection(resources))
+    if collided:
         codes.append("resource_collision")
+        conflict = _describe_resource_conflict(
+            tuple((key, active_owner[key]) for key in collided if key in active_owner),
+            tuple(key for key in collided if key not in active_owner))
     domains: dict[str, set[str]] = {}
     for writer in writers:
         domain, owner = writer.get("domain"), writer.get("owner")
@@ -576,7 +637,8 @@ def preflight_validate(*, issue: Issue, graph: Graph, run_id: str, worktree: str
     snapshot = {"issue": asdict(issue), "graph_drift": [asdict(x) for x in graph.drift],
                 "inventories": inventories, "writers": writers, "generation": generation}
     if codes or not acquire:
-        return PreflightResult("reject" if codes else "validated_read_only", tuple(sorted(set(codes))))
+        return PreflightResult("reject" if codes else "validated_read_only",
+                               tuple(sorted(set(codes))), conflict=conflict)
     claim_id = uuid.uuid4().hex
     claim = ClaimRecord(1, claim_id, issue.issue_id, workflow, run_id, f"work/{run_id}",
                         normalize_worktree(worktree), store_session_id, engine_id,
@@ -584,8 +646,11 @@ def preflight_validate(*, issue: Issue, graph: Graph, run_id: str, worktree: str
                         None, None, "workflow:ready", 0)
     try:
         claim = store.acquire(claim, resources, generation)
-    except ClaimConflict:
-        return PreflightResult("reject", ("resource_collision",))
+    except ClaimConflict as claim_conflict:
+        # Prefer the concrete owner(s) the store reported over any pre-computed hint.
+        return PreflightResult("reject", ("resource_collision",),
+                               conflict=_describe_resource_conflict(
+                                   getattr(claim_conflict, "conflicts", ())) or conflict)
     except Exception:
         return PreflightResult("reject", ("store_unavailable",))
     receipt_seed = f"{claim_id}:{run_id}:{claim.claim_generation}:{now}"
