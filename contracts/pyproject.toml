@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cortxt-contracts"
+version = "1.0.0"
+description = "Versioned, domain-neutral Cortxt contracts (generated exports of the embedded projection schemas)"
+readme = "../contracts/README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cortxt_contracts*"]
+
+[tool.setuptools.package-data]
+cortxt_contracts = ["schemas/*.json"]

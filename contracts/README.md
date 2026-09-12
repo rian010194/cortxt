@@ -1,7 +1,39 @@
 # Contracts
 
-This directory will contain versioned, domain-neutral schemas exchanged among
+This directory contains versioned, domain-neutral schemas exchanged among
 the control plane, harness, vertical packages, and reviewers.
+
+## Single-source rule (VLT-D-007, operator-adjusted step 1)
+
+The embedded schema dicts in `agent-platform/widget_contract/registry.py`
+(`DISPATCH_REQUEST_SCHEMA`, `DISPATCH_REQUEST_V2_SCHEMA`) are the
+**authoritative production source** — the confirm/launch path validates
+against them. The files below are **generated exports** of exactly those
+dicts and must never be hand-edited:
+
+- `dispatch-request.v1.schema.json` -- generated export of
+  `DISPATCH_REQUEST_SCHEMA` (dispatch.request.v1 projection).
+- `dispatch-request.v2.schema.json` -- generated export of
+  `DISPATCH_REQUEST_V2_SCHEMA` (dispatch.request.v2 projection).
+
+Regenerate with `python scripts/export_contracts.py`; CI (and
+`tests/widget_contract/test_schema_source.py`) fail closed on drift.
+
+The hand-written `dispatch-request.schema.json` / `result-envelope.schema.json`
+describe the *worker-facing* envelope/request vocabulary (a related but
+distinct contract object; the projection schemas above are a superset with a
+different field set). Known drift between `result-envelope.schema.json` and
+code is tracked for the VLT-D-006 evidence pass and must not be "fixed" by
+hand here.
+
+## Packaging
+
+`pyproject.toml` in this directory defines the `cortxt-contracts` package
+(version-stamped exports under `cortxt_contracts/schemas/`), consumed by
+agent repositories as
+`cortxt-contracts @ git+https://github.com/rian010194/cortxt@<tag>#subdirectory=contracts`
+(VLT-D-007 §1). The tag `contracts/vX.Y.Z` is cut from the core repo when the
+first consuming agent repository exists.
 
 Contracts that exist today:
 
