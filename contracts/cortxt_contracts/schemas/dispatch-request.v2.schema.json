@@ -1,0 +1,230 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "acceptance_criteria": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "approval_reference": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "artifact_policy": {
+      "type": "string"
+    },
+    "charge_policy_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "charge_policy_revision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "charge_policy_route": {
+      "enum": [
+        "zero_charge",
+        "metered",
+        null
+      ]
+    },
+    "delegation_depth": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "eligible": {
+      "type": "boolean"
+    },
+    "engine": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "engine_policy": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "approved_engine": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "approved_reliability": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "approved_reliability",
+            "approved_engine"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "errors": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "recovery": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "category",
+          "recovery"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "execution_profile_revision": {
+      "type": "string"
+    },
+    "isolation": {
+      "enum": [
+        "worktree",
+        "shared-checkout"
+      ],
+      "type": "string"
+    },
+    "issue_id": {
+      "type": "string"
+    },
+    "max_cost_usd": {
+      "minimum": 0,
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "max_parallel_workers": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "max_runtime_seconds": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "missing": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "report_channel": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "routable_task_tags": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "routing_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "const": 2
+    },
+    "scope": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "worker_role": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workflow": {
+      "type": "string"
+    },
+    "workflow_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workflow_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "issue_id",
+    "eligible",
+    "workflow",
+    "workflow_labels",
+    "scope",
+    "acceptance_criteria",
+    "approval_reference",
+    "worker_role",
+    "workflow_id",
+    "engine",
+    "routing_reason",
+    "routable_task_tags",
+    "engine_policy",
+    "max_runtime_seconds",
+    "max_cost_usd",
+    "max_parallel_workers",
+    "delegation_depth",
+    "artifact_policy",
+    "isolation",
+    "missing",
+    "errors",
+    "execution_profile_revision",
+    "report_channel",
+    "charge_policy_id",
+    "charge_policy_revision",
+    "charge_policy_route"
+  ],
+  "type": "object"
+}
