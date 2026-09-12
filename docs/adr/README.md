@@ -4,7 +4,13 @@ Authoritative index of the architecture decisions in this repo. Status per the d
 `docs/style-guide.md` / the ADR pattern: **Accepted** = normative within its scope; **Proposal** = reviewable
 proposal, not implementation authority; **Superseded** = historical reference, replaced by newer decisions.
 
-Updated: 2026-09-11 (ADR-047 accepted by operator approval: the three ACPs --
+Updated: 2026-09-12 (ADR-045 accepted by operator approval: named, versioned
+execution policy profiles and evidence contracts adopted as the
+dispatch-authority contract -- every dispatch resolves to a named, versioned
+profile before claim, workflow labels constrain but never grant authority, and
+unknown or unsupported combinations fail closed; unblocks the Policy-001
+parent, issue #585, whose execution authority was bound to this decision).
+Previously updated 2026-09-11 (ADR-047 accepted by operator approval: the three ACPs --
 client protocol, communication contract, and coordination plane -- adopted as a
 decision; ACP = Agent Client Protocol (agentclientprotocol.com), adopted as a
 client with the agent role deferred (no v1/v2 split; the separate, archived
@@ -64,7 +70,7 @@ execution-resource term).
 | 042 | Work- and Mandate-First Product Surface with Replaceable Secure Execution | **Accepted** (2026-08-26; app-default clauses superseded by ADR-044) | Product hierarchy: durable Workstream authority above replaceable engines/providers/runtimes, expressed inside the Cortxt OS canvas/window/app-shell model; ADR-044 replaces Work Console as the required default with Work as the first principal app; cockpit reframed as Execution Inspector (not "Run Inspector"); retain CLI/MCP/widgets; evaluate OpenShell as optional execution backend; require a continuity proof before broad UI change. |
 | 043 | Global design-system source and consumer contract | **Accepted** (2026-08-27) | Platform-owned preset source, generated web artifact, consumer adapters, shared authority/execution grammar, compatibility, and CI conformance. |
 | 044 | Cortxt OS system surfaces and first-party app boundary | **Accepted** (2026-08-28) | Cortxt OS is a general first-party app runtime; Work is its first principal app; Home and Activity Center are system surfaces; Work Console retires through a compatibility alias; Workspace keeps its execution-resource meaning. Supersedes only ADR-042 amendment B/C where they require Work Console as the automatically opened default app. |
-| 045 | Execution policy profiles and evidence contracts | **Proposed** | Resolve every dispatch to a named, versioned effect/evidence contract; labels constrain but never grant authority, and unsupported combinations fail closed. |
+| 045 | Execution policy profiles and evidence contracts | **Accepted** (2026-09-12) | Resolve every dispatch to a named, versioned effect/evidence contract; labels constrain but never grant authority, and unsupported combinations fail closed. |
 | 046 | Versioned request digest (dispatch.request.v2) | **Accepted** (2026-09-10) | Bind the confirmation to the semantic content and immutable revision of the execution configuration, not to identifiers; a material change invalidates a prior confirmation. Unblocks W10/W11. |
 | 047 | The three ACPs: client protocol, communication contract, and coordination plane | **Accepted** (2026-09-11) | Adopt Agent Client Protocol (agentclientprotocol.com) as a client (agent role deferred); the separate archived Agent Communication Protocol (i-am-bee/acp) is not adopted; `AcpAdapter` implements the existing `EngineAdapter` so `route()` and the broker are untouched; `invoke()` gains an additive `on_event` with a declared `supports_events` capability and no silent degradation; ACP `sessionId` and engine-native `session_id` occupy separate namespaces that never meet; `CORTXT-OUTCOME:` is retained for non-ACP workers and `completion_report`'s six states judge both paths; a cross-process claim owner replaces `RunRegistry`'s read-once/write-all store with atomic compare-and-swap, with no scheduling policy. Amends ADR-026/027/028. v1/v2 pin closed on a two-distinct-protocol basis. (See docs/findings/2026-09-11-acp-primary-source-review.md and docs/561-acp-decision-packet.md for the review and decision basis.) |
 

@@ -1,8 +1,8 @@
 # ADR-045: Execution policy profiles and evidence contracts
 
-**Status:** Proposed  
+**Status:** Accepted (2026-09-12)  
 **Date:** 2026-09-02  
-**Deciders:** Operator approval required  
+**Deciders:** Rikard (operator; approved 2026-09-12 via the coordinator session)  
 **Technical Story:** issue #495; follow-up to the S7 execution proof and issues #489, #490, and #493
 
 ## Context
