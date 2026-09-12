@@ -6,6 +6,7 @@ that modifies an Accepted ADR must add a row here.
 
 | Date | ADR | Change | PR |
 | --- | --- | --- | --- |
+| 2026-09-12 | ADR-045 | Accepted - status Proposed -> Accepted by operator approval 2026-09-12; named, versioned execution policy profiles and evidence contracts adopted as the dispatch-authority contract (materialized by PR #496); unblocks the Policy-001 parent (issue #585) whose execution authority was bound to this decision | #TBD |
 | 2026-09-11 | ADR-047 | Accepted - status Proposed -> Accepted by operator approval 2026-09-11; the three ACPs decision (client protocol / communication contract / coordination plane) adopted, including the v1/v2 pin closure (two-distinct-protocol basis) | #561 |
 | 2026-09-11 | ADR-026 | Amended - Status line receives `amended by ADR-047` marker (session / client-protocol dimension); no other edit | #561 |
 | 2026-09-11 | ADR-027 | Amended - Status line receives `amended by ADR-047` marker (session / client-protocol dimension); no other edit | #561 |
