@@ -3065,10 +3065,10 @@ def _run_work(args: argparse.Namespace) -> ResultEnvelope:
             request = None
             if getattr(args, "request_file", None) is not None:
                 request = json.loads(args.request_file.read_text(encoding="utf-8"))
-                from widget_contract.dispatch_request import _request_id
+                from widget_contract.dispatch_request import request_digest_v2
                 claimed_id = request.get("request_id")
                 unsigned = {k: v for k, v in request.items() if k != "request_id"}
-                if not isinstance(claimed_id, str) or _request_id(unsigned) != claimed_id:
+                if not isinstance(claimed_id, str) or request_digest_v2(unsigned) != claimed_id:
                     raise ValueError("dispatch request digest does not match its snapshot")
                 if request.get("issue_id") != args.issue_id or request.get("eligible") is not True:
                     raise ValueError("dispatch request is not eligible for this issue")
