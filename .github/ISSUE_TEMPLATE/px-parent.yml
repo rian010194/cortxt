@@ -1,0 +1,97 @@
+name: PX Workstream Parent
+description: Open a parent issue for a PX Workstream work package (template/tooling only; never a run or write authorization)
+title: "[PX Parent]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form records work only. Creating the issue does not start a run,
+        dispatch a worker, or authorize any write. Execution authority stays
+        Unknown until a separate, explicit operator approval per dispatch.
+
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: What bounded outcome should this work package produce?
+      placeholder: Describe one bounded outcome.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: work_type
+    attributes:
+      label: Work type
+      description: Projection metadata (PX-003 vocabulary; operator-owned, never auto-written).
+      options:
+        - Research
+        - Implementation
+        - Review
+        - Planning
+        - Verification
+        - Evidence collection
+        - Unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: route_role
+    attributes:
+      label: Route role
+      description: Proposed route only; the operator approves the final route.
+      options:
+        - Researcher
+        - Builder
+        - Reviewer
+        - Verifier
+        - Coordinator
+        - Operator
+        - Unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: execution_authority
+    attributes:
+      label: Execution authority
+      description: Keep Unknown until a separate, explicit operator approval for the specific write or dispatch.
+      options:
+        - Read-only
+        - Propose-only
+        - Write sandbox
+        - Write named files
+        - Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Write surface, launch surface, and explicit non-goals for this work package.
+      placeholder: |
+        Write surface: ...
+        Launch surface: none. Templating does not launch or authorize any run.
+        Non-goals: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: subtasks
+    attributes:
+      label: Subtasks
+      description: 'One bounded child per subtask, opened with the "PX Workstream Subtask" template and linked to this parent with an exact `Part of: #N` line.'
+      placeholder: |
+        - [ ] Example subtask title
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: approval
+    attributes:
+      label: Approval status
+      description: Operator approval only. A scoping note in this issue is never a dispatch, run, or write authorization.
+      options:
+        - label: Not approved - pending explicit operator review. This issue does not authorize any run, dispatch, or write.
+          required: true

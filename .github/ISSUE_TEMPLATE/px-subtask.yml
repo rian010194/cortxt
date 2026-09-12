@@ -1,0 +1,114 @@
+name: PX Workstream Subtask
+description: Open a subtask under a PX Workstream parent issue (template/tooling only; never a run or write authorization)
+title: "[PX Subtask]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form records work only. Creating the issue does not start a run,
+        dispatch a worker, or authorize any write. The control plane parses the
+        exact relation lines (`Part of: #N`, `Blocked by: #N`, `Depends on: #N`)
+        from the issue body, so keep their format exactly as shown.
+
+  - type: textarea
+    id: part_of
+    attributes:
+      label: Part of
+      description: 'The parent issue this subtask belongs to. The first line must be exactly `Part of: #N` with the parent issue number.'
+      placeholder: "Part of: #572"
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: 'One line per dependency, exactly `Depends on: #N` or `Blocked by: #N`. Leave empty when there are none.'
+      placeholder: |
+        Depends on: #574
+    validations:
+      required: false
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What outcome should this subtask produce?
+      placeholder: Describe one bounded outcome.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: work_type
+    attributes:
+      label: Work type
+      description: Projection metadata (PX-003 vocabulary; operator-owned, never auto-written).
+      options:
+        - Research
+        - Implementation
+        - Review
+        - Planning
+        - Verification
+        - Evidence collection
+        - Unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: route_role
+    attributes:
+      label: Route role
+      description: Proposed route only; the operator approves the final route.
+      options:
+        - Researcher
+        - Builder
+        - Reviewer
+        - Verifier
+        - Coordinator
+        - Operator
+        - Unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: execution_authority
+    attributes:
+      label: Execution authority
+      description: Keep Unknown until a separate, explicit operator approval for the specific write or dispatch.
+      options:
+        - Read-only
+        - Propose-only
+        - Write sandbox
+        - Write named files
+        - Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable conditions that define done for this subtask.
+      placeholder: |
+        - [ ] Expected result is present
+        - [ ] Evidence or test result is recorded
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and prohibited actions
+      description: State file, network, tool, publishing, and scope limits.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: approval
+    attributes:
+      label: Approval status
+      description: Operator approval only. A scoping note in this issue is never a dispatch, run, or write authorization.
+      options:
+        - label: Not approved - pending explicit operator review. This issue does not authorize any run, dispatch, or write.
+          required: true
