@@ -1,14 +1,15 @@
 ---
+// A' site reset, Fase 3 (2026-09-13): new minimal landing page per the
+// operator-approved Fase 0.1 content decision — hero (H1 + one-liner +
+// 3 CTAs), the live status table (all 8 rows), the Visual Atlas as the
+// single visual anchor, and the footer. No Studio, no demo fixtures,
+// no install commands, no marketing sections. Static HTML+CSS, one page.
+// Theme system preserved: /landing-theme.js (default quiet-slate,
+// localStorage-only preview toggle) and landing.css's token bridge.
+import '@xyflow/react/dist/style.css';
+import '../styles/atlas.css';
 import '../styles/landing.css';
-
-const heroPrimaryCtaLabel = 'Open Cortxt OS';
-const heroPrimaryCtaHref = '/workspace/';
-
-const usecases = [
-  ['Compliance', 'A review that survives a model swap', "A workstream's scope, evidence, and approval history stay attached to the GitHub issue that authorized it — regardless of which engine ran which step."],
-  ['Research', 'Long-running work that spans engines', 'Start on one adapter, continue on another after a provider change, without losing the mandate or the decision trail.'],
-  ['Incident response', 'An audit trail by default', 'Every action is evidence-backed and mandate-scoped from the first step, not bolted on after the fact for a postmortem.'],
-];
+import AtlasGraph from '../components/AtlasGraph';
 
 const statusRows = [
   ['Mandate issuance & verification, fail-closed policy gate', 'available', 'Available now'],
@@ -44,7 +45,7 @@ const statusRows = [
     <header class="nav shell">
       <a class="brand" href="/" aria-label="Cortxt home"><span>C</span>Cortxt</a>
       <nav aria-label="Primary navigation">
-        <a href="/workspace/">Home</a><a href="/widgets/">Cortxt OS</a><a href="/docs/">Docs</a><a href="/docs/architecture/">Architecture</a><a href="/privacy/">Trust</a>
+        <a href="/docs/">Docs</a><a href="/atlas/">Atlas</a>
         <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Preview color theme (this browser only)">
           <button type="button" data-preset="quiet-slate" class="active" title="Quiet Slate">&nbsp;</button>
           <button type="button" data-preset="graphite-ink" title="Graphite Ink">&nbsp;</button>
@@ -55,158 +56,28 @@ const statusRows = [
     </header>
     <main>
       <section class="hero shell">
-        <div class="hero-copy">
-          <p class="eyebrow"><i></i> An operating layer for durable AI work</p>
-          <h1>AI execution changes.<br /><em>Your work shouldn&rsquo;t have to start over.</em></h1>
-          <p class="lede">Agents get swapped. Models get upgraded. Providers change terms. Cortxt keeps the mandate, state, decisions, and evidence attached to the work itself &mdash; so none of that turns into a reset.</p>
-          <div class="actions">
-            <a class="primary" href={heroPrimaryCtaHref}>{heroPrimaryCtaLabel}</a>
-            <a class="secondary-cta" href="/docs/quick-start/">Get started with the CLI</a>
-          </div>
-          <p class="hero-secondary-links">
-            <a class="secondary" href="https://github.com/rian010194/cortxt">View on GitHub <span aria-hidden="true">-&gt;</span></a>
-          </p>
-          <div class="proof-strip" aria-label="Continuity proof summary">
-            <div class="proof-strip-text">
-              <strong>One workstream. Two runs. Same mandate.</strong>
-              <p>Run 1 executed on Hermes and stopped on a fail-closed policy block. Run 2, after a real fix, executed on claude-direct &mdash; same GitHub-issue workstream (#402), same mandate, same evidence trail.</p>
-            </div>
-            <div class="run-track">
-              <span class="run-node blocked">Run 1 &middot; Hermes &middot; blocked</span>
-              <span class="run-arrow">&rarr;</span>
-              <span class="run-node ok">Run 2 &middot; claude-direct &middot; done</span>
-            </div>
-            <!-- Continuity proof write-up not yet committed (PR A,
-                 docs/proofs/replaceable-execution-continuity.md) -- omit the
-                 link entirely until that lands; do not point at "#". -->
-            <span class="proof-strip-pending">Continuity proof write-up &mdash; coming soon</span>
-          </div>
-        </div>
-        <div class="hero-system" aria-label="Illustrative Cortxt workstream authority view">
-          <div class="system-top"><span><i></i> Workstream authority</span><b>Live contract</b></div>
-          <div class="system-title"><small>Desired outcome</small><strong>Ship reviewed policy evidence</strong><span>WS-042 &middot; Human owned</span></div>
-          <div class="system-grid">
-            <div><small>Mandate</small><b>Signed</b><span>scope + budget fixed</span></div>
-            <div><small>Decision</small><b class="attention">Required</b><span>reserved for human</span></div>
-            <div><small>Evidence</small><b>12 records</b><span>attributable</span></div>
-            <div><small>Policy</small><b>Fail closed</b><span>provider constrained</span></div>
-          </div>
-          <div class="system-run"><span>Run 01 &middot; Hermes</span><i></i><span>Run 02 &middot; Codex</span><b>workstream persisted</b></div>
+        <p class="eyebrow"><i></i> Cortxt</p>
+        <h1>An operating layer for durable AI&nbsp;work.</h1>
+        <p class="lede">AI execution changes. Your work shouldn&rsquo;t have to start over.</p>
+        <div class="actions">
+          <a class="primary" href="/docs/">Read the docs</a>
+          <a class="secondary-cta" href="/atlas/">See the atlas</a>
+          <a class="secondary" href="https://github.com/rian010194/cortxt">GitHub <span aria-hidden="true">-&gt;</span></a>
         </div>
       </section>
 
-      <section class="trust-rail shell" aria-label="Privacy and trust summary">
-        <span><b>No tracking cookies</b><small>No ad or visitor profiling scripts</small></span>
-        <span><b>Local-first today</b><small>No Cortxt account required</small></span>
-        <span><b>Mandate protected</b><small>Mutations fail closed</small></span>
-        <a href="/privacy/">Privacy &amp; trust <span aria-hidden="true">-&gt;</span></a>
-      </section>
-
-      <section class="section-band shell" aria-labelledby="problem-title">
-        <p class="eyebrow">The problem</p>
-        <h2 id="problem-title">Every agent session ends. The work it did shouldn&rsquo;t disappear with it.</h2>
-        <p class="section-lede">Switch models and you lose the thread. Swap an agent runtime and you lose the history. Most tools tie your scope, your approvals, and your evidence to whichever session happened to produce them. When that session ends &mdash; intentionally or not &mdash; you&rsquo;re rebuilding context from scratch.</p>
-        <ul class="problem-list">
-          <li>Context lives in a chat window, not a record.</li>
-          <li>Approval lives in someone&rsquo;s memory, not a mandate.</li>
-          <li>Evidence lives in a transcript, not something you can hand to a reviewer.</li>
-        </ul>
-      </section>
-
-      <section class="section-band shell alt" aria-labelledby="durable-title">
-        <div class="replace-grid">
-          <div>
-            <p class="eyebrow">Durable authority. Replaceable execution.</p>
-            <h2 id="durable-title">What must survive shouldn&rsquo;t depend on which engine you&rsquo;re on.</h2>
-            <p class="section-lede" style="margin-bottom:0">Cortxt separates what must survive from what shouldn&rsquo;t matter which one you&rsquo;re on. The mandate, the workstream state, the decisions made, and the evidence collected are Cortxt-owned and durable. The engine that executes a given run &mdash; Hermes, Codex, or another adapter behind the same contract &mdash; is a replaceable resource underneath that record, not the record itself.</p>
-          </div>
-          <div class="replace-diagram" role="img" aria-label="Hermes and Codex adapters are replaceable behind the Cortxt contract; mandate, state, decisions, and evidence are not">
-            <div class="replace-col">
-              <span class="replace-col-label">Replaceable</span>
-              <span class="replace-chip">hermes</span><span class="replace-chip">codex</span><span class="replace-chip">+ more adapters</span>
-            </div>
-            <div class="replace-arrow">-&gt;</div>
-            <div class="replace-col fixed">
-              <span class="replace-col-label">Cortxt contract</span>
-              <span class="replace-chip solid">mandate</span><span class="replace-chip solid">state</span><span class="replace-chip solid">decisions</span><span class="replace-chip solid">evidence</span>
-            </div>
-          </div>
+      <section class="atlas-band shell" aria-labelledby="atlas-title">
+        <p class="eyebrow">Visual Atlas</p>
+        <h2 id="atlas-title">The roadmap as a graph &mdash; issues, blockers, milestones, and the actionable frontier.</h2>
+        <div class="landing-atlas">
+          <AtlasGraph client:load />
         </div>
+        <p class="atlas-note">Derived from the GitHub issue record. <a href="/atlas/">Open the full atlas -&gt;</a></p>
       </section>
 
-      <section class="section-band shell" aria-labelledby="mandate-title">
-        <p class="eyebrow">Mandates, made concrete</p>
-        <h2 id="mandate-title">Give AI work a mandate &mdash; not a blank check.</h2>
-        <p class="section-lede">A mandate is scope, limits, and explicit authority, issued before a run starts. It&rsquo;s not a system prompt and it&rsquo;s not a permissions checkbox &mdash; per ADR-032, every mutating (Tier-1+) MCP tool call requires a signed, nonce-bound mandate envelope, verified before that call executes, and fails closed when the call steps outside it.</p>
-        <div class="mandate-example"><p><b>In the proof run above</b>, a policy gate rejected an out-of-scope action automatically, before any human had to notice or intervene. That&rsquo;s what &ldquo;mandate&rdquo; means in practice.</p></div>
-      </section>
-
-      <section class="section-band shell alt" aria-labelledby="os-title">
-        <div class="status-banner"><b>Interactive preview.</b> The first Work, Evidence, Decisions, and Attention Queue slice is merged to <code>main</code> with contract tests. The public preview uses demonstration data and does not create a hosted account or mutate your repositories.</div>
-        <p class="eyebrow">Cortxt OS</p>
-        <h2 id="os-title">Workstreams, not agent fleets.</h2>
-        <p class="section-lede">Cortxt OS is the human-facing surface for operating durable work &mdash; not a terminal, not a raw agent cockpit. It&rsquo;s organized around workstreams you have a mandate over, the decisions waiting on your attention, and the evidence a run produced.</p>
-        <div class="actions workspace-actions"><a class="primary" href="/workspace/">Enter Cortxt OS</a><a class="secondary-cta" href="/docs/product-status/">Check product status</a></div>
-        <div class="wc-mock" aria-label="Illustrative Work and Decisions view based on the merged first slice">
-          <div class="wc-mock-badge">Early preview &middot; In development</div>
-          <div class="wc-panel">
-            <div class="wc-panel-head"><span>Work</span><span>3 need attention</span></div>
-            <div class="wc-row">
-              <div><div class="wc-row-title">Example workstream A</div><div class="wc-row-meta">Hermes &rarr; claude-direct &middot; 12 evidence records</div></div>
-              <span class="chip attn">Attention</span>
-            </div>
-            <div class="wc-row">
-              <div><div class="wc-row-title">Example workstream B</div><div class="wc-row-meta">Codex &middot; running</div></div>
-              <span class="chip wait">Running</span>
-            </div>
-            <div class="wc-row">
-              <div><div class="wc-row-title">Example workstream C</div><div class="wc-row-meta">Hermes &middot; evidence complete</div></div>
-              <span class="chip ok">Ready to review</span>
-            </div>
-          </div>
-          <div class="wc-panel">
-            <div class="wc-panel-head"><span>Decisions</span><span>Waiting on you</span></div>
-            <div class="wc-row">
-              <div><div class="wc-row-title">Approve mandate renewal</div><div class="wc-row-meta">Example workstream A &middot; evidence attached</div></div>
-              <span class="chip attn">Attention</span>
-            </div>
-            <div class="wc-row">
-              <div><div class="wc-row-title">Review policy exception</div><div class="wc-row-meta">Example workstream B</div></div>
-              <span class="chip wait">Pending</span>
-            </div>
-          </div>
-        </div>
-        <p class="wc-mock-caption">Illustrative presentation of the merged first slice with placeholder workstreams &mdash; not real customer data or a completed case study.</p>
-        <p class="section-lede" style="margin-top:1rem;margin-bottom:0">Individual widget views can be generated from a prompt today (<code>cortxt widget generate</code>). The first Studio describe/generate/confirm flow is now merged; broader adaptive composition remains in development.</p>
-      </section>
-
-      <section class="section-band shell trust-section" aria-labelledby="trust-title">
-        <div>
-          <p class="eyebrow">Privacy by restraint</p>
-          <h2 id="trust-title">A product about durable authority shouldn&rsquo;t quietly profile its visitors.</h2>
-          <p class="section-lede">The public Cortxt site has no advertising, tracking pixels, visitor analytics, account system, or marketing-cookie layer. The theme switch stores one preference in your browser&rsquo;s local storage. Hosting infrastructure still receives ordinary request metadata needed to serve and protect the site.</p>
-          <a class="text-link" href="/privacy/">Read the privacy &amp; trust statement -&gt;</a>
-        </div>
-        <div class="trust-facts">
-          <span><i>01</i><b>No tracking cookies</b><small>No consent theatre for analytics we do not run.</small></span>
-          <span><i>02</i><b>No account required</b><small>Read the site and clone the project without signing up.</small></span>
-          <span><i>03</i><b>Explicit external boundaries</b><small>GitHub and hosting links have their own privacy terms.</small></span>
-        </div>
-      </section>
-
-      <section class="section-band shell" aria-labelledby="usecase-title">
-        <p class="eyebrow">Illustrative</p>
-        <h2 id="usecase-title">Built for work that outlives any one session.</h2>
-        <div class="grid usecase-grid">
-          {usecases.map(([tag, title, body]) => (
-            <article><span class="tag">{tag}</span><h3>{title}</h3><p>{body}</p></article>
-          ))}
-        </div>
-      </section>
-
-      <section class="section-band shell alt" aria-labelledby="status-title">
+      <section class="status-band shell" aria-labelledby="status-title">
         <p class="eyebrow">Where things stand</p>
-        <h2 id="status-title">What&rsquo;s real today, what&rsquo;s direction, and how to work with us.</h2>
+        <h2 id="status-title">What&rsquo;s real today, and what&rsquo;s direction.</h2>
         <div class="status-table-wrap">
           <table class="status-table">
             <thead><tr><th scope="col">Layer</th><th scope="col">Status</th></tr></thead>
@@ -217,40 +88,8 @@ const statusRows = [
             </tbody>
           </table>
         </div>
-        <p class="category-note">Cortxt is a mandate/work-first operating layer: it&rsquo;s built around what must persist across a run, not around any one agent framework or execution sandbox. That&rsquo;s a different concern from an agent/workspace tool like OpenHands, or a runtime/security/sandbox layer like OpenShell/NemoClaw &mdash; Cortxt is designed to sit above changing execution systems, not to replace them.</p>
-        <div class="partner-band">
-          <!-- No dedicated GitHub Discussion, design-partner issue form, or
-               contact page exists yet (Discussions is disabled repo-wide,
-               .github/ISSUE_TEMPLATE/config.yml has contact_links: []).
-               Temporary route: open a new GitHub issue on the repo, labeled
-               as temporary in the link text itself. Tracked follow-up:
-               lab/landing-page-rebuild-20260827/claims-ledger.md item 13 --
-               add a real contact_links entry / design-partner issue
-               template before this is a durable destination. -->
-          <p>We&rsquo;re working directly with a small number of teams shaping the Work and Evidence surfaces before wider release. If durable, mandate-scoped AI work is a problem you have today, <a href="https://github.com/rian010194/cortxt/issues/new">get in touch (temporary &mdash; opens a GitHub issue) -&gt;</a></p>
-          <p style="margin:0"><a href="https://github.com/rian010194/cortxt">Cortxt is open source on GitHub -&gt;</a></p>
-        </div>
       </section>
-
-      <section class="cta-band shell" aria-labelledby="start-title">
-        <p class="eyebrow">Start with what&rsquo;s real today</p>
-        <h2 id="start-title">No account, no hosted service to sign up for.</h2>
-        <p class="section-lede">Clone the repository and install the CLI&mdash;the interface used today for mandate issuance, dispatch, and evidence collection.</p>
-        <p class="command-platform-label">macOS / Linux</p>
-        <pre class="command cta-command" aria-label="Install command, from a cloned repository, macOS or Linux"><span># From a cloned repository</span>
-git clone https://github.com/rian010194/cortxt.git
-cd cortxt
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ./agent-platform
-cortxt --help</pre>
-        <p class="section-lede" style="margin-top:.5rem">Windows PowerShell activates with <code>.venv\Scripts\Activate.ps1</code> instead of the <code>source</code> line above &mdash; see the <a href="/docs/quick-start/">quick start</a> for the full, verified sequence on both platforms.</p>
-        <p class="section-lede">This installs and verifies the CLI. Mandate issuance, dispatch, and evidence collection are real today but run through a configured GitHub repository, not a single global demo &mdash; the <a href="/docs/quick-start/">quick start</a> walks through that full path.</p>
-        <div class="actions"><a class="primary" href="/docs/quick-start/">Get started with the CLI</a><a class="secondary" href="/docs/">Read the docs <span aria-hidden="true">-&gt;</span></a></div>
-      </section>
-
-      <section class="docs-band"><div class="shell"><p class="eyebrow">Reference</p><h2>Decisions, contracts, and what comes next.</h2><div class="links"><a href="/docs/adrs/"><strong>Accepted ADRs</strong><span>Normative architecture decisions -&gt;</span></a><a href="/docs/architecture/"><strong>Architecture</strong><span>Boundaries and execution contracts -&gt;</span></a><a href="/docs/roadmap/"><strong>Roadmap</strong><span>Current status and direction -&gt;</span></a></div></div></section>
     </main>
-    <footer class="shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><span class="footer-links"><a href="/privacy/">Privacy</a><a href="/docs/">Documentation -&gt;</a></span></footer>
+    <footer class="site-footer shell"><a class="brand" href="/"><span>C</span>Cortxt</a><span>Human mandate. Verifiable work.</span><span class="footer-links"><a href="/privacy/">Privacy</a><a href="/docs/">Documentation -&gt;</a></span></footer>
   </body>
 </html>

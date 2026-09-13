@@ -232,7 +232,7 @@ export default function AtlasGraph() {
   const searchBox = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch('./graph.json', { headers: { Accept: 'application/json' } })
+    fetch('/atlas/graph.json', { headers: { Accept: 'application/json' } })
       .then((r) => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
