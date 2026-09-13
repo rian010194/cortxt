@@ -1,0 +1,33 @@
+# Agent contract catalog (VLT-D-007 §2, issue #604).
+#
+# A pure, human-readable catalog of the agent repositories that consume the
+# distributed contract package and the pinned version each one uses. It is a
+# *catalog only*: it is never read by routing (route() in
+# agent-platform/routing/engine_manifest.py must never reference this file --
+# enforced by tests/widget_contract/test_contract_version_gate.py), and it
+# carries no execution authority by itself.
+#
+# Purpose in the N/N-1 policy: when every consumer below shows
+# `migration: pinned` at the current major version, N-1 support
+# (SUPPORTED_CONTRACT_VERSIONS' second entry) may be retired per VLT-D-007 §2.
+# Until that record exists, both lines stay supported.
+#
+# Pins use the distribution tag schema (VLT-D-007 §1):
+#   cortxt-contracts @ git+https://github.com/rian010194/cortxt@contracts/vX.Y.Z#subdirectory=contracts
+
+schema: agents-catalog/v1
+contract_tag_prefix: contracts/v
+
+agents:
+  - repo: rian010194/cortxt-agents
+    consumers:
+      - name: px_agent
+        role: builder
+        contract_version: worker.result.v1
+        pin: contracts/v2.0.0
+        migration: pinned
+      - name: docs_agent
+        role: builder
+        contract_version: worker.result.v1
+        pin: contracts/v2.0.0
+        migration: pinned

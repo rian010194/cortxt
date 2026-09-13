@@ -35,6 +35,36 @@ agent repositories as
 (VLT-D-007 §1). The tag `contracts/vX.Y.Z` is cut from the core repo when the
 first consuming agent repository exists.
 
+## Distribution step 2 (VLT-D-007, issue #604)
+
+The worker-facing pair is additionally packaged verbatim at
+`cortxt_contracts/schemas/dispatch-request.schema.json` and
+`result-envelope.schema.json` (copied by `scripts/export_contracts.py` -- the
+`--check` mode fails closed on drift), so a consumer validates against the
+*pinned* package instead of reading a core checkout.
+
+Version surface (`contracts/cortxt_contracts/version.py`):
+
+- `CONTRACT_PACKAGE_VERSION` -- the version the tag cut for a release must
+  equal (`contracts/vX.Y.Z`, strict semver).
+- `SUPPORTED_CONTRACT_VERSIONS` -- the N/N-1 window (exactly two entries,
+  newest first). N-1 support is retired only when `agents.yaml` records full
+  migration at N (VLT-D-007 §2).
+- `contract_tag()` / `parse_contract_tag()` -- the tag round-trip.
+
+Producer CI gate (`scripts/contract_version_gate.py`, run by CI):
+
+1. no `contracts/v*` tag yet -> green (first distribution);
+2. package version unchanged since the latest tag + packaged schema bytes
+   changed -> **red** (a contract change requires a version bump);
+3. MAJOR bump without extending `SUPPORTED_CONTRACT_VERSIONS` -> red;
+   window not exactly N/N-1 (newest first) -> red.
+
+`contracts/agents.yaml` is a **pure catalog** of consumers and their pins
+(VLT-D-007 §2). It is read by the operator and the N/N-1 retirement decision,
+never by `route()` -- routing must never reference it (ADR-026 boundary,
+enforced by test).
+
 Contracts that exist today:
 
 - `dispatch-request.schema.json` -- shape of a worker dispatch request (issue,

@@ -93,6 +93,56 @@ def write_schema_exports(output_dir: Path = CONTRACTS_DIR) -> list[Path]:
     return written
 
 
+#: The hand-written worker-facing pair, copied verbatim into the packaged
+#: schemas directory on export (VLT-D-007 step 2): a consumer validates
+#: against the pinned package, not a core checkout. These files are NOT
+#: canonicalised -- they are hand-written and validated by the core tests --
+#: so they are copied byte-for-byte.
+WORKER_SCHEMA_SOURCES: tuple[str, ...] = (
+    "dispatch-request.schema.json",
+    "result-envelope.schema.json",
+)
+
+_WORKER_PACKAGE_RELDIR = "cortxt_contracts/schemas"
+
+
+def sync_worker_schema_package(output_dir: Path = CONTRACTS_DIR) -> list[Path]:
+    """Copy the worker-facing pair into the packaged schemas directory.
+
+    Returns the paths written. The copy is verbatim: these two files are
+    hand-written and validated by the core's own tests, so any normalisation
+    here would create exactly the second-source drift step 1 removed.
+    """
+    written: list[Path] = []
+    package_schemas = output_dir / _WORKER_PACKAGE_RELDIR
+    package_schemas.mkdir(parents=True, exist_ok=True)
+    for name in WORKER_SCHEMA_SOURCES:
+        target = package_schemas / name
+        target.write_bytes((output_dir / name).read_bytes())
+        written.append(target)
+    return written
+
+
+def check_worker_schema_package(output_dir: Path = CONTRACTS_DIR) -> list[str]:
+    """Return drift findings for the packaged worker pair; empty = congruent."""
+    problems: list[str] = []
+    for name in WORKER_SCHEMA_SOURCES:
+        repo_file = output_dir / name
+        packaged = output_dir / _WORKER_PACKAGE_RELDIR / name
+        if not packaged.exists():
+            problems.append(
+                f"{_WORKER_PACKAGE_RELDIR}/{name}: missing "
+                f"({_EXPORT_INSTRUCTIONS})"
+            )
+            continue
+        if packaged.read_bytes() != repo_file.read_bytes():
+            problems.append(
+                f"{_WORKER_PACKAGE_RELDIR}/{name}: drifted from {name} "
+                f"({_EXPORT_INSTRUCTIONS})"
+            )
+    return problems
+
+
 def check_schema_exports(output_dir: Path = CONTRACTS_DIR) -> list[str]:
     """Return a human-readable list of drift findings; empty means congruent."""
     problems: list[str] = []

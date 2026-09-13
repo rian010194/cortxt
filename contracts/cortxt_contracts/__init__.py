@@ -14,9 +14,15 @@ from __future__ import annotations
 import json
 from importlib import resources
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
-__all__ = ["__version__", "load_schema", "schema_names"]
+__all__ = [
+    "WORKER_SCHEMA_FILES",
+    "__version__",
+    "load_schema",
+    "schema_names",
+    "worker_contract_grammar",
+]
 
 
 def load_schema(name: str) -> dict:
@@ -36,3 +42,31 @@ def schema_names() -> list[str]:
         for path in (resources.files("cortxt_contracts") / "schemas").iterdir()
         if path.name.endswith(".schema.json")
     )
+
+
+# -- worker contract surface (VLT-D-007 step 2, issue #604) -----------------
+
+#: The worker-facing schema pair, packaged alongside the projection exports so
+#: a consumer validates against the *pinned* contract instead of reading a
+#: core checkout. Copied verbatim from the repo's ``contracts/`` by
+#: ``scripts/export_contracts.py`` -- never hand-edited.
+WORKER_SCHEMA_FILES: tuple[str, ...] = (
+    "dispatch-request",
+    "result-envelope",
+)
+
+
+def worker_contract_grammar() -> dict:
+    """The worker-contract grammar, as packaged (read-only).
+
+    Mirrors the core's ``agent-platform/routing/worker_contract.py``
+    declarations. The congruence test
+    (``tests/widget_contract/test_contract_distribution.py``) fails closed if
+    the core declarations change without this copy being regenerated.
+    """
+    return {
+        "contract_version": "worker.result.v1",
+        "attestation_prefix": "CORTXT-OUTCOME:",
+        "attestable": ("completed", "declined"),
+        "source": "packaged",
+    }

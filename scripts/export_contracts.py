@@ -21,6 +21,8 @@ sys.path.insert(0, str(REPO_ROOT / "agent-platform"))
 
 from widget_contract.schema_source import (  # noqa: E402
     check_schema_exports,
+    check_worker_schema_package,
+    sync_worker_schema_package,
     write_schema_exports,
 )
 
@@ -35,12 +37,14 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.check:
-        problems = check_schema_exports()
+        problems = check_schema_exports() + check_worker_schema_package()
         for problem in problems:
             print(f"DRIFT: {problem}", file=sys.stderr)
         return 1 if problems else 0
 
     for path in write_schema_exports():
+        print(f"wrote {path}")
+    for path in sync_worker_schema_package():
         print(f"wrote {path}")
     return 0
 
