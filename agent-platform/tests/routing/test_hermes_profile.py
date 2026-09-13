@@ -311,6 +311,182 @@ def test_resolve_profile_ignores_secrets_in_the_config(profiles_root):
 
 
 # --------------------------------------------------------------------------
+# R1 review fixes -- P1-a: a fallback entry is projected onto the non-secret
+# routing allowlist. Nothing else (api_key, key_env, provider-local extras)
+# reaches the returned chain or the revision.
+# --------------------------------------------------------------------------
+
+
+def test_fallback_entry_projects_only_the_routing_allowlist(profiles_root):
+    entry = {
+        "provider": "openrouter",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "base_url": "https://openrouter.ai/api/v1/",
+        "api_mode": "chat_completions",
+        "api_key": "sk-or-v1-super-secret",
+        "key_env": "OPENROUTER_API_KEY",
+        "max_tokens": 4096,
+    }
+    _write_profile(profiles_root, "builder", {**DECLARED, "fallback_providers": [entry]})
+    resolved = resolve_profile("builder", profiles_root=profiles_root)
+    assert resolved["fallback"] == [
+        {
+            "provider": "openrouter",
+            "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_mode": "chat_completions",
+        }
+    ]
+    serialized = json.dumps(resolved)
+    assert "secret" not in serialized
+    assert "api_key" not in serialized
+    assert "key_env" not in serialized
+    assert "max_tokens" not in serialized
+
+
+def test_fallback_secret_rotation_and_non_routing_extras_do_not_move_the_revision(profiles_root):
+    """P1-a: a credential rotation must not move an approved profile revision."""
+    route = {
+        "provider": "openrouter",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    }
+    base = {**DECLARED, "fallback_providers": [{**route, "api_key": "sk-or-v1-one", "max_tokens": 4096}]}
+    rotated = {
+        **DECLARED,
+        "fallback_providers": [
+            {**route, "api_key": "sk-or-v1-rotated", "key_env": "OTHER_ENV", "max_tokens": 8192}
+        ],
+    }
+    _write_profile(profiles_root, "builder", base)
+    _write_profile(profiles_root, "rotated", rotated)
+    base_resolved = resolve_profile("builder", profiles_root=profiles_root)
+    # The projected chain equals the spec's literal expectation: the revision is
+    # the independently derived EXPECTED_REVISION literal, not a recomputation.
+    assert base_resolved["fallback"] == EXPECTED_PROFILE["fallback"]
+    assert hermes_profile_revision(base_resolved) == EXPECTED_REVISION
+    assert hermes_profile_revision(
+        resolve_profile("rotated", profiles_root=profiles_root)
+    ) == EXPECTED_REVISION
+
+
+# --------------------------------------------------------------------------
+# R1 review fixes -- P1-b: the effective chain mirrors Hermes
+# get_fallback_chain (hermes_cli/fallback_config.py): fallback_providers keeps
+# its order, legacy fallback_model entries are appended, deduped on
+# (provider.lower(), model.lower(), normalised base_url.lower()).
+# --------------------------------------------------------------------------
+
+
+def test_fallback_chain_merges_primary_then_legacy_in_order(profiles_root):
+    declared = {
+        "model": {**DECLARED["model"]},
+        "fallback_providers": [
+            {"provider": "openrouter", "model": "a"},
+            {"provider": "inferx", "model": "b"},
+        ],
+        "fallback_model": {"provider": "groq", "model": "c"},
+    }
+    _write_profile(profiles_root, "builder", declared)
+    assert resolve_profile("builder", profiles_root=profiles_root)["fallback"] == [
+        {"provider": "openrouter", "model": "a"},
+        {"provider": "inferx", "model": "b"},
+        {"provider": "groq", "model": "c"},
+    ]
+
+
+def test_changing_the_legacy_fallback_entry_moves_the_revision(profiles_root):
+    """AC2 hole the old key-priority read left open: the legacy chain is effective."""
+    declared = {
+        "model": {**DECLARED["model"]},
+        "fallback_providers": [{"provider": "openrouter", "model": "a"}],
+        "fallback_model": {"provider": "groq", "model": "c"},
+    }
+    changed = {**declared, "fallback_model": {"provider": "groq", "model": "c2"}}
+    _write_profile(profiles_root, "builder", declared)
+    _write_profile(profiles_root, "changed", changed)
+    assert hermes_profile_revision(
+        resolve_profile("changed", profiles_root=profiles_root)
+    ) != hermes_profile_revision(resolve_profile("builder", profiles_root=profiles_root))
+
+
+def test_fallback_chain_dedupes_on_case_insensitive_identity(profiles_root):
+    declared = {
+        "model": {**DECLARED["model"]},
+        "fallback_providers": [
+            {"provider": "OpenRouter", "model": "A", "base_url": "https://x.ai/v1/"},
+        ],
+        "fallback_model": [
+            {"provider": "openrouter", "model": "a", "base_url": "https://x.ai/v1"},
+            {"provider": "inferx", "model": "b"},
+        ],
+    }
+    _write_profile(profiles_root, "builder", declared)
+    assert resolve_profile("builder", profiles_root=profiles_root)["fallback"] == [
+        {"provider": "OpenRouter", "model": "A", "base_url": "https://x.ai/v1"},
+        {"provider": "inferx", "model": "b"},
+    ]
+
+
+def test_empty_primary_fallback_still_merges_the_legacy_chain(profiles_root):
+    declared = {
+        "model": {**DECLARED["model"]},
+        "fallback_providers": [],
+        "fallback_model": [{"provider": "inferx", "model": "b"}],
+    }
+    _write_profile(profiles_root, "builder", declared)
+    assert resolve_profile("builder", profiles_root=profiles_root)["fallback"] == [
+        {"provider": "inferx", "model": "b"}
+    ]
+
+
+# --------------------------------------------------------------------------
+# R1 review fixes -- P2 adopts: model-key precedence, explicit-empty vs
+# undeclared chain, and malformed chains failing closed.
+# --------------------------------------------------------------------------
+
+
+def test_model_name_prefers_default_when_both_keys_are_declared(profiles_root):
+    declared = {"model": {**DECLARED["model"], "model": "via-model-key"}}
+    _write_profile(profiles_root, "builder", declared)
+    assert resolve_profile("builder", profiles_root=profiles_root)["model"] == "deepseek-v4.1-flash"
+
+
+@pytest.mark.parametrize(
+    "key, empty",
+    [
+        ("fallback_providers", []),
+        ("fallback_providers", {}),
+        ("fallback_providers", None),
+        ("fallback_model", []),
+    ],
+)
+def test_explicitly_empty_fallback_key_is_equivalent_to_an_undeclared_chain(profiles_root, key, empty):
+    """Documented semantics: a missing chain and an explicit-empty chain are both 'no chain'.
+
+    ``None`` (YAML ``fallback_providers:`` with no value), an empty list and an
+    empty mapping are all "declared but empty", exactly as Hermes'
+    ``_iter_fallback_entries`` reads them. A wrong-typed chain (a bare string)
+    still fails closed.
+    """
+    _write_profile(profiles_root, "builder", {"model": {**DECLARED["model"]}, key: empty})
+    _write_profile(profiles_root, "undeclared", {"model": {**DECLARED["model"]}})
+    assert resolve_profile("builder", profiles_root=profiles_root)["fallback"] == []
+    assert hermes_profile_revision(
+        resolve_profile("builder", profiles_root=profiles_root)
+    ) == hermes_profile_revision(resolve_profile("undeclared", profiles_root=profiles_root))
+
+
+def test_malformed_fallback_entry_missing_a_route_raises(profiles_root):
+    declared = {
+        "model": {**DECLARED["model"]},
+        "fallback_providers": [{"provider": "openrouter"}],
+    }
+    _write_profile(profiles_root, "builder", declared)
+    with pytest.raises(HermesProfileError):
+        resolve_profile("builder", profiles_root=profiles_root)
+
+
+# --------------------------------------------------------------------------
 # Binding surface -- the bound tuple is additive, the shared tuple is intact.
 # --------------------------------------------------------------------------
 

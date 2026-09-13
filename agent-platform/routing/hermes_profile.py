@@ -16,11 +16,25 @@ Declared fields and where they live in ``config.yaml``:
 - ``provider``  -- ``model.provider``
 - ``base_url``  -- ``model.base_url``
 - ``api_mode``  -- ``model.api_mode``
-- ``fallback``  -- the declared fallback chain: ``fallback_providers`` (the
-  primary key) or the legacy ``fallback_model``; a single mapping is normalised
-  to a one-entry list, and an undeclared chain resolves to ``[]`` ("no declared
+- ``fallback``  -- the declared fallback chain, read with the *same* merge
+  semantics as Hermes' own ``get_fallback_chain``
+  (``hermes_cli/fallback_config.py``): ``fallback_providers`` is the primary key
+  and keeps its order, legacy ``fallback_model`` entries are appended after it,
+  and an entry already present (same provider/model/normalised base_url, case-
+  insensitive) is deduplicated. Each effective entry is then *projected onto an
+  explicit non-secret routing allowlist* -- ``provider``, ``model``,
+  ``base_url``, ``api_mode`` -- and every other key is dropped. That keeps an
+  inline ``api_key`` / ``key_env`` out of both the returned dict and the
+  revision (a credential rotation must never move an approved digest), and it
+  keeps provider-local extras such as ``max_tokens`` out of the revision too,
+  because a non-routing extra is not execution configuration. An undeclared
+  chain and an explicitly empty one both resolve to ``[]`` ("no declared
   fallback"), not to an error -- an absent chain is a well-defined value, unlike
-  an absent model/provider/base_url/api_mode.
+  an absent model/provider/base_url/api_mode. A chain of the wrong type, or an
+  entry that is not a mapping or does not name both a provider and a model,
+  fails closed rather than being silently skipped, because a fallback the
+  operator declared but the resolver dropped would make ``profile_revision``
+  blind to it.
 
 Fail-closed: an unknown profile, an empty/non-string name, a name that would
 escape the profiles root, a missing/unreadable/unparseable/empty config file,
@@ -73,7 +87,15 @@ DEFAULT_PROFILES_ROOT = Path("C:/Users/rikar/AppData/Local/hermes/profiles")
 _CONFIG_FILENAME = "config.yaml"
 _MODEL_BLOCK = "model"
 _MODEL_NAME_KEYS = ("default", "model")
+# Primary first, legacy appended -- the order Hermes' ``get_fallback_chain``
+# merges in.
 _FALLBACK_KEYS = ("fallback_providers", "fallback_model")
+# The non-secret routing keys an effective fallback entry is projected onto.
+# Everything else in a declared entry (``api_key``, ``key_env``, ``max_tokens``,
+# provider-local extras) is dropped: it is neither routing configuration nor
+# something the returned profile may carry.
+_FALLBACK_ENTRY_FIELDS = ("provider", "model", "base_url", "api_mode")
+_REQUIRED_FALLBACK_ENTRY_FIELDS = ("provider", "model")
 
 
 class HermesProfileError(RuntimeError):
@@ -131,33 +153,100 @@ def _bound_string(block: Mapping[str, Any], keys: tuple[str, ...], field: str, n
     raise HermesProfileError(f"profile {name!r} declares no {field!r}")
 
 
-def _declared_fallback(config: Mapping[str, Any], name: str) -> list[dict[str, Any]]:
-    """The declared fallback chain, as a list of fresh entry mappings.
+def _normalized_base_url(value: Any) -> str:
+    """A base_url normalised the way Hermes normalises it for comparison."""
+    if not isinstance(value, str):
+        return ""
+    return value.strip().rstrip("/")
 
-    ``fallback_providers`` wins over the legacy ``fallback_model``. A single
-    declared mapping is normalised to a one-entry list; an undeclared chain is
-    the empty list. A declared-but-malformed chain fails closed.
+
+def _project_fallback_entry(entry: Mapping[str, Any], key: str, name: str) -> dict[str, Any]:
+    """Project a declared fallback entry onto the non-secret routing allowlist.
+
+    Only :data:`_FALLBACK_ENTRY_FIELDS` can appear in the result. ``provider``
+    and ``model`` must be declared and non-empty; ``base_url`` / ``api_mode``
+    are optional but must be strings when present. A malformed entry fails
+    closed -- an entry the operator declared but the resolver dropped would make
+    ``profile_revision`` blind to a fallback the runtime would actually use.
     """
+    projected: dict[str, Any] = {}
+    for field in _REQUIRED_FALLBACK_ENTRY_FIELDS:
+        value = entry.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise HermesProfileError(
+                f"profile {name!r} declares a malformed {key!r} entry: expected a "
+                f"non-empty string {field!r}"
+            )
+        projected[field] = value.strip()
+    for field in _FALLBACK_ENTRY_FIELDS:
+        if field in _REQUIRED_FALLBACK_ENTRY_FIELDS or field not in entry:
+            continue
+        value = entry[field]
+        if not isinstance(value, str):
+            raise HermesProfileError(
+                f"profile {name!r} declares a malformed {key!r} entry: expected "
+                f"{field!r} to be a string"
+            )
+        normalized = value.strip().rstrip("/") if field == "base_url" else value.strip()
+        if normalized:
+            projected[field] = normalized
+    return projected
+
+
+def _fallback_entry_identity(entry: Mapping[str, Any]) -> tuple[str, str, str]:
+    """Dedup identity, identical to Hermes' ``_entry_identity``."""
+    return (
+        str(entry.get("provider") or "").strip().lower(),
+        str(entry.get("model") or "").strip().lower(),
+        _normalized_base_url(entry.get("base_url")).lower(),
+    )
+
+
+def _declared_fallback(config: Mapping[str, Any], name: str) -> list[dict[str, Any]]:
+    """The effective fallback chain, mirroring Hermes' ``get_fallback_chain``.
+
+    ``fallback_providers`` keeps its order and legacy ``fallback_model`` entries
+    are appended, deduplicated on
+    ``(provider.lower(), model.lower(), normalised base_url.lower())``. A single
+    declared mapping is normalised to a one-entry list; an undeclared key, or an
+    explicitly empty list, contributes no entries. Every effective entry is
+    projected onto :data:`_FALLBACK_ENTRY_FIELDS`; anything the chain declares
+    of the wrong shape fails closed.
+    """
+    chain: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
     for key in _FALLBACK_KEYS:
         if key not in config:
             continue
         raw = config[key]
-        entries = [raw] if isinstance(raw, Mapping) else raw
-        if not isinstance(entries, list) or not entries:
+        if raw is None:
+            # A declared-but-null key is an explicitly empty chain, exactly as
+            # Hermes' ``_iter_fallback_entries`` reads it.
+            continue
+        if isinstance(raw, Mapping):
+            entries = [raw] if raw else []
+        elif isinstance(raw, list):
+            entries = raw
+        else:
+            entries = None
+        if entries is None:
             raise HermesProfileError(
                 f"profile {name!r} declares a malformed {key!r}: expected an entry "
-                "mapping or a non-empty list of entry mappings"
+                "mapping or a list of entry mappings"
             )
-        fallback: list[dict[str, Any]] = []
         for entry in entries:
             if not isinstance(entry, Mapping):
                 raise HermesProfileError(
                     f"profile {name!r} declares a malformed {key!r} entry: "
                     "expected a mapping"
                 )
-            fallback.append(dict(entry))
-        return fallback
-    return []
+            projected = _project_fallback_entry(entry, key, name)
+            identity = _fallback_entry_identity(projected)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            chain.append(projected)
+    return chain
 
 
 def resolve_profile(name: str, *, profiles_root: Path | str | None = None) -> dict[str, Any]:
