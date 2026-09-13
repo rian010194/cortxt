@@ -73,6 +73,28 @@ jobs:
       - name: Check global design-system conformance
         run: python scripts/design_system_conformance.py
 
+  # VLT-D-007 step 2 (issue #604): the producer contract gate. Export drift
+  # (packaged bytes != embedded production schemas) and a contract change
+  # without a package-version bump (N/N-1 policy vs the latest contracts/vX.Y.Z
+  # tag) are both red. Read-only: never tags, never writes, no network.
+  contract-distribution-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest pyyaml jsonschema
+      - run: python scripts/contract_gate.py
+      - name: Distribution tests (package surface, gate, agents.yaml boundary)
+        run: >-
+          pytest
+          agent-platform/tests/widget_contract/test_contract_distribution.py
+          agent-platform/tests/widget_contract/test_contract_version_gate.py
+          -v
+
   # W1: the dispatch-path regression suites. These four files cover the
   # claim -> Evidence Gate -> review-submission chain in scripts/dispatcher.py,
   # scripts/worker_adapters.py and scripts/work_launcher.py, and until now no
