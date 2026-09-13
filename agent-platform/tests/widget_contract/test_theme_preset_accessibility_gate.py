@@ -98,8 +98,10 @@ def test_indicator_contrast_meets_wcag_non_text_minimum(preset_id: str, fg_role:
     reach >=3:1 against `background`. Issue #378's acceptance criteria scope
     this check to stroke/indicator vs *background* only. Stroke vs *surface*
     is a separate, real gap: `.os`, `.docs pre`, and `.docs>header span` in
-    the accepted /prototypes reference (`site/src/styles/prototypes.css` on
-    branch `docs/daemon-dogfood`) render `--stroke`-bordered elements
+    the accepted /prototypes reference (the prototypes study lived on branch
+    `docs/daemon-dogfood` as `site/src/styles/prototypes.css` -- that file is
+    not present on main; see the A' site reset, 2026-09-13) render
+    `--stroke`-bordered elements
     directly on `--surface`, and measured stroke/surface contrast there is
     ~2.85-2.89:1 across all three presets -- below the 3:1 floor. That gap
     is left open for issue #373/#376 to address and is deliberately not
