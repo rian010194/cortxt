@@ -262,10 +262,14 @@ def verify_commit_correlation(
     # at all (`containment_snapshot_missing`, recorded fail-closed for a
     # launcher-owned mutating Run that reaches the gate with no pre-launch
     # snapshot) is refused on the same terms: an unscannable Run cannot prove
-    # where it wrote. Both refuse with the stable reason code
-    # `containment_violation`. Every other recorded code
-    # (`containment_clean`, `worktree_dirty_uncommitted`) and a missing field
-    # (legacy Runs that predate the scan) behave exactly as before.
+    # where it wrote. A scan that could not complete at all
+    # (`containment_scan_error`) is refused the same way for the same reason:
+    # an unscannable Run cannot prove where it wrote, and a worker must not
+    # be able to mask an escape by inducing a scan failure. All three refuse
+    # with the stable reason code `containment_violation`. Every other
+    # recorded code (`containment_clean`, `worktree_dirty_uncommitted`) and a
+    # missing field (legacy Runs that predate the scan) behave exactly as
+    # before.
     containment = getattr(run, "containment", None)
     if containment == "launcher_checkout_dirty":
         return CorrelationFailure(
@@ -285,6 +289,17 @@ def verify_commit_correlation(
             "between dispatch and settlement loses them. The Run cannot prove "
             "where it wrote, so its output is unbounded by the approved scope; "
             "re-launch a fresh Run through the sanctioned path.")
+    if containment == "containment_scan_error":
+        return CorrelationFailure(
+            "containment_violation",
+            f"the post-run containment scan recorded {containment!r}: the scan "
+            "could not complete, so the Run's containment was never verified",
+            "The containment scan failed (e.g. an unreadable sweep root or "
+            "checkout) instead of producing a verdict. An unscannable Run "
+            "cannot prove where it wrote -- the error is treated exactly like "
+            "a violation, not as a pass -- so inspect the geometry that made "
+            "the scan fail and re-launch a fresh Run through the sanctioned "
+            "path.")
 
     # Correlation is mandatory, not opportunistic. Previously each of these was
     # checked only when the worker happened to supply it, so a result envelope

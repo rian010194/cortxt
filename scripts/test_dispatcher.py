@@ -316,6 +316,35 @@ def run_all_checks():
     check("a snapshot-missing Run's label goes to blocked, never review",
           gh_m.labels["o/r#38"] == ["workflow:blocked"])
 
+    print("== Evidence Gate (#608): containment_scan_error refuses a succeeded mutating Run, ahead of correlation ==")
+    # A scan that could not complete (unreadable sweep root / unreadable
+    # checkout) records `containment_scan_error` fail-closed. A worker that
+    # can induce that code must not be able to mask an escape behind it: an
+    # unscannable Run cannot prove where it wrote, so the gate refuses it on
+    # the same terms as the other unprovable-containment codes -- ahead of
+    # correlation, with the stable `containment_violation` reason code.
+    submissions_e = []
+    ws_e = tempfile.mkdtemp(prefix="dispatcher-containment-scan-error-")
+    gh_e = FakeGitHub({"o/r#39": ["workflow:ready"]})
+    disp_e = d.Dispatcher(d.RunRegistry(Path(ws_e) / "runs.json"), gh_e,
+                          review_submitter=lambda run, env, ev: submissions_e.append(run.run_id) or "sub-e")
+    run_e = disp_e.claim("o/r#39", "wedge-b", "builder", "hermes", 600)
+    disp_e.registry.update(run_e.run_id, mutating=True,
+                           containment="containment_scan_error")
+    refusal_e = ce.verify_commit_correlation(disp_e.registry.get(run_e.run_id), {})
+    check("the gate function refuses a containment_scan_error Run with containment_violation",
+          isinstance(refusal_e, ce.CorrelationFailure) and refusal_e.code == "containment_violation",
+          repr(getattr(refusal_e, "code", refusal_e)))
+    disp_e.complete(run_e.run_id, "succeeded", {"evidence": "claimed success, scan induced to fail"})
+    q_e = disp_e.query(run_e.run_id)
+    check("a scan-error success is recorded blocked, not succeeded",
+          q_e["status"] == "blocked")
+    check("the scan-error refusal carries the stable containment_violation code",
+          (q_e["result"] or {}).get("error", {}).get("category") == "containment_violation")
+    check("a scan-error Run earns NO review submission", submissions_e == [])
+    check("a scan-error Run's label goes to blocked, never review",
+          gh_e.labels["o/r#39"] == ["workflow:blocked"])
+
     print("== Evidence Gate (#490): a gate that itself raises also blocks (fails closed) ==")
     ws_raise = tempfile.mkdtemp(prefix="dispatcher-review-raise-")
     gh_raise = FakeGitHub({"o/r#32": ["workflow:ready"]})
