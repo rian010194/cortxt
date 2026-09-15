@@ -255,6 +255,24 @@ def verify_commit_correlation(
     git = git or _subprocess_git(repo_path)
     envelope = result_envelope or {}
 
+    # #608 containment check, ahead of every correlation step: a `succeeded`
+    # mutating Run whose post-run scan recorded `launcher_checkout_dirty`
+    # wrote outside its registered worktree, so whatever commit it presents
+    # cannot be this Run's evidence. Refused with the stable reason code
+    # `containment_violation`. Every other recorded code
+    # (`containment_clean`, `worktree_dirty_uncommitted`) and a missing field
+    # (legacy Runs that predate the scan) behave exactly as before.
+    containment = getattr(run, "containment", None)
+    if containment == "launcher_checkout_dirty":
+        return CorrelationFailure(
+            "containment_violation",
+            f"the post-run containment scan recorded {containment!r}: the launcher's "
+            "dispatching checkout changed during the Run, i.e. activity outside "
+            "the Run's registered worktree",
+            "The worker wrote outside its registered isolated worktree; its output "
+            "is unbounded by the approved scope. Inspect the dispatching checkout "
+            "for stray changes, revert them, and re-launch a fresh Run.")
+
     # Correlation is mandatory, not opportunistic. Previously each of these was
     # checked only when the worker happened to supply it, so a result envelope
     # that simply omitted `run_id` skipped its own correlation check -- the

@@ -206,6 +206,12 @@ class Run:
     # only by the sanctioned submission path; review-sync moves the Issue to
     # `workflow:review` from that event, never from a terminal worker status.
     review_submission_id: Optional[str] = None
+    # Post-run containment verdict (#608), recorded by the launcher when the
+    # worker reaches any terminal status: `containment_clean` |
+    # `worktree_dirty_uncommitted` | `launcher_checkout_dirty` (|
+    # `containment_scan_error`). Present only after a scan ran; its absence
+    # marks a legacy Run, which the Evidence Gate treats exactly as today.
+    containment: Optional[str] = None
 
     def gh_sync_claim_stale(self, now: Optional[float] = None) -> bool:
         """A claim older than GH_SYNC_CLAIM_LEASE_SECONDS is treated as
