@@ -9,6 +9,7 @@ Proves the authoritative-dispatchability reconciliation:
 - any post-claim start failure becomes terminal and releases the claim;
 - a second click/replay creates no duplicate Run.
 """
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -97,10 +98,24 @@ def _real_launcher(tmp_path, *, dispatch=None, issue_id="owner/repo#482"):
         # S7d: the UI launch path now isolates by default, and the launcher
         # verifies the directory exists before reporting that isolation, so a
         # stand-in for `git worktree add` has to create it like the real one.
+        # #608: the launcher's post-run containment scan reads the worktree
+        # with git (porcelain), so the stand-in must also be a real git repo
+        # with a seed commit -- a bare mkdir is unreadable to git (rc=128)
+        # and the scan records containment_scan_error for a Run that this
+        # chain expects to reach the unattested-outcome verdict instead.
         if argv[1] == "rev-parse":
             # #509: the launcher resolves the branch's base before creating it.
             return SimpleNamespace(returncode=0, stdout="0" * 40)
-        Path(argv[-2]).mkdir(parents=True, exist_ok=True)
+        worktree = Path(argv[-2])
+        worktree.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "init", "-q"], cwd=worktree, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"],
+                       cwd=worktree, check=True)
+        subprocess.run(["git", "config", "user.name", "test"],
+                       cwd=worktree, check=True)
+        (worktree / "seed.txt").write_text("seed\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=worktree, check=True)
         return SimpleNamespace(returncode=0)
 
     app = WorkLauncher(
