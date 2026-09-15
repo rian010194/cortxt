@@ -56,6 +56,11 @@ from widget_contract.detail import _workflow_state
 from widget_contract.generation import generate_widget_spec
 from widget_contract.loader import load_widget_file
 from widget_contract.validation import ValidationError, validate
+from widget_contract.product_packaging.ops_api import (
+    OPS_API_SCHEMA_VERSION,
+    OpsApiError,
+    PackagingOpsApi,
+)
 
 WIDGET_DIR = Path(__file__).parent
 AGENT_PLATFORM_DIR = WIDGET_DIR.parent
@@ -91,6 +96,31 @@ WIDGET_GENERATE_REQUEST_SCHEMA = {
     "properties": {
         "prompt": {"type": "string"},
         "confirm": {"type": "boolean"},
+    },
+}
+
+# W-3 (#612): the packaging action route requires the SAME operator gate
+# shape as POST /api/action -- explicit confirmation plus a non-empty
+# approval reference (which build_action binds as the authorization
+# reference), on top of the shared session-token header check.
+PACKAGING_ACTION_REQUEST_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["action_id", "package_id", "approval_ref", "confirm"],
+    "properties": {
+        "action_id": {"type": "string",
+                      "enum": ["packaging.create-revision", "packaging.record-operation",
+                               "packaging.record-decision", "packaging.append-evidence"]},
+        "package_id": {"type": "string"},
+        "approval_ref": {"type": "string"},
+        "confirm": {"type": "boolean"},
+        "revision": {"type": "object"},
+        "operation": {"type": "object"},
+        "candidate_revision": {"type": "object"},
+        "status": {"type": "string"},
+        "decision": {"type": "object"},
+        "evidence": {"type": "object"},
+        "issue_ref": {"type": "string"},
     },
 }
 
@@ -227,7 +257,8 @@ class ActionHost:
                  issue_reader: Callable[..., Mapping[str, Any]] | None = None,
                  token: str | None = None, clock: Callable[[], float] = time.monotonic,
                  wall_clock: Callable[[], str] | None = None,
-                 max_requests: int = MAX_REQUESTS_PER_MINUTE) -> None:
+                 max_requests: int = MAX_REQUESTS_PER_MINUTE,
+                 packaging_store: Any = None) -> None:
         self._spec_path = Path(spec_path)
         self._labels_reader = labels_reader
         self._transition_writer = transition_writer
@@ -249,6 +280,17 @@ class ActionHost:
         self._widget = None
         self._decisions_widget = None
         self._issues = LastGoodIssues()
+        # W-3 (#612): the shared packaging ops-API, optional and injectable
+        # (a CoreStore root Path). No packaging routes work without it; the
+        # read routes then answer an explicit 503 store_unavailable. Defaults
+        # to None so every existing construction path is unchanged.
+        self._packaging_api: PackagingOpsApi | None = (
+            PackagingOpsApi(packaging_store) if packaging_store is not None else None)
+
+    @property
+    def packaging(self) -> PackagingOpsApi | None:
+        """The shared packaging ops-API when a store is configured, else None."""
+        return self._packaging_api
 
     @property
     def widget(self):
@@ -760,6 +802,111 @@ class ActionHost:
             raise
         return {"status": "ok", "operation": action.operation, "result": result}
 
+    # --- packaging ops-API surface (W-3, #612) ---------------------------
+
+    def _require_packaging(self) -> PackagingOpsApi:
+        if self._packaging_api is None:
+            raise StoreUnavailable(
+                "packaging store is not configured; start the action host with a Core store")
+        return self._packaging_api
+
+    def packaging_workstream(self) -> dict:
+        """The Packaging Workstream projection (kriterium oracle, read-only)."""
+        return self._require_packaging().workstream()
+
+    def packaging_revisions(self) -> dict:
+        api = self._require_packaging()
+        return {"schema_version": OPS_API_SCHEMA_VERSION, "status": "ok",
+                "revisions": api.list_revisions()}
+
+    def packaging_operations(self) -> dict:
+        api = self._require_packaging()
+        return {"schema_version": OPS_API_SCHEMA_VERSION, "status": "ok",
+                "operations": api.list_operations()}
+
+    def packaging_decisions(self) -> dict:
+        api = self._require_packaging()
+        return {"schema_version": OPS_API_SCHEMA_VERSION, "status": "ok",
+                "decisions": api.list_decisions()}
+
+    def packaging_evidence(self) -> dict:
+        api = self._require_packaging()
+        return {"schema_version": OPS_API_SCHEMA_VERSION, "status": "ok",
+                "evidence": api.list_evidence()}
+
+    def packaging_action(self, *, action_id: str, package_id: str,
+                         approval_ref: str, confirm: bool, token: str,
+                         revision: Mapping[str, Any] | None = None,
+                         operation: Mapping[str, Any] | None = None,
+                         candidate_revision: Mapping[str, Any] | None = None,
+                         status: str | None = None,
+                         decision: Mapping[str, Any] | None = None,
+                         evidence: Mapping[str, Any] | None = None,
+                         issue_ref: str | None = None) -> dict:
+        """Execute one packaging mutation behind the POST /api/action gate set.
+
+        Guard parity with ``execute``: session token first, then the operator
+        gate -- an explicit ``confirm`` and a non-empty ``approval_ref``
+        (bound as the authorization reference exactly as build_action does).
+        Rate limiting is shared with every other mutating action. The
+        mutation itself is the shared ops-API's store append; its outcome
+        envelope (appended / re-delivery / conflict) is returned verbatim.
+        """
+        if not token or token != self.token:
+            raise AuthorizationFailure("missing or invalid session token")
+        self._check_rate()
+        if not isinstance(approval_ref, str) or not approval_ref:
+            raise InvalidRequest("approval_ref is required")
+        if not isinstance(confirm, bool) or not confirm:
+            raise AuthorizationFailure("confirm must be true to execute a packaging action")
+        if not isinstance(package_id, str) or not package_id:
+            raise InvalidRequest("package_id is required")
+        api = self._require_packaging()
+        try:
+            if action_id == "packaging.create-revision":
+                if not isinstance(revision, Mapping):
+                    raise InvalidRequest("revision object is required")
+                envelope = api.create_revision(revision, issue_ref=issue_ref)
+            elif action_id == "packaging.record-operation":
+                if not isinstance(operation, Mapping) or not isinstance(candidate_revision, Mapping):
+                    raise InvalidRequest("operation and candidate_revision objects are required")
+                envelope = api.record_operation(
+                    operation_id=str(operation.get("operation_id") or ""),
+                    package_id=str(operation.get("package_id") or package_id),
+                    original_parent=operation.get("original_parent"),
+                    candidate_revision=candidate_revision,
+                    status=str(status or ""),
+                    issue_ref=issue_ref)
+            elif action_id == "packaging.record-decision":
+                if not isinstance(decision, Mapping):
+                    raise InvalidRequest("decision object is required")
+                envelope = api.record_decision(
+                    package_id=str(decision.get("package_id") or package_id),
+                    revision_digest=str(decision.get("revision_digest") or ""),
+                    decision_scope=str(decision.get("decision_scope") or ""),
+                    operator=str(decision.get("operator") or ""),
+                    verdict=str(decision.get("verdict") or ""),
+                    supersedes=decision.get("supersedes"),
+                    issue_ref=issue_ref)
+            elif action_id == "packaging.append-evidence":
+                if not isinstance(evidence, Mapping):
+                    raise InvalidRequest("evidence object is required")
+                envelope = api.append_evidence(
+                    request_id=str(evidence.get("request_id") or ""),
+                    entry_id=str(evidence.get("entry_id") or ""),
+                    payload_digest=str(evidence.get("payload_digest") or ""),
+                    issue_ref=issue_ref)
+            else:
+                raise NotFound(f"unknown packaging action {action_id}")
+        except OpsApiError as exc:
+            if exc.kind == "not_found":
+                raise NotFound(str(exc)) from exc
+            if exc.kind in ("integrity_error", "io_error"):
+                # Store-side failure, not a caller mistake: fail closed 503.
+                raise StoreUnavailable(str(exc)) from exc
+            raise InvalidRequest(str(exc)) from exc
+        return {"operation": action_id, "outcome": envelope}
+
     def generate_widget(self, *, prompt: str, confirm: bool) -> dict:
         """Studio's describe/proposal/validate flow (issue #339, ADR-038 SS5/SS6).
 
@@ -866,6 +1013,23 @@ class ActionHandler(SimpleHTTPRequestHandler):
         if path in ("/api/run-review", "/api/run-review/"):
             self._handle_read("run-review")
             return
+        # W-3 (#612): packaging ops routes. Read routes are pure reads over
+        # the shared PackagingOpsApi (no GitHub, no workflow mutations).
+        if path in ("/api/packaging-workstream", "/api/packaging-workstream/"):
+            self._handle_packaging("workstream")
+            return
+        if path in ("/api/packaging-revisions", "/api/packaging-revisions/"):
+            self._handle_packaging("revisions")
+            return
+        if path in ("/api/packaging-operations", "/api/packaging-operations/"):
+            self._handle_packaging("operations")
+            return
+        if path in ("/api/packaging-decisions", "/api/packaging-decisions/"):
+            self._handle_packaging("decisions")
+            return
+        if path in ("/api/packaging-evidence", "/api/packaging-evidence/"):
+            self._handle_packaging("evidence")
+            return
         super().do_GET()
 
     def _issue_ref_from_query(self) -> tuple[str, int] | None:
@@ -922,6 +1086,35 @@ class ActionHandler(SimpleHTTPRequestHandler):
             self._json(503, {"schema_version": 1, "status": "unavailable",
                              "error": {"kind": getattr(exc, "kind", "read_error"), "message": str(exc)}})
 
+    def _handle_packaging(self, kind: str) -> None:
+        # W-3 (#612): shared handler for the packaging read routes. Pure
+        # reads over the shared ops-API; a not-yet-configured store reads as
+        # an explicit 503 (the same store_unavailable shape the workstreams
+        # projection uses), never as an empty success.
+        if self.host.packaging is None:
+            self._json(503, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": "store_unavailable",
+                                       "message": ("packaging store is not configured; "
+                                                   "start the action host with a Core store")}})
+            return
+        try:
+            if kind == "workstream":
+                self._json(200, self.host.packaging_workstream())
+            elif kind == "revisions":
+                self._json(200, self.host.packaging_revisions())
+            elif kind == "operations":
+                self._json(200, self.host.packaging_operations())
+            elif kind == "decisions":
+                self._json(200, self.host.packaging_decisions())
+            else:
+                self._json(200, self.host.packaging_evidence())
+        except OpsApiError as exc:
+            self._json(exc.http_status, {"schema_version": 1, "status": "unavailable",
+                                         "error": {"kind": exc.kind, "message": str(exc)}})
+        except Exception as exc:
+            self._json(503, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": "read_error", "message": str(exc)}})
+
     def do_OPTIONS(self) -> None:
         # No CORS preflight answer: the host is same-origin only, so cross-origin
         # JSON POSTs are blocked by the browser and cross-origin reads cannot work.
@@ -931,6 +1124,13 @@ class ActionHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = self.path.split("?", 1)[0]
+        # W-3 (#612): new packaging action route added alongside (never
+        # replacing) the existing routes. It enforces the SAME guard set as
+        # POST /api/action: session token, closed-schema JSON body, and the
+        # operator gate (approval reference + confirm).
+        if route == "/api/packaging-action":
+            self._handle_packaging_action()
+            return
         if route not in ("/api/action", "/api/widget-generate"):
             self.send_error(404, "not found")
             return
@@ -989,6 +1189,54 @@ class ActionHandler(SimpleHTTPRequestHandler):
                 body["error"]["recovery"] = exc.recovery
             if getattr(exc, "errors", None):
                 body["error"]["errors"] = exc.errors
+            self._json(exc.http_status, body)
+        except Exception as exc:  # fail closed, never surface internals as success
+            self._json(500, {"status": "error",
+                             "error": {"kind": "action_error", "message": str(exc)}})
+
+    def _handle_packaging_action(self) -> None:
+        # W-3 (#612): the packaging action route. Guard-parity with POST
+        # /api/action, in the same order and with the same shapes: JSON
+        # content-type -> body bounds -> closed schema -> session token ->
+        # operator gate (approval_ref + confirm) inside host.packaging_action.
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            self._json(415, {"status": "error",
+                             "error": {"kind": "validation_error", "message": "Content-Type must be application/json"}})
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0 or length > MAX_BODY_BYTES:
+            self._json(413, {"status": "error",
+                             "error": {"kind": "validation_error", "message": "body too large or missing"}})
+            return
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            self._json(400, {"status": "error",
+                             "error": {"kind": "validation_error", "message": "body is not valid JSON"}})
+            return
+        try:
+            validate(payload, PACKAGING_ACTION_REQUEST_SCHEMA)
+        except ValidationError as exc:
+            self._json(400, {"status": "error", "error": {"kind": "validation_error", "message": str(exc)}})
+            return
+        token = self.headers.get("X-Cortxt-Token") or ""
+        try:
+            result = self.host.packaging_action(
+                action_id=payload["action_id"], package_id=payload["package_id"],
+                approval_ref=payload["approval_ref"], confirm=payload["confirm"],
+                token=token, revision=payload.get("revision"),
+                operation=payload.get("operation"), candidate_revision=payload.get("candidate_revision"),
+                status=payload.get("status"), decision=payload.get("decision"),
+                evidence=payload.get("evidence"), issue_ref=payload.get("issue_ref"))
+            self._json(200, {"status": "ok", "action_id": payload["action_id"], **result})
+        except ActionHostError as exc:
+            body = {"status": "error", "error": {"kind": exc.kind, "message": str(exc)}}
+            if getattr(exc, "code", None):
+                body["error"]["code"] = exc.code
             self._json(exc.http_status, body)
         except Exception as exc:  # fail closed, never surface internals as success
             self._json(500, {"status": "error",
