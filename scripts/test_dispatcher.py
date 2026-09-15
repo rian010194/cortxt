@@ -287,6 +287,35 @@ def run_all_checks():
               and (q_x["result"] or {}).get("error", {}).get("category") == "run_correlation_mismatch",
               str((q_x["result"] or {}).get("error")))
 
+    print("== Evidence Gate (#608): containment_snapshot_missing refuses a succeeded mutating Run, ahead of correlation ==")
+    # The fail-closed settlement arm records `containment_snapshot_missing` on
+    # a launcher-owned mutating Run that reaches the gate with no snapshot to
+    # scan. That verdict must refuse exactly like `launcher_checkout_dirty` --
+    # and ahead of the correlation checks, which a deliberately
+    # correlation-free envelope would otherwise fail first with
+    # `run_correlation_mismatch`.
+    submissions_m = []
+    ws_m = tempfile.mkdtemp(prefix="dispatcher-containment-missing-")
+    gh_m = FakeGitHub({"o/r#38": ["workflow:ready"]})
+    disp_m = d.Dispatcher(d.RunRegistry(Path(ws_m) / "runs.json"), gh_m,
+                          review_submitter=lambda run, env, ev: submissions_m.append(run.run_id) or "sub-m")
+    run_m = disp_m.claim("o/r#38", "wedge-b", "builder", "hermes", 600)
+    disp_m.registry.update(run_m.run_id, mutating=True,
+                           containment="containment_snapshot_missing")
+    refusal_m = ce.verify_commit_correlation(disp_m.registry.get(run_m.run_id), {})
+    check("the gate function refuses a containment_snapshot_missing Run with containment_violation",
+          isinstance(refusal_m, ce.CorrelationFailure) and refusal_m.code == "containment_violation",
+          repr(getattr(refusal_m, "code", refusal_m)))
+    disp_m.complete(run_m.run_id, "succeeded", {"evidence": "claimed success, never scanned"})
+    q_m = disp_m.query(run_m.run_id)
+    check("a snapshot-missing success is recorded blocked, not succeeded",
+          q_m["status"] == "blocked")
+    check("the refusal carries the stable containment_violation code",
+          (q_m["result"] or {}).get("error", {}).get("category") == "containment_violation")
+    check("a snapshot-missing Run earns NO review submission", submissions_m == [])
+    check("a snapshot-missing Run's label goes to blocked, never review",
+          gh_m.labels["o/r#38"] == ["workflow:blocked"])
+
     print("== Evidence Gate (#490): a gate that itself raises also blocks (fails closed) ==")
     ws_raise = tempfile.mkdtemp(prefix="dispatcher-review-raise-")
     gh_raise = FakeGitHub({"o/r#32": ["workflow:ready"]})

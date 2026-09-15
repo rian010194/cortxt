@@ -165,6 +165,96 @@ def main() -> None:
                               capture_output=True, text=True).stdout
         check("scan left the worktree untouched", code.strip() == "", repr(code))
 
+    print("== #608 gate round: gitignored .worktrees/ root, the production escape geometry ==")
+    # The production default geometry puts the worktree root INSIDE the repo
+    # and gitignores it: `git status --porcelain` cannot see anything under
+    # it, so the reviewer's misspelled-sibling probe escaped a porcelain-only
+    # scan entirely. The filesystem sweep must catch it anyway.
+    with tempfile.TemporaryDirectory(prefix="containment-ignored-") as tmp:
+        root = Path(tmp)
+        repo = _scratch_repo(root)
+        trees = repo / ".worktrees"
+        trees.mkdir()
+        (repo / ".gitignore").write_text(".worktrees/\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-q", "-m", "gitignore the worktree root")
+        wt = trees / "s5-controlplane-real"
+        _git(repo, "worktree", "add", "-q", "-b", "work/run-ignored", str(wt))
+        snapshot = cs.snapshot_checkout(repo)
+        (trees / "s5controlplane-typo").mkdir()
+        (trees / "s5controlplane-typo" / "artifact.md").write_text("escaped artifact\n")
+        status = subprocess.run(["git", "status", "--porcelain", "-uall"], cwd=str(repo),
+                                capture_output=True, text=True).stdout
+        check("precondition: porcelain is blind to the gitignored escape",
+              status.strip() == "", repr(status))
+        result = cs.scan_containment(repo, snapshot, wt)
+        check("the gitignored-root escape is launcher_checkout_dirty",
+              result["code"] == cs.LAUNCHER_CHECKOUT_DIRTY, str(result))
+        check("the escaped sibling path is named",
+              any("s5controlplane-typo" in p for p in result["checkout_changed_paths"]),
+              str(result["checkout_changed_paths"]))
+        check("the registered worktree is still clean",
+              result["worktree_changed_paths"] == [], str(result))
+
+    print("== #608 gate round: an unregistered EMPTY sibling directory is a violation ==")
+    with tempfile.TemporaryDirectory(prefix="containment-empty-") as tmp:
+        root = Path(tmp)
+        repo = _scratch_repo(root)
+        wt = _registered_worktree(repo, "run-empty", "s5-controlplane-real")
+        snapshot = cs.snapshot_checkout(repo)
+        # No file, no porcelain line: presence of an unregistered directory
+        # under a launcher worktree root is itself the signal, never its name
+        # or its content. `extra_worktree_roots=[wt.parent]` mirrors exactly
+        # what the launcher passes to every real scan (its configured root
+        # plus the registered worktree's parent).
+        (wt.parent / "unregistered-empty").mkdir()
+        result = cs.scan_containment(repo, snapshot, wt,
+                                     extra_worktree_roots=[wt.parent])
+        check("an empty unregistered sibling is launcher_checkout_dirty",
+              result["code"] == cs.LAUNCHER_CHECKOUT_DIRTY, str(result))
+        check("the empty sibling path is named",
+              any("unregistered-empty" in p for p in result["checkout_changed_paths"]),
+              str(result["checkout_changed_paths"]))
+
+    print("== #608 gate round: a sibling under an extra launcher-configured root is caught ==")
+    with tempfile.TemporaryDirectory(prefix="containment-extra-") as tmp:
+        root = Path(tmp)
+        repo = _scratch_repo(root)
+        wt = _registered_worktree(repo, "run-extra", "s5-controlplane-real")
+        snapshot = cs.snapshot_checkout(repo)
+        outside_root = root / "run-trees"
+        outside_root.mkdir()
+        (outside_root / "s5controlplane-elsewhere").mkdir()
+        result = cs.scan_containment(repo, snapshot, wt,
+                                     extra_worktree_roots=[outside_root])
+        check("a sibling under an extra launcher root is launcher_checkout_dirty",
+              result["code"] == cs.LAUNCHER_CHECKOUT_DIRTY, str(result))
+        check("the extra-root sibling path is named",
+              any("s5controlplane-elsewhere" in p for p in result["checkout_changed_paths"]),
+              str(result["checkout_changed_paths"]))
+
+    print("== #608 P2: a non-ASCII sibling must not be swallowed by quoted-path matching ==")
+    # git C-quotes non-ASCII paths in porcelain. A quoted-prefix startswith
+    # also matches a sibling whose name merely EXTENDS the registered
+    # worktree's, excluding the sibling's escape from the checkout diff and
+    # reporting a clean verdict over a real escape. The comparison is by
+    # exact directory components now; the escape must surface.
+    with tempfile.TemporaryDirectory(prefix="containment-nonascii-") as tmp:
+        root = Path(tmp)
+        repo = _scratch_repo(root)
+        wt = _registered_worktree(repo, "run-nonascii", "s5-controlplane-möbler")
+        snapshot = cs.snapshot_checkout(repo)
+        (wt.parent / "s5-controlplane-möbler-variant").mkdir()
+        (wt.parent / "s5-controlplane-möbler-variant" / "artifact.md").write_text("escaped\n")
+        result = cs.scan_containment(repo, snapshot, wt)
+        check("the extended-name non-ASCII sibling escape is launcher_checkout_dirty",
+              result["code"] == cs.LAUNCHER_CHECKOUT_DIRTY, str(result))
+        check("the non-ASCII sibling path is named",
+              any("variant" in p for p in result["checkout_changed_paths"]),
+              str(result["checkout_changed_paths"]))
+        check("no non-ASCII sibling false-positives the worktree itself",
+              result["worktree_changed_paths"] == [], str(result))
+
     print(f"\n{'PASS' if not fail else 'FAIL'}: {len(fail)} failure(s)")
     raise SystemExit(1 if fail else 0)
 

@@ -281,6 +281,149 @@ def _run_checks():
     check("a second terminal leaves the first scan's verdict (no rescan)",
           run2d.containment == "worktree_dirty_uncommitted", str(run2d.containment))
 
+    print("== #608 settlement order: a violating mutating run settles blocked, snapshot consumed once ==")
+    # The live OS/UI path: the async worker thread calls complete() (which
+    # runs the Evidence Gate) BEFORE the on_terminal hook fires. The
+    # settlement hook must put the scan verdict on the Run before the gate
+    # reads it, so an escaping run settles blocked/refused here -- not
+    # `succeeded` with the violation written only after the gate passed.
+    root2e = Path(tempfile.mkdtemp(prefix="launcher-settle-order-"))
+    gh2e = FakeGitHub()
+    repo2e = root2e / "repo"
+    repo2e.mkdir()
+    _sp.run(["git", "init", "-q"], cwd=str(repo2e), capture_output=True)
+    (repo2e / "seed.txt").write_text("seed\n")
+    _sp.run(["git", "add", "."], cwd=str(repo2e), capture_output=True)
+    _sp.run(["git", "-c", "user.name=t", "-c", "user.email=t@t.io", "commit", "-qm", "init"],
+            cwd=str(repo2e), capture_output=True)
+    disp2e = d.Dispatcher(d.RunRegistry(root2e / "runs.json"), gh2e)
+    dispatched2e = []
+
+    def settlement_order_dispatch(dispatcher, run, prompt, worktree=None, on_terminal=None):
+        # dispatch_async's shape: the worker writes during the run, then the
+        # background thread completes the Run before on_terminal ever fires.
+        dispatched2e.append(run.run_id)
+        (repo2e / "s5controlplane-typo").mkdir(exist_ok=True)
+        (repo2e / "s5controlplane-typo" / "escape.txt").write_text("escaped\n")
+        dispatcher.complete(run.run_id, "succeeded", {"evidence": "claimed success, escaped"})
+        on_terminal(run.run_id, "succeeded")
+        return None
+
+    launcher2e = w.WorkLauncher(
+        disp2e, gh2e, dispatch=settlement_order_dispatch,
+        worktree_root=repo2e / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=repo2e,
+    )
+    res2e = launcher2e.create("o/r", "Task", "Escaping worker", ["Tests pass"],
+                              runtime="fake", worker_role="builder", workflow="v1",
+                              max_runtime_seconds=60, max_cost_usd=1.0, approved=True,
+                              artifact_paths=["docs/agents/work-launcher.md"])
+    q2e = disp2e.query(res2e["run_id"])
+    check("a violating mutating run settles blocked, never succeeded",
+          q2e["status"] == "blocked", str(q2e["status"]))
+    check("the settlement-path refusal carries containment_violation",
+          (q2e["result"] or {}).get("error", {}).get("category") == "containment_violation",
+          str((q2e["result"] or {}).get("error")))
+    check("the scan recorded the escape verdict before the gate ran",
+          disp2e.registry.get(res2e["run_id"]).containment == "launcher_checkout_dirty",
+          str(disp2e.registry.get(res2e["run_id"]).containment))
+    check("the snapshot was consumed exactly once",
+          launcher2e._containment_snapshots == {}, str(launcher2e._containment_snapshots))
+    launcher2e._on_worker_terminal(res2e["run_id"], "failed")
+    check("a second terminal is a no-op (the first verdict stands)",
+          disp2e.registry.get(res2e["run_id"]).containment == "launcher_checkout_dirty",
+          str(disp2e.registry.get(res2e["run_id"]).containment))
+
+    print("== #608 fail-closed: a mutating run with no snapshot records containment_snapshot_missing ==")
+    # Snapshots are memory-only: a launcher restart between dispatch and
+    # settlement loses them. A launcher-owned mutating run that then reaches
+    # the gate with neither snapshot nor verdict must be refused, never pass
+    # unscanned -- the pre-gate hook records `containment_snapshot_missing`
+    # and the gate turns it into the same containment_violation refusal.
+    root2f = Path(tempfile.mkdtemp(prefix="launcher-snapshot-missing-"))
+    gh2f = FakeGitHub()
+    repo2f = root2f / "repo"
+    repo2f.mkdir()
+    _sp.run(["git", "init", "-q"], cwd=str(repo2f), capture_output=True)
+    (repo2f / "seed.txt").write_text("seed\n")
+    _sp.run(["git", "add", "."], cwd=str(repo2f), capture_output=True)
+    _sp.run(["git", "-c", "user.name=t", "-c", "user.email=t@t.io", "commit", "-qm", "init"],
+            cwd=str(repo2f), capture_output=True)
+    disp2f = d.Dispatcher(d.RunRegistry(root2f / "runs.json"), gh2f)
+
+    def restart_loss_dispatch(dispatcher, run, prompt, worktree=None, on_terminal=None):
+        # dispatch_async's settlement shape, after the launcher process was
+        # restarted mid-run: the in-memory snapshot is gone when complete()
+        # runs its pre-gate containment settlement.
+        launcher2f._containment_snapshots.clear()
+        dispatcher.complete(run.run_id, "succeeded", {"evidence": "claimed"})
+        on_terminal(run.run_id, "succeeded")
+        return None
+
+    launcher2f = w.WorkLauncher(
+        disp2f, gh2f, dispatch=restart_loss_dispatch,
+        worktree_root=repo2f / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=repo2f,
+    )
+    res2f = launcher2f.create("o/r", "Task", "Restarted launcher", ["Tests pass"],
+                              runtime="fake", worker_role="builder", workflow="v1",
+                              max_runtime_seconds=60, max_cost_usd=1.0, approved=True,
+                              artifact_paths=["docs/agents/work-launcher.md"])
+    check("a mutating run with no snapshot records containment_snapshot_missing",
+          disp2f.registry.get(res2f["run_id"]).containment == "containment_snapshot_missing",
+          str(disp2f.registry.get(res2f["run_id"]).containment))
+    q2f = disp2f.query(res2f["run_id"])
+    check("a snapshot-missing success settles blocked, never succeeded",
+          q2f["status"] == "blocked", str(q2f["status"]))
+    check("the snapshot-missing refusal carries containment_violation",
+          (q2f["result"] or {}).get("error", {}).get("category") == "containment_violation",
+          str((q2f["result"] or {}).get("error")))
+    launcher2f._on_worker_terminal(res2f["run_id"], "failed")
+    check("a second terminal after the fail-closed verdict is a no-op",
+          disp2f.registry.get(res2f["run_id"]).containment == "containment_snapshot_missing",
+          str(disp2f.registry.get(res2f["run_id"]).containment))
+
+    print("== #608 scope: read-only runs and legacy hook-less settlements are unchanged ==")
+    root2g = Path(tempfile.mkdtemp(prefix="launcher-readonly-"))
+    gh2g = FakeGitHub()
+    gh2g.labels["o/r#21"] = ["workflow:ready"]
+    disp2g = d.Dispatcher(d.RunRegistry(root2g / "runs.json"), gh2g)
+    seen2g = []
+
+    def read_only_dispatch(dispatcher, run, prompt, worktree=None):
+        # Shared-checkout shape: no worktree kwarg, no on_terminal contract.
+        seen2g.append(run.run_id)
+        return None
+
+    launcher2g = w.WorkLauncher(
+        disp2g, gh2g, dispatch=read_only_dispatch,
+        worktree_root=root2g / "trees",
+        run_worktree=fake_worktree_add,
+        repo_path=root2g,
+    )
+    launcher2g.resume("o/r#21", runtime="fake", worker_role="builder", workflow="v1",
+                      max_runtime_seconds=60, prompt="read-only shared work")
+    launcher2g._on_worker_terminal(seen2g[0], "succeeded")
+    check("a read-only run records no containment verdict at all",
+          disp2g.registry.get(seen2g[0]).containment is None,
+          str(disp2g.registry.get(seen2g[0]).containment))
+    # Legacy settlement: a dispatcher with no launcher wiring (no
+    # containment_recorder) behaves exactly as before -- the gate's
+    # pre-existing correlation refusal, never a containment refusal.
+    gh2h = FakeGitHub()
+    gh2h.labels["o/r#22"] = ["workflow:ready"]
+    disp2h = d.Dispatcher(d.RunRegistry(root2g / "runs-legacy.json"), gh2h)
+    run2h = disp2h.claim("o/r#22", "wedge-b", "builder", "hermes", 600)
+    disp2h.registry.update(run2h.run_id, mutating=True)
+    disp2h.complete(run2h.run_id, "succeeded", {"evidence": "claimed"})
+    q2h = disp2h.query(run2h.run_id)
+    check("a legacy mutating settlement keeps the pre-existing gate verdict",
+          q2h["status"] == "blocked"
+          and (q2h["result"] or {}).get("error", {}).get("category") == "run_correlation_mismatch",
+          str((q2h["result"] or {}).get("error")))
+
     print("== S7b #482 follow-on: unconfigured runtime is rejected BEFORE any claim ==")
     root3 = Path(tempfile.mkdtemp(prefix="launcher-cfg-"))
     gh3 = FakeGitHub()
