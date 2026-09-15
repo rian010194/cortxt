@@ -80,6 +80,10 @@ model and accepted ADRs in `docs/adr/` for current boundaries.
   explicitly designated current; Project 4 is frozen legacy and must not be
   used for new dispatch.
 - Runtime task lists, including Hermes Kanban, are execution ledgers only and must correlate to a GitHub issue.
+- Product-packaging domain records (package revisions, operation/decision records,
+  evidence) are owned by the local append-only Core store, NOT by GitHub: a record may
+  reference an issue id, but the store never syncs or reconciles with GitHub (ADR-048;
+  ADR-018 unchanged for issues and `workflow:*` labels).
 - The designated workflow-state carrier is the GitHub Issue `workflow:*` label.
   `workflow:ready` alone is not execution approval: dispatch still requires
   approved scope, acceptance criteria, worker role, runtime and cost limits, and

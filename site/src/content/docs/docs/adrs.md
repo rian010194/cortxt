@@ -5,7 +5,7 @@ description: The Accepted-only ADR index mirrored from the repository authority.
 
 <!-- docs-currency:auto:begin -->
 
-This page is generated from the repository ADR files by `scripts/docs_currency.py`; do not hand-edit the generated block. As of 2026-09-10. [Open the authoritative ADR index](https://github.com/rian010194/cortxt/blob/main/docs/adr/README.md).
+This page is generated from the repository ADR files by `scripts/docs_currency.py`; do not hand-edit the generated block. As of 2026-09-15. [Open the authoritative ADR index](https://github.com/rian010194/cortxt/blob/main/docs/adr/README.md).
 
 | ADR | Decision |
 | --- | --- |
@@ -40,6 +40,7 @@ This page is generated from the repository ADR files by `scripts/docs_currency.p
 | [045](https://github.com/rian010194/cortxt/blob/main/docs/adr/045-execution-policy-profiles-and-evidence-contracts.md) | Execution policy profiles and evidence contracts |
 | [046](https://github.com/rian010194/cortxt/blob/main/docs/adr/046-versioned-request-digest.md) | Versioned request digest (dispatch.request.v2) |
 | [047](https://github.com/rian010194/cortxt/blob/main/docs/adr/047-agent-client-protocol-communication-contract-and-coordination-plane.md) | The three ACPs — client protocol, communication contract, and coordination plane |
+| [048](https://github.com/rian010194/cortxt/blob/main/docs/adr/048-product-packaging-domain-authority.md) | Product-packaging domain authority — local Core store, GitHub as reference only |
 
 :::note
 **Proposed** records ([ADR-029](https://github.com/rian010194/cortxt/blob/main/docs/adr/029-unattended-daemon-credential-isolation.md) (Proposed), [ADR-030](https://github.com/rian010194/cortxt/blob/main/docs/adr/030-plan-vs-actual-divergence-tracking.md) (Proposed (Part 1 implemented; Part 2 spec-only))) are reviewable designs, not Accepted decisions; they are intentionally absent from the Accepted table above. **Superseded** records ([ADR-011](https://github.com/rian010194/cortxt/blob/main/docs/adr/011-model-router.md), [ADR-012](https://github.com/rian010194/cortxt/blob/main/docs/adr/012-disaster-recovery.md), [ADR-013](https://github.com/rian010194/cortxt/blob/main/docs/adr/013-skill-composition.md)) are historical references kept for traceability only.
