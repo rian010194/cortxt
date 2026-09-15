@@ -16,6 +16,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from commit_evidence import (make_commit_gate, normalize_repo_path,
                              policy_paths)
+from containment_scan import scan_containment, snapshot_checkout
 from dispatcher import Dispatcher, RunRegistry
 from execution_map import (ClaimConflict, ClaimRecord, ClaimStore, Issue,
                            SqliteClaimStore, collision_keys, derive_graph,
@@ -186,6 +187,11 @@ class WorkLauncher:
         # inside its own created worktree (#419).
         self.repo_path = repo_path or Path.cwd()
         self._claims_by_run: dict[str, ClaimRecord] = {}
+        # Pre-launch porcelain snapshots per in-flight run (#608), taken in
+        # `_dispatch` when a run gets an isolated worktree and consumed by
+        # `_record_containment` at worker terminal. Keyed by run_id; an entry
+        # is removed once its run's scan has run.
+        self._containment_snapshots: dict[str, dict] = {}
 
     @staticmethod
     def _missing_issue_reader(issue_id: str) -> Mapping[str, Any]:
@@ -253,6 +259,36 @@ class WorkLauncher:
             raise ExecutionGateError("stale_receipt")
         return claim, result.receipt
 
+    def _record_containment(self, run_id: str) -> None:
+        """Scan containment at worker terminal and persist the verdict (#608).
+
+        Runs `scan_containment` against the pre-launch snapshot taken in
+        `_dispatch` and writes the stable code onto the durable Run record via
+        `registry.update`, so the verdict is visible in `runs.json` for every
+        terminal status -- succeeded, failed, timed_out or blocked -- not only
+        in a log. Best-effort by contract: a registry without `update`
+        (injected fakes), a run with no snapshot (legacy/shared-checkout
+        dispatch), and scan errors (which `scan_containment` itself already
+        maps to `containment_scan_error`) all leave the Run's status and this
+        method's caller untouched. The scan reads git status only; it never
+        mutates either checkout and never fails a launch or a completion.
+        """
+        registry = getattr(self.dispatcher, "registry", None)
+        if registry is None or not hasattr(registry, "update"):
+            return
+        snapshot = self._containment_snapshots.pop(run_id, None)
+        if snapshot is None:
+            return
+        run = registry.get(run_id) if hasattr(registry, "get") else None
+        worktree = getattr(run, "worktree", None)
+        result = scan_containment(self.repo_path, snapshot,
+                                  Path(worktree) if worktree else None)
+        try:
+            registry.update(run_id, containment=result["code"])
+        except Exception as exc:  # noqa: BLE001 - a verdict is metadata, never fatal
+            print(f"[work_launcher] could not record containment for {run_id}: {exc}",
+                  file=sys.stderr)
+
     def _on_worker_terminal(self, run_id: str, status: str) -> None:
         """Release run_id's execution-map claim once its Run goes terminal.
 
@@ -264,6 +300,17 @@ class WorkLauncher:
         it is printed to stderr, matching the launcher's other best-effort
         terminal bookkeeping (see `_fail_launch`).
         """
+        # #608: the containment scan runs here, before the claim release, so
+        # it covers every terminal status the async worker thread produces.
+        # dispatch_async calls complete() (and thus the Evidence Gate) before
+        # this hook, so on the live path the gate would read the code too
+        # late; `submit()` therefore also scans just ahead of its own
+        # complete() call, and this hook covers the async path.
+        try:
+            self._record_containment(run_id)
+        except Exception as exc:  # noqa: BLE001 - never mask the terminal bookkeeping
+            print(f"[work_launcher] containment scan failed for {run_id}: {exc}",
+                  file=sys.stderr)
         if self.claim_store is None:
             return
         claim = self._claims_by_run.pop(run_id, None)
@@ -375,6 +422,28 @@ class WorkLauncher:
             # stayed held past its Run's terminal transition (S7b terminal-
             # claim-release dogfood defect).
             kwargs = {"worktree": worktree} if worktree.is_dir() else {}
+            # #608 worker identity binding: an isolated run's instruction
+            # carries a derived environment block pinning the mandate to the
+            # worktree the launcher itself created -- the absolute path, the
+            # branch it registered, and one do-not-leave line. `build_worker_
+            # instruction` cannot do this (worker_contract.py stays untouched;
+            # the jail block is appended launcher-side), and `_dispatch` is the
+            # single choke point where the worktree is known for ALL isolated
+            # dispatches, `create()` and `resume(isolate=True)` alike. Values
+            # are derived only from the launcher's own state (the `worktree`
+            # Path argument and `run.run_id`), never from worker input. A
+            # shared-checkout dispatch (empty `kwargs`) keeps today's prompt.
+            if kwargs:
+                prompt = (prompt.rstrip("\n") + "\n\nRun environment\n---------------\n"
+                          f"Working directory: {worktree.resolve()}\n"
+                          f"Branch: work/{run.run_id}\n"
+                          "All work happens in this directory; do not read or "
+                          "write outside it.\n")
+                # Pre-launch snapshot of the dispatching checkout, taken before
+                # the worker starts and held for the run's lifetime; the post-
+                # run scan at worker terminal compares against it.
+                self._containment_snapshots[run.run_id] = snapshot_checkout(
+                    self.repo_path)
             # `self.dispatch` is injectable (tests pass minimal fakes with a
             # fixed 3-arg signature); only forward on_terminal when the
             # callable actually declares it, so existing fakes keep working
@@ -892,6 +961,16 @@ class WorkLauncher:
         # therefore run on the failure path too, and the original error must
         # still reach the caller: a cleanup must never convert a failure into
         # silence, nor mask it with a failure of its own.
+        # #608: the containment scan must be recorded BEFORE complete(), not
+        # in the `on_terminal` hook alone -- dispatch_async runs the Evidence
+        # Gate inside complete() first, so a hook-time scan would be too late
+        # for the gate to read it on the live path. submit() is the single
+        # settlement point for coordinator-driven runs.
+        try:
+            self._record_containment(run_id)
+        except Exception as exc:  # noqa: BLE001 - a scan failure never blocks settlement
+            print(f"[work_launcher] containment scan failed for {run_id}: {exc}",
+                  file=sys.stderr)
         try:
             run = self.dispatcher.complete(run_id, result["status"], result)
         except BaseException:

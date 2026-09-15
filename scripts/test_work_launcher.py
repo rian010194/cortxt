@@ -12,8 +12,9 @@ import worker_adapters as wa
 fail = []
 
 
-def check(name, condition):
-    print(f"  {'ok' if condition else 'FAIL':4} {name}")
+def check(name, condition, detail=""):
+    print(f"  {'ok' if condition else 'FAIL':4} {name}"
+          + (f"  [{detail}]" if detail and not condition else ""))
     if not condition:
         fail.append(name)
 
@@ -161,6 +162,124 @@ def _run_checks():
     bound = dispatched and dispatched[0]
     check("worker dispatched with the created worktree", bound and bound[1] == Path(res2["worktree"]))
     check("worktree path reported by create() exists", Path(res2["worktree"]).is_dir())
+
+    print("== #608 worker instruction jail: isolated run's prompt carries the environment block ==")
+    root2b = Path(tempfile.mkdtemp(prefix="launcher-jail-"))
+    gh2b = FakeGitHub()
+    # A real scratch git repository as the dispatching checkout: the launcher
+    # snapshots its porcelain state pre-launch and scans it at worker terminal.
+    repo2b = root2b / "repo"
+    repo2b.mkdir()
+    import subprocess as _sp
+    _sp.run(["git", "init", "-q"], cwd=str(repo2b), capture_output=True)
+    (repo2b / "seed.txt").write_text("seed\n")
+    _sp.run(["git", "add", "."], cwd=str(repo2b), capture_output=True)
+    _sp.run(["git", "-c", "user.name=t", "-c", "user.email=t@t.io", "commit", "-qm", "init"],
+            cwd=str(repo2b), capture_output=True)
+    disp2b = d.Dispatcher(d.RunRegistry(root2b / "runs.json"), gh2b)
+    dispatched2b = []
+
+    def fake_dispatch_with_terminal(dispatcher, run, prompt, worktree=None, on_terminal=None):
+        dispatched2b.append((run.run_id, prompt, worktree, on_terminal))
+        return None
+
+    launcher2b = w.WorkLauncher(
+        disp2b, gh2b, dispatch=fake_dispatch_with_terminal,
+        worktree_root=repo2b / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=repo2b,
+    )
+    res2b = launcher2b.create("o/r", "Task", "Jailed worker", ["Tests pass"],
+                              runtime="fake", worker_role="builder", workflow="v1",
+                              max_runtime_seconds=60, max_cost_usd=1.0, approved=True,
+                              artifact_paths=["docs/agents/work-launcher.md"])
+    jail_prompt = dispatched2b and dispatched2b[0][1]
+    check("isolated prompt contains the absolute worktree path",
+          jail_prompt and str(Path(res2b["worktree"]).resolve()) in jail_prompt)
+    check("isolated prompt contains the branch name",
+          jail_prompt and f"work/{res2b['run_id']}" in jail_prompt)
+    check("isolated prompt contains the do-not-leave line",
+          jail_prompt and "All work happens in this directory; do not read or "
+          "write outside it." in jail_prompt)
+    check("the environment block is derived only from launcher state (appended last)",
+          jail_prompt and jail_prompt.rstrip().endswith("write outside it."))
+
+    print("== #608: a shared-checkout dispatch keeps today's prompt unchanged ==")
+    root2c = Path(tempfile.mkdtemp(prefix="launcher-shared-"))
+    gh2c = FakeGitHub()
+    gh2c.labels["o/r#11"] = ["workflow:ready"]
+    disp2c = d.Dispatcher(d.RunRegistry(root2c / "runs.json"), gh2c)
+    prompts2c = []
+    launcher2c = w.WorkLauncher(
+        disp2c, gh2c, dispatch=lambda dispatcher, run, prompt, worktree=None: prompts2c.append(prompt),
+        worktree_root=root2c / "trees",
+        run_worktree=fake_worktree_add,
+        repo_path=root2c,
+    )
+    launcher2c.resume("o/r#11", runtime="fake", worker_role="builder", workflow="v1",
+                      max_runtime_seconds=60, prompt="shared work")
+    check("shared-checkout prompt has no environment block",
+          prompts2c and "Run environment" not in prompts2c[0])
+    check("shared-checkout prompt has no do-not-leave line",
+          prompts2c and "do not read or write outside it" not in prompts2c[0])
+
+    print("== #608 post-run containment scan: misspelled sibling escape recorded on the Run ==")
+    # Same real-repo fixture: escape into a misspelled SIBLING of the
+    # registered worktree, then let the worker go terminal. The scan must
+    # record `launcher_checkout_dirty` on the durable Run while the registered
+    # worktree itself stays clean.
+    jail_run_id = dispatched2b[0][0]
+    (repo2b / "s5controlplane-typo").mkdir(exist_ok=True)
+    (repo2b / "s5controlplane-typo" / "escape.txt").write_text("escaped\n")
+    run_rec = disp2b.registry.get(jail_run_id)
+    check("run registered its isolated worktree path",
+          run_rec is not None and run_rec.worktree and Path(run_rec.worktree).is_dir())
+    on_terminal = dispatched2b[0][3]
+    on_terminal(jail_run_id, "succeeded")
+    run_rec = disp2b.registry.get(jail_run_id)
+    check("scan recorded launcher_checkout_dirty on the Run record",
+          run_rec.containment == "launcher_checkout_dirty", str(run_rec.containment))
+    code = _sp.run(["git", "status", "--porcelain"], cwd=str(repo2b),
+                   capture_output=True, text=True).stdout
+    check("the registered worktree is excluded from the checkout's own status",
+          "trees/" not in code and run_rec.worktree not in code, repr(code))
+
+    print("== #608: uncommitted work inside the registered worktree is its own code ==")
+    root2d = Path(tempfile.mkdtemp(prefix="launcher-wtdirty-"))
+    gh2d = FakeGitHub()
+    repo2d = root2d / "repo"
+    repo2d.mkdir()
+    _sp.run(["git", "init", "-q"], cwd=str(repo2d), capture_output=True)
+    (repo2d / "seed.txt").write_text("seed\n")
+    _sp.run(["git", "add", "."], cwd=str(repo2d), capture_output=True)
+    _sp.run(["git", "-c", "user.name=t", "-c", "user.email=t@t.io", "commit", "-qm", "init"],
+            cwd=str(repo2d), capture_output=True)
+    disp2d = d.Dispatcher(d.RunRegistry(root2d / "runs.json"), gh2d)
+    launcher2d = w.WorkLauncher(
+        disp2d, gh2d, dispatch=fake_dispatch_with_terminal,
+        worktree_root=repo2d / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=repo2d,
+    )
+    res2d = launcher2d.create("o/r", "Task", "Worktree work", ["Tests pass"],
+                              runtime="fake", worker_role="builder", workflow="v1",
+                              max_runtime_seconds=60, max_cost_usd=1.0, approved=True,
+                              artifact_paths=["docs/agents/work-launcher.md"])
+    run2d = disp2d.registry.get(res2d["run_id"])
+    (Path(res2d["worktree"]) / "wip.txt").write_text("work in progress\n")
+    launcher2d._on_worker_terminal(res2d["run_id"], "succeeded")
+    run2d = disp2d.registry.get(res2d["run_id"])
+    check("in-worktree uncommitted work records worktree_dirty_uncommitted",
+          run2d.containment == "worktree_dirty_uncommitted", str(run2d.containment))
+    (Path(run2d.worktree) / "wip.txt").unlink()
+    # `_record_containment` pops the snapshot by design: one scan per run, the
+    # first terminal event's verdict. A second terminal event is a no-op, so
+    # the Run's recorded code is the first scan's `worktree_dirty_uncommitted`
+    # -- the check asserts exactly that stability.
+    launcher2d._on_worker_terminal(res2d["run_id"], "failed")
+    run2d = disp2d.registry.get(res2d["run_id"])
+    check("a second terminal leaves the first scan's verdict (no rescan)",
+          run2d.containment == "worktree_dirty_uncommitted", str(run2d.containment))
 
     print("== S7b #482 follow-on: unconfigured runtime is rejected BEFORE any claim ==")
     root3 = Path(tempfile.mkdtemp(prefix="launcher-cfg-"))
