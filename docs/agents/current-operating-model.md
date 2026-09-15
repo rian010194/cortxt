@@ -26,7 +26,10 @@ table copied into this file would be stale the day after it was written.
 Accepted ADRs in [`../adr/`](../adr/README.md) are normative. GitHub Issues hold
 durable scope, acceptance criteria, evidence and approval; exactly one
 `workflow:*` label carries workflow state (ADR-018). Project 4 is frozen legacy.
-Atlas is a derived view over Issues, never a second backlog.
+Atlas is a derived view over Issues, never a second backlog. Product-packaging
+domain records are owned by the local append-only Core store with GitHub as
+reference-only (ADR-048); packaging decisions are decision records, never
+`workflow:*` label changes.
 
 The operator may designate a local implementation plan as current. Such a plan
 is untracked and absent from a clean checkout, so nothing required to do the

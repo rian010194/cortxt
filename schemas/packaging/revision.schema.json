@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cortxt:packaging:revision.schema.json",
+  "title": "Packaging Revision",
+  "description": "D3-Alt-1 parent-chain content revision (#606). revision_identity = sha256(canonical_object(revision)); parent_revision_identity is null for genesis. No counter. TWO contract-valid forms: (1) the FLAT frozen-oracle form - the object itself embeds package_id + parent_revision_identity + packaging content fields directly and the identity is the digest of this object (the form under which the frozen 4a rev1 identity e0f94e0b... reproduces); (2) the builder triple form {package_id, parent_revision_identity, content} used by the build path. both close over their own field sets.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package_id", "parent_revision_identity", "content"],
+      "properties": {
+        "package_id": { "type": "string", "minLength": 1 },
+        "parent_revision_identity": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "string",
+              "pattern": "^(sha256:)?[0-9a-f]{64}$",
+              "description": "Bare hex stored; a single sha256: prefix accepted on input (S4-B5/P1-7)."
+            }
+          ]
+        },
+        "content": {}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_id",
+        "parent_revision_identity",
+        "features",
+        "referenced_repositories",
+        "problem",
+        "outcome",
+        "scope",
+        "audience",
+        "evidence_refs",
+        "prior_binding_refs"
+      ],
+      "properties": {
+        "package_id": { "type": "string", "minLength": 1 },
+        "parent_revision_identity": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^(sha256:)?[0-9a-f]{64}$" }
+          ]
+        },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "referenced_repositories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["repo", "sha"],
+            "properties": {
+              "repo": { "type": "string", "minLength": 1 },
+              "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+            }
+          }
+        },
+        "problem": { "type": "string", "minLength": 1 },
+        "outcome": { "type": "string", "minLength": 1 },
+        "scope": { "type": "array", "items": { "type": "string" } },
+        "audience": { "type": "string", "minLength": 1 },
+        "evidence_refs": { "type": "array" },
+        "prior_binding_refs": { "type": "array" }
+      }
+    }
+  ],
+  "$defs": {
+    "revision_identity": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256(canonical_object(revision)); stored bare hex only (P1-7)."
+    }
+  }
+}

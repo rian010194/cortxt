@@ -92,6 +92,9 @@ normative record of decisions. A Proposed ADR binds nothing.
 - Worker dispatch's workflow-state carrier is the GitHub Issue `workflow:*`
   labels (ADR-018), executed by `scripts/dispatcher.py` and the parallel
   `cortxt work` entry point (`docs/agents/work-launcher.md`).
+- Product-packaging domain records live in the local append-only Core store
+  with GitHub as reference-only (ADR-048); packaging decisions are decision
+  records, never `workflow:*` label changes.
 - Delivery execution paths and the label invariant are ADR-040; Atlas maps
   (`scripts/atlas_sync.py`) are derived views, never a second backlog.
 - Real customer inputs and run outputs must remain outside Git history in an
