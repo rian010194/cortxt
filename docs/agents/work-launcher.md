@@ -54,6 +54,43 @@ while the change had landed in the shared checkout, and a mandate requiring
 the change to stay "inside the run's isolated worktree" was unenforceable
 rather than merely unenforced.
 
+## Post-run containment scan
+
+Isolation decides where a run was *sent*. Containment checks where it actually
+*wrote* (#608): runs #606 and #607 both wrote their artifacts outside their
+registered worktrees while nothing detected the divergence, because every
+existing check was commit-scoped and a worker that writes outside its worktree
+lands no commit to check.
+
+At dispatch of an isolated run the launcher snapshots its own checkout's
+`git status --porcelain -uall` state; when the worker reaches any terminal
+status the scan compares that snapshot against the launcher checkout and the
+registered worktree, and records one stable code on the durable Run record
+(visible in `runs.json`):
+
+- `containment_clean` — launcher checkout unchanged since the snapshot; the
+  worktree may show the run's approved activity (committed or uncommitted).
+- `worktree_dirty_uncommitted` — launcher checkout unchanged; the registered
+  worktree carries uncommitted work. That is approved work in progress,
+  visible, not a violation.
+- `launcher_checkout_dirty` — the launcher checkout changed during the run:
+  activity outside the registered worktree, the #606/#607 escape.
+- `containment_scan_error` — the scan could not read a checkout or worktree;
+  it degrades to this rather than inventing a clean verdict.
+
+The scan is read-only and never fails a launch or a completion; an isolated
+run's instruction also carries a derived environment block (absolute worktree
+path, `work/<run_id>` branch, one do-not-leave line) so the worker is bound to
+its directory by its own prompt, not by assumption. The scan runs once per
+run, at the first terminal event; a Run with no recorded `containment` field
+is a legacy run and is judged exactly as before.
+
+For a `succeeded` **mutating** run, the Evidence Gate refuses with
+`containment_violation` when the scan recorded `launcher_checkout_dirty`:
+whatever such a run presents cannot be its evidence, because part of it was
+written outside the approved scope. Every other recorded code — and the
+absence of one — reaches the gate's correlation checks unchanged.
+
 ## Evidence Gate: a mutating run must land a correlated commit
 
 Isolation says where a run worked. It does not say whether the run produced
