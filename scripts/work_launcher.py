@@ -16,7 +16,8 @@ from typing import Any, Callable, Mapping, Sequence
 
 from commit_evidence import (make_commit_gate, normalize_repo_path,
                              policy_paths)
-from containment_scan import scan_containment, snapshot_checkout
+from containment_scan import (DEFAULT_WORKTREE_ROOT, scan_containment,
+                              snapshot_checkout)
 from dispatcher import Dispatcher, RunRegistry
 from execution_map import (ClaimConflict, ClaimRecord, ClaimStore, Issue,
                            SqliteClaimStore, collision_keys, derive_graph,
@@ -30,6 +31,9 @@ from worker_adapters import (UnknownRuntimeError, dispatch_async,
                              runtime_launch_config_ok)
 
 FORBIDDEN = re.compile(r"[\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6]")
+# Sentinel for "attribute genuinely absent" in duck-typed wiring: an attribute
+# that exists but holds None means "wired, disabled", not "never wired".
+_MISSING = object()
 DEFAULT_ARTIFACT_POLICY = (
     "Commit only English project artifacts on a feature branch. Do not push, merge, "
     "close issues, expose secrets, copy full prompts, or record model reasoning."
@@ -192,6 +196,16 @@ class WorkLauncher:
         # `_record_containment` at worker terminal. Keyed by run_id; an entry
         # is removed once its run's scan has run.
         self._containment_snapshots: dict[str, dict] = {}
+        # #608 gate round: settlement-order fix. On the live OS/UI path the
+        # background worker thread calls `Dispatcher.complete()` (which runs
+        # the Evidence Gate) BEFORE the `on_terminal` hook fires, so a
+        # hook-time scan always reached the gate too late. The launcher
+        # therefore wires its containment recorder onto its own dispatcher as
+        # a pre-gate hook: `complete()` invokes it BEFORE the Evidence Gate
+        # runs, so the gate reads a verdict that was recorded on the same
+        # settlement path. Only mutating Runs consult the fail-closed
+        # snapshot-missing arm, so every other settlement shape is unchanged.
+        self._wire_containment_settlement()
 
     @staticmethod
     def _missing_issue_reader(issue_id: str) -> Mapping[str, Any]:
@@ -259,6 +273,52 @@ class WorkLauncher:
             raise ExecutionGateError("stale_receipt")
         return claim, result.receipt
 
+    def _wire_containment_settlement(self) -> None:
+        """Make `Dispatcher.complete` record containment before its gate (#608).
+
+        `complete()` consults `containment_recorder` (if set) inside its lock,
+        BEFORE `_gate_commit` runs, so the verdict is on the durable Run
+        record by the time the Evidence Gate reads it. This closes the
+        ordering hole where the async worker thread completed the Run -- gate
+        first -- and only then fired `on_terminal`, so the gate could never
+        see the scan's verdict on the live OS/UI path.
+
+        Wired only when the dispatcher exposes the attribute and it is still
+        unset (never over another caller's hook), and only for a real
+        dispatcher object; duck-typed fakes and duck-typed launchers built
+        with `__new__` keep working unchanged.
+        """
+        dispatcher = getattr(self, "dispatcher", None)
+        if dispatcher is None:
+            return
+        if getattr(dispatcher, "containment_recorder", _MISSING) is not _MISSING \
+                and dispatcher.containment_recorder is not None:
+            # A hook is already wired on this dispatcher (two launchers sharing
+            # one dispatcher is already pathological); never overwrite it.
+            return
+        try:
+            dispatcher.containment_recorder = self._settle_containment
+        except Exception as exc:  # noqa: BLE001 - wiring is best-effort
+            print(f"[work_launcher] could not wire containment settlement: {exc}",
+                  file=sys.stderr)
+
+    def _settle_containment(self, run_id: str) -> None:
+        """Pre-gate settlement hook the dispatcher runs before its gate (#608).
+
+        Runs on the settlement path -- including `dispatch_async`'s background
+        thread, which completes the Run before any `on_terminal` hook fires --
+        so the Evidence Gate inside `complete()` reads a verdict recorded on
+        the same path. Best-effort: a failure here is printed and swallowed;
+        for a mutating launcher-owned run with no snapshot the fail-closed
+        `containment_snapshot_missing` verdict is recorded instead, which is
+        itself the safe outcome.
+        """
+        try:
+            self._record_containment(run_id)
+        except Exception as exc:  # noqa: BLE001 - a settlement hook must never crash the thread
+            print(f"[work_launcher] containment settlement failed for {run_id}: "
+                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
+
     def _record_containment(self, run_id: str) -> None:
         """Scan containment at worker terminal and persist the verdict (#608).
 
@@ -266,28 +326,102 @@ class WorkLauncher:
         `_dispatch` and writes the stable code onto the durable Run record via
         `registry.update`, so the verdict is visible in `runs.json` for every
         terminal status -- succeeded, failed, timed_out or blocked -- not only
-        in a log. Best-effort by contract: a registry without `update`
-        (injected fakes), a run with no snapshot (legacy/shared-checkout
-        dispatch), and scan errors (which `scan_containment` itself already
-        maps to `containment_scan_error`) all leave the Run's status and this
-        method's caller untouched. The scan reads git status only; it never
-        mutates either checkout and never fails a launch or a completion.
+        in a log. The snapshot pop stays exactly-once: a second terminal
+        event for the same run finds no snapshot and is a no-op, so a second
+        terminal can never rescan or overwrite the first verdict.
+
+        For a mutating Run OWNED by this launcher, a gate-time call with no
+        snapshot is itself the finding: the settlement order is broken or the
+        snapshot was lost (memory-only across a launcher restart), so a
+        `containment_snapshot_missing` verdict is recorded instead of letting
+        the Run pass the gate unscanned. Legacy/pre-guard runs and read-only
+        runs are never flagged.
+
+        Best-effort by contract: a registry without `update` (injected
+        fakes), and scan errors (which `scan_containment` itself already maps
+        to `containment_scan_error`) leave the Run's status and this method's
+        caller untouched. The scan reads git status and directory listings
+        only; it never mutates either checkout and never fails a launch or a
+        completion.
         """
         registry = getattr(self.dispatcher, "registry", None)
         if registry is None or not hasattr(registry, "update"):
             return
         snapshot = self._containment_snapshots.pop(run_id, None)
         if snapshot is None:
+            run = registry.get(run_id) if hasattr(registry, "get") else None
+            if (getattr(run, "mutating", False)
+                    and not getattr(run, "parent_run_id", None)
+                    and getattr(run, "containment", None) is None):
+                # Gate-time call on the settlement path (or a second terminal
+                # event after the snapshot was consumed): there is nothing to
+                # scan and this launcher owns the run. Fail closed rather
+                # than pass unscanned -- but only when no verdict exists yet,
+                # so a later terminal event can never overwrite the first
+                # scan's verdict (the exactly-once rule the second-terminal
+                # tests pin).
+                self._store_containment(
+                    run_id, "containment_snapshot_missing",
+                    reason="no pre-launch snapshot was recorded for this run")
             return
         run = registry.get(run_id) if hasattr(registry, "get") else None
         worktree = getattr(run, "worktree", None)
+        # Sweep roots for the filesystem sibling scan (#608 gate round): the
+        # launcher's configured worktree root, plus the parent directory of
+        # the registered worktree when it lives somewhere else. The checkout's
+        # own gitignored `.worktrees/` is always swept inside
+        # `scan_containment` itself.
+        extra_roots = [self.worktree_root]
+        if worktree:
+            wt_parent = Path(worktree).parent
+            if wt_parent != self.worktree_root:
+                extra_roots.append(wt_parent)
         result = scan_containment(self.repo_path, snapshot,
-                                  Path(worktree) if worktree else None)
+                                  Path(worktree) if worktree else None,
+                                  extra_worktree_roots=extra_roots)
+        self._store_containment(run_id, result["code"],
+                                paths=result.get("checkout_changed_paths"))
+
+    def _store_containment(self, run_id: str, code: str,
+                           *, reason: str | None = None,
+                           paths: list | None = None) -> None:
+        """Persist a containment verdict on the durable Run record.
+
+        The single write point for containment codes (#608), including the
+        synthetic `containment_snapshot_missing`. Best-effort: a registry
+        that cannot carry the field degrades to a loud stderr line plus a
+        best-effort marker on the Run's result envelope, so a scanned verdict
+        (or a fail-closed refusal) can never vanish silently -- a silent loss
+        here would turn the fail-closed arm into exactly the silent pass it
+        exists to prevent.
+        """
+        registry = getattr(self.dispatcher, "registry", None)
+        if registry is None or not hasattr(registry, "update"):
+            print(f"[work_launcher] containment verdict for {run_id} could not "
+                  f"be recorded: the registry has no update method", file=sys.stderr)
+            return
         try:
-            registry.update(run_id, containment=result["code"])
+            registry.update(run_id, containment=code)
         except Exception as exc:  # noqa: BLE001 - a verdict is metadata, never fatal
-            print(f"[work_launcher] could not record containment for {run_id}: {exc}",
-                  file=sys.stderr)
+            print(f"[work_launcher] could not record containment for {run_id}: "
+                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            # Best-effort durability marker (the existing registry-error
+            # pattern): the Run keeps its terminal transition, and the next
+            # reader sees that the verdict was produced but not stored.
+            try:
+                run = registry.get(run_id)
+                result = dict(getattr(run, "result", None) or {})
+                result.setdefault("containment_recording_failed", {})
+                result["containment_recording_failed"].setdefault("codes", []).append(code)
+                if reason:
+                    result["containment_recording_failed"]["reason"] = reason
+                if paths:
+                    result["containment_recording_failed"]["paths"] = paths
+                registry.update(run_id, result=result)
+            except Exception as marker_exc:  # noqa: BLE001
+                print(f"[work_launcher] containment marker for {run_id} also "
+                      f"failed: {type(exc).__name__}: {exc}; "
+                      f"original: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     def _on_worker_terminal(self, run_id: str, status: str) -> None:
         """Release run_id's execution-map claim once its Run goes terminal.

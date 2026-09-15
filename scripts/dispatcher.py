@@ -447,6 +447,24 @@ class Dispatcher:
                     f"run {run_id} already terminal (status={run.status!r}); "
                     "refusing a second complete() to avoid a double label/comment"
                 )
+            # #608 gate round: record the post-run containment verdict BEFORE
+            # the Evidence Gate runs. On the live OS/UI path the background
+            # worker thread calls complete() and only later fires its
+            # `on_terminal` hook, so a hook-time scan always reached the gate
+            # too late -- the gate read `containment=None` and a run that
+            # wrote outside its registered worktree could settle `succeeded`.
+            # WorkLauncher wires `containment_recorder` at construction; with
+            # no launcher (or an older one) the hook is absent and every
+            # settlement behaves exactly as before. A hook failure is
+            # swallowed after being printed (its own contract), never masking
+            # the settlement.
+            recorder = getattr(self, "containment_recorder", None)
+            if recorder is not None:
+                try:
+                    recorder(run_id)
+                except Exception as exc:  # noqa: BLE001 - the hook carries its own safety
+                    print(f"[dispatcher] containment settlement hook failed for "
+                          f"{run_id}: {type(exc).__name__}: {exc}", file=sys.stderr)
             status, result_envelope = self._recover_timeout_evidence(
                 run, status, result_envelope)
             status, result_envelope, evidence = self._gate_commit(run, status, result_envelope)

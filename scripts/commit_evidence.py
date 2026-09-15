@@ -258,7 +258,11 @@ def verify_commit_correlation(
     # #608 containment check, ahead of every correlation step: a `succeeded`
     # mutating Run whose post-run scan recorded `launcher_checkout_dirty`
     # wrote outside its registered worktree, so whatever commit it presents
-    # cannot be this Run's evidence. Refused with the stable reason code
+    # cannot be this Run's evidence. A Run the settlement path could not scan
+    # at all (`containment_snapshot_missing`, recorded fail-closed for a
+    # launcher-owned mutating Run that reaches the gate with no pre-launch
+    # snapshot) is refused on the same terms: an unscannable Run cannot prove
+    # where it wrote. Both refuse with the stable reason code
     # `containment_violation`. Every other recorded code
     # (`containment_clean`, `worktree_dirty_uncommitted`) and a missing field
     # (legacy Runs that predate the scan) behave exactly as before.
@@ -272,6 +276,15 @@ def verify_commit_correlation(
             "The worker wrote outside its registered isolated worktree; its output "
             "is unbounded by the approved scope. Inspect the dispatching checkout "
             "for stray changes, revert them, and re-launch a fresh Run.")
+    if containment == "containment_snapshot_missing":
+        return CorrelationFailure(
+            "containment_violation",
+            f"the post-run containment scan recorded {containment!r}: no pre-launch "
+            "snapshot was available, so the Run's containment was never verified",
+            "Containment snapshots are held in memory only; a launcher restart "
+            "between dispatch and settlement loses them. The Run cannot prove "
+            "where it wrote, so its output is unbounded by the approved scope; "
+            "re-launch a fresh Run through the sanctioned path.")
 
     # Correlation is mandatory, not opportunistic. Previously each of these was
     # checked only when the worker happened to supply it, so a result envelope
