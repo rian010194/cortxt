@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cortxt:packaging:decision_record.schema.json",
+  "title": "Packaging Decision Record",
+  "description": "D5 / S4-B1 decision record (#606). decision_key = sha256(canon_arr(package_id, revision_digest stripped, decision_scope)). decision_record_identity = sha256(canonical_object(record minus recorded_at minus outcome)); head, CAS and supersedes reference THIS identity. revision_digest and supersedes accept a single sha256: prefix on input (S4-B5) and are stored bare (P1-7).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "package_id",
+    "decision_key",
+    "revision_digest",
+    "decision_scope",
+    "supersedes",
+    "outcome"
+  ],
+  "properties": {
+    "package_id": { "type": "string", "minLength": 1 },
+    "decision_key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Bare hex only, never prefixed (P1-7)."
+    },
+    "revision_digest": {
+      "type": "string",
+      "pattern": "^(sha256:)?[0-9a-f]{64}$"
+    },
+    "decision_scope": { "type": "string", "minLength": 1 },
+    "supersedes": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^(sha256:)?[0-9a-f]{64}$" }
+      ]
+    },
+    "outcome": { "enum": ["accepted", "rejected"] },
+    "recorded_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    }
+  },
+  "$defs": {
+    "decision_record_identity": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256(canonical_object(record minus recorded_at minus outcome)); computed per contract 5.1, not stored."
+    }
+  }
+}

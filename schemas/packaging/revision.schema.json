@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cortxt:packaging:revision.schema.json",
+  "title": "Packaging Revision",
+  "description": "D3-Alt-1 parent-chain content revision (#606). revision_identity = sha256(canonical_object(revision)); parent_revision_identity is null for genesis. No counter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["package_id", "parent_revision_identity", "content"],
+  "properties": {
+    "package_id": { "type": "string", "minLength": 1 },
+    "parent_revision_identity": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "pattern": "^(sha256:)?[0-9a-f]{64}$",
+          "description": "Bare hex stored; a single sha256: prefix accepted on input (S4-B5/P1-7)."
+        }
+      ]
+    },
+    "content": {}
+  },
+  "$defs": {
+    "revision_identity": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256(canonical_object(revision)); stored bare hex only (P1-7)."
+    }
+  }
+}

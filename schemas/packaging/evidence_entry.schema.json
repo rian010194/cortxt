@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cortxt:packaging:evidence_entry.schema.json",
+  "title": "Packaging Evidence Entry",
+  "description": "D4 / EVP-A evidence entry (#606). idempotency_key = sha256(canon_arr(request_id stripped, entry_id)); keys, ids and pointers are stored bare hex (P1-7). Request binding is exact whole-string equality between envelope request_id and payload_digest (EV-REQUEST_BINDING_MISMATCH otherwise) and never uses the digest-input normalization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["idempotency_key", "request_id", "entry_id", "payload_digest"],
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Bare hex only, never prefixed (P1-7)."
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Stored normalized to bare hex; a single sha256: prefix is accepted on input only."
+    },
+    "entry_id": { "type": "string", "minLength": 1 },
+    "payload_digest": {
+      "type": "string",
+      "pattern": "^(sha256:)?[0-9a-f]{64}$",
+      "description": "Envelope-payload digest; request binding compares it to request_id by exact whole-string equality."
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cortxt:packaging:operation_record.schema.json",
+  "title": "Packaging Operation Record",
+  "description": "Closed eight-field operation record (S4-B3, #606). candidate_digest = sha256(canonical_object(candidate_revision)); result_revision_identity equals it when committed, else null. The scenario fields replayed, current_head and replayed_after_head_advance are non-normative oracle metadata, never stored, never part of any digest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "operation_id",
+    "package_id",
+    "original_parent",
+    "candidate_revision",
+    "candidate_digest",
+    "status",
+    "result_revision_identity",
+    "recorded_at"
+  ],
+  "properties": {
+    "operation_id": { "type": "string", "minLength": 1 },
+    "package_id": { "type": "string", "minLength": 1 },
+    "original_parent": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^(sha256:)?[0-9a-f]{64}$" }
+      ]
+    },
+    "candidate_revision": { "$ref": "cortxt:packaging:revision.schema.json" },
+    "candidate_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "status": {
+      "enum": [
+        "pending",
+        "committed",
+        "rejected-op-content-mismatch",
+        "rejected-op-concurrent"
+      ]
+    },
+    "result_revision_identity": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      ]
+    },
+    "recorded_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    }
+  }
+}
