@@ -230,6 +230,121 @@ def run_all_checks():
     check("a refused Run's label goes to blocked, never review",
           gh_bad.labels["o/r#31"] == ["workflow:blocked"])
 
+    print("== Evidence Gate (#608): a succeeded mutating Run the containment scan flagged is refused ==")
+    # The post-run containment scan (#608) records a stable code on the durable
+    # Run. `launcher_checkout_dirty` means activity outside the Run's
+    # registered worktree was observed, so whatever commit such a Run presents
+    # cannot be its evidence: the gate refuses with the stable code
+    # `containment_violation`. The envelope below deliberately omits every
+    # correlation field -- if the containment refusal did NOT fire ahead of
+    # the correlation checks, the category here would be the pre-existing
+    # `run_correlation_mismatch` instead, so this assertion also pins the
+    # ordering.
+    submissions_c = []
+    ws_c = tempfile.mkdtemp(prefix="dispatcher-containment-dirty-")
+    gh_c = FakeGitHub({"o/r#34": ["workflow:ready"]})
+    disp_c = d.Dispatcher(d.RunRegistry(Path(ws_c) / "runs.json"), gh_c,
+                          review_submitter=lambda run, env, ev: submissions_c.append(run.run_id) or "sub-c")
+    run_c = disp_c.claim("o/r#34", "wedge-b", "builder", "hermes", 600)
+    disp_c.registry.update(run_c.run_id, mutating=True, containment="launcher_checkout_dirty")
+    refusal_c = ce.verify_commit_correlation(disp_c.registry.get(run_c.run_id), {})
+    check("the gate function refuses a launcher_checkout_dirty Run with containment_violation",
+          isinstance(refusal_c, ce.CorrelationFailure) and refusal_c.code == "containment_violation",
+          repr(getattr(refusal_c, "code", refusal_c)))
+    disp_c.complete(run_c.run_id, "succeeded", {"evidence": "claimed success, outside the worktree"})
+    q_c = disp_c.query(run_c.run_id)
+    check("a containment-flagged success is recorded blocked, not succeeded",
+          q_c["status"] == "blocked")
+    check("the refusal carries the stable containment_violation code",
+          (q_c["result"] or {}).get("error", {}).get("category") == "containment_violation")
+    check("a containment-flagged Run earns NO review submission", submissions_c == [])
+    check("a containment-flagged Run's label goes to blocked, never review",
+          gh_c.labels["o/r#34"] == ["workflow:blocked"])
+
+    print("== Evidence Gate (#608): every other recorded code (and a legacy Run without one) behaves exactly as before ==")
+    # The refusal is keyed to `launcher_checkout_dirty` alone. A Run whose scan
+    # recorded `worktree_dirty_uncommitted` (approved in-worktree work, not
+    # yet committed), `containment_clean`, or nothing at all (a legacy Run
+    # from before the scan existed) must reach the gate's pre-existing checks
+    # unchanged. Each dispatcher below wires the REAL default gate
+    # (`verify_commit_correlation`) and an envelope that omits the
+    # correlation fields, so the pre-existing verdict -- `run_correlation_
+    # mismatch` -- is exactly what must come back; a wrongly firing
+    # containment refusal would surface as `containment_violation` instead.
+    for i, recorded in enumerate(("worktree_dirty_uncommitted", "containment_clean", None)):
+        ws_x = tempfile.mkdtemp(prefix=f"dispatcher-containment-ok-{i}-")
+        gh_x = FakeGitHub({f"o/r#{35 + i}": ["workflow:ready"]})
+        disp_x = d.Dispatcher(d.RunRegistry(Path(ws_x) / "runs.json"), gh_x)
+        run_x = disp_x.claim(f"o/r#{35 + i}", "wedge-b", "builder", "hermes", 600)
+        if recorded is None:
+            disp_x.registry.update(run_x.run_id, mutating=True)  # legacy Run: no scan verdict at all
+        else:
+            disp_x.registry.update(run_x.run_id, mutating=True, containment=recorded)
+        disp_x.complete(run_x.run_id, "succeeded", {"evidence": "claimed"})
+        q_x = disp_x.query(run_x.run_id)
+        check(f"containment={recorded!r}: the gate's verdict is the pre-existing correlation refusal",
+              q_x["status"] == "blocked"
+              and (q_x["result"] or {}).get("error", {}).get("category") == "run_correlation_mismatch",
+              str((q_x["result"] or {}).get("error")))
+
+    print("== Evidence Gate (#608): containment_snapshot_missing refuses a succeeded mutating Run, ahead of correlation ==")
+    # The fail-closed settlement arm records `containment_snapshot_missing` on
+    # a launcher-owned mutating Run that reaches the gate with no snapshot to
+    # scan. That verdict must refuse exactly like `launcher_checkout_dirty` --
+    # and ahead of the correlation checks, which a deliberately
+    # correlation-free envelope would otherwise fail first with
+    # `run_correlation_mismatch`.
+    submissions_m = []
+    ws_m = tempfile.mkdtemp(prefix="dispatcher-containment-missing-")
+    gh_m = FakeGitHub({"o/r#38": ["workflow:ready"]})
+    disp_m = d.Dispatcher(d.RunRegistry(Path(ws_m) / "runs.json"), gh_m,
+                          review_submitter=lambda run, env, ev: submissions_m.append(run.run_id) or "sub-m")
+    run_m = disp_m.claim("o/r#38", "wedge-b", "builder", "hermes", 600)
+    disp_m.registry.update(run_m.run_id, mutating=True,
+                           containment="containment_snapshot_missing")
+    refusal_m = ce.verify_commit_correlation(disp_m.registry.get(run_m.run_id), {})
+    check("the gate function refuses a containment_snapshot_missing Run with containment_violation",
+          isinstance(refusal_m, ce.CorrelationFailure) and refusal_m.code == "containment_violation",
+          repr(getattr(refusal_m, "code", refusal_m)))
+    disp_m.complete(run_m.run_id, "succeeded", {"evidence": "claimed success, never scanned"})
+    q_m = disp_m.query(run_m.run_id)
+    check("a snapshot-missing success is recorded blocked, not succeeded",
+          q_m["status"] == "blocked")
+    check("the refusal carries the stable containment_violation code",
+          (q_m["result"] or {}).get("error", {}).get("category") == "containment_violation")
+    check("a snapshot-missing Run earns NO review submission", submissions_m == [])
+    check("a snapshot-missing Run's label goes to blocked, never review",
+          gh_m.labels["o/r#38"] == ["workflow:blocked"])
+
+    print("== Evidence Gate (#608): containment_scan_error refuses a succeeded mutating Run, ahead of correlation ==")
+    # A scan that could not complete (unreadable sweep root / unreadable
+    # checkout) records `containment_scan_error` fail-closed. A worker that
+    # can induce that code must not be able to mask an escape behind it: an
+    # unscannable Run cannot prove where it wrote, so the gate refuses it on
+    # the same terms as the other unprovable-containment codes -- ahead of
+    # correlation, with the stable `containment_violation` reason code.
+    submissions_e = []
+    ws_e = tempfile.mkdtemp(prefix="dispatcher-containment-scan-error-")
+    gh_e = FakeGitHub({"o/r#39": ["workflow:ready"]})
+    disp_e = d.Dispatcher(d.RunRegistry(Path(ws_e) / "runs.json"), gh_e,
+                          review_submitter=lambda run, env, ev: submissions_e.append(run.run_id) or "sub-e")
+    run_e = disp_e.claim("o/r#39", "wedge-b", "builder", "hermes", 600)
+    disp_e.registry.update(run_e.run_id, mutating=True,
+                           containment="containment_scan_error")
+    refusal_e = ce.verify_commit_correlation(disp_e.registry.get(run_e.run_id), {})
+    check("the gate function refuses a containment_scan_error Run with containment_violation",
+          isinstance(refusal_e, ce.CorrelationFailure) and refusal_e.code == "containment_violation",
+          repr(getattr(refusal_e, "code", refusal_e)))
+    disp_e.complete(run_e.run_id, "succeeded", {"evidence": "claimed success, scan induced to fail"})
+    q_e = disp_e.query(run_e.run_id)
+    check("a scan-error success is recorded blocked, not succeeded",
+          q_e["status"] == "blocked")
+    check("the scan-error refusal carries the stable containment_violation code",
+          (q_e["result"] or {}).get("error", {}).get("category") == "containment_violation")
+    check("a scan-error Run earns NO review submission", submissions_e == [])
+    check("a scan-error Run's label goes to blocked, never review",
+          gh_e.labels["o/r#39"] == ["workflow:blocked"])
+
     print("== Evidence Gate (#490): a gate that itself raises also blocks (fails closed) ==")
     ws_raise = tempfile.mkdtemp(prefix="dispatcher-review-raise-")
     gh_raise = FakeGitHub({"o/r#32": ["workflow:ready"]})

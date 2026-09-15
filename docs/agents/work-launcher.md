@@ -54,6 +54,46 @@ while the change had landed in the shared checkout, and a mandate requiring
 the change to stay "inside the run's isolated worktree" was unenforceable
 rather than merely unenforced.
 
+## Post-run containment scan
+
+Isolation decides where a run was *sent*. Containment checks where it actually
+*wrote* (#608): #606 and #607 wrote outside their registered worktrees, unseen
+by commit-scoped checks — a worker writing outside its worktree lands no commit.
+
+At dispatch of an isolated run the launcher snapshots its checkout's
+`git status --porcelain -uall` state; at the worker's first terminal status —
+on every settlement path, BEFORE the Evidence Gate — the scan compares that
+snapshot against the checkout and the registered worktree and sweeps the
+worktree roots on the filesystem (the production geometry gitignores
+`.worktrees/` inside the launcher checkout, so porcelain cannot see an escape
+there): any directory under a launcher worktree root that the launcher did
+not register — empty or not, whatever its name — is a violation, path named:
+
+- `containment_clean` — checkout unchanged; the worktree may show the run's
+  approved activity, committed or uncommitted.
+- `worktree_dirty_uncommitted` — checkout unchanged; the registered worktree
+  carries uncommitted in-progress work — approved, not a violation.
+- `launcher_checkout_dirty` — activity outside the registered worktree: a
+  changed launcher checkout, or an unregistered sibling worktree directory.
+- `containment_snapshot_missing` — a launcher-owned mutating run reached the
+  gate with no snapshot (memory-only; a launcher restart loses them):
+  fail-closed, never a clean verdict.
+- `containment_scan_error` — the scan could not read a checkout or worktree;
+  it degrades to this rather than inventing a clean verdict.
+
+The scan is read-only and never fails a launch or a completion. A Run with no
+`containment` field is a legacy run, judged exactly as before.
+
+For a `succeeded` **mutating** run the Evidence Gate refuses with
+`containment_violation` when the scan recorded `launcher_checkout_dirty` or
+`containment_snapshot_missing`: where such a run wrote cannot be proven, so
+its output is not evidence; every other code — or its absence — reaches the
+gate's correlation checks unchanged.
+
+Scope boundary: only the launcher checkout and its worktree roots are in
+scope; paths outside both (`~/.copilot/...`, #607) are OUT OF SCAN SCOPE,
+pending a separate cross-root scan decision (follow-up proposal).
+
 ## Evidence Gate: a mutating run must land a correlated commit
 
 Isolation says where a run worked. It does not say whether the run produced
