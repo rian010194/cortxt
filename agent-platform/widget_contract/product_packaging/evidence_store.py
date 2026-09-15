@@ -118,7 +118,12 @@ class EvidenceStore:
         """
         validate_evidence_request(request)
         key = evidence_idempotency_key(request["request_id"], request["entry_id"])
-        payload = request["payload_digest"]
+        # Stored and compared BARE (contract 6.2: readers strip before byte
+        # comparison), so a prefixed re-delivery of the same digest renders
+        # re-delivery, not a false conflict. Request binding stays
+        # un-normalized (check_request_binding, deliberately raw).
+        payload = normalize_request_digest(request["payload_digest"],
+                                           field="payload_digest")
         entry = {
             "idempotency_key": key,
             "request_id": normalize_request_digest(request["request_id"], field="request_id"),

@@ -11,7 +11,8 @@
     "revision_digest",
     "decision_scope",
     "supersedes",
-    "outcome"
+    "verdict",
+    "operator"
   ],
   "properties": {
     "package_id": { "type": "string", "minLength": 1 },
@@ -31,7 +32,10 @@
         { "type": "string", "pattern": "^(sha256:)?[0-9a-f]{64}$" }
       ]
     },
-    "outcome": { "enum": ["accepted", "rejected"] },
+    "verdict": { "enum": ["accepted", "rejected"],
+      "description": "CONTENT field (erratum E4): participates in decision_record_identity." },
+    "operator": { "type": "string", "minLength": 1,
+      "description": "Deciding operator; participates in decision_record_identity." },
     "recorded_at": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"

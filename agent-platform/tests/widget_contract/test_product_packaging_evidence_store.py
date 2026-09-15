@@ -168,10 +168,18 @@ class TestRequestBinding:
         # with EV-REQUEST_BINDING_MISMATCH...
         with pytest.raises(EvidenceError, match=REQUEST_BINDING_MISMATCH):
             check_request_binding(REQUEST_HEX, REQUEST_ID)
-        # ...and the append is never reached when the check fails: the
-        # binding failure happens at the guard, so the store stays empty.
+        # ...and a guard-failing envelope is therefore never appended: a
+        # caller that binds first and appends only on success leaves the
+        # store empty, while a passing pair proceeds to a real append.
         store = EvidenceStore()
-        assert len(store) == 0  # nothing appended on binding failure
+        with pytest.raises(EvidenceError, match=REQUEST_BINDING_MISMATCH):
+            check_request_binding(REQUEST_HEX, REQUEST_ID)
+            store.append({"request_id": REQUEST_HEX, "entry_id": "ev-0001",
+                          "payload_digest": EV1_PAYLOAD_DIGEST})
+        assert len(store) == 0  # refusal happened before any append
+        store.append({"request_id": REQUEST_ID, "entry_id": "ev-0001",
+                      "payload_digest": EV1_PAYLOAD_DIGEST})
+        assert len(store) == 1  # the passing pair appended exactly once
 
 
 class TestEvidenceOutcomes:
@@ -214,6 +222,20 @@ class TestEvidenceOutcomes:
         assert again["outcome"] == OUTCOME_REDELIVERY
         assert again["appended"] is False
         assert len(store) == 1
+
+    def test_prefixed_redelivery_of_same_digest_is_redelivery(self):
+        # Contract 6.2: readers strip before byte comparison. A re-delivery
+        # of the SAME digest with a sha256: prefix must render re-delivery,
+        # not a false conflict (P2-3 regression, reviewer finding).
+        store = EvidenceStore()
+        store.append(self._request())
+        result = store.append(self._request(
+            payload_digest="sha256:" + EV1_PAYLOAD_DIGEST))
+        assert result["outcome"] == OUTCOME_REDELIVERY
+        assert result["appended"] is False
+        assert len(store) == 1
+        # And the stored form stays bare.
+        assert store.entries()[0]["payload_digest"] == EV1_PAYLOAD_DIGEST
 
     def test_conflict_rendered_explicitly_never_overwrites(self):
         # The conflict attempt carries the frozen conflict payload; its
