@@ -23,6 +23,7 @@ should instead return a future the dispatcher awaits, and which adapter is
 implemented second. First concrete adapter: Hermes Researcher.
 """
 import contextlib
+import json
 import os
 import shutil
 import subprocess
@@ -35,6 +36,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from dispatcher import Dispatcher, Run
+import evidence_port
 
 # Local-only run logs (raw worker stdout/stderr never leaves this machine).
 # .hermes/ is gitignored repo-wide; this reuses that existing convention
@@ -995,6 +997,183 @@ class HermesFreeAdapter:
             return None
 
 
+# --- W-4 (#614): the read-only route ---------------------------------------
+#: The attestation the readonly route asks the worker to end its stdout with.
+#: It must be the LAST non-empty stdout line (`read_attested_outcome` reads
+#: exactly that line), and it is the transport verdict the classification
+#: consults after the structured report (P3, after P2). A failed invocation
+#: reuses the mutating gate's `commit_correlation_failed` marker family shape:
+#: the settlement gate's failure marker, so a reviewer reads one refusal
+#: vocabulary across both Run shapes.
+READONLY_ATTESTATION = "CORTXT-OUTCOME: completed"
+READONLY_FAILED_ATTESTATION = (
+    f"CORTXT-OUTCOME: declined {evidence_port.READONLY_GATE_FAILED}")
+
+#: Embedded in every readonly task: what the worker's report MUST carry and
+#: why. Plain instruction to the model runtime; the platform-side checks that
+#: make it enforceable are `evidence_port.verify_readonly_report` and this
+#: adapter's digest stamp on the envelope.
+READONLY_OBSERVED_NOTE = (
+    "Read-only Run evidence (#614): the settlement gate "
+    "readonly_report_unverifiable re-verifies this observation against the "
+    "digest recorded at dispatch; embed it unmodified under 'observed'.")
+
+
+@dataclass
+class HermesReadonlyAdapter(HermesFreeAdapter):
+    """Free-tier hermes route for a NON-mutating Run that must show its work.
+
+    W-4 (#614). A mutating Run's claimed success is gated on a correlated,
+    landed commit (`commit_evidence.verify_commit_correlation`, #490). A
+    read-only Run -- research, observation -- has no commit by design, so its
+    evidence is different in kind: the packaged-workstream observation it
+    actually made. This adapter invokes the same free-tier invoker as
+    `HermesFreeAdapter`, but its task carries two extra obligations for the
+    worker:
+
+    - embed the observation in the structured completion report it writes via
+      the `--usage-file` channel (under the envelope key `observed`); and
+    - attest `CORTXT-OUTCOME: completed` as the last line of its stdout.
+
+    The settlement-side twin of the first obligation is
+    `evidence_port.verify_readonly_report`, which the dispatcher runs before a
+    non-mutating Run may read `succeeded`; the second is what lets the
+    classification see a worker outcome at all on a one-shot CLI route.
+
+    The observation itself is made HERE, before the worker is invoked:
+    `PackagingOpsApi(worktree).workstream()` -- a pure read (W-3, #612) over
+    the run's own isolated worktree's Core store -- is embedded in the task
+    so the worker's report can carry it verbatim. Freezing it pre-invocation
+    is what makes the settlement digest meaningful: the platform knows what
+    was observed, the worker's report states what it observed, and
+    `observed_digest` must agree on both.
+
+    A worktree with no Core store still observes: `workstream()` reads an
+    empty store as zero counts, and the observation records that absence via
+    `store_error: null`. An observation that cannot be made at all (the ops
+    API itself raises) is recorded as `store_error` text; the worker still
+    runs, and the settlement gate decides what the payload proves. ZERO
+    agent-platform edits: the run carries no `REPORT_CHANNELS` entry, so
+    `completion_report.report_channel("hermes-readonly")` falls back to
+    `CHANNEL_STRUCTURED` -- the documented unknown-runtime default
+    (completion_report.py:190) -- exactly the channel this adapter opens.
+
+    Envelope discipline is inherited unchanged from the base: raw stdout/
+    stderr never enters the envelope, cost/usage stay honestly `unknown`
+    unless the report carries them, and the attestation line is worker-
+    authored text that never reaches a GitHub-posted field.
+    """
+
+    def invoke(self, run: Run, task_prompt: str, timeout_seconds: int,
+               worktree: Path | None = None) -> dict:
+        started = time.time()
+        # The structured channel is requested by NAME, not by this runtime's
+        # registry entry: the readonly route is W-4's own runtime, and the
+        # documented fallback (unknown runtimes default to CHANNEL_STRUCTURED)
+        # would give it exactly this channel anyway. Opening it via
+        # `_requested_report_path("hermes-readonly")` keeps that reliance
+        # explicit and reviewable here rather than silent two layers down.
+        with _requested_report_path("hermes-readonly") as report_path:
+            return self._invoke_within_channel(
+                run, task_prompt, timeout_seconds, worktree=worktree,
+                report_path=report_path, started=started)
+
+    def _readonly_prompt(self, run: Run, task_prompt: str,
+                         worktree: "Path | None") -> "tuple[str, dict | None]":
+        """Build the W-4 task: the base instruction plus the frozen observation
+        the worker's report must embed. Returns `(prompt, observation)`.
+
+        `worktree` is the run's isolated worktree — the same directory the
+        invocation is cwd-bound to (#419) — so the observation reads the Core
+        store the worker itself will run against. It is threaded in explicitly
+        rather than re-derived: the base cwd rule
+        (`worktree if worktree is not None else Path.cwd()`) is duplicated
+        here on purpose, because a default that silently changed to the
+        process cwd would silently change what the digest freezes."""
+        observation = None
+        store_error = None
+        store_root = worktree if worktree is not None else Path.cwd()
+        try:
+            from widget_contract.product_packaging.ops_api import PackagingOpsApi
+            observation = PackagingOpsApi(store_root).workstream()
+        except Exception as exc:  # noqa: BLE001 - a failed observation is recorded, never fatal here
+            store_error = f"{type(exc).__name__}: {exc}"
+        embedded = {"note": READONLY_OBSERVED_NOTE,
+                    "source": "PackagingOpsApi.workstream()",
+                    "observed": observation,
+                    "store_error": store_error}
+        readonly_block = (
+            "\n\nRead-only evidence contract\n"
+            "---------------------------\n"
+            "This is a NON-mutating observation run. Do not write to the "
+            "repository: no commits, no pushes, no issue changes.\n"
+            "1. Read the packaged-workstream observation embedded below and "
+            "carry it, unmodified, inside the JSON object your completion "
+            f"report writes under the key '{evidence_port.OBSERVED_KEY}'. "
+            "The report's other fields (report_version, completed, failed) "
+            "are unchanged.\n"
+            "2. End your stdout with exactly this line and nothing after it:\n"
+            f"{READONLY_ATTESTATION}\n\n"
+            "Observation (embed verbatim)\n"
+            "----------------------------\n"
+            f"{json.dumps(embedded, sort_keys=True, default=str)}\n")
+        return task_prompt.rstrip("\n") + "\n" + readonly_block, observation
+
+    def _invoke_within_channel(self, run: Run, task_prompt: str, timeout_seconds: int,
+                               *, worktree: Path | None, report_path: "Path | None",
+                               started: float) -> dict:
+        prompt, observation = self._readonly_prompt(run, task_prompt, worktree)
+        envelope = super()._invoke_within_channel(
+            run, prompt, timeout_seconds, worktree=worktree,
+            report_path=report_path, started=started)
+        # W-4: the settlement-side evidence travels ON the envelope. Freezing
+        # the platform's own pre-invocation observation onto it is what gives
+        # `verify_readonly_report` an authoritative side to compare the
+        # worker's carried observation against (recomputed digest equality);
+        # without it, the gate could only ever verify the worker against
+        # itself. Carried on the ENVELOPE, not the report payload: the
+        # payload's digest equality (below) is the worker's side of the proof.
+        envelope["observed"] = observation
+        envelope[evidence_port.OBSERVED_DIGEST_KEY] = evidence_port.observed_digest(
+            observation)
+        # W-4 KEY GAP (#614): the settlement gate re-verifies the CARRIED
+        # payload (`verify_readonly_report` requires a non-empty dict under
+        # `report_payload`), but the base classification only stamps
+        # `report_state` on the envelope -- the decoded payload never leaves
+        # `_report_state_for`. The report file still exists at this point (the
+        # channel context in `invoke()` closes only after this method returns),
+        # and its content was already decoded and mtime-correlated once by
+        # `read_completion_report` at classification time, so re-reading the
+        # same file and carrying the payload on the envelope gives the gate
+        # its second side of the digest equality. A payload that cannot be
+        # re-read is simply not carried: the gate then fails closed with its
+        # "payload was not carried" refusal instead of crashing.
+        if envelope.get("report_state") == "completed" and report_path is not None:
+            try:
+                payload = json.loads(Path(report_path).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                payload = None
+            if isinstance(payload, dict):
+                envelope["report_payload"] = payload
+        # The terminal evidence text is overridden on purpose: the base
+        # hardcodes the wording "hermes-free reported status=...", which would
+        # misattribute this adapter's conclusion to the readonly route. No
+        # test asserts the base wording (test_worker_adapters.py pins only
+        # `hermes-free reported status=` for the HermesFreeAdapter itself).
+        reported_status = ("succeeded" if envelope.get("_status") == "succeeded"
+                           else envelope.get("_status", "failed"))
+        if envelope.get("error") is None:
+            envelope["evidence"] = (
+                f"hermes-readonly reported status={reported_status}, "
+                f"outcome={envelope.get('outcome')}; "
+                f"observation_digest={envelope[evidence_port.OBSERVED_DIGEST_KEY]}")
+        # A failed/blocked envelope keeps the base's structured refusal fields
+        # (category/recovery) untouched; only the terminal evidence TEXT is
+        # re-attributed, and even that only when the classification produced
+        # no refusal of its own to preserve.
+        return envelope
+
+
 ADAPTER_REGISTRY: dict[str, WorkerAdapter] = {
     "hermes-researcher": HermesAdapter(profile="researcher"),
     "hermes-coordinator": HermesAdapter(profile="coordinator"),
@@ -1006,6 +1185,14 @@ ADAPTER_REGISTRY: dict[str, WorkerAdapter] = {
     # manifest). Wires the same invoker the platform HermesFreeAdapter wraps,
     # so the WorkLauncher can actually dispatch what eligibility approves.
     "hermes-free": HermesFreeAdapter(),
+    # W-4 (#614): the read-only route. Same free-tier invoker as hermes-free,
+    # plus the observation/digest/report-payload evidence obligations on the
+    # envelope. Deliberately NO _RUNTIME_ENV_REQUIREMENTS entry below: the
+    # readonly route's launchability is governed by the same free-route env
+    # vars at invocation time (a missing configuration is an ordinary failed
+    # envelope, never an exception), and the spec keeps the requirements map
+    # to runtimes whose refusal must be visible before dispatch.
+    "hermes-readonly": HermesReadonlyAdapter(),
 }
 
 

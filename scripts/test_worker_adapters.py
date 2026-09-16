@@ -6,12 +6,15 @@ injected fake `run_subprocess`, matching the FakeGitHub pattern already used
 in test_dispatcher.py. Run directly: python scripts/test_worker_adapters.py
 (0 = pass)
 """
+import contextlib
 import importlib.util
+import json
 import os
 import subprocess
 import sys
 import tempfile
 import time
+import types
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -25,7 +28,19 @@ d_spec.loader.exec_module(d)
 
 wa_spec = importlib.util.spec_from_file_location("worker_adapters", REPO / "scripts" / "worker_adapters.py")
 wa = importlib.util.module_from_spec(wa_spec)
+
+# W-4 (#614): the read-only evidence port, loaded and registered BEFORE the
+# adapter module so worker_adapters' own `import evidence_port` binds this
+# exact object (one CorrelationFailure class across gate and tests).
+ep_spec = importlib.util.spec_from_file_location("evidence_port", REPO / "scripts" / "evidence_port.py")
+evidence_port = importlib.util.module_from_spec(ep_spec)
+sys.modules["evidence_port"] = evidence_port
+ep_spec.loader.exec_module(evidence_port)
+
+sys.modules["worker_adapters"] = wa
 wa_spec.loader.exec_module(wa)
+
+import commit_evidence as ce  # noqa: E402 - scripts/ is sys.path[0] for this script
 
 fail = []
 
@@ -148,6 +163,130 @@ def recording_slow_subprocess(seen, delay=0.3):
 
 run = d.Run(run_id="r1", issue_id="o/r#1", workflow="wedge-b", worker_role="researcher",
             runtime="hermes-researcher", claimed_at=time.time(), lease_seconds=60)
+
+
+# --- W-4 (#614): deterministic observation doubles ---------------------------
+#
+# The adapter's observation comes from `PackagingOpsApi(worktree).workstream()`
+# (W-3, #612). On a venv without the widget-contract package the adapter's
+# import fails and it records a `store_error` instead of crashing -- both
+# branches must produce a DETERMINISTIC observation/digest pair, so the digest
+# the envelope freezes can be re-verified byte-for-byte by the settlement-side
+# gate in any environment.
+
+_RO_STORE_ERROR = ("ModuleNotFoundError: No module named 'widget_contract'")
+
+
+def _stub_packaging(monkey_store):
+    """Install a deterministic stand-in for the W-3 ops API.
+
+    `monkey_store` is a dict either carrying `{"counts": {...}}` (the
+    projection uses the counts) or `{"error": "<text>"}` (the import raises,
+    exercising the adapter's recorded store_error arm).
+    """
+    if "error" in monkey_store:
+        class _Boom:
+            def __init__(self, *a, **k):
+                raise ModuleNotFoundError("No module named 'widget_contract'")
+        mod = types.ModuleType("widget_contract.product_packaging.ops_api")
+        mod.PackagingOpsApi = _Boom
+    else:
+        counts = dict(monkey_store["counts"])
+
+        class _Api:
+            def __init__(self, *a, **k):
+                pass
+
+            def workstream(self):
+                return dict(counts)
+        mod = types.ModuleType("widget_contract.product_packaging.ops_api")
+        mod.PackagingOpsApi = _Api
+    pkg = types.ModuleType("widget_contract")
+    pkg.product_packaging = mod
+    sys.modules["widget_contract"] = pkg
+    sys.modules["widget_contract.product_packaging"] = mod
+    sys.modules["widget_contract.product_packaging.ops_api"] = mod
+
+
+def _install_packaging_stub(monkey_store):
+    """Save-and-restore around a deterministic PackagingOpsApi stub."""
+    saved = {name: sys.modules.pop(name, None) for name in (
+        "widget_contract", "widget_contract.product_packaging",
+        "widget_contract.product_packaging.ops_api")}
+    try:
+        _stub_packaging(monkey_store)
+        yield
+    finally:
+        for name, mod in saved.items():
+            if mod is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = mod
+
+
+_install_packaging_stub = contextlib.contextmanager(_install_packaging_stub)
+
+
+def _readonly_run(run_id="run-614-adapter", worktree=None):
+    return d.Run(run_id=run_id, issue_id="o/r#614", workflow="wf/v1",
+                 worker_role="observer", runtime="hermes-readonly",
+                 claimed_at=time.time(), lease_seconds=60,
+                 request_id="req-614", worktree=str(worktree) if worktree else None)
+
+
+def _readonly_invoker(attest=True):
+    """An invoke_hermes double that honours its --usage-file channel: writes a
+    completed report embedding the observation the task embedded, and attests
+    the W-4 outcome line as its last stdout line."""
+    def _invoke(profile, prompt, timeout_seconds, model=None, provider=None,
+                cwd=None, usage_file=None, **_):
+        idx = prompt.find("Observation (embed verbatim)")
+        block = prompt[idx:] if idx >= 0 else "{}"
+        start = block.find("{")
+        end = block.rfind("}")
+        observed = json.loads(block[start:end + 1]) if start >= 0 and end > start else {}
+        # The prompt embeds the WHOLE observation object; the worker's report
+        # carries only its 'observed' member (the task's rule 1).
+        if isinstance(observed, dict) and "observed" in observed:
+            observed = observed["observed"]
+        if usage_file:
+            Path(usage_file).write_text(json.dumps(
+                {"completed": True, "failed": False, "report_version": 1,
+                 "observed": observed}), encoding="utf-8")
+        out = "readonly work done\n" + (wa.READONLY_ATTESTATION if attest else "CORTXT-OUTCOME: declined worker_declined")
+        return {"status": "succeeded", "stdout": out, "stderr": "",
+                "elapsed_seconds": 1.0, "session_id": None}
+    return _invoke
+
+
+@contextlib.contextmanager
+def _free_route_env():
+    """The free-route env vars `_call` demands before any invocation (#482):
+    save, set, restore. The readonly route rides the same invoker gate."""
+    saved = {k: os.environ.get(k) for k in ("CORTXT_FREE_MODEL", "CORTXT_FREE_PROVIDER")}
+    os.environ["CORTXT_FREE_MODEL"] = "test-free-model"
+    os.environ["CORTXT_FREE_PROVIDER"] = "test-free-provider"
+    try:
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _enrich_for_gate(envelope, run):
+    """Stamp the authoritative correlation fields onto an adapter envelope,
+    exactly what dispatch_async's #506 step does before Dispatcher.complete()
+    sees it -- the adapter-level gate checks here mirror that production
+    order instead of bypassing it."""
+    enriched = dict(envelope)
+    enriched["run_id"] = run.run_id
+    enriched["issue_id"] = run.issue_id
+    enriched["request_id"] = getattr(run, "request_id", None)
+    return enriched
+
 
 def run_all_checks():
     print("== HermesAdapter.invoke: success -> succeeded envelope, no cost/usage guessed, no raw stdout in evidence ==")
@@ -789,6 +928,109 @@ def run_all_checks():
                           branch="work/probe-551", base_commit=landed_sha)  # base == tip: nothing landed
     check("branch tip equals its own base_commit -> None (nothing landed)",
           wa.recover_expired_run_evidence(run_untouched) is None)
+
+
+    print("== W-4 (#614): registry entry + env requirements map ==")
+    check("hermes-readonly registered by default",
+          isinstance(wa.ADAPTER_REGISTRY.get("hermes-readonly"), wa.HermesReadonlyAdapter))
+    check("hermes-readonly carries NO _RUNTIME_ENV_REQUIREMENTS entry (per spec)",
+          "hermes-readonly" not in wa._RUNTIME_ENV_REQUIREMENTS)
+
+    print("== W-4 (#614): HermesReadonlyAdapter happy path -> verified envelope ==")
+    with _install_packaging_stub({"counts": {"packages": 3, "revisions": 7}}), _free_route_env():
+        ro_adapter = wa.HermesReadonlyAdapter(
+            invoke_hermes=_readonly_invoker(), log_dir=new_log_dir())
+        ro_run = _readonly_run()
+        ro_env = ro_adapter.invoke(ro_run, "observe the workstream", timeout_seconds=60)
+    check("readonly adapter is NOT launch-blocked by env requirements",
+          wa.runtime_launch_config_ok("hermes-readonly") is True)
+    check("status succeeded", ro_env.get("_status") == "succeeded")
+    check("evidence re-attributed to hermes-readonly, not hermes-free",
+          "hermes-readonly reported status=succeeded" in ro_env.get("evidence", "")
+          and "hermes-free" not in ro_env.get("evidence", ""))
+    check("envelope carries the frozen observation",
+          ro_env.get("observed") == {"packages": 3, "revisions": 7})
+    dig = ro_env.get(evidence_port.OBSERVED_DIGEST_KEY)
+    check("observed_digest is the 64-hex digest of the observation",
+          isinstance(dig, str) and len(dig) == 64
+          and dig == evidence_port.observed_digest({"packages": 3, "revisions": 7}))
+    check("report_payload carried for settlement-side re-verification",
+          ro_env.get("report_payload") == {"completed": True, "failed": False,
+                                           "report_version": 1,
+                                           "observed": {"packages": 3, "revisions": 7}})
+    check("report_state completed", ro_env.get("report_state") == "completed")
+
+    print("== W-4 (#614): settlement-side verify_readonly_report passes on the adapter envelope ==")
+    ro_env_g = _enrich_for_gate(ro_env, ro_run)
+    outcome = evidence_port.verify_readonly_report(ro_run, ro_env_g)
+    check("gate returns ReadonlyReportEvidence on the real adapter envelope",
+          outcome is not None and not isinstance(outcome, evidence_port.CorrelationFailure)
+          and hasattr(outcome, "observed_digest"))
+    check("gate evidence carries the same digest the envelope froze",
+          outcome is not None and not isinstance(outcome, evidence_port.CorrelationFailure)
+          and outcome.observed_digest == dig)
+
+    print("== W-4 (#614): tampered report payload is refused by the gate ==")
+    tampered = _enrich_for_gate(ro_env, ro_run)
+    tampered["report_payload"] = {**ro_env["report_payload"],
+                                  "observed": {"packages": 999, "revisions": 7}}
+    second = evidence_port.verify_readonly_report(ro_run, tampered)
+    check("digest equality fails closed on a carried-observation mismatch",
+          isinstance(second, evidence_port.CorrelationFailure)
+          and second.code == "readonly_report_unverifiable")
+
+    print("== W-4 (#614): store_error fallback -> observation records the failure, gate refuses closed ==")
+    with _install_packaging_stub({"error": _RO_STORE_ERROR}), _free_route_env():
+        ro_adapter3 = wa.HermesReadonlyAdapter(
+            invoke_hermes=_readonly_invoker(), log_dir=new_log_dir())
+        ro_run3 = _readonly_run(run_id="run-614-storeerr")
+        ro_env3 = ro_adapter3.invoke(ro_run3, "observe", timeout_seconds=60)
+    check("failed observation recorded as observed=None, digest honestly None",
+          ro_env3.get("observed") is None
+          and ro_env3.get(evidence_port.OBSERVED_DIGEST_KEY) is None)
+    check("store_error arm still settles (worker ran and reported), never crashes",
+          ro_env3.get("_status") == "succeeded")
+    refused3 = evidence_port.verify_readonly_report(ro_run3, _enrich_for_gate(ro_env3, ro_run3))
+    check("settlement gate refuses an unobservable-store run (fail-closed, never a pass)",
+          isinstance(refused3, evidence_port.CorrelationFailure)
+          and refused3.code == "readonly_report_unverifiable")
+
+    print("== W-4 (#614): non-completed report -> no payload carried, gate would refuse ==")
+    def _no_report_invoker(profile, prompt, timeout_seconds, model=None, provider=None,
+                           cwd=None, usage_file=None, **_):
+        if usage_file:
+            Path(usage_file).write_text(json.dumps(
+                {"completed": False, "failed": False, "report_version": 1}),
+                encoding="utf-8")
+        return {"status": "succeeded", "stdout": "work", "stderr": "",
+                "elapsed_seconds": 1.0, "session_id": None}
+    with _free_route_env():
+        ro_env4 = wa.HermesReadonlyAdapter(invoke_hermes=_no_report_invoker,
+                                           log_dir=new_log_dir()).invoke(
+            _readonly_run(run_id="run-614-noreport"), "observe", timeout_seconds=60)
+    check("non-completed report -> no report_payload stamped",
+          "report_payload" not in ro_env4)
+
+    print("== W-4 (#614): task prompt carries the readonly evidence contract ==")
+    seen_prompt = []
+    def _capturing_invoker(profile, prompt, timeout_seconds, model=None, provider=None,
+                           cwd=None, usage_file=None, **_):
+        seen_prompt.append(prompt)
+        if usage_file:
+            Path(usage_file).write_text(json.dumps(
+                {"completed": True, "failed": False, "report_version": 1,
+                 "observed": {"packages": 3, "revisions": 7}}), encoding="utf-8")
+        return {"status": "succeeded", "stdout": "work\n" + wa.READONLY_ATTESTATION,
+                "stderr": "", "elapsed_seconds": 1.0, "session_id": None}
+    with _install_packaging_stub({"counts": {"packages": 3, "revisions": 7}}), _free_route_env():
+        wa.HermesReadonlyAdapter(invoke_hermes=_capturing_invoker,
+                                 log_dir=new_log_dir()).invoke(
+            _readonly_run(run_id="run-614-prompt"), "observe", timeout_seconds=60)
+    check("prompt embeds the observation verbatim, the observed-key rule and the attestation line",
+          "Observation (embed verbatim)" in seen_prompt[0]
+          and wa.READONLY_ATTESTATION in seen_prompt[0]
+          and evidence_port.OBSERVED_KEY in seen_prompt[0]
+          and '"packages": 3' in seen_prompt[0].replace("'", '"'))
 
 
 def test_all_checks_pass():
