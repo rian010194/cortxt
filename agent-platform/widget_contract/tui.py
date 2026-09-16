@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from typing import Any, Mapping, Sequence
 
 from widget_contract.chart_text import render_bar_gauge, render_line_spark
 from widget_contract.swimlane_text import render_swimlane_text
 from widget_contract.tokens import DEFAULT_ANSI_MAP, ansi_map, load_preset_tokens, truecolor_ansi_map
+from widget_contract.product_packaging.ops_api import OpsApiError, PackagingOpsApi
+from widget_contract.product_packaging.revision import RevisionError, build_revision, revision_identity
 
 
 def _get_colors(
@@ -359,3 +362,253 @@ def render_tui(
 
     lines = _render_node(node, colors)
     return "\n".join(lines)
+
+
+class PackagingTuiSession:
+    """Genuine interactive packaging lifecycle over the shared ops-API (W-3, #612).
+
+    The pin's TUI (``render_tui`` above) is rendering-only; this session adds
+    the client lifecycle that consumes the SAME shared ``PackagingOpsApi`` the
+    web action host routes use, driven by real Core-store state:
+
+    - ``workstream`` renders the kriterium-oracle Packaging Workstream
+      (mandate/objective/scope/non-goals/repo-refs) from the shared
+      projection -- the same dict the web route serves.
+    - ``list``/``show`` are pure reads over the store.
+    - ``create-revision`` and ``record-decision`` are interactive mutation
+      flows: each shows what will be appended and requires typing an explicit
+      confirmation phrase before calling the ops-API; the store's outcome
+      envelope (appended / re-delivery / conflict) is rendered verbatim.
+      Any validation error renders as an error line with no mutation.
+
+    ``input_fn``/``output_fn`` are injectable so tests drive the lifecycle
+    without a real terminal. No GitHub or network calls (ADR-048).
+    """
+
+    MUTATION_CONFIRM = "yes"
+    HELP_TEXT = (
+        "commands: help | workstream | list revisions|operations|decisions|evidence | "
+        "show revision <identity-prefix> | create-revision | record-decision | quit")
+
+    def __init__(self, ops_api: Any, *, input_fn: Any = None, output_fn: Any = None) -> None:
+        if not isinstance(ops_api, PackagingOpsApi):
+            raise ValueError("ops_api must be a PackagingOpsApi instance")
+        self._api = ops_api
+        self._input = input_fn or input
+        self._output = output_fn or print
+
+    # --- plumbing ---------------------------------------------------------
+
+    def _emit(self, line: str) -> None:
+        self._output(line)
+
+    def _error(self, message: str) -> None:
+        self._emit(f"[error] {message}")
+
+    def _ask(self, prompt: str) -> str:
+        raw = self._input(prompt)
+        return raw.strip() if isinstance(raw, str) else str(raw).strip()
+
+    def _confirm_mutation(self, summary_lines: list[str]) -> bool:
+        self._emit("about to append to the Core store:")
+        for line in summary_lines:
+            self._emit(f"  {line}")
+        answer = self._ask(f"type {self.MUTATION_CONFIRM!r} to confirm: ")
+        return answer == self.MUTATION_CONFIRM
+
+    # --- command loop -----------------------------------------------------
+
+    def run(self) -> None:
+        self._emit("Cortxt packaging TUI (W-3). " + self.HELP_TEXT)
+        while True:
+            try:
+                line = self._ask("packaging> ")
+            except (EOFError, KeyboardInterrupt):
+                self._emit("bye")
+                return
+            if not line:
+                continue
+            head, _, rest = line.partition(" ")
+            if head in ("quit", "exit"):
+                self._emit("bye")
+                return
+            if head in ("help", "?"):
+                self._emit(self.HELP_TEXT)
+            elif head == "workstream":
+                self._cmd_workstream()
+            elif head == "list":
+                self._cmd_list(rest.strip())
+            elif head == "show":
+                self._cmd_show(rest.strip())
+            elif head == "create-revision":
+                self._cmd_create_revision()
+            elif head == "record-decision":
+                self._cmd_record_decision()
+            else:
+                self._error(f"unknown command {head!r}; " + self.HELP_TEXT)
+
+    # --- commands ---------------------------------------------------------
+
+    def _cmd_workstream(self) -> None:
+        projection = self._api.workstream()
+        for line in self.render_workstream(projection["workstream"]):
+            self._emit(line)
+
+    def _cmd_list(self, what: str) -> None:
+        try:
+            if what == "revisions":
+                views = self._api.list_revisions()
+                self._emit(f"revisions: {len(views)}")
+                for view in views:
+                    parent = view["parent_revision_identity"]
+                    parent_text = (parent[:12] + "…") if parent else "genesis"
+                    self._emit(f"  {view['revision_identity'][:12]}  "
+                               f"{view['package_id']}  parent={parent_text}  "
+                               f"at={view['appended_at']}")
+            elif what == "operations":
+                views = self._api.list_operations()
+                self._emit(f"operations: {len(views)}")
+                for view in views:
+                    self._emit(f"  {view['operation_id']}  {view['status']}  "
+                               f"result={view['result_revision_identity'] or '-'}")
+            elif what == "decisions":
+                views = self._api.list_decisions()
+                self._emit(f"decisions: {len(views)}")
+                for view in views:
+                    self._emit(f"  {view['decision_record_identity'][:12]}  "
+                               f"{view['verdict']}  scope={view['decision_scope']}  "
+                               f"operator={view['operator']}")
+            elif what == "evidence":
+                views = self._api.list_evidence()
+                self._emit(f"evidence: {len(views)}")
+                for view in views:
+                    self._emit(f"  {view['entry_id']}  payload={view['payload_digest'][:12]}…")
+            else:
+                self._error("list what? revisions | operations | decisions | evidence")
+        except OpsApiError as exc:
+            self._error(f"{exc.kind}: {exc}")
+
+    def _cmd_show(self, rest: str) -> None:
+        parts = rest.split()
+        if len(parts) != 2 or parts[0] != "revision":
+            self._error("usage: show revision <identity-prefix>")
+            return
+        prefix = parts[1]
+        try:
+            revisions = self._api.list_revisions()
+        except OpsApiError as exc:
+            self._error(f"{exc.kind}: {exc}")
+            return
+        matches = [view for view in revisions
+                   if view["revision_identity"].startswith(prefix)]
+        if not matches:
+            self._error(f"no revision matches prefix {prefix!r}")
+            return
+        if len(matches) > 1:
+            self._error(f"ambiguous prefix {prefix!r}: {len(matches)} matches")
+            return
+        view = matches[0]
+        self._emit(f"revision_identity: {view['revision_identity']}")
+        self._emit(f"package_id: {view['package_id']}")
+        self._emit(f"parent_revision_identity: {view['parent_revision_identity'] or '-'}")
+        self._emit(f"record_digest: {view['record_digest']}")
+        self._emit(f"appended_at: {view['appended_at']}")
+        self._emit("content: " + json.dumps(view["revision"].get("content"),
+                                            sort_keys=True, ensure_ascii=True))
+
+    def _cmd_create_revision(self) -> None:
+        try:
+            package_id = self._ask("package_id: ")
+            parent_text = self._ask("parent revision identity (blank for genesis): ")
+            content_text = self._ask("content JSON: ")
+            try:
+                content = json.loads(content_text)
+            except ValueError as exc:
+                self._error(f"content is not valid JSON: {exc}")
+                return
+            revision = build_revision(package_id, content,
+                                      parent_revision_identity=parent_text or None)
+        except RevisionError as exc:
+            self._error(str(exc))
+            return
+        except (EOFError, KeyboardInterrupt):
+            self._emit("bye")
+            return
+        try:
+            candidate = revision_identity(revision)
+        except RevisionError as exc:
+            self._error(str(exc))
+            return
+        if not self._confirm_mutation([
+                f"action: packaging.create-revision",
+                f"package_id: {package_id}",
+                f"parent: {revision['parent_revision_identity'] or 'genesis'}",
+                f"revision_identity: {candidate}"]):
+            self._emit("aborted (not confirmed); nothing appended")
+            return
+        try:
+            outcome = self._api.create_revision(revision)
+        except OpsApiError as exc:
+            self._error(f"{exc.kind}: {exc}")
+            return
+        self._render_outcome(outcome)
+
+    def _cmd_record_decision(self) -> None:
+        try:
+            package_id = self._ask("package_id: ")
+            revision_digest = self._ask("revision digest: ")
+            decision_scope = self._ask("decision scope: ")
+            operator = self._ask("operator: ")
+            verdict = self._ask("verdict (accepted/rejected): ")
+        except (EOFError, KeyboardInterrupt):
+            self._emit("bye")
+            return
+        if not self._confirm_mutation([
+                "action: packaging.record-decision",
+                f"package_id: {package_id}",
+                f"revision_digest: {revision_digest}",
+                f"decision_scope: {decision_scope}",
+                f"operator: {operator}",
+                f"verdict: {verdict}"]):
+            self._emit("aborted (not confirmed); nothing appended")
+            return
+        try:
+            outcome = self._api.record_decision(
+                package_id=package_id, revision_digest=revision_digest,
+                decision_scope=decision_scope, operator=operator, verdict=verdict)
+        except OpsApiError as exc:
+            self._error(f"{exc.kind}: {exc}")
+            return
+        self._render_outcome(outcome)
+
+    # --- rendering --------------------------------------------------------
+
+    def _render_outcome(self, outcome: Mapping[str, Any]) -> None:
+        self._emit(f"outcome: {outcome.get('outcome')}")
+        self._emit(f"appended: {str(bool(outcome.get('appended'))).lower()}")
+        self._emit(f"identity: {outcome.get('identity')}")
+        self._emit(f"record_digest: {outcome.get('record_digest')}")
+        if outcome.get("existing_record_digest"):
+            self._emit(f"existing_record_digest: {outcome['existing_record_digest']}")
+        if isinstance(outcome.get("conflict"), Mapping):
+            conflict = outcome["conflict"]
+            values = ", ".join(str(v) for v in conflict.get("values", []))
+            self._emit(f"conflict: {conflict.get('field')} = [{values}]")
+
+    def render_workstream(self, workstream: Mapping[str, Any]) -> list[str]:
+        """Text projection of the Packaging Workstream (both-client oracle)."""
+        lines = ["=== Packaging Workstream ==="]
+        for field in ("id", "issue_id", "title"):
+            lines.append(f"  {field}: {workstream.get(field, '')}")
+        lines.append(f"  objective: {workstream.get('objective', '')}")
+        lines.append(f"  mandate: {workstream.get('mandate', '')}")
+        lines.append("  scope:")
+        for item in workstream.get("scope", []):
+            lines.append(f"    - {item}")
+        lines.append("  non-goals:")
+        for item in workstream.get("non_goals", []):
+            lines.append(f"    - {item}")
+        lines.append("  repo-refs:")
+        for item in workstream.get("repo_refs", []):
+            lines.append(f"    - {item}")
+        return lines
