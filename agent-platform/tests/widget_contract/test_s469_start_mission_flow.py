@@ -21,6 +21,7 @@ does.
 """
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -643,9 +644,11 @@ console.log(JSON.stringify({
     source = RENDERER.read_text(encoding="utf-8")
     assert 'fetch("api/action"' in source
     assert '"X-Cortxt-Token": s.token' in source
-    # The surface posts exactly the compose action, nothing else.
+    # The surface posts exactly the compose action here; the one other POST
+    # in this file is the operator-gated mark-ready transition, asserted
+    # exactly in its own section below.
     assert 'action_id: "issue-create"' in source
-    assert source.count("fetch(\"api/action\"") == 1
+    assert source.count("fetch(\"api/action\"") == 2
 
 
 @pytest.mark.skipif(NODE is None, reason="node unavailable")
@@ -838,6 +841,156 @@ def test_the_shell_still_never_calls_an_action_port(shell_path):
     # only POST-shaped call in the shell targets the read projections.
     assert "issue-create" in source  # the gate references the action id; the POST does not live here
     assert 'method: "POST"' not in source  # the shell performs no POST at all; compose lives in the Start app
+
+
+# --- #619 round 6: the operator-gated mark-ready confirmation ---------------
+#
+# An inbox mission has exactly one real mutation reachable from this surface:
+# the promotion of its Issue to workflow:ready -- the only label write in the
+# product. It is offered under the same fail-closed split as compose, and the
+# confirmation dialog mirrors `beginRecovery` in
+# app-renderer-decisions-evidence.js: an explained modal, a REQUIRED approval
+# reference refused client-side when empty, explicit `confirm: true` on the
+# POST, and denials (TransitionDenied, 409) rendered honestly in the dialog.
+
+READY_AVAILABLE_SCRIPT = """
+const m = require(%(path)s);
+const cases = {
+  live_with_cap:     {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: {id: "WS-1", issue_id: "o/r#1", workflow: "inbox"}},
+  live_prefixed:     {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: {id: "WS-1", issue_id: "o/r#1", workflow: "workflow:inbox"}},
+  live_without_cap:  {s: {model: {repo: "o/r"}, capabilities: []},                                    x: {id: "WS-1", issue_id: "o/r#1", workflow: "inbox"}},
+  live_wrong_cap:    {s: {model: {repo: "o/r"}, capabilities: [{id: "issue-create"}]},                x: {id: "WS-1", issue_id: "o/r#1", workflow: "inbox"}},
+  synthetic_granted: {s: {model: {synthetic: true, repo: "o/r"}, capabilities: [{id: "mark-ready"}]}, x: {id: "WS-1", issue_id: "o/r#1", workflow: "inbox"}},
+  ready_not_inbox:   {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: {id: "WS-1", issue_id: "o/r#1", workflow: "ready"}},
+  no_issue:          {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: {id: "WS-1", workflow: "inbox"}},
+  null_x:            {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: null},
+};
+const out = {};
+for (const [name, c] of Object.entries(cases)) out[name] = m.readyAvailable(c.s, c.x);
+console.log(JSON.stringify(out));
+"""
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_mark_ready_is_offered_only_for_a_live_inbox_issue_with_the_registered_action():
+    """The same fail-closed split as compose: a live host that registered
+    `mark-ready`, a mission the OS reads as inbox (prefixed or not), carrying
+    an Issue. Preview data authorizes no mutation even where a fixture grants
+    `view:prepare` -- navigation -- and a mission that is already ready is
+    never offered the transition again."""
+    out = _run_node(READY_AVAILABLE_SCRIPT % {"path": json.dumps(str(RENDERER))})
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    for k in ("live_with_cap", "live_prefixed"):
+        assert got[k] is True, f"{k}: the inbox promotion must be offered"
+    for k in ("live_without_cap", "live_wrong_cap", "synthetic_granted",
+              "ready_not_inbox", "no_issue", "null_x"):
+        assert got[k] is False, f"{k}: mark-ready must fail closed"
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_mark_ready_payload_is_exactly_the_confirmed_transition():
+    """The POST is the selected Issue, the typed approval reference (trimmed,
+    under the field name the action host's request schema requires) and an
+    explicit confirmation -- nothing else is invented browser-side."""
+    script = """
+const m = require(%(path)s);
+console.log(JSON.stringify(m.markReadyPayload({issue_id: "o/r#7"}, "  op-approval-7  ")));
+console.log(JSON.stringify(m.markReadyPayload({issue_id: "o/r#8"}, null)));
+""" % {"path": json.dumps(str(RENDERER))}
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    lines = [line for line in out.stdout.splitlines() if line.strip()]
+    assert json.loads(lines[0]) == {
+        "action_id": "mark-ready", "issue_id": "o/r#7",
+        "approval_ref": "op-approval-7", "confirm": True,
+    }
+    assert json.loads(lines[1]) == {
+        "action_id": "mark-ready", "issue_id": "o/r#8",
+        "approval_ref": "", "confirm": True,
+    }
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_mark_ready_control_renders_only_in_the_authorized_shape():
+    """The transition button appears beside the row only where
+    `readyAvailable` holds; everywhere else the row renders with no
+    transition control at all -- never a control that can only be refused."""
+    script = """
+const m = require(%(path)s);
+const missions = [{id: "WS-1", title: "Inbox one", workflow: "inbox", issue_id: "o/r#1"}];
+function renderWith(state) {
+  const el = {innerHTML: "", querySelectorAll: function () { return []; }};
+  m.render(el, {state});
+  return el.innerHTML;
+}
+console.log(JSON.stringify({
+  authorized: renderWith({model: {repo: "o/r", workstreams: missions}, capabilities: [{id: "mark-ready"}], token: "t1"}).includes("data-mission-ready=\\"o/r#1\\""),
+  without_cap: renderWith({model: {repo: "o/r", workstreams: missions}, capabilities: []}).includes("data-mission-ready="),
+  synthetic: renderWith({model: {synthetic: true, repo: "o/r", workstreams: missions}, capabilities: [{id: "mark-ready"}]}).includes("data-mission-ready="),
+}));
+""" % {"path": json.dumps(str(RENDERER))}
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["authorized"] is True
+    assert got["without_cap"] is False
+    assert got["synthetic"] is False
+
+
+def test_the_mark_ready_dialog_mirrors_the_recovery_gate(source):
+    """The same operator gate as `beginRecovery` in
+    app-renderer-decisions-evidence.js, field for field: a modal `<dialog>`
+    form carrying the reviewed-action-boundary explanation of the
+    inbox -> ready transition, a REQUIRED approval-reference input, an alert
+    region for refusals, and a distinct confirm button."""
+    assert 'document.createElement("dialog")' in source
+    assert '<p class="eyebrow">Reviewed action boundary</p>' in source
+    assert "workflow:inbox" in source and "workflow:ready" in source
+    assert 'data-m-ready-approval required autocomplete="off"' in source
+    assert '<div data-m-ready-error role="alert"></div>' in source
+    assert '<button value="confirm" class="primary-action">Confirm ready</button>' in source
+    # The client-side refusal must exist: an empty reference never reaches
+    # the host.
+    assert '"Approval reference is required."' in source
+
+
+def test_the_mark_ready_wiring_is_bound_and_fails_closed_on_a_stale_row(source):
+    """The click handler resolves the button's Issue against the CURRENT
+    projection (not the one this render saw) and opens the dialog only for a
+    mission that is still there; a stale row re-renders the list instead of
+    transitioning a mission the operator is no longer looking at."""
+    assert 'qa("[data-mission-ready]").forEach(function (b) {' in source
+    assert "if (!x) { renderStart(winEl, ctx); return; }" in source
+    assert "beginMarkReady(x, s);" in source
+
+
+def test_mark_ready_denials_are_rendered_not_softened(source):
+    """TransitionDenied and 409 must land in the dialog's alert region with
+    the host's own recovery text -- never silently swallowed into a success
+    rendering."""
+    post = source[source.index("function beginMarkReady"):]
+    post = post[:post.index("function readyButton")]
+    assert "if (!res.ok) {" in post
+    assert "(err.recovery || err.message)" in post
+    assert 'dlg.querySelector("[data-m-ready-error]").textContent' in post
+    assert "dlg.showModal();" in post
+    # Success says what happened and what it did NOT do.
+    assert "data-m-ready-done" in post
+    assert "workflow:ready" in post
+
+
+def test_the_start_surface_posts_exactly_issue_create_and_mark_ready(source):
+    """The surface's full mutation vocabulary: the compose write and the
+    operator-gated inbox promotion. No third action id may appear, and no
+    launch-shaped control either -- so the first step of the flow can never
+    become a second, ungated launch path."""
+    ids = set(re.findall(r'action_id:\s*"([^"]+)"', source))
+    assert ids == {"issue-create", "mark-ready"}
+    assert source.count('fetch("api/action"') == 2
+    assert source.count('"X-Cortxt-Token": s.token') == 2
+    assert "claim-run" not in source
+    assert "data-launch-start" not in source
 
 
 # --- #619: both edited files stay byte-identical across the mirror ----------

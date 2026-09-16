@@ -34,6 +34,14 @@
         execution profile revision and the approval facts. The preview starts
         nothing: no confirm dialog, no action POST. Starting stays in the
         launch step behind its operator-gated confirmation.
+     4. For a mission still at workflow:inbox (#619), it can perform the one
+        label write this surface can reach -- marking the Issue ready --
+        behind the same operator-gated confirmation the recovery action uses
+        in the Work shell: an explained dialog, a required approval
+        reference, explicit confirmation, and an honest rendering of any
+        denial. Being ready is not dispatch approval: the mandate, limits
+        and go decision are still confirmed in the launch step, and this
+        starts no Run.
 
    The status vocabulary lives here (`MissionState`) because it is shared: Home
    and Work render the same words for the same state, so an operator never has
@@ -246,6 +254,99 @@
       });
   }
 
+  /* ---- mark-ready: the one label write this surface can reach (#619) --- */
+
+  /* A mission sitting at workflow:inbox has a captured Issue but no approved
+     mandate yet, so the only real action the operator can perform on it
+     from here is the promotion itself: `workflow:inbox` -> `workflow:ready`.
+     That is the ONLY label write in the product, and `workflow:ready` is
+     what the launch step reads before it will offer a start control at all
+     -- so it crosses the same operator gate as the recovery action in the
+     Work shell: an explained dialog, a required approval reference,
+     explicit confirmation, and an honest rendering of any denial. The same
+     fail-closed split as compose: offered only on a live host that has
+     registered the `mark-ready` action, for a mission whose state the OS
+     can actually read as inbox and which carries an Issue. A synthetic
+     fixture may grant `view:prepare` -- navigation -- but preview data
+     authorizes no mutation, so the control is never offered there. */
+  function readyAvailable(s, x) {
+    if (!s || !s.model || s.model.synthetic || !x || !x.issue_id) return false;
+    return String(x.workflow || "").replace(/^workflow:/, "") === "inbox" &&
+      (s.capabilities || []).some(function (a) { return a && a.id === "mark-ready"; });
+  }
+
+  /* Total by construction: exactly the operator's confirmed transition --
+     the selected Issue, the typed approval reference, explicit
+     confirmation. `approval_ref` is the field name the action host's
+     request schema requires. Exported so the payload shape is exercised,
+     not grepped. */
+  function markReadyPayload(x, approval) {
+    return {
+      action_id: "mark-ready",
+      issue_id: String((x && x.issue_id) == null ? "" : x.issue_id),
+      approval_ref: String(approval == null ? "" : approval).trim(),
+      confirm: true,
+    };
+  }
+
+  /* The confirmation dialog, mirroring `beginRecovery` in
+     app-renderer-decisions-evidence.js field for field: a modal <dialog>,
+     the reviewed-action-boundary explanation, a REQUIRED approval reference
+     (refused client-side when empty), and `confirm: true` on the POST. */
+  function beginMarkReady(x, s) {
+    var dlg = document.createElement("dialog");
+    dlg.innerHTML =
+      '<form method="dialog"><p class="eyebrow">Reviewed action boundary</p><h2>Mark this mission ready</h2>' +
+      "<p>This moves the Issue from <b>workflow:inbox</b> to <b>workflow:ready</b> -- the only label write this surface can perform -- so the launch step will offer to start it. " +
+      "Being ready is not dispatch approval: the mandate, the limits and the go decision are confirmed in the launch step, and this starts no Run.</p>" +
+      '<label>Approval reference<input data-m-ready-approval required autocomplete="off" placeholder="Operator approval record"></label>' +
+      '<div data-m-ready-error role="alert"></div><footer><button value="cancel">Cancel</button>' +
+      '<button value="confirm" class="primary-action">Confirm ready</button></footer></form>';
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    dlg.addEventListener("close", function () {
+      if (dlg.returnValue !== "confirm") { dlg.remove(); return; }
+      var approval = dlg.querySelector("[data-m-ready-approval]").value.trim();
+      if (!approval) { dlg.querySelector("[data-m-ready-error]").textContent = "Approval reference is required."; dlg.showModal(); return; }
+      fetch("api/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Cortxt-Token": s.token },
+        body: JSON.stringify(markReadyPayload(x, approval)),
+      })
+        .then(function (r) {
+          return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+        })
+        .then(function (res) {
+          if (!res.ok) {
+            /* TransitionDenied and 409 land here: the port's own recovery
+               text is shown, never softened into a success. */
+            var err = (res.data && res.data.error) || {};
+            throw new Error((err.recovery || err.message) || "The transition was denied.");
+          }
+          /* The dialog stays open with the outcome: the label write is the
+             whole effect, and the next decision -- starting the mission --
+             remains a separate, confirmed decision in the launch step. */
+          dlg.querySelector("form").innerHTML =
+            '<p class="mission-meaning" data-m-ready-done>The Issue is now <b>workflow:ready</b>. ' +
+            "Starting it remains a separate, confirmed decision in the launch step.</p>";
+        })
+        .catch(function (error) {
+          /* The refusal is shown, never hidden: whatever the host answered
+             -- a denial, a 409, a network failure -- the operator sees it
+             in the dialog they confirmed from. */
+          dlg.querySelector("[data-m-ready-error]").textContent =
+            (error && error.message) ? error.message : "The transition was denied.";
+          dlg.showModal();
+        });
+    });
+  }
+
+  function readyButton(x, s) {
+    if (!readyAvailable(s, x)) return "";
+    return '<button type="button" class="chrome-button" data-mission-ready="' +
+      esc(x.issue_id) + '">Mark ready for dispatch…</button>';
+  }
+
   /* ---- preview: read-only terms for a mission that already exists (#619) */
 
   /* Offered for any mission carrying an Issue on a live host -- knowing what
@@ -377,7 +478,7 @@
         '<h3><span class="mission-dot ' + esc(g.state.tone) + '" aria-hidden="true"></span>' +
         esc(g.state.label) + ' <small>' + esc(String(g.items.length)) + "</small></h3>" +
         '<p class="mission-meaning">' + esc(g.state.meaning) + " " + esc(g.state.next) + "</p>" +
-        g.items.map(function (x) { return missionRow(x) + previewButton(x, synthetic); }).join("") +
+        g.items.map(function (x) { return missionRow(x) + readyButton(x, s) + previewButton(x, synthetic); }).join("") +
         "</section>";
     });
 
@@ -445,6 +546,16 @@
         loadPreview(winEl, b.dataset.missionPreview);
       });
     });
+    qa("[data-mission-ready]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.dataset.missionReady;
+        var x = ((s.model && s.model.workstreams) || []).filter(function (w) {
+          return w && w.issue_id === id;
+        })[0];
+        if (!x) { renderStart(winEl, ctx); return; }
+        beginMarkReady(x, s);
+      });
+    });
     qa("[data-mission-compose-form]").forEach(function (form) {
       form.addEventListener("submit", function (ev) {
         ev.preventDefault();
@@ -461,6 +572,8 @@
     DECISION: DECISION,
     composeAvailable: composeAvailable,
     composePayload: composePayload,
+    readyAvailable: readyAvailable,
+    markReadyPayload: markReadyPayload,
     renderPreview: renderPreview,
     render: renderStart,
   };
