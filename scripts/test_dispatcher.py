@@ -745,6 +745,85 @@ def run_all_checks():
     run16 = disp16.claim("o/r#19", "wedge-b", "builder", "hermes", 600)  # still in_progress, never completed
     check("nothing to resync for an in-progress run", disp16.resync_pending() == [])
 
+    print("== W-4 (#614): read-only evidence gate -- a verified report settles succeeded ==")
+    ro_disp, ro_gh = new_dispatcher({"o/r#30": ["workflow:ready"]})
+    ro_run = ro_disp.claim("o/r#30", "wf/v1", "observer", "hermes-readonly", 60)
+    ro_disp.registry.update(ro_run.run_id, request_id="req-ro")
+    observed = {"packages": 3, "revisions": 7}
+    dig = d.evidence_port.observed_digest(observed)
+    ro_env = {
+        "runtime": "hermes-readonly", "worker_role": "observer",
+        "run_id": ro_run.run_id, "issue_id": "o/r#30", "request_id": "req-ro",
+        "outcome": "completed", "report_state": "completed",
+        "report_payload": {"completed": True, "failed": False, "report_version": 1,
+                           "observed": observed},
+        "observed": observed,
+        d.evidence_port.OBSERVED_DIGEST_KEY: dig,
+        "artifacts": [],
+        "evidence": "hermes-readonly reported status=succeeded, outcome=completed",
+    }
+    ro_disp.complete(ro_run.run_id, "succeeded", ro_env)
+    q30 = ro_disp.query(ro_run.run_id)
+    check("readonly run settles succeeded", q30["status"] == "succeeded")
+    check("envelope carries the readonly evidence gate marker",
+          q30["result"]["evidence_gate"] == "readonly_report_correlated")
+    check("envelope carries the verified evidence record",
+          q30["result"]["readonly_report_evidence"]["observed_digest"] == dig)
+    check("durable Run record carries readonly_report_evidence",
+          q30["readonly_report_evidence"]["observed_digest"] == dig)
+    check("DISPATCH_OBSERVATIONS records the verified settlement",
+          d.DISPATCH_OBSERVATIONS.get(ro_run.run_id, {}).get("observed_digest") == dig
+          and d.DISPATCH_OBSERVATIONS[ro_run.run_id]["disposition"] == "readonly_report_verified")
+    check("observation artifact marker appended",
+          f"observation:{dig}" in q30["result"]["artifacts"])
+    check("label stays in-progress, not review (#493)",
+          ro_gh.labels["o/r#30"] == ["workflow:in-progress"])
+
+    print("== W-4 (#614): tampered digest -> blocked fail-closed ==")
+    t_disp, _ = new_dispatcher({"o/r#31": ["workflow:ready"]})
+    t_run = t_disp.claim("o/r#31", "wf/v1", "observer", "hermes-readonly", 60)
+    t_disp.registry.update(t_run.run_id, request_id="req-ro")
+    t_env = dict(ro_env)
+    t_env["run_id"], t_env["issue_id"] = t_run.run_id, "o/r#31"
+    t_env[d.evidence_port.OBSERVED_DIGEST_KEY] = "f" * 64
+    t_disp.complete(t_run.run_id, "succeeded", t_env)
+    q31 = t_disp.query(t_run.run_id)
+    check("tampered digest settles blocked, never succeeded", q31["status"] == "blocked")
+    check("blocked shape mirrors the mutating gate with the readonly marker",
+          q31["result"]["evidence_gate"] == "readonly_report_failed"
+          and q31["result"]["error"]["category"] == "readonly_report_unverifiable"
+          and "recovery" in q31["result"]["error"])
+    check("a blocked readonly run records no evidence and no observation",
+          q31["readonly_report_evidence"] is None
+          and t_run.run_id not in d.DISPATCH_OBSERVATIONS)
+
+    print("== W-4 (#614): hermes-readonly WITHOUT a digest is blocked fail-closed ==")
+    nd_disp, _ = new_dispatcher({"o/r#32": ["workflow:ready"]})
+    nd_run = nd_disp.claim("o/r#32", "wf/v1", "observer", "hermes-readonly", 60)
+    nd_disp.registry.update(nd_run.run_id, request_id="req-ro")
+    nd_env = {"runtime": "hermes-readonly", "run_id": nd_run.run_id,
+              "issue_id": "o/r#32", "request_id": "req-ro",
+              "evidence": "hermes-readonly succeeded but carried no observation"}
+    nd_disp.complete(nd_run.run_id, "succeeded", nd_env)
+    q32 = nd_disp.query(nd_run.run_id)
+    check("the runtime promises evidence, so its absence is gated, not skipped",
+          q32["status"] == "blocked"
+          and q32["result"]["evidence_gate"] == "readonly_report_failed")
+
+    print("== W-4 (#614): plain non-mutating run without evidence skips the arm entirely ==")
+    p_disp, _ = new_dispatcher({"o/r#33": ["workflow:ready"]})
+    p_run = p_disp.claim("o/r#33", "wedge-b", "researcher", "hermes-free", 600)
+    p_env = {"runtime": "hermes-free", "evidence": "research answer",
+             "outcome": "completed", "report_state": "completed"}
+    p_disp.complete(p_run.run_id, "succeeded", p_env)
+    q33 = p_disp.query(p_run.run_id)
+    check("hermes-free non-mutating success passes unchanged (recovery arms keep passing)",
+          q33["status"] == "succeeded"
+          and q33["result"].get("evidence_gate") is None
+          and q33["result"]["evidence"] == "research answer")
+    check("no settlement observation for an ungated run",
+          p_run.run_id not in d.DISPATCH_OBSERVATIONS)
+
 def test_all_checks_pass():
     """Pytest entry point: run the same checks as the standalone script."""
     run_all_checks()
