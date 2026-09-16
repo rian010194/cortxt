@@ -54,6 +54,7 @@ an actual recovery path instead of only a stderr print from the caller.
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -62,6 +63,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from commit_evidence import CorrelationFailure, verify_commit_correlation
+
+# W-4 (#614): the read-only evidence port. scripts/-sibling, imported exactly
+# like commit_evidence above; the gate itself is pure and carries no platform
+# imports of its own.
+import evidence_port
 
 DEFAULT_MAX_PARALLEL_WORKERS = None  # None = no ceiling (operator decision 2026-08-15, see #136)
 DEFAULT_DELEGATION_DEPTH = None  # None = no ceiling (operator decision 2026-08-15, see #136)
@@ -94,6 +100,14 @@ LABEL_REVIEW = "workflow:review"
 LABEL_BLOCKED = "workflow:blocked"
 
 FAILING_STATUSES = ("failed", "timed_out", "budget_exceeded", "blocked")
+
+#: W-4 (#614): settlement observations for read-only Runs, keyed by run_id.
+#: Recorded in complete() after a read-only Evidence Gate pass, one dict per
+#: Run carrying the gate's disposition and the verified digest. Deliberately
+#: a module-level observation stream, NOT a field on Run: it is the
+#: dispatcher's own record of how settlements were gated, not part of the
+#: durable per-Run identity (the durable twin is Run.readonly_report_evidence).
+DISPATCH_OBSERVATIONS: dict[str, dict] = {}
 
 
 class GitHubError(RuntimeError):
@@ -202,6 +216,11 @@ class Run:
     # commit, branch, worktree, timestamp and changed files. Present only when
     # the gate actually verified them, so its absence is itself evidence.
     commit_evidence: Optional[dict] = None
+    # The W-4 (#614) twin for a read-only Run: the verified structured-report
+    # evidence (run/issue/request correlation, report version, observation
+    # digest, verified_at). Present only when the readonly gate actually
+    # verified it; its absence is itself evidence, exactly as above.
+    readonly_report_evidence: Optional[dict] = None
     # The durable `run.review_submitted` id written for this Run (#493). Set
     # only by the sanctioned submission path; review-sync moves the Issue to
     # `workflow:review` from that event, never from a terminal worker status.
@@ -470,7 +489,19 @@ class Dispatcher:
             status, result_envelope, evidence = self._gate_commit(run, status, result_envelope)
             fields = {"status": status, "finished_at": time.time(), "result": result_envelope}
             if evidence is not None:
-                fields["commit_evidence"] = evidence
+                # The mutating gate's verdict lands under `commit_evidence`;
+                # the W-4 readonly gate's twin lands under its own field, so
+                # the durable Run record says WHICH kind of evidence settled it.
+                if (result_envelope or {}).get("evidence_gate") == \
+                        evidence_port.EVIDENCE_GATE_READONLY:
+                    fields["readonly_report_evidence"] = evidence
+                    # W-4: the dispatcher's settlement observation stream --
+                    # recorded only after a gate actually passed, keyed by
+                    # run_id, carrying the verified digest. Never a Run field.
+                    DISPATCH_OBSERVATIONS[run_id] = {
+                        **evidence, "disposition": "readonly_report_verified"}
+                else:
+                    fields["commit_evidence"] = evidence
             self.registry.update(run_id, **fields)
             run = self.registry.get(run_id)
 
@@ -498,7 +529,8 @@ class Dispatcher:
         return "succeeded", recovered_envelope
 
     def _gate_commit(self, run: Run, status: str, result_envelope: dict):
-        """Evidence Gate for a mutating Run's claimed success (#490).
+        """Evidence Gate for a mutating Run's claimed success (#490) and, since
+        W-4 (#614), for a read-only Run's claimed success.
 
         A mutating Run reaching `succeeded` must be backed by a landed commit
         that exists, belongs to this Run and request, sits on the Run's
@@ -507,57 +539,110 @@ class Dispatcher:
         the durable Run record and into the result envelope, so the proof is
         durable rather than reconstructed from a comment.
 
-        When it is not, the claimed `succeeded` becomes `blocked` carrying the
-        gate's stable failure code. The gate falls closed in both directions:
-        a missing commit blocks, and a gate that itself raises blocks too --
-        an unverifiable result is never relayed onward as success.
+        A read-only Run has no commit by design; its evidence is its
+        structured completion report. Its gate
+        (`evidence_port.verify_readonly_report`) fires only when the envelope
+        actually carries observation evidence (`observed_digest`) or the run
+        was dispatched on the hermes-readonly runtime: other non-mutating
+        runs (recovery arms, legacy routes) pass through unchanged. A
+        hermes-readonly envelope WITHOUT a digest is gated and fails closed
+        -- the runtime promises evidence, so its absence is a refusal, not an
+        exemption.
 
-        Returns `(status, result_envelope, commit_evidence_or_None)`.
-        """
-        if status != "succeeded" or not getattr(run, "mutating", False):
+        When a gate refuses, the claimed `succeeded` becomes `blocked`
+        carrying the gate's stable failure code. Both gates fall closed in
+        both directions: a missing commit/report blocks, and a gate that
+        itself raises blocks too -- an unverifiable result is never relayed
+        onward as success.
+
+        Returns `(status, result_envelope, evidence_or_None)`."""
+        if status != "succeeded":
+            return status, result_envelope, None
+        if getattr(run, "mutating", False):
+            try:
+                outcome = self.commit_gate(run, result_envelope)
+            except Exception as exc:  # noqa: BLE001 - an unverifiable result must not pass
+                outcome = CorrelationFailure(
+                    "commit_gate_error",
+                    f"{type(exc).__name__}: {exc}",
+                    "The Evidence Gate could not verify this Run's commit; treat the result as "
+                    "unproven and re-run once the repository is readable.")
+            if isinstance(outcome, CorrelationFailure):
+                category, recovery = outcome.code, outcome.recovery
+                # #520: a Run that attested no outcome and landed no commit did not
+                # "commit before it was claimed" -- that is the symptom the
+                # correlation check happened to trip on, not what happened. Name
+                # the cause instead, and keep the correlation code in `detail` so
+                # nothing is lost. The gate's verdict is unchanged: this Run was
+                # already being refused, and still is.
+                if (result_envelope or {}).get("outcome") == "unattested" and \
+                        outcome.code in ("commit_predates_run", "commit_missing"):
+                    category = "no_attested_outcome"
+                    recovery = ("This Run neither attested an outcome nor landed a commit, so "
+                                "there is nothing to verify. Read the local run log to see what "
+                                "the worker actually produced, then start a fresh run.")
+                blocked = {
+                    **dict(result_envelope or {}),
+                    "status": "blocked",
+                    "evidence_gate": "commit_correlation_failed",
+                    "error": {"category": category, "recovery": recovery,
+                              "detail": outcome.detail},
+                }
+                return "blocked", blocked, None
+            evidence = outcome.as_record()
+            artifacts = list((result_envelope or {}).get("artifacts") or [])
+            marker = f"commit:{evidence['commit']}"
+            if marker not in artifacts:
+                artifacts.append(marker)
+            verified = {
+                **dict(result_envelope or {}),
+                "artifacts": artifacts,
+                "evidence_gate": "commit_correlated",
+                "commit": evidence["commit"],
+                "branch": evidence["branch"],
+                "commit_evidence": evidence,
+            }
+            return status, verified, evidence
+        # W-4 (#614): the read-only arm. Fires iff the envelope carries the
+        # observation digest or the run is on the hermes-readonly runtime;
+        # every other non-mutating success (legacy routes, recovery arms)
+        # passes through exactly as before.
+        envelope = result_envelope or {}
+        readonly_arm = (envelope.get(evidence_port.OBSERVED_DIGEST_KEY) is not None
+                        or run.runtime == "hermes-readonly")
+        if not readonly_arm:
             return status, result_envelope, None
         try:
-            outcome = self.commit_gate(run, result_envelope)
+            outcome = evidence_port.verify_readonly_report(run, result_envelope)
         except Exception as exc:  # noqa: BLE001 - an unverifiable result must not pass
             outcome = CorrelationFailure(
-                "commit_gate_error",
+                "readonly_gate_error",
                 f"{type(exc).__name__}: {exc}",
-                "The Evidence Gate could not verify this Run's commit; treat the result as "
-                "unproven and re-run once the repository is readable.")
+                "The read-only evidence gate could not verify this Run's report; treat the "
+                "result as unproven and re-run once the report is readable.")
         if isinstance(outcome, CorrelationFailure):
-            category, recovery = outcome.code, outcome.recovery
-            # #520: a Run that attested no outcome and landed no commit did not
-            # "commit before it was claimed" -- that is the symptom the
-            # correlation check happened to trip on, not what happened. Name
-            # the cause instead, and keep the correlation code in `detail` so
-            # nothing is lost. The gate's verdict is unchanged: this Run was
-            # already being refused, and still is.
-            if (result_envelope or {}).get("outcome") == "unattested" and \
-                    outcome.code in ("commit_predates_run", "commit_missing"):
-                category = "no_attested_outcome"
-                recovery = ("This Run neither attested an outcome nor landed a commit, so "
-                            "there is nothing to verify. Read the local run log to see what "
-                            "the worker actually produced, then start a fresh run.")
+            # Mirrors the mutating gate's blocked shape (same keys, same
+            # error projection) with this gate's own marker, so a reviewer
+            # reads one refusal vocabulary across both Run shapes.
             blocked = {
                 **dict(result_envelope or {}),
                 "status": "blocked",
-                "evidence_gate": "commit_correlation_failed",
-                "error": {"category": category, "recovery": recovery,
+                "evidence_gate": evidence_port.READONLY_GATE_FAILED,
+                "error": {"category": outcome.code, "recovery": outcome.recovery,
                           "detail": outcome.detail},
             }
             return "blocked", blocked, None
         evidence = outcome.as_record()
-        artifacts = list((result_envelope or {}).get("artifacts") or [])
-        marker = f"commit:{evidence['commit']}"
+        artifacts = list(envelope.get("artifacts") or [])
+        marker = f"observation:{evidence['observed_digest']}"
         if marker not in artifacts:
             artifacts.append(marker)
         verified = {
-            **dict(result_envelope or {}),
+            **envelope,
             "artifacts": artifacts,
-            "evidence_gate": "commit_correlated",
-            "commit": evidence["commit"],
-            "branch": evidence["branch"],
-            "commit_evidence": evidence,
+            "evidence_gate": evidence_port.EVIDENCE_GATE_READONLY,
+            "observed_digest": evidence["observed_digest"],
+            "readonly_report_evidence": evidence,
         }
         return status, verified, evidence
 
