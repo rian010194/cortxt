@@ -29,6 +29,10 @@ from urllib.parse import parse_qs
 
 from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
+# W-6 (#501 round trip): `execute()` assembles the compose Action directly on
+# the mandate path; the model was previously referenced without an import, so
+# every issue-create execution through the host raised NameError.
+from widget_contract.models import Action
 from widget_contract.adapters.cli_ports import ClaimRunDenied, gh_claim_run_resume
 from widget_contract.adapters.github_ports import (
     LastGoodIssues, TransitionDenied, gh_blocked_to_ready, gh_compose_mission_issue, gh_in_progress_to_ready, gh_inbox_to_ready,
