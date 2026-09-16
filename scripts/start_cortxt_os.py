@@ -43,6 +43,7 @@ FREE_ROUTE_EXAMPLE = {"CORTXT_FREE_PROVIDER": "nous",
                       "CORTXT_FREE_MODEL": "upstage/solar-pro4:free"}
 REPO_ROOT_MARKER = ("agent-platform", "widget", "action_host.py")
 DATA_HOME_ENV = "CORTXT_DATA_HOME"
+READ_AREA_ENV = "CORTXT_READ_AREA"
 
 
 def _say(message: str) -> None:
@@ -136,6 +137,20 @@ def _data_home(args) -> Path | None:
     return Path(value) if value else None
 
 
+def _read_area(args) -> str | None:
+    """The read area the host will be given, as given -- never validated here.
+
+    The same one-authority rule as `_data_home`: `action_host.main` resolves
+    and refuses, and a second check here would drift from it. This reports the
+    *input*, so a value the host is about to reject is still visible on the
+    line above the refusal that names it.
+    """
+    if args.read_area is not None:
+        return str(args.read_area)
+    value = os.environ.get(READ_AREA_ENV)
+    return value or None
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="start_cortxt_os.py",
@@ -160,6 +175,17 @@ def build_parser() -> argparse.ArgumentParser:
                              "CORTXT_DATA_HOME, no store is configured and the packaging "
                              "routes stay unavailable (503 store_unavailable). Passed "
                              "through to action_host, which owns the refusal.")
+    parser.add_argument("--read-area", default=None,
+                        help=f"Where Cortxt may look: one or more absolute, existing "
+                             f"directories separated by {os.pathsep!r}. GET "
+                             f"/api/repositories then reports the repositories beneath "
+                             f"them with their revision state. Overrides CORTXT_READ_AREA. "
+                             f"READ-ONLY: it grants no write access to anything it "
+                             f"reports, and selecting one is never required to do "
+                             f"anything else. Without this flag and without "
+                             f"CORTXT_READ_AREA, the repositories route stays unavailable "
+                             f"(503 read_area_unconfigured). Passed through to "
+                             f"action_host, which owns the refusal.")
     parser.add_argument("--no-free-route", action="store_true",
                         help="Skip the free-route environment and `hermes` checks, for use "
                              "where no dispatch is intended. This does not make the host "
@@ -232,6 +258,15 @@ def main(argv: list[str] | None = None, *, host=None, connect=None, run=None, wh
          if data_home is not None else
          f"data home: not configured (packaging routes stay unavailable; pass "
          f"--data-home or set {DATA_HOME_ENV})")
+    # One more durable-location line, for the same reason the data-home line
+    # exists: what Cortxt may read is now a configured input, and an operator
+    # who cannot see it on the report cannot tell an empty workspace from an
+    # unconfigured one. Read-only, and never a prerequisite for anything else.
+    read_area = _read_area(args)
+    _say(f"read area: {read_area}"
+         if read_area is not None else
+         f"read area: not configured (repositories route stays unavailable; pass "
+         f"--read-area or set {READ_AREA_ENV})")
     if args.no_free_route:
         _say("free route: disabled (--no-free-route)")
     else:
@@ -247,7 +282,7 @@ def main(argv: list[str] | None = None, *, host=None, connect=None, run=None, wh
 
     return host.main(port=args.port, spec_path=args.spec,
                      require_commit=args.require_commit, require_clean=args.require_clean,
-                     data_home=args.data_home)
+                     data_home=args.data_home, read_area=args.read_area)
 
 
 if __name__ == "__main__":
