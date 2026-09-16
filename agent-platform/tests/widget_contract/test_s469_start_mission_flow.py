@@ -676,15 +676,16 @@ console.log(el.innerHTML);
 PREVIEW_SCRIPT = """
 const m = require(%(path)s);
 const panel = {innerHTML: ""};
-m.renderPreview(panel, %(payload)s);
+m.renderPreview(panel, %(payload)s, %(authority)s);
 console.log(JSON.stringify({html: panel.innerHTML}));
 """
 
 
-def _preview_html(payload: dict) -> str:
+def _preview_html(payload: dict, authority: dict | None = None) -> str:
     out = _run_node(PREVIEW_SCRIPT % {
         "path": json.dumps(str(RENDERER)),
         "payload": json.dumps(payload),
+        "authority": json.dumps(authority),
     })
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)["html"]
@@ -693,14 +694,16 @@ def _preview_html(payload: dict) -> str:
 @pytest.mark.skipif(NODE is None, reason="node unavailable")
 def test_preview_renders_eligibility_from_the_authoritative_request():
     """The preview renders the server's own verdict, its engine and routing
-    facts, and the approval facts -- field-for-field, the same document the
-    launch step will confirm against."""
+    facts -- field-for-field, the same document the launch step will confirm
+    against. The two approval facts come from the workstream projection's
+    authority block (the third argument), never from the v2 document: that
+    document carries neither field, so reading them from it is exactly the
+    gate-P2 defect that rendered "not recorded" for an approved mission."""
     html = _preview_html({
         "issue_id": "org/repo#12", "eligible": True, "engine": "codex",
         "routing_reason": "default", "routable_task_tags": ["code", "review"],
-        "execution_profile_revision": "r7", "approval_recorded": True,
-        "approval_source": "comment",
-    })
+        "execution_profile_revision": "r7",
+    }, authority={"approval_recorded": True, "approval_source": "issue-body-approval-status"})
     assert 'data-preview-eligible' in html
     assert "Eligible" in html
     assert "org/repo#12" in html
@@ -709,7 +712,141 @@ def test_preview_renders_eligibility_from_the_authoritative_request():
     assert "code, review" in html
     assert "r7" in html
     assert "yes" in html
-    assert "comment" in html
+    assert "issue-body-approval-status" in html
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_preview_renders_the_honest_absence_shape_without_an_authority_block():
+    """With no workstream authority available -- projection unreadable, or a
+    freshly composed Issue not yet on it -- the rows must say plainly that
+    nothing was recorded: "not recorded" and no source. Never a guessed
+    "yes", and never a value read off the v2 document it is not carried on."""
+    html = _preview_html({
+        "issue_id": "org/repo#15", "eligible": False,
+        "missing": ["approval_reference"],
+    }, authority=None)
+    assert "Approval recorded" in html
+    assert "not recorded" in html
+    assert 'data-preview-ineligible' in html
+    # The source row renders the empty-value dash; neither a positive nor a
+    # negative approval verdict may be invented.
+    assert 'Approval source</span><span class="launch-value">—<' in html
+    assert ">yes<" not in html
+    assert ">no<" not in html
+
+
+# --- gate P2 (#619): the preview's two reads, and what each one is for ------
+#
+# The preview performs exactly two GETs: the authoritative dispatch.request.v2
+# (whose digest the launch gate binds -- it must stay exactly one) and the
+# /api/workstreams projection, read only for the authority block's approval
+# provenance. These drive the real loadPreview through node with a stubbed
+# fetch, so the count, the order and each document's role are asserted
+# behaviorally instead of grepped.
+
+FETCH_SCRIPT = """
+const m = require(%(path)s);
+const requests = [];
+const panel = {innerHTML: ""};
+const winEl = {querySelector: function (sel) { return sel === "[data-mission-preview-panel]" ? panel : null; }};
+global.window = global;
+function mkPage(body, ok) { return {ok: ok, json: function () { return Promise.resolve(body); }}; }
+const dispatchPage = mkPage(%(req)s, %(dispatch_ok)s);
+/* Lazily constructed so a rejecting page is only created when the
+   workstreams fetch actually happens -- an unconsumed rejection at script
+   scope would kill node before the assertions run. */
+const workstreamPage = function () { return %(workstream_page)s; };
+global.fetch = function (url, opts) {
+  requests.push({url: String(url), cache: !!(opts && opts.cache)});
+  if (String(url).indexOf("api/dispatch-request") === 0) return Promise.resolve(dispatchPage);
+  return Promise.resolve(workstreamPage());
+};
+m.loadPreview(winEl, %(issue)s);
+setTimeout(function () {
+  console.log(JSON.stringify({requests: requests, html: panel.innerHTML}));
+}, 20);
+"""
+
+_DISPATCH_REQ = {
+    "issue_id": "o/r#1", "eligible": True, "engine": "codex",
+    "routing_reason": "default", "routable_task_tags": ["code"],
+    "execution_profile_revision": "r7",
+}
+
+_PROJECTION_WITH_AUTHORITY = {
+    "schema_version": 1, "synthetic": False,
+    "workstreams": [{"id": "WS-1", "issue_id": "o/r#1", "workflow": "ready",
+                     "authority": {"source": "GitHub Issue",
+                                   "workflow_label": "workflow:ready",
+                                   "approval_recorded": True,
+                                   "approval_source": "issue-body-approval-status"}}],
+}
+
+
+def _fetch_preview(*, dispatch_ok: bool, workstream_page: str):
+    out = _run_node(FETCH_SCRIPT % {
+        "path": json.dumps(str(RENDERER)),
+        "req": json.dumps(_DISPATCH_REQ),
+        "dispatch_ok": "true" if dispatch_ok else "false",
+        "workstream_page": workstream_page,
+        "issue": json.dumps("o/r#1"),
+    })
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_preview_performs_exactly_one_dispatch_request_and_one_projection_read():
+    """Still exactly ONE dispatch-request GET -- the launch step's digest
+    binding reads this same path, so the preview must not multiply it -- plus
+    exactly ONE workstream-projection GET, from which alone the two approval
+    rows take their values."""
+    got = _fetch_preview(
+        dispatch_ok=True,
+        workstream_page="mkPage(%s, true)" % json.dumps(_PROJECTION_WITH_AUTHORITY))
+    assert got["requests"] == [
+        {"url": "api/dispatch-request?issue=o%2Fr%231", "cache": True},
+        {"url": "api/workstreams", "cache": True},
+    ], got["requests"]
+    # Dispatch facts still come from the v2 document...
+    assert "codex" in got["html"] and "r7" in got["html"]
+    # ...and the approval facts come from the projection's authority block.
+    assert "yes" in got["html"]
+    assert "issue-body-approval-status" in got["html"]
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+@pytest.mark.parametrize("workstream_page", [
+    'mkPage({"schema_version": 1, "status": "unavailable", "error": {"kind": "github_read", "message": "gh issue list failed"}}, false)',
+    'Promise.reject(new Error("connection refused"))',
+], ids=["unavailable-503", "network-error"])
+def test_an_unreadable_projection_renders_the_honest_absence_shape(workstream_page):
+    """When the projection cannot be read (a 503 from the host, or the fetch
+    itself failing), the preview must not dead-end and must not invent
+    approval facts: the rows render "not recorded" with no source -- the same
+    honest shape as before, but now it is genuinely the absence of the fact,
+    not a field the document never carried."""
+    got = _fetch_preview(dispatch_ok=True, workstream_page=workstream_page)
+    assert [r["url"] for r in got["requests"]] == [
+        "api/dispatch-request?issue=o%2Fr%231", "api/workstreams"]
+    assert "Approval recorded" in got["html"]
+    assert "not recorded" in got["html"]
+    assert 'Approval source</span><span class="launch-value">—<' in got["html"]
+    assert ">yes<" not in got["html"]
+    assert ">no<" not in got["html"]
+    # The v2 document's own facts are still rendered.
+    assert "codex" in got["html"]
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_a_failed_dispatch_request_read_never_adds_a_projection_fetch():
+    """The dispatch-request read is the preview's gate: when IT fails, the
+    panel shows the error and no second request may be issued at all."""
+    got = _fetch_preview(
+        dispatch_ok=False,
+        workstream_page='Promise.reject(new Error("should never be reached"))')
+    assert got["requests"] == [{"url": "api/dispatch-request?issue=o%2Fr%231", "cache": True}]
+    assert "could not be read" in got["html"]
 
 
 @pytest.mark.skipif(NODE is None, reason="node unavailable")

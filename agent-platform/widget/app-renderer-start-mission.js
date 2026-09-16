@@ -30,8 +30,13 @@
      3. For a mission that already exists, it can PREVIEW its terms (#619):
         the same authoritative `dispatch.request.v2` the launch app confirms
         against, fetched for the row's own Issue and rendered read-only --
-        eligibility, what is missing, engine, routing reason, task tags,
-        execution profile revision and the approval facts. The preview starts
+        eligibility, what is missing, engine, routing reason, task tags and
+        execution profile revision. The approval facts are NOT on that
+        document (the v2 schema binds the approval_reference only); they are
+        read from the `/api/workstreams` projection's authority block -- the
+        same projection this app lists missions from -- so the rows show the
+        actually recorded approval instead of a permanent "not recorded".
+        The preview starts
         nothing: no confirm dialog, no action POST. Starting stays in the
         launch step behind its operator-gated confirmation.
      4. For a mission still at workflow:inbox (#619), it can perform the one
@@ -62,7 +67,7 @@
      confirm. */
   function row(key, value) {
     return '<div class="launch-row"><span class="launch-key">' + esc(key) +
-      '</span><span class="launch-value">' + esc(value == null ? "—" : value) + "</span></div>";
+      '</span><span class="launch-value">' + esc(value == null || value === "" ? "—" : value) + "</span></div>";
   }
 
   /* ---- the shared plain-language mission state ------------------------
@@ -359,6 +364,28 @@
       esc(x.issue_id) + '">Preview its terms →</button>';
   }
 
+  /* The approval facts live on the `/api/workstreams` projection's
+     authority block, not on the v2 dispatch-request document: that document
+     binds the approval_reference only, so reading the two names from it is
+     what always rendered "not recorded" for an approved mission (gate P2,
+     #619). One extra read alongside the dispatch request; when the
+     projection cannot be read, or this Issue is not on it (freshly
+     composed, not yet listed), the rows fall back to the honest
+     "not recorded" shape -- never an invented fact. */
+  function authorityFor(projection, issue) {
+    var list = (projection && projection.workstreams) || [];
+    for (var i = 0; i < list.length; i++) {
+      var x = list[i];
+      if (x && x.issue_id === issue && x.authority) {
+        return {
+          approval_recorded: x.authority.approval_recorded,
+          approval_source: x.authority.approval_source,
+        };
+      }
+    }
+    return null;
+  }
+
   function loadPreview(winEl, issue) {
     var panel = winEl.querySelector("[data-mission-preview-panel]");
     if (!panel || !issue) return;
@@ -368,7 +395,13 @@
         if (!r.ok) throw new Error("The mission’s dispatch request could not be read (" + r.status + ").");
         return r.json();
       })
-      .then(function (req) { renderPreview(panel, req); })
+      .then(function (req) {
+        return fetch("api/workstreams", { cache: "no-store" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (projection) { return { req: req, authority: authorityFor(projection, issue) }; })
+          .catch(function () { return { req: req, authority: null }; });
+      })
+      .then(function (both) { renderPreview(panel, both.req, both.authority); })
       .catch(function (err) {
         panel.innerHTML = '<div class="empty-state">' +
           esc(err && err.message ? err.message : "The mission’s terms could not be read.") + "</div>";
@@ -379,10 +412,16 @@
      renderRequest does in the launch app -- minus everything launch-shaped.
      The v2 payload carries no provider or model fields; the execution profile
      revision is the replaceable-execution fact it does carry, and nothing
-     beyond it is invented here. This panel starts nothing: no confirm dialog,
+     beyond it is invented here. The two approval rows are read from the
+     workstream projection's authority block (see authorityFor), never from
+     this document -- it carries neither field, and rendering them from it
+     said "not recorded" even for an approved mission. With no authority
+     available the rows render the honest absence shape: "not recorded" and
+     no source. This panel starts nothing: no confirm dialog,
      no action POST -- starting stays in the launch step. */
-  function renderPreview(panel, req) {
+  function renderPreview(panel, req, authority) {
     var r = req || {};
+    var a = authority || {};
     var html = "<h3>Mission terms</h3>" +
       (r.eligible
         ? '<div class="launch-banner" data-preview-eligible>Eligible: the approved mandate is complete. Starting happens in the launch step, after your confirmation.</div>'
@@ -393,8 +432,8 @@
       row("Routing reason", r.routing_reason) +
       row("Task tags", (r.routable_task_tags || []).join(", ")) +
       row("Execution profile", r.execution_profile_revision == null ? null : String(r.execution_profile_revision)) +
-      row("Approval recorded", r.approval_recorded == null ? "not recorded" : (r.approval_recorded ? "yes" : "no")) +
-      row("Approval source", r.approval_source) +
+      row("Approval recorded", a.approval_recorded == null ? "not recorded" : (a.approval_recorded ? "yes" : "no")) +
+      row("Approval source", a.approval_source) +
       "</div>";
     if (!r.eligible) {
       html += '<section class="launch-errors" data-preview-missing><h4>What is missing</h4>' +
@@ -574,6 +613,7 @@
     composePayload: composePayload,
     readyAvailable: readyAvailable,
     markReadyPayload: markReadyPayload,
+    loadPreview: loadPreview,
     renderPreview: renderPreview,
     render: renderStart,
   };
