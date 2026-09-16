@@ -23,8 +23,32 @@ Then open <http://127.0.0.1:8765/index.html>. Those two values are what the
 them, because choosing a model is an operator act. Add `--no-free-route` to
 start without dispatch -- it skips the free-route checks and does **not** make
 the host read-only, since `POST /api/action` is mounted either way. `--port`
-and `--spec` change the listener and the served spec, and `--require-commit` /
+and `--spec` change the listener and the served spec, `--data-home` chooses
+where durable state lives (see below), and `--require-commit` /
 `--require-clean` pass through to the host's opt-in source-integrity checks.
+
+## The data home
+
+`--data-home` (or `CORTXT_DATA_HOME`) names the durable Cortxt data home. The
+Core store is served from `<data-home>/core`, and it is what the packaging
+routes read and write. Without either, **no store is configured**: the host
+still starts and `POST /api/action` is still mounted, but every packaging read
+route answers `503 store_unavailable`. That is the default and it is reported
+as such -- the start line reads `data home: not configured`.
+
+The value must be an absolute directory **outside this checkout** and outside
+the system temp directory. Durable state must not live in a tree that changes
+branch, gets cleaned, or exists once per worktree; `state/core_store.py` names
+`Temp/` explicitly as forbidden. A data home that is set but unusable is a
+refusal, never a fallback to a guessed location: `action_host.main` prints the
+refusal code and the input that carried the value, and returns 1 **before
+binding the port**. The start script does not repeat that check -- one rule,
+one authority.
+
+The run registry and the Core store resolve from different roots today: the
+registry still resolves from the host module's own location (see below), while
+the Core store resolves from the data home. The start report names both,
+adjacent, so the split is visible rather than assumed away.
 
 ## The four commands that start something, and when each applies
 

@@ -222,20 +222,86 @@ def test_registry_line_reports_the_hosts_own_resolution_not_cwd():
           "(exists: no)" in r.out)
 
 
-def test_success_lines_are_exactly_the_five_documented_ones():
+def test_success_lines_are_exactly_the_six_documented_ones():
     with run_script([], env=free_route_env(), host=recording_host(),
                     connect=_never_connects, which=_hermes_present) as r:
         pass
     lines = [line for line in r.out.splitlines() if line.strip()]
-    check("exactly five lines are printed before the host takes over", len(lines) == 5)
+    check("exactly six lines are printed before the host takes over", len(lines) == 6)
     check("every line carries the prefix",
           all(line.startswith(f"{s.PREFIX} ") for line in lines))
-    prefixes = ["repo root:", "commit:", "registry:", "free route:", "url ("]
+    prefixes = ["repo root:", "commit:", "registry:", "data home:", "free route:", "url ("]
     check("the lines are in the documented order",
           all(line.startswith(f"{s.PREFIX} {want}")
               for line, want in zip(lines, prefixes)) and len(lines) == len(prefixes))
     check("the commit line reports a branch alongside the commit",
           len(lines) > 1 and "branch:" in lines[1])
+    # The registry and the Core store resolve from different roots today. The
+    # report names both, adjacent, so the split is deliberate and visible
+    # rather than a single root an operator assumes.
+    check("the registry line and the data-home line are adjacent",
+          lines[2].startswith(f"{s.PREFIX} registry:")
+          and lines[3].startswith(f"{s.PREFIX} data home:"))
+
+
+def test_data_home_reaches_the_host_and_is_reported_with_its_core_root():
+    host = recording_host()
+    home = Path("C:/cortxt-data") if os.name == "nt" else Path("/var/cortxt-data")
+    with run_script([f"--data-home={home}", "--no-free-route"],
+                    host=host, connect=_never_connects) as r:
+        pass
+    check("the script returns the host's exit code", r.code == 0)
+    call = host.calls[0] if host.calls else {}
+    check("data_home reaches action_host.main as data_home", call.get("data_home") == home)
+    check("the report names the data home", f"data home: {home}" in r.out)
+    check("the report names the core store beneath it", str(home / "core") in r.out)
+
+
+def test_data_home_is_read_from_the_environment_for_the_report():
+    host = recording_host()
+    home = Path("C:/cortxt-data") if os.name == "nt" else Path("/var/cortxt-data")
+    env = free_route_env(CORTXT_DATA_HOME=str(home))
+    with run_script(["--no-free-route"], env=env, host=host, connect=_never_connects) as r:
+        pass
+    check("the report names the data home taken from the environment",
+          f"data home: {home}" in r.out)
+    # The flag is what is passed; the host reads the variable itself. Passing
+    # the environment's value as if it were the flag would hide which input the
+    # host's own refusal is about to name.
+    call = host.calls[0] if host.calls else {}
+    check("an unset flag is still passed through as None", call.get("data_home") is None)
+
+
+def test_without_a_data_home_the_report_says_not_configured():
+    host = recording_host()
+    env = free_route_env()
+    env.pop("CORTXT_DATA_HOME", None)
+    with run_script(["--no-free-route"], env=env, host=host, connect=_never_connects) as r:
+        pass
+    check("the report says the data home is not configured",
+          "data home: not configured" in r.out)
+    check("it says what that costs", "packaging routes stay unavailable" in r.out)
+    check("it names both ways to configure one",
+          "--data-home" in r.out and "CORTXT_DATA_HOME" in r.out)
+    check("data_home is still passed through as None", len(host.calls) == 1
+          and host.calls[0].get("data_home") is None)
+
+
+def test_the_script_does_not_duplicate_the_hosts_data_home_refusal():
+    """One authority for one rule: action_host refuses, this script reports.
+
+    A relative data home is invalid, and the host will reject it. The script
+    must still hand it over -- a second refusal here would drift from the
+    host's the moment either changes.
+    """
+    host = recording_host(exit_code=1)
+    with run_script(["--data-home=relative-data-home", "--no-free-route"],
+                    host=host, connect=_never_connects) as r:
+        pass
+    check("an invalid data home still reaches the host", len(host.calls) == 1)
+    check("the script returns the host's refusal code unchanged", r.code == 1)
+    check("the script prints no refusal of its own",
+          f"{s.PREFIX} refusing to start:" not in r.out)
 
 
 def test_git_metadata_is_unknown_rather_than_guessed():
