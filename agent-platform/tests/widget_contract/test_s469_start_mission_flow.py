@@ -21,6 +21,7 @@ does.
 """
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -536,3 +537,602 @@ def test_the_launch_window_body_is_only_rendered_while_its_window_is_open(shell_
     ordering = source.index("state.ui.open[a.id]=true")
     assert ordering < source.index("renderAll();", ordering), \
         "openWindow must mark the window open before it renders"
+
+
+# --- #619: compose is a real mutation, preview reads the real terms ---------
+#
+# The start flow previously ended honestly but dead-ended: "the record is an
+# Issue, open the tracker" was the only shape a new mission could take. #619
+# adds the two shapes a live host can actually authorize -- compose (the
+# issue-create action POST, operator-gated by the host's own capability
+# registration) and preview (the authoritative dispatch.request.v2, rendered
+# read-only). Both fail closed everywhere else.
+
+COMPOSE_SCRIPT = """
+const m = require(%(path)s);
+const missions = [{id: "WS-1", title: "Ready one", workflow: "ready"}];
+const out = {};
+out.compose_available_live_with_cap = m.composeAvailable({
+  model: {repo: "org/repo", workstreams: missions},
+  capabilities: [{id: "issue-create"}],
+});
+out.compose_available_live_without_cap = m.composeAvailable({
+  model: {repo: "org/repo", workstreams: missions},
+  capabilities: [],
+});
+out.compose_available_synthetic_with_cap = m.composeAvailable({
+  model: {synthetic: true, repo: "org/repo", workstreams: missions},
+  capabilities: [{id: "issue-create"}],
+});
+out.compose_available_no_model = m.composeAvailable({});
+out.compose_available_null = m.composeAvailable(null);
+console.log(JSON.stringify(out));
+"""
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_compose_is_offered_only_for_a_live_model_with_the_registered_action():
+    """The same fail-closed split as launch/recovery/unblock in the Work
+    shell: synthetic and preview data authorize nothing, and a host without
+    the registered `issue-create` capability gets the tracker link instead of
+    a control that can only be refused."""
+    out = _run_node(COMPOSE_SCRIPT % {"path": json.dumps(str(RENDERER))})
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["compose_available_live_with_cap"] is True
+    for k in ("compose_available_live_without_cap",
+              "compose_available_synthetic_with_cap",
+              "compose_available_no_model",
+              "compose_available_null"):
+        assert got[k] is False, f"{k}: compose must fail closed"
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_compose_payload_is_exactly_the_confirmed_form_contents():
+    """The POSTed mandate is the trimmed form contents with labels split on
+    commas and empties dropped -- nothing else, and `confirm: true` always
+    explicit. Exported so the payload shape is exercised rather than grepped;
+    the confirmation checkbox the launch dialog uses is not needed here
+    because every field IS the operator's own typed input."""
+    script = """
+const m = require(%(path)s);
+console.log(JSON.stringify(m.composePayload({
+  repo: '  org/repo  ', title: ' Wire the gate ',
+  body: 'Do the thing.', labels: 'a, b,,c ,',
+})));
+""" % {"path": json.dumps(str(RENDERER))}
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["action_id"] == "issue-create"
+    assert got["confirm"] is True
+    assert got["mandate"] == {
+        "repo": "org/repo", "title": "Wire the gate",
+        "body": "Do the thing.", "labels": ["a", "b", "c"],
+    }
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_compose_form_renders_only_when_authorized_and_binds_the_token():
+    """The form appears only in the authorized shape, and its submit posts to
+    api/action with the shell's action token -- the same header pattern the
+    launch confirmation dialog uses."""
+    script = """
+const m = require(%(path)s);
+function renderWith(state) {
+  const el = {innerHTML: "", querySelectorAll: function () { return []; }};
+  m.render(el, {state});
+  return el.innerHTML;
+}
+const authorized = renderWith({model: {repo: "org/repo", workstreams: []}, capabilities: [{id: "issue-create"}], token: "t1"});
+const unauthorized = renderWith({model: {repo: "org/repo", workstreams: []}, capabilities: []});
+const synthetic = renderWith({model: {synthetic: true, repo: "org/repo", workstreams: []}, capabilities: [{id: "issue-create"}]});
+console.log(JSON.stringify({
+  authorized: authorized.includes("data-mission-compose-form"),
+  tracker_link_when_unauthorized: unauthorized.includes("data-mission-new="),
+  no_form_in_synthetic: !synthetic.includes("data-mission-compose-form"),
+  no_link_in_synthetic: !synthetic.includes("data-mission-new="),
+}));
+""" % {"path": json.dumps(str(RENDERER))}
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["authorized"] is True
+    assert got["no_form_in_synthetic"] is True
+    assert got["no_link_in_synthetic"] is True
+    assert got["tracker_link_when_unauthorized"] is True
+    source = RENDERER.read_text(encoding="utf-8")
+    assert 'fetch("api/action"' in source
+    assert '"X-Cortxt-Token": s.token' in source
+    # The surface posts exactly the compose action here; the one other POST
+    # in this file is the operator-gated mark-ready transition, asserted
+    # exactly in its own section below.
+    assert 'action_id: "issue-create"' in source
+    assert source.count("fetch(\"api/action\"") == 2
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_start_surface_never_offers_or_posts_a_claim_run():
+    """Start composes and previews; it never launches. The launch-shaped
+    vocabulary must not appear on this surface at all, and the only action
+    the surface knows how to POST is issue-create -- so the first step of the
+    flow can never become a second, ungated launch path."""
+    script = """
+const m = require(%(path)s);
+const el = {innerHTML: "", querySelectorAll: function () { return []; }};
+m.render(el, {state: {model: {repo: "org/repo", workstreams: []}, capabilities: [{id: "issue-create"}, {id: "claim-run"}], token: "t1"}});
+console.log(el.innerHTML);
+""" % {"path": json.dumps(str(RENDERER))}
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    html = out.stdout
+    assert "claim-run" not in html
+    assert "data-launch-run" not in html
+    source = RENDERER.read_text(encoding="utf-8")
+    assert "claim-run" not in source
+    assert "data-launch-start" not in source
+
+
+PREVIEW_SCRIPT = """
+const m = require(%(path)s);
+const panel = {innerHTML: ""};
+m.renderPreview(panel, %(payload)s, %(authority)s);
+console.log(JSON.stringify({html: panel.innerHTML}));
+"""
+
+
+def _preview_html(payload: dict, authority: dict | None = None) -> str:
+    out = _run_node(PREVIEW_SCRIPT % {
+        "path": json.dumps(str(RENDERER)),
+        "payload": json.dumps(payload),
+        "authority": json.dumps(authority),
+    })
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)["html"]
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_preview_renders_eligibility_from_the_authoritative_request():
+    """The preview renders the server's own verdict, its engine and routing
+    facts -- field-for-field, the same document the launch step will confirm
+    against. The two approval facts come from the workstream projection's
+    authority block (the third argument), never from the v2 document: that
+    document carries neither field, so reading them from it is exactly the
+    gate-P2 defect that rendered "not recorded" for an approved mission."""
+    html = _preview_html({
+        "issue_id": "org/repo#12", "eligible": True, "engine": "codex",
+        "routing_reason": "default", "routable_task_tags": ["code", "review"],
+        "execution_profile_revision": "r7",
+    }, authority={"approval_recorded": True, "approval_source": "issue-body-approval-status"})
+    assert 'data-preview-eligible' in html
+    assert "Eligible" in html
+    assert "org/repo#12" in html
+    assert "codex" in html
+    assert "default" in html
+    assert "code, review" in html
+    assert "r7" in html
+    assert "yes" in html
+    assert "issue-body-approval-status" in html
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_preview_renders_the_honest_absence_shape_without_an_authority_block():
+    """With no workstream authority available -- projection unreadable, or a
+    freshly composed Issue not yet on it -- the rows must say plainly that
+    nothing was recorded: "not recorded" and no source. Never a guessed
+    "yes", and never a value read off the v2 document it is not carried on."""
+    html = _preview_html({
+        "issue_id": "org/repo#15", "eligible": False,
+        "missing": ["approval_reference"],
+    }, authority=None)
+    assert "Approval recorded" in html
+    assert "not recorded" in html
+    assert 'data-preview-ineligible' in html
+    # The source row renders the empty-value dash; neither a positive nor a
+    # negative approval verdict may be invented.
+    assert 'Approval source</span><span class="launch-value">—<' in html
+    assert ">yes<" not in html
+    assert ">no<" not in html
+
+
+# --- gate P2 (#619): the preview's two reads, and what each one is for ------
+#
+# The preview performs exactly two GETs: the authoritative dispatch.request.v2
+# (whose digest the launch gate binds -- it must stay exactly one) and the
+# /api/workstreams projection, read only for the authority block's approval
+# provenance. These drive the real loadPreview through node with a stubbed
+# fetch, so the count, the order and each document's role are asserted
+# behaviorally instead of grepped.
+
+FETCH_SCRIPT = """
+const m = require(%(path)s);
+const requests = [];
+const panel = {innerHTML: ""};
+const winEl = {querySelector: function (sel) { return sel === "[data-mission-preview-panel]" ? panel : null; }};
+global.window = global;
+function mkPage(body, ok) { return {ok: ok, json: function () { return Promise.resolve(body); }}; }
+const dispatchPage = mkPage(%(req)s, %(dispatch_ok)s);
+/* Lazily constructed so a rejecting page is only created when the
+   workstreams fetch actually happens -- an unconsumed rejection at script
+   scope would kill node before the assertions run. */
+const workstreamPage = function () { return %(workstream_page)s; };
+global.fetch = function (url, opts) {
+  requests.push({url: String(url), cache: !!(opts && opts.cache)});
+  if (String(url).indexOf("api/dispatch-request") === 0) return Promise.resolve(dispatchPage);
+  return Promise.resolve(workstreamPage());
+};
+m.loadPreview(winEl, %(issue)s);
+setTimeout(function () {
+  console.log(JSON.stringify({requests: requests, html: panel.innerHTML}));
+}, 20);
+"""
+
+_DISPATCH_REQ = {
+    "issue_id": "o/r#1", "eligible": True, "engine": "codex",
+    "routing_reason": "default", "routable_task_tags": ["code"],
+    "execution_profile_revision": "r7",
+}
+
+_PROJECTION_WITH_AUTHORITY = {
+    "schema_version": 1, "synthetic": False,
+    "workstreams": [{"id": "WS-1", "issue_id": "o/r#1", "workflow": "ready",
+                     "authority": {"source": "GitHub Issue",
+                                   "workflow_label": "workflow:ready",
+                                   "approval_recorded": True,
+                                   "approval_source": "issue-body-approval-status"}}],
+}
+
+
+def _fetch_preview(*, dispatch_ok: bool, workstream_page: str):
+    out = _run_node(FETCH_SCRIPT % {
+        "path": json.dumps(str(RENDERER)),
+        "req": json.dumps(_DISPATCH_REQ),
+        "dispatch_ok": "true" if dispatch_ok else "false",
+        "workstream_page": workstream_page,
+        "issue": json.dumps("o/r#1"),
+    })
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_preview_performs_exactly_one_dispatch_request_and_one_projection_read():
+    """Still exactly ONE dispatch-request GET -- the launch step's digest
+    binding reads this same path, so the preview must not multiply it -- plus
+    exactly ONE workstream-projection GET, from which alone the two approval
+    rows take their values."""
+    got = _fetch_preview(
+        dispatch_ok=True,
+        workstream_page="mkPage(%s, true)" % json.dumps(_PROJECTION_WITH_AUTHORITY))
+    assert got["requests"] == [
+        {"url": "api/dispatch-request?issue=o%2Fr%231", "cache": True},
+        {"url": "api/workstreams", "cache": True},
+    ], got["requests"]
+    # Dispatch facts still come from the v2 document...
+    assert "codex" in got["html"] and "r7" in got["html"]
+    # ...and the approval facts come from the projection's authority block.
+    assert "yes" in got["html"]
+    assert "issue-body-approval-status" in got["html"]
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+@pytest.mark.parametrize("workstream_page", [
+    'mkPage({"schema_version": 1, "status": "unavailable", "error": {"kind": "github_read", "message": "gh issue list failed"}}, false)',
+    'Promise.reject(new Error("connection refused"))',
+], ids=["unavailable-503", "network-error"])
+def test_an_unreadable_projection_renders_the_honest_absence_shape(workstream_page):
+    """When the projection cannot be read (a 503 from the host, or the fetch
+    itself failing), the preview must not dead-end and must not invent
+    approval facts: the rows render "not recorded" with no source -- the same
+    honest shape as before, but now it is genuinely the absence of the fact,
+    not a field the document never carried."""
+    got = _fetch_preview(dispatch_ok=True, workstream_page=workstream_page)
+    assert [r["url"] for r in got["requests"]] == [
+        "api/dispatch-request?issue=o%2Fr%231", "api/workstreams"]
+    assert "Approval recorded" in got["html"]
+    assert "not recorded" in got["html"]
+    assert 'Approval source</span><span class="launch-value">—<' in got["html"]
+    assert ">yes<" not in got["html"]
+    assert ">no<" not in got["html"]
+    # The v2 document's own facts are still rendered.
+    assert "codex" in got["html"]
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_a_failed_dispatch_request_read_never_adds_a_projection_fetch():
+    """The dispatch-request read is the preview's gate: when IT fails, the
+    panel shows the error and no second request may be issued at all."""
+    got = _fetch_preview(
+        dispatch_ok=False,
+        workstream_page='Promise.reject(new Error("should never be reached"))')
+    assert got["requests"] == [{"url": "api/dispatch-request?issue=o%2Fr%231", "cache": True}]
+    assert "could not be read" in got["html"]
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_preview_renders_missing_and_errors_and_never_a_launch_control():
+    """An ineligible request shows what is missing, in the same structure the
+    launch app renders it -- and still offers no launch affordance: the
+    preview starts nothing, starting stays in the launch step."""
+    html = _preview_html({
+        "issue_id": "org/repo#13", "eligible": False,
+        "missing": ["approval_reference"],
+        "errors": [{"code": "mandate_incomplete", "category": "mandate",
+                    "recovery": "Record the approved mandate on the Issue."}],
+    })
+    assert 'data-preview-ineligible' in html
+    assert "Not startable yet" in html
+    assert "mandate_incomplete" in html
+    assert "Record the approved mandate" in html
+    assert "data-launch-start" not in html
+    assert "claim-run" not in html
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_preview_never_renders_provider_or_model_fields_that_v2_does_not_carry():
+    """The v2 dispatch request has no provider or model fields, so the panel
+    must not invent them: the execution profile revision is the
+    replaceable-execution fact it does carry, and nothing beyond it."""
+    html = _preview_html({"issue_id": "org/repo#14", "eligible": True})
+    assert "Provider" not in html
+    assert "Model" not in html
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_preview_fetch_is_gated_on_a_real_issue_and_a_live_model():
+    """The preview control exists only where it can work: a mission carrying
+    an Issue on a live host. Synthetic mode renders none -- the static host
+    has no api/ route, and a control that can only answer 'unavailable' is a
+    dead control."""
+    script = """
+const m = require(%(path)s);
+const missions = [
+  {id: "WS-1", title: "With issue", workflow: "ready", issue_id: "org/repo#1"},
+  {id: "WS-2", title: "No issue", workflow: "ready"},
+];
+function renderWith(state) {
+  const el = {innerHTML: "", querySelectorAll: function () { return []; }};
+  m.render(el, {state});
+  return el.innerHTML;
+}
+console.log(JSON.stringify({
+  live_with_issue: renderWith({model: {repo: "org/repo", workstreams: missions}}).includes("data-mission-preview="),
+  live_no_issue: renderWith({model: {repo: "org/repo", workstreams: missions}}).includes("data-mission-preview=\\"org/repo#1\\""),
+  synthetic: renderWith({model: {synthetic: true, repo: "org/repo", workstreams: missions}}).includes("data-mission-preview="),
+}));
+""".replace("\n", "\n") % {"path": json.dumps(str(RENDERER))}
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["live_with_issue"] is True
+    assert got["live_no_issue"] is True
+    assert got["synthetic"] is False
+    source = RENDERER.read_text(encoding="utf-8")
+    assert 'fetch("api/dispatch-request?issue="' in source
+    assert '{cache:"no-store"}' in source or '{ cache: "no-store" }' in source
+
+
+def test_the_preview_panel_element_exists_for_the_renderer_to_fill():
+    """`loadPreview` writes into `[data-mission-preview-panel]`; without the
+    element the fetch would run against nothing (the querySelector guard
+    silently returns). The section is part of the render contract."""
+    source = RENDERER.read_text(encoding="utf-8")
+    assert 'data-mission-preview-panel' in source
+
+
+# --- #619: the Work surface's prepare affordance ----------------------------
+
+PREPARE_SCRIPT = """
+const w = require(%(path)s);
+const cases = {
+  live_with_cap:      {s: {model: {repo: "o/r"}, capabilities: [{id: "issue-create"}]}, x: {id: "WS-1", issue_id: "o/r#1", workflow: "ready", next_action: {kind: "prepare"}}},
+  live_without_cap:   {s: {model: {repo: "o/r"}, capabilities: []}, x: {id: "WS-1", issue_id: "o/r#1", workflow: "ready", next_action: {kind: "prepare"}}},
+  synthetic_granted:  {s: {model: {synthetic: true, repo: "o/r"}}, x: {id: "WS-1", issue_id: "o/r#1", workflow: "ready", next_action: {kind: "prepare"}, view_capabilities: ["view:prepare"]}},
+  synthetic_unganted: {s: {model: {synthetic: true, repo: "o/r"}}, x: {id: "WS-1", issue_id: "o/r#1", workflow: "ready", next_action: {kind: "prepare"}}},
+  wrong_kind:         {s: {model: {repo: "o/r"}, capabilities: [{id: "issue-create"}]}, x: {id: "WS-1", issue_id: "o/r#1", workflow: "ready", next_action: {kind: "launch"}}},
+  uncorrelated:       {s: {model: {repo: "o/r"}, capabilities: [{id: "issue-create"}]}, x: {id: "WS-1", workflow: "ready", next_action: {kind: "prepare"}}},
+};
+const out = {};
+for (const [name, c] of Object.entries(cases)) out[name] = w.prepareAvailable(c.s, c.x);
+console.log(JSON.stringify(out));
+"""
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_prepare_affordance_is_gated_per_authorities():
+    """Live: only with the registered `issue-create` action. Synthetic: only
+    with the fixture's own `view:prepare` grant. Anything else -- wrong typed
+    kind, uncorrelated projection, no capabilities -- is refused, exactly the
+    launch/recovery/unblock discipline."""
+    out = _run_node(PREPARE_SCRIPT % {"path": json.dumps(str(SHELL))})
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["live_with_cap"] is True
+    for k in ("live_without_cap", "synthetic_unganted", "wrong_kind", "uncorrelated"):
+        assert got[k] is False, f"{k}: prepare must fail closed"
+    # synthetic grant is granted (typo'd key name is the fixture's, not the
+    # contract's): the one True branch in preview mode.
+    assert got["synthetic_granted"] is True
+
+
+@pytest.mark.parametrize("shell_path", [SHELL, SITE_SHELL], ids=["widget", "site-mirror"])
+def test_the_prepare_control_hands_off_to_the_start_app(shell_path):
+    """The shell never performs the mutation: the prepare branch renders a
+    primary control that opens the Start app (which owns the compose form and
+    the terms preview) via the same data-deep-open wiring as every other
+    handoff."""
+    source = shell_path.read_text(encoding="utf-8")
+    assert 'data-deep-open="start"' in source
+
+
+@pytest.mark.parametrize("shell_path", [SHELL, SITE_SHELL], ids=["widget", "site-mirror"])
+def test_the_shell_still_never_calls_an_action_port(shell_path):
+    """Adding the prepare affordance must not change the shell's own mutation
+    boundary: work-console.js still contains no action POST of any kind --
+    compose stays in the Start app, gated by the host's capability
+    registration."""
+    source = shell_path.read_text(encoding="utf-8")
+    assert 'fetch("api/action"' not in source
+    # The shell's prose comments may name the launch action; what must never
+    # exist here is the executable boundary itself -- an action POST. The
+    # only POST-shaped call in the shell targets the read projections.
+    assert "issue-create" in source  # the gate references the action id; the POST does not live here
+    assert 'method: "POST"' not in source  # the shell performs no POST at all; compose lives in the Start app
+
+
+# --- #619 round 6: the operator-gated mark-ready confirmation ---------------
+#
+# An inbox mission has exactly one real mutation reachable from this surface:
+# the promotion of its Issue to workflow:ready -- the only label write in the
+# product. It is offered under the same fail-closed split as compose, and the
+# confirmation dialog mirrors `beginRecovery` in
+# app-renderer-decisions-evidence.js: an explained modal, a REQUIRED approval
+# reference refused client-side when empty, explicit `confirm: true` on the
+# POST, and denials (TransitionDenied, 409) rendered honestly in the dialog.
+
+READY_AVAILABLE_SCRIPT = """
+const m = require(%(path)s);
+const cases = {
+  live_with_cap:     {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: {id: "WS-1", issue_id: "o/r#1", workflow: "inbox"}},
+  live_prefixed:     {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: {id: "WS-1", issue_id: "o/r#1", workflow: "workflow:inbox"}},
+  live_without_cap:  {s: {model: {repo: "o/r"}, capabilities: []},                                    x: {id: "WS-1", issue_id: "o/r#1", workflow: "inbox"}},
+  live_wrong_cap:    {s: {model: {repo: "o/r"}, capabilities: [{id: "issue-create"}]},                x: {id: "WS-1", issue_id: "o/r#1", workflow: "inbox"}},
+  synthetic_granted: {s: {model: {synthetic: true, repo: "o/r"}, capabilities: [{id: "mark-ready"}]}, x: {id: "WS-1", issue_id: "o/r#1", workflow: "inbox"}},
+  ready_not_inbox:   {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: {id: "WS-1", issue_id: "o/r#1", workflow: "ready"}},
+  no_issue:          {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: {id: "WS-1", workflow: "inbox"}},
+  null_x:            {s: {model: {repo: "o/r"}, capabilities: [{id: "mark-ready"}]},                  x: null},
+};
+const out = {};
+for (const [name, c] of Object.entries(cases)) out[name] = m.readyAvailable(c.s, c.x);
+console.log(JSON.stringify(out));
+"""
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_mark_ready_is_offered_only_for_a_live_inbox_issue_with_the_registered_action():
+    """The same fail-closed split as compose: a live host that registered
+    `mark-ready`, a mission the OS reads as inbox (prefixed or not), carrying
+    an Issue. Preview data authorizes no mutation even where a fixture grants
+    `view:prepare` -- navigation -- and a mission that is already ready is
+    never offered the transition again."""
+    out = _run_node(READY_AVAILABLE_SCRIPT % {"path": json.dumps(str(RENDERER))})
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    for k in ("live_with_cap", "live_prefixed"):
+        assert got[k] is True, f"{k}: the inbox promotion must be offered"
+    for k in ("live_without_cap", "live_wrong_cap", "synthetic_granted",
+              "ready_not_inbox", "no_issue", "null_x"):
+        assert got[k] is False, f"{k}: mark-ready must fail closed"
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_mark_ready_payload_is_exactly_the_confirmed_transition():
+    """The POST is the selected Issue, the typed approval reference (trimmed,
+    under the field name the action host's request schema requires) and an
+    explicit confirmation -- nothing else is invented browser-side."""
+    script = """
+const m = require(%(path)s);
+console.log(JSON.stringify(m.markReadyPayload({issue_id: "o/r#7"}, "  op-approval-7  ")));
+console.log(JSON.stringify(m.markReadyPayload({issue_id: "o/r#8"}, null)));
+""" % {"path": json.dumps(str(RENDERER))}
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    lines = [line for line in out.stdout.splitlines() if line.strip()]
+    assert json.loads(lines[0]) == {
+        "action_id": "mark-ready", "issue_id": "o/r#7",
+        "approval_ref": "op-approval-7", "confirm": True,
+    }
+    assert json.loads(lines[1]) == {
+        "action_id": "mark-ready", "issue_id": "o/r#8",
+        "approval_ref": "", "confirm": True,
+    }
+
+
+@pytest.mark.skipif(NODE is None, reason="node unavailable")
+def test_the_mark_ready_control_renders_only_in_the_authorized_shape():
+    """The transition button appears beside the row only where
+    `readyAvailable` holds; everywhere else the row renders with no
+    transition control at all -- never a control that can only be refused."""
+    script = """
+const m = require(%(path)s);
+const missions = [{id: "WS-1", title: "Inbox one", workflow: "inbox", issue_id: "o/r#1"}];
+function renderWith(state) {
+  const el = {innerHTML: "", querySelectorAll: function () { return []; }};
+  m.render(el, {state});
+  return el.innerHTML;
+}
+console.log(JSON.stringify({
+  authorized: renderWith({model: {repo: "o/r", workstreams: missions}, capabilities: [{id: "mark-ready"}], token: "t1"}).includes("data-mission-ready=\\"o/r#1\\""),
+  without_cap: renderWith({model: {repo: "o/r", workstreams: missions}, capabilities: []}).includes("data-mission-ready="),
+  synthetic: renderWith({model: {synthetic: true, repo: "o/r", workstreams: missions}, capabilities: [{id: "mark-ready"}]}).includes("data-mission-ready="),
+}));
+""" % {"path": json.dumps(str(RENDERER))}
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["authorized"] is True
+    assert got["without_cap"] is False
+    assert got["synthetic"] is False
+
+
+def test_the_mark_ready_dialog_mirrors_the_recovery_gate(source):
+    """The same operator gate as `beginRecovery` in
+    app-renderer-decisions-evidence.js, field for field: a modal `<dialog>`
+    form carrying the reviewed-action-boundary explanation of the
+    inbox -> ready transition, a REQUIRED approval-reference input, an alert
+    region for refusals, and a distinct confirm button."""
+    assert 'document.createElement("dialog")' in source
+    assert '<p class="eyebrow">Reviewed action boundary</p>' in source
+    assert "workflow:inbox" in source and "workflow:ready" in source
+    assert 'data-m-ready-approval required autocomplete="off"' in source
+    assert '<div data-m-ready-error role="alert"></div>' in source
+    assert '<button value="confirm" class="primary-action">Confirm ready</button>' in source
+    # The client-side refusal must exist: an empty reference never reaches
+    # the host.
+    assert '"Approval reference is required."' in source
+
+
+def test_the_mark_ready_wiring_is_bound_and_fails_closed_on_a_stale_row(source):
+    """The click handler resolves the button's Issue against the CURRENT
+    projection (not the one this render saw) and opens the dialog only for a
+    mission that is still there; a stale row re-renders the list instead of
+    transitioning a mission the operator is no longer looking at."""
+    assert 'qa("[data-mission-ready]").forEach(function (b) {' in source
+    assert "if (!x) { renderStart(winEl, ctx); return; }" in source
+    assert "beginMarkReady(x, s);" in source
+
+
+def test_mark_ready_denials_are_rendered_not_softened(source):
+    """TransitionDenied and 409 must land in the dialog's alert region with
+    the host's own recovery text -- never silently swallowed into a success
+    rendering."""
+    post = source[source.index("function beginMarkReady"):]
+    post = post[:post.index("function readyButton")]
+    assert "if (!res.ok) {" in post
+    assert "(err.recovery || err.message)" in post
+    assert 'dlg.querySelector("[data-m-ready-error]").textContent' in post
+    assert "dlg.showModal();" in post
+    # Success says what happened and what it did NOT do.
+    assert "data-m-ready-done" in post
+    assert "workflow:ready" in post
+
+
+def test_the_start_surface_posts_exactly_issue_create_and_mark_ready(source):
+    """The surface's full mutation vocabulary: the compose write and the
+    operator-gated inbox promotion. No third action id may appear, and no
+    launch-shaped control either -- so the first step of the flow can never
+    become a second, ungated launch path."""
+    ids = set(re.findall(r'action_id:\s*"([^"]+)"', source))
+    assert ids == {"issue-create", "mark-ready"}
+    assert source.count('fetch("api/action"') == 2
+    assert source.count('"X-Cortxt-Token": s.token') == 2
+    assert "claim-run" not in source
+    assert "data-launch-start" not in source
+
+
+# --- #619: both edited files stay byte-identical across the mirror ----------
+
+@pytest.mark.parametrize("name", ["app-renderer-start-mission.js", "work-console.js"])
+def test_the_619_files_are_byte_identical_across_the_mirror(name):
+    assert (WIDGET / name).read_bytes() == (MIRROR / name).read_bytes(), \
+        f"{name} diverged between agent-platform/widget and site/public/widgets"

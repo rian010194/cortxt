@@ -186,6 +186,59 @@ def unblock_to_ready_transition(operation: str, request: Mapping[str, Any], *,
     return result
 
 
+def gh_compose_mission_issue(repo: str, title: str, body: str,
+                             labels: Sequence[str] | None = None) -> dict:
+    """Perform exactly the compose effect via gh: create the mandate Issue.
+
+    The ONLY `workflow:*` label written is `workflow:inbox` (#501, hard rule:
+    the registered mark-ready transition is the only thing that moves a label
+    after that). Non-workflow caller labels (e.g. a routable task-shape such
+    as `background-task`) pass through untouched, so routing still sees the
+    composed mandate; the caller never chooses the workflow state. Fail closed
+    before any write if the body already names a workflow label.
+    """
+    for label in (labels or []):
+        if str(label).lower().startswith("workflow:"):
+            raise TransitionDenied(
+                "workflow:* labels are not caller-chosen; the composed Issue "
+                "carries exactly one workflow label: workflow:inbox")
+    proc = subprocess.run(["gh", "issue", "create", title, "-R", repo,
+                           "--body", body]
+                          + (["--label", ",".join(str(x) for x in labels)] if labels else [])
+                          + ["--label", "workflow:inbox"],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=20)
+    if proc.returncode:
+        raise RuntimeError(proc.stderr.strip())
+    return {"issue_id": f"{repo}#created", "status": "ok"}
+
+
+def github_issue_create_transition(operation: str, request: Mapping[str, Any], *,
+                                   create: Callable[..., Any] | None) -> dict[str, Any]:
+    """Exactly one authorized compose effect: create the mandate Issue (#501).
+
+    Fail-closed like every transition here: an unwired `create` callable is
+    refused rather than silently doing nothing or falling back to a different
+    effect. The workflow label set is never a caller input -- the injected
+    callable writes exactly one `workflow:*` label (`workflow:inbox`), and the
+    adapter refuses a request that tries to name one.
+    """
+    if create is None:
+        raise TransitionDenied(
+            "github_transition_adapter: github.issue-create.v1 requires "
+            "issue_create_writer; refusing an unwired compose action")
+    labels = request.get("labels") or []
+    for label in labels:
+        if str(label).lower().startswith("workflow:"):
+            raise TransitionDenied(
+                "workflow:* labels are not caller-chosen; the composed Issue "
+                "carries exactly one workflow label: workflow:inbox")
+    result = create(request["repo"], request["title"], request["body"], labels)
+    if not isinstance(result, dict):
+        raise TransitionDenied("transition result must be an object")
+    return result
+
+
 def mark_ready_transition(operation: str, request: Mapping[str, Any], *,
                           issue_reader: Callable[[str], Mapping[str, Any]],
                           transition: Callable[[str, Mapping[str, Any]], Any]) -> dict[str, Any]:

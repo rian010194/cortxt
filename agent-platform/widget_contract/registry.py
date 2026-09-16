@@ -408,12 +408,13 @@ SOURCE_STATE_SCHEMA = {"type": "object", "additionalProperties": False,
 NEXT_ACTION_SCHEMA = {"type": ["object", "null"], "additionalProperties": False,
                       "required": ["kind", "label"],
                       "properties": {"kind": {"type": "string",
-                                              "enum": ["launch", "recover", "decision", "unblock"]},
+                                              "enum": ["launch", "recover", "decision", "unblock",
+                                                       "prepare"]},
                                      "label": {"type": "string"}}}
 VIEW_CAPABILITIES_SCHEMA = {"type": "array",
                             "items": {"type": "string",
                                       "enum": ["view:launch", "view:recovery", "view:decision",
-                                               "view:unblock"]}}
+                                               "view:unblock", "view:prepare"]}}
 
 # Whether the authority stores could be read whole, and what the OS is
 # therefore withholding (#519/W7). Declared here rather than left as four
@@ -816,9 +817,30 @@ UNBLOCK_SCHEMA = {"type": "object", "additionalProperties": False,
                   "required": ["issue_id", "justification"],
                   "properties": {"issue_id": {"type": "string"},
                                  "justification": {"type": "string", "minLength": 24}}}
+# #501 deliverable B: the mandate compose action. A registered ACTION, not a
+# new port class: it rides the existing `github-transition` port with its own
+# operation id and its own fixed effect -- creating the Issue whose body the
+# dispatch gate reads. `additionalProperties: False` mirrors every other
+# action input (action_ports.py's assembly rule), so only the fields the
+# effect consumes may be sent. Labels are not caller-chosen: the port writes
+# exactly one `workflow:*` label (`workflow:inbox`), so a composed mission
+# lands in the inbox state the typed prepare affordance reads.
+ISSUE_CREATE_SCHEMA = {"type": "object", "additionalProperties": False,
+                       "required": ["repo", "title", "body"],
+                       "properties": {"repo": {"type": "string"},
+                                      "title": {"type": "string", "minLength": 1},
+                                      "body": {"type": "string", "minLength": 1},
+                                      "labels": {"type": "array",
+                                                 "items": {"type": "string"}}}}
 ACTIONS: dict[str, ActionEntry] = {
     "workflow.mark-ready.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",
                                           "workflow-transition", frozenset({"operator"}), "act:mark-ready", True),
+    # #501: compose the mandate as a real Issue with exactly one workflow
+    # label (`workflow:inbox`). Deliberately NOT a general issue editor: the
+    # fail-closed port refuses anything but the fixed effect, and the label
+    # set is not a caller input.
+    "github.issue-create.v1": ActionEntry("github-transition", ISSUE_CREATE_SCHEMA, "action.status.v1",
+                                           "workflow-transition", frozenset({"operator"}), "act:issue-create", True),
     "workflow.claim-run.v1": ActionEntry("cli", ISSUE_ID_SCHEMA, "action.status.v1",
                                          "run-dispatch", frozenset({"operator"}), "act:claim-run", True),
     "workflow.record-decision.v1": ActionEntry("github-transition", ISSUE_ID_SCHEMA, "action.status.v1",

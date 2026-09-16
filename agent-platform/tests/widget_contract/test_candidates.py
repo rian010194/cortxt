@@ -172,8 +172,9 @@ def test_spec_loads_and_handoffs_are_disabled_without_callbacks():
     from pathlib import Path
     spec = Path(__file__).parents[2] / "widget_contract" / "specs" / "candidates-0.1.yaml"
     widget = load_widget_file(spec)
-    assert widget.id == "candidates" and len(widget.actions) == 2
-    assert {a.id for a in widget.actions} == {"mark-ready", "claim-run"}
+    assert widget.id == "candidates" and len(widget.actions) == 3
+    # #501: the compose action is registered and inert without its callback.
+    assert {a.id for a in widget.actions} == {"mark-ready", "claim-run", "issue-create"}
     model = build_candidates_view([])
     assert all(x == {**x, "enabled": False} and "callback" not in x for x in model["handoffs"])
 
@@ -222,6 +223,13 @@ def test_cli_visual_path_atomically_writes_contract_artifact(monkeypatch, capsys
         {"id": "mark-ready", "operation": "workflow.mark-ready.v1", "port": "github-transition",
          "effect_class": "workflow-transition", "authorization": {"mode": "operator", "reference": "operator-approval"},
          "confirm": {"summary": "Move the issue from workflow:inbox to workflow:ready",
+                     "effect_class": "workflow-transition", "required": True},
+         "enabled": True, "reason": "Operator-authorized action: approval reference + confirm required"},
+        # #501: the compose action derives a live handoff like every other
+        # registered action; inert without its callback in the host wiring.
+        {"id": "issue-create", "operation": "github.issue-create.v1", "port": "github-transition",
+         "effect_class": "workflow-transition", "authorization": {"mode": "operator", "reference": "operator-approval"},
+         "confirm": {"summary": "Create the mandate Issue carrying exactly one workflow:inbox label",
                      "effect_class": "workflow-transition", "required": True},
          "enabled": True, "reason": "Operator-authorized action: approval reference + confirm required"},
         {"id": "claim-run", "operation": "workflow.claim-run.v1", "port": "cli",

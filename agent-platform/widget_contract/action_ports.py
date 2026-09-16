@@ -16,7 +16,8 @@ from typing import Any, Callable, Mapping
 from .action_executor import ActionContext, ActionExecutor
 from .adapters.cli_ports import claim_run_via_launcher
 from .adapters.github_ports import (mark_ready_transition, record_decision_transition,
-                                    return_to_ready_transition, unblock_to_ready_transition)
+                                    return_to_ready_transition, unblock_to_ready_transition,
+                                    github_issue_create_transition)
 from .models import Action, Widget
 
 
@@ -66,7 +67,8 @@ def github_transition_adapter(labels_reader: Callable[[str], list[str]],
                               recover_transition_writer: Callable[[str], Mapping[str, Any]] | None = None,
                               recovery_authority: Callable[[str], "bool | None"] | None = None,
                               unblock_transition_writer: Callable[[str, str], Mapping[str, Any]] | None = None,
-                              unblock_authority: Callable[[str], "bool | None"] | None = None
+                              unblock_authority: Callable[[str], "bool | None"] | None = None,
+                              issue_create_writer: Callable[..., Mapping[str, Any]] | None = None
                               ) -> Callable[[str, Mapping[str, Any]], Any]:
     """github-transition port adapter, routed by operation.
 
@@ -75,9 +77,11 @@ def github_transition_adapter(labels_reader: Callable[[str], list[str]],
     `workflow.recover-to-ready.v1` performs the in-progress -> ready recovery
     swap; `workflow.unblock-to-ready.v1` performs the blocked -> ready swap
     (#519), which is a separate action carrying its own capability rather than
-    a widening of recovery. Each is a separate fixed-effect transition function
-    -- this adapter only dispatches on the declared action's operation, it
-    never becomes a general label editor.
+    a widening of recovery. `github.issue-create.v1` (#501) performs exactly
+    the compose effect: create the mandate Issue with one `workflow:inbox`
+    label. Each is a separate fixed-effect transition function -- this adapter
+    only dispatches on the declared action's operation, it never becomes a
+    general label editor or a general issue editor.
     """
     def reader(issue_id: str) -> Mapping[str, Any]:
         return {"issue_id": issue_id, "labels": [{"name": x} for x in labels_reader(issue_id)]}
@@ -110,6 +114,8 @@ def github_transition_adapter(labels_reader: Callable[[str], list[str]],
         return unblock_transition_writer(request["issue_id"], request["justification"])
 
     def adapter(operation: str, request: Mapping[str, Any]) -> Any:
+        if operation == "github.issue-create.v1":
+            return github_issue_create_transition(operation, request, create=issue_create_writer)
         if operation == "workflow.record-decision.v1":
             return record_decision_transition(operation, request, issue_reader=reader, transition=review_writer)
         if operation == "workflow.recover-to-ready.v1":
@@ -140,6 +146,7 @@ def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm
                    recovery_authority: Callable[[str], "bool | None"] | None = None,
                    unblock_transition_writer: Callable[[str, str], Mapping[str, Any]] | None = None,
                    unblock_authority: Callable[[str], "bool | None"] | None = None,
+                   issue_create_writer: Callable[..., Mapping[str, Any]] | None = None,
                    authoritative_reference: str | None = None
                    ) -> tuple[ActionExecutor, ActionContext]:
     """Assemble the shared executor + per-action context for one execution.
@@ -184,7 +191,8 @@ def build_executor(widget: Widget, *, action_id: str, approval_ref: str, confirm
             recover_transition_writer=recover_transition_writer,
             recovery_authority=recovery_authority,
             unblock_transition_writer=unblock_transition_writer,
-            unblock_authority=unblock_authority),
+            unblock_authority=unblock_authority,
+            issue_create_writer=issue_create_writer),
          "cli": cli_claim_adapter(resume)},
         operator_authorize(confirm),
     )

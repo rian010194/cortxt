@@ -29,9 +29,13 @@ from urllib.parse import parse_qs
 
 from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
+# W-6 (#501 round trip): `execute()` assembles the compose Action directly on
+# the mandate path; the model was previously referenced without an import, so
+# every issue-create execution through the host raised NameError.
+from widget_contract.models import Action
 from widget_contract.adapters.cli_ports import ClaimRunDenied, gh_claim_run_resume
 from widget_contract.adapters.github_ports import (
-    LastGoodIssues, TransitionDenied, gh_blocked_to_ready, gh_in_progress_to_ready, gh_inbox_to_ready,
+    LastGoodIssues, TransitionDenied, gh_blocked_to_ready, gh_compose_mission_issue, gh_in_progress_to_ready, gh_inbox_to_ready,
     gh_issue_workflow_labels, gh_review_to_done,
     read_issue_detail,
 )
@@ -85,6 +89,13 @@ ACTION_REQUEST_SCHEMA = {
         # again by the action's own input schema and once more by the port, so
         # a caller cannot lift a block without stating why at any layer.
         "justification": {"type": "string"},
+        # #501: the compose mandate (github.issue-create.v1). The browser
+        # never chooses the workflow state -- the port writes exactly one
+        # `workflow:inbox` label -- but the composed body and title must cross
+        # to the server so the create is built from the operator's confirmed
+        # compose form. Re-validated against the action's registered input
+        # schema by the executor before anything executes.
+        "mandate": {"type": "object"},
         "confirm": {"type": "boolean"},
     },
 }
@@ -251,6 +262,7 @@ class ActionHost:
                  review_transition_writer: Callable[[str], Mapping[str, Any]] = gh_review_to_done,
                  recover_transition_writer: Callable[[str], Mapping[str, Any]] = gh_in_progress_to_ready,
                  unblock_transition_writer: Callable[[str, str], Mapping[str, Any]] = gh_blocked_to_ready,
+                 issue_create_writer: Callable[..., Mapping[str, Any]] = gh_compose_mission_issue,
                  resume: Callable[[str], Any] | None = None,
                  registry: Path | None = None, scripts_dir: Path | None = None,
                  session_store: Path | None = None,
@@ -265,6 +277,10 @@ class ActionHost:
         self._review_transition_writer = review_transition_writer
         self._recover_transition_writer = recover_transition_writer
         self._unblock_transition_writer = unblock_transition_writer
+        # #501: the compose writer, wired fail-closed like the other
+        # transition writers. None yields an unwired host that refuses the
+        # compose action instead of performing it.
+        self._issue_create_writer = issue_create_writer
         # Launcher modules live in the repository-level scripts directory,
         # alongside agent-platform, not inside the Python package tree.
         self._scripts_dir = Path(scripts_dir) if scripts_dir else (AGENT_PLATFORM_DIR.parent / "scripts")
@@ -727,7 +743,8 @@ class ActionHost:
 
     def execute(self, *, action_id: str, issue_id: str, approval_ref: str,
                 confirm: bool, token: str, request_id: str | None = None,
-                justification: str | None = None) -> dict:
+                justification: str | None = None,
+                mandate: Mapping[str, Any] | None = None) -> dict:
         """Validate, re-authorize, and dispatch one action request.
 
         Raises ActionHostError subclasses on every failure; nothing executes
@@ -750,8 +767,21 @@ class ActionHost:
             raise InvalidRequest("approval_ref is required")
         try:
             widget = self._widget_for_action(action_id)
-            action = build_action(widget, action_id, issue_id, approval_ref, confirm,
-                                  justification=justification)
+            if action_id == "issue-create" and isinstance(mandate, Mapping):
+                # #501: the compose form's confirmed body crosses to the
+                # server here, then the executor re-validates it against the
+                # action's registered input schema. `build_action` builds
+                # `{"issue_id": ...}` alone, which would fail that schema.
+                from widget_contract.action_ports import declared_action
+                declared = declared_action(widget, action_id)
+                action = Action(declared.id, declared.port, declared.operation,
+                                dict(mandate), {"mode": declared.authorization["mode"],
+                                                "reference": approval_ref},
+                                declared.confirm, declared.result_type,
+                                declared.idempotency_key)
+            else:
+                action = build_action(widget, action_id, issue_id, approval_ref, confirm,
+                                      justification=justification)
         except UnknownAction as exc:
             raise NotFound(f"unknown action {action_id}") from exc
         authoritative_reference = None
@@ -776,6 +806,10 @@ class ActionHost:
             # justification. See `unblock_to_ready_transition`.
             unblock_transition_writer=self._unblock_transition_writer,
             unblock_authority=self._run_active,
+            # #501: the compose writer. Separately wired like every other
+            # transition writer, so an unwired host refuses the compose action
+            # instead of silently doing nothing.
+            issue_create_writer=self._issue_create_writer,
             authoritative_reference=authoritative_reference)
         try:
             result = executor.execute(action, context)
@@ -1176,7 +1210,8 @@ class ActionHandler(SimpleHTTPRequestHandler):
             result = self.host.execute(action_id=payload["action_id"], issue_id=payload["issue_id"],
                                        approval_ref=payload["approval_ref"], confirm=payload["confirm"],
                                        token=token, request_id=payload.get("request_id"),
-                                       justification=payload.get("justification"))
+                                       justification=payload.get("justification"),
+                                       mandate=payload.get("mandate"))
             self._json(200, {"status": "ok", "action_id": payload["action_id"],
                              "issue_id": payload["issue_id"], **result})
         except ActionHostError as exc:
