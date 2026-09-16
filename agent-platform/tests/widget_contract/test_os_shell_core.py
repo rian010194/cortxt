@@ -359,7 +359,8 @@ def test_window_geometry_tiling_keeps_both_visible():
         "if(r['decisions'].x<=work.w-eps)process.exit(4);"
         "console.log('ok');"
     ) % json.dumps(str(WIDGET / "work-console.js"))
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                         encoding="utf-8")
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
 
@@ -415,7 +416,8 @@ def test_window_lifecycle_state_machine():
         "close('decisions');if(s.ui.open['decisions'])process.exit(6);"
         "console.log('ok');"
     ) % json.dumps(str(WIDGET / "work-console.js"))
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                         encoding="utf-8")
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
 
@@ -650,7 +652,8 @@ def test_window_tiling_yields_distinct_non_overlapping_rectangles():
         "}"
         "console.log('ok');"
     ) % json.dumps(str(WIDGET / "work-console.js"))
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                         encoding="utf-8")
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
 
@@ -762,7 +765,8 @@ def test_attention_item_validation_behavioral():
         "if(m.isValidAttentionItem(Object.assign({},ok,{targetCommand:''})))process.exit(6);"
         "console.log('ok');"
     ) % json.dumps(str(WIDGET / "work-console.js"))
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                         encoding="utf-8")
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
 
@@ -794,7 +798,8 @@ def test_v2_to_v4_migration_renames_work_console_and_derives_primary():
         "if(unbound.primary!=='home')process.exit(12);"
         "console.log('ok');"
     ) % json.dumps(str(WIDGET / "work-console.js"))
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                         encoding="utf-8")
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
 
@@ -1048,7 +1053,8 @@ def test_router_behavior_in_domless_runtime():
         "if(got.length!==3||got[0][0]!=='open'||got[1][0]!=='win'||got[2][0]!=='return')process.exit(14);"
         "console.log('ok');"
     ) % json.dumps(str(WIDGET / "shell-commands.js"))
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                         encoding="utf-8")
     assert out.returncode == 0, out.stderr or out.stdout
     assert "ok" in out.stdout
 

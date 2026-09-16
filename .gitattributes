@@ -1,0 +1,15 @@
+# Contract and schema JSON are byte-compared, not merely parsed: the
+# contract-distribution suite asserts that the files on disk are the canonical
+# bytes of the embedded registry dicts (agent-platform/routing/schema_source.py,
+# scripts/export_contracts.py). Canonical form is LF.
+#
+# With core.autocrlf=true -- the default on Windows and the setting in use on
+# the maintainer's machine -- git rewrites those LFs to CRLF on checkout, and
+# every freshly created worktree then fails the comparison against bytes that
+# are correct in the repository. This was diagnosed and repaired by hand twice
+# during the W-series, once per worktree, without the cause being addressed.
+#
+# Pinning the eol here fixes it at the source: the blobs are already LF, and
+# checkout no longer rewrites them.
+contracts/**/*.json text eol=lf
+schemas/**/*.json   text eol=lf
