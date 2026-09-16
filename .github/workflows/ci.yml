@@ -111,12 +111,16 @@ jobs:
   # clean CORTXT_BOUNDED_WORKER. Separate processes make each suite's result
   # its own, and a failure name the file that broke.
   #
-  # No `pip install`: dispatcher/worker_adapters/work_launcher and their
+  # No heavy install: dispatcher/worker_adapters/work_launcher and their
   # transitive imports (commit_evidence, execution_map, launcher_inventory)
   # are pure standard library. The suites use fake GitHub, fake providers,
   # injected subprocess runners and temporary state only -- no `gh`, no real
   # runtime, no provider call, no write to the repository.
   #
+  # `pyyaml` IS required since W-5 (#617): the staleness arm imports the real
+  # `widget_contract.product_packaging.decision_slot` (dark tests are banned),
+  # and `widget_contract/__init__.py` imports `yaml` at package load. Local
+  # venvs have PyYAML; a bare CI python does not.
   # PYTHONPATH, however, is required. `worker_adapters.HermesFreeAdapter.invoke`
   # imports `routing.worker_outcome` on its succeeded path (#520), and that
   # package lives under `agent-platform/`, which is not on `sys.path` when
@@ -135,6 +139,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: pip install pyyaml
       - name: Dispatcher claim/complete contract (#122, #493)
         run: python scripts/test_dispatcher.py
       - name: Worker adapter envelopes and dispatch_async (#419, #482)
