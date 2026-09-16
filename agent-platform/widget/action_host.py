@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Callable, Deque, Mapping, Sequence
 from urllib.parse import parse_qs
 
+from state.data_home import DATA_HOME_ENV, DataHomeError, core_root, resolve_data_home
 from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
 # W-6 (#501 round trip): `execute()` assembles the compose Action directly on
@@ -1412,7 +1413,8 @@ def source_signature(*, run_subprocess: Callable = None, repo_dir: Path | None =
 
 
 def main(*, port: int = PORT, spec_path: Path | None = None,
-         require_commit: str | None = None, require_clean: bool = False) -> int:
+         require_commit: str | None = None, require_clean: bool = False,
+         data_home: str | Path | None = None) -> int:
     signature = source_signature()
     clean_status = signature.get("clean_status", "unknown")
     print(f"Cortxt widget action host source: file={signature['module_file']} "
@@ -1432,10 +1434,30 @@ def main(*, port: int = PORT, spec_path: Path | None = None,
               f"worktree means the running commit does not fully describe what's on disk -- "
               f"commit, stage, or discard the uncommitted changes before starting a proof host.")
         return 1
-    host = ActionHost(spec_path=spec_path) if spec_path else ActionHost()
+    # B-1: the Core store is resolved from the data home, never from this
+    # module's location. Fail closed BEFORE binding, like the two gates above:
+    # a host that serves with a misconfigured store writes durable records to a
+    # place the operator did not choose.
+    try:
+        resolved_home = resolve_data_home(data_home)
+    except DataHomeError as error:
+        source = "--data-home" if data_home is not None else DATA_HOME_ENV
+        print(f"[action_host] refusing to start: data home ({source}) rejected "
+              f"[{error.code}]: {error}")
+        return 1
+    # None is not a defect: no data home configured means no packaging store,
+    # and the packaging read routes keep answering their 503 store_unavailable
+    # exactly as they did before this parameter existed.
+    packaging_store = core_root(resolved_home) if resolved_home is not None else None
+
+    kwargs: dict[str, Any] = {"packaging_store": packaging_store}
+    if spec_path:
+        kwargs["spec_path"] = spec_path
+    host = ActionHost(**kwargs)
     with _ReusableThreadingHTTPServer((HOST, port), _make_handler(host)) as httpd:
         print(f"Cortxt widget action host: http://{HOST}:{port}/index.html "
-              f"(operator-gated mutations enabled via POST /api/action, spec={host._spec_path.name})")
+              f"(operator-gated mutations enabled via POST /api/action, spec={host._spec_path.name}, "
+              f"store={packaging_store if packaging_store is not None else 'not configured'})")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
@@ -1458,6 +1480,13 @@ if __name__ == "__main__":
                              "commit HEAD is at, not that the working tree matches it exactly; "
                              "proof/gated-launch tooling should pass both. Ordinary local "
                              "widget use omits this and is unaffected.")
+    parser.add_argument("--data-home", type=Path, default=None,
+                        help=f"Durable Cortxt data home; the Core store is served from "
+                             f"<data-home>/core. Overrides {DATA_HOME_ENV}. Must be an "
+                             f"absolute directory outside this checkout and outside the "
+                             f"system temp directory. Without this flag and without "
+                             f"{DATA_HOME_ENV}, no store is configured and the packaging "
+                             f"routes stay unavailable (503 store_unavailable).")
     args = parser.parse_args()
     raise SystemExit(main(port=args.port, spec_path=args.spec, require_commit=args.require_commit,
-                          require_clean=args.require_clean))
+                          require_clean=args.require_clean, data_home=args.data_home))
