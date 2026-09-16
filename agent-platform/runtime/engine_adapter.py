@@ -34,3 +34,30 @@ class EngineAdapter(Protocol):
         before a session was established.
         """
         ...
+
+
+# Event capability (ADR-047 D3). Deliberately NOT a member of EngineAdapter:
+# a data member on a runtime_checkable Protocol is part of the isinstance
+# check, so every existing adapter (and every conformance fake that defines
+# only invoke) would stop being an EngineAdapter. An adapter opts in by
+# declaring the class attribute `supports_events = True`; callers that need
+# streamed events call require_event_support() and get an error, never a
+# silent fallback to one-shot behaviour.
+
+
+class EventsNotSupported(RuntimeError):
+    """Raised when a caller needs events from an adapter that does not emit them."""
+
+
+def supports_events(adapter: object) -> bool:
+    """True only when the adapter declares `supports_events = True` (identity check, not truthiness)."""
+    return getattr(adapter, "supports_events", False) is True
+
+
+def require_event_support(adapter: object) -> None:
+    """Raise EventsNotSupported naming type(adapter).__name__ unless supports_events(adapter)."""
+    if not supports_events(adapter):
+        raise EventsNotSupported(
+            f"{type(adapter).__name__} does not declare supports_events = True; "
+            "it cannot deliver streamed events"
+        )
