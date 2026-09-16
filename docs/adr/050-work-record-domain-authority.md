@@ -1,6 +1,6 @@
 # ADR-050: Work-record domain authority — the thinking lives in Core, before any repository or issue
 
-**Status:** Proposal
+**Status:** Accepted (2026-09-16, operator)
 **Date:** 2026-09-16
 **Deciders:** Rikard (operator), Claude (draft)
 **Extends:** ADR-048 (same boundary, second domain). ADR-018, ADR-040 and ADR-045 unchanged.

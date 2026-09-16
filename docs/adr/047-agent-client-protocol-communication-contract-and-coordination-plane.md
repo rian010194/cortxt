@@ -3,6 +3,12 @@
 **Status:** Accepted
 **Date:** 2026-09-10
 **Amended:** 2026-09-11 (v1/v2 pin closed; §D1 wording corrected to the two-distinct-protocol basis)
+**Superseded in part:** 2026-09-16 by **ADR-049** — **§D4 point 1 below is wrong as written.** The
+ACP `sessionId` is issued by the **agent** in response to `session/new`; Cortxt holds and
+correlates it rather than owning and creating it. `acp.NewSessionRequest` carries no session-id
+field and `acp.NewSessionResponse` returns one, observed live in two sessions
+(`docs/findings/2026-09-16-acp-client-probe-f0.md`). The rest of §D4 — the two namespaces, and
+that they never meet — stands unchanged. **Do not build an `AcpAdapter` on §D4 point 1.**
 **Deciders:** Rikard (operator), Claude Code (draft)
 **Technical Story:** No originating issue. This ADR is written because ADR-026's and
 ADR-027's own review triggers have fired ahead of their shared 2026-09-19 review date;

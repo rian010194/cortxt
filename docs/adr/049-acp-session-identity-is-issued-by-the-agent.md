@@ -1,6 +1,6 @@
 # ADR-049: The ACP session identity is issued by the agent, not by Cortxt
 
-**Status:** Proposal
+**Status:** Accepted (2026-09-16, operator)
 **Date:** 2026-09-16
 **Deciders:** Rikard (operator), Claude (draft)
 **Amends:** ADR-047 §D4 (the decision text, not the decision's direction)
