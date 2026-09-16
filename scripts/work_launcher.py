@@ -835,6 +835,12 @@ class WorkLauncher:
         # point at which the shared checkout is still protected.
         if mutating and not create_worktree:
             raise ExecutionGateError("mutating_run_requires_isolation")
+        # #617 criterion 15: the same approval prerequisite at the launcher
+        # boundary itself, so no direct `_launch` caller can route around the
+        # resume()-side refusal. Ordered AFTER the isolation guard, which is
+        # the guard the #485/#489 breach pins first.
+        if mutating and not (isinstance(request_id, str) and request_id.strip()):
+            raise ExecutionGateError("mutating_run_requires_approval")
         if self.claim_store is None:
             # Legacy (pre-#262) path: no execution-map gate; Dispatcher owns the run_id.
             run = self.dispatcher.claim(issue_id, workflow, worker_role, runtime,
@@ -1027,6 +1033,17 @@ class WorkLauncher:
         # the caller that asked for the unsafe combination.
         if mutating and not isolate:
             raise ExecutionGateError("mutating_run_requires_isolation")
+        # #617 criterion 15: launcher-level denial of an UNAPPROVED mutating
+        # resume, before any claim. The approved dispatch request is the
+        # approval binding: `gh_claim_run_resume` (cli_ports) digest-binds
+        # `request_id` to the confirmed request snapshot and the launcher
+        # carries it onto the durable Run, so a mutating launch without one
+        # has no approval behind it at all. Refused with a stable code next to
+        # the isolation guard -- the API-level denial (action host token
+        # check, executor) stays upstream and unchanged, and non-mutating
+        # resumes are completely unaffected.
+        if mutating and not (isinstance(request_id, str) and request_id.strip()):
+            raise ExecutionGateError("mutating_run_requires_approval")
         return self._launch(issue_id, prompt, runtime=runtime, worker_role=worker_role,
                             workflow=workflow, max_runtime_seconds=max_runtime_seconds,
                             create_worktree=isolate, max_cost_usd=max_cost_usd,

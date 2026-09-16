@@ -376,6 +376,7 @@ def check_dispatcher_completion_loop_closes(root):
         prompt="bounded",
         isolate=True,  # mutating run needs isolation
         mutating=True,
+        request_id="sha256:" + "e" * 64,  # approved dispatch request snapshot
     )
 
     assert result["run_id"] == "run-9"

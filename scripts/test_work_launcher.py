@@ -505,7 +505,8 @@ def _run_checks():
     result2i = launcher2i.resume("o/r#31", runtime="fake", worker_role="builder", workflow="v1",
                                  max_runtime_seconds=60, prompt="isolated work",
                                  isolate=True, mutating=True, artifact_policy=policy31,
-                                 artifact_paths=["scripts/work_launcher.py"])
+                                 artifact_paths=["scripts/work_launcher.py"],
+                                 request_id="sha256:" + "c" * 64)
     rec2i = disp2i.registry.get(result2i["run_id"])
     check("isolated resume reports isolation=worktree", result2i["isolation"] == "worktree")
     check("Run.isolation is durable as worktree", rec2i.isolation == "worktree",
@@ -535,7 +536,8 @@ def _run_checks():
         repo_path=root2i,
     )
     launcher2j.resume("o/r#32", runtime="fake", worker_role="builder", workflow="v1",
-                      max_runtime_seconds=60, prompt="default derivation", isolate=True)
+                      max_runtime_seconds=60, prompt="default derivation", isolate=True,
+                      request_id="sha256:" + "d" * 64)
     rec2j = next(iter(disp2j.registry._runs.values()))
     check("resume(isolate=True) without mutating derives mutating=True",
           rec2j.mutating is True, str(rec2j.mutating))
@@ -601,6 +603,120 @@ def _run_checks():
               exc.code == "mutating_run_requires_isolation", exc.code)
     check("the launcher-level refusal also never created a claim",
           not disp2l.registry._runs and dispatched2l == [])
+
+    print("== #617 criterion 15: an unapproved mutating resume is denied at the launcher ==")
+    # The approval binding reaching the launcher is the approved dispatch
+    # request snapshot id (`request_id`): gh_claim_run_resume digest-binds it
+    # before any launch, and the launcher records it on the durable Run. A
+    # MUTATING launch without that binding has no approval behind it at all.
+    gh2m = FakeGitHub()
+    gh2m.labels["o/r#35"] = ["workflow:ready"]
+    disp2m = d.Dispatcher(d.RunRegistry(root2i / "runs-35.json"), gh2m)
+    dispatched2m = []
+    launcher2m = w.WorkLauncher(
+        disp2m, gh2m,
+        dispatch=lambda dispatcher, run, prompt, worktree=None: dispatched2m.append(run.run_id),
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    try:
+        launcher2m.resume("o/r#35", runtime="fake", worker_role="builder", workflow="v1",
+                          max_runtime_seconds=60, prompt="unapproved mutation",
+                          isolate=True, mutating=True)
+        check("mutating resume without a request_id is denied", False)
+    except w.ExecutionGateError as exc:
+        check("mutating resume without a request_id is denied",
+              exc.code == "mutating_run_requires_approval", exc.code)
+    check("the denial happens before any dispatcher claim",
+          not disp2m.registry._runs and disp2m.registry.active_issue_ids() == set())
+    check("the denial dispatches no worker and leaves the label ready",
+          dispatched2m == [] and gh2m.labels["o/r#35"] == ["workflow:ready"])
+    # A blank binding is not a binding.
+    try:
+        launcher2m.resume("o/r#35", runtime="fake", worker_role="builder", workflow="v1",
+                          max_runtime_seconds=60, prompt="blank binding",
+                          isolate=True, mutating=True, request_id="   ")
+        check("a whitespace-only request_id is not an approval binding", False)
+    except w.ExecutionGateError as exc:
+        check("a whitespace-only request_id is not an approval binding",
+              exc.code == "mutating_run_requires_approval", exc.code)
+
+    print("== #617 criterion 15: a mutating resume WITH the binding proceeds ==")
+    gh2n = FakeGitHub()
+    gh2n.labels["o/r#36"] = ["workflow:ready"]
+    disp2n = d.Dispatcher(d.RunRegistry(root2i / "runs-36.json"), gh2n)
+    dispatched2n = []
+    launcher2n = w.WorkLauncher(
+        disp2n, gh2n,
+        dispatch=lambda dispatcher, run, prompt, worktree=None: dispatched2n.append(run.run_id),
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    result2n = launcher2n.resume("o/r#36", runtime="fake", worker_role="builder", workflow="v1",
+                                 max_runtime_seconds=60, prompt="approved mutation",
+                                 isolate=True, mutating=True,
+                                 request_id="sha256:" + "b" * 64)
+    rec2n = disp2n.registry.get(result2n["run_id"])
+    check("the approved mutating resume launched and recorded the binding",
+          len(dispatched2n) == 1 and rec2n.request_id == "sha256:" + "b" * 64,
+          f"dispatched={dispatched2n} request_id={rec2n.request_id!r}")
+    check("the approved mutating resume kept its isolation",
+          rec2n.isolation == "worktree" and rec2n.mutating is True,
+          f"{rec2n.isolation!r}/{rec2n.mutating!r}")
+
+    print("== #617 criterion 15: the launcher boundary cannot be routed around ==")
+    try:
+        launcher2m._launch("o/r#35", "unapproved", runtime="fake", worker_role="builder",
+                           workflow="v1", max_runtime_seconds=60, create_worktree=True,
+                           mutating=True)
+        check("direct _launch mutating without a request_id is denied too", False)
+    except w.ExecutionGateError as exc:
+        check("direct _launch mutating without a request_id is denied too",
+              exc.code == "mutating_run_requires_approval", exc.code)
+    check("the _launch-side denial also never created a claim",
+          not disp2m.registry._runs)
+
+    print("== #617 criterion 15: non-mutating resumes are completely unaffected ==")
+    # A read-only isolated resume (the W-4 shape) needs no approval binding.
+    gh2o = FakeGitHub()
+    gh2o.labels["o/r#37"] = ["workflow:ready"]
+    disp2o = d.Dispatcher(d.RunRegistry(root2i / "runs-37.json"), gh2o)
+    dispatched2o = []
+    launcher2o = w.WorkLauncher(
+        disp2o, gh2o,
+        dispatch=lambda dispatcher, run, prompt, worktree=None: dispatched2o.append(run.run_id),
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    launcher2o.resume("o/r#37", runtime="fake", worker_role="researcher", workflow="v1",
+                      max_runtime_seconds=60, prompt="read-only isolated", isolate=True,
+                      mutating=False, request_id="req-w4-shape")
+    rec2o = next(iter(disp2o.registry._runs.values()))
+    check("the read-only isolated resume proceeds with its request_id",
+          len(dispatched2o) == 1 and rec2o.request_id == "req-w4-shape"
+          and rec2o.mutating is False)
+    # Isolation stays the FIRST guard: a mutating resume denied for isolation
+    # reports the isolation code even when no binding is present either.
+    gh2p = FakeGitHub()
+    gh2p.labels["o/r#38"] = ["workflow:ready"]
+    disp2p = d.Dispatcher(d.RunRegistry(root2i / "runs-38.json"), gh2p)
+    launcher2p = w.WorkLauncher(
+        disp2p, gh2p, dispatch=lambda dispatcher, run, prompt, worktree=None: None,
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    try:
+        launcher2p.resume("o/r#38", runtime="fake", worker_role="builder", workflow="v1",
+                          max_runtime_seconds=60, prompt="unsafe and unapproved",
+                          mutating=True, isolate=False)
+        check("isolation is still refused before the approval prerequisite", False)
+    except w.ExecutionGateError as exc:
+        check("isolation is still refused before the approval prerequisite",
+              exc.code == "mutating_run_requires_isolation", exc.code)
 
 
 def test_all_checks_pass():
