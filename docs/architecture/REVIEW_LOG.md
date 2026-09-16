@@ -65,3 +65,4 @@ that modifies an Accepted ADR must add a row here.
 | 2026-08-16 | ADR-015 | Amended — proof-environment naming per ADR-020 | #151 |
 | 2026-08-27 | ADR-043 | Added and accepted — global design-system source, generated artifact ownership, consumer boundaries, and conformance gate | Operator approval |
 | 2026-09-15 | ADR-048 | Added and accepted - product-packaging domain authority: local append-only Core store owns new package revisions, operation/decision records and evidence; GitHub issue id = correlation reference only (ADR-018/040/045 unchanged) | #606 / #609 |
+| 2026-09-16 | ADR-049 | Added as Proposal - the ACP session identity is issued by the agent; supersedes ADR-047 §D4 point 1 only, on probe evidence that NewSessionRequest carries no session id and NewSessionResponse returns one; awaiting operator acceptance | F0 probe register |
