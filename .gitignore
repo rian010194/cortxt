@@ -29,6 +29,14 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+# Per-worktree virtualenvs. The parallel-dispatch convention gives each builder
+# worktree its own venv named for its unit (.venv-w6, .venv-b1, ...), so that an
+# editable install never couples one worktree's package to another's source tree.
+# Unignored, every such worktree is permanently dirty, and `action_host
+# --require-clean` -- which exists to prove that the running commit fully
+# describes what is on disk -- refuses to start in exactly the worktrees the
+# convention creates.
+.venv-*/
 
 # ---- Node / builds ----
 node_modules/

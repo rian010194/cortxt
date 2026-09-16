@@ -54,7 +54,8 @@ def shell_source() -> str:
 
 
 def _run_node(script: str):
-    return subprocess.run(["node", "-e", script], capture_output=True, text=True)
+    return subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                          encoding="utf-8")
 
 
 # --- behavioral: driving the real renderer through node --------------------
