@@ -109,10 +109,30 @@ The primary working copy was on branch `fix/571-cli-v2-digest` at `3a23bf3`, wit
 | `cortxt-resilient-inference` | public | `projects/cortxt-resilient-inference` | `chore/project-urls` |
 | `cortxt-agents` | private | `cortxt-agents` | `feat/604-contract-pinned-consumption` |
 | `cortxt-vault` | private | `cortxt-vault` | `vault/d004-agent-repos` |
-| `cortxt-deliverables` | private | **not checked out** | — |
+| `cortxt-deliverables` | private | **`C:\Users\rikar\Cortxt` — the workspace root itself** | `main` |
 
-**None is on `main`.** `cortxt-deliverables` is the only entry in `allowed_write_repos` and the
-only repo absent locally: the write target is invisible in the read area.
+**None of the four project repositories is on `main`.** `cortxt-deliverables` is, and it is the
+only entry in `allowed_write_repos`.
+
+> **Correction, 2026-09-16.** An earlier revision of this register stated that
+> `cortxt-deliverables` was *"not checked out"* and that *"none is on `main`"*. Both were false,
+> and the error was found by B1.6's discovery run rather than by inspection. The workspace root
+> `C:\Users\rikar\Cortxt` **is** a checkout of `cortxt-deliverables`, on `main`, with 27 tracked
+> files under `_deliverables/`. The earlier reading missed it because the root was treated as a
+> container of repositories rather than as one.
+>
+> **The consequence is a product finding, not a bookkeeping fix.** Because the workspace root is
+> itself a repository, a read area pointed at it stops there: discovery does not descend into a
+> repository once found, so `C:\Users\rikar\Cortxt` yields **exactly one** repository and hides
+> all five projects beneath it. The behaviour is correct and the answer is honest; the
+> configuration is the trap. Pointing the read area at `C:\Users\rikar\Cortxt\projects` instead
+> returns 64 repositories — of which **3 are on `main`**, which is the premise of §2's baseline
+> trap, measured rather than argued.
+>
+> Two decisions this hands forward: whether discovery should warn when a read-area root is itself
+> a checkout, and whether `DiscoveryCaps.max_repositories = 64` is the right default when the real
+> workspace contains exactly 64 and therefore truncates on first real use. Both are the operator's
+> to settle; the truncation is already reported visibly rather than silently.
 
 ### Unresolved authority contradictions — resolve before building on them
 
