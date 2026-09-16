@@ -205,6 +205,53 @@ def test_review_without_evidence_yields_no_decision():
     assert detail["next_action"] is None
 
 
+# --- prepare (#501): the inbox affordance is navigation only ---------------
+
+def test_inbox_workstream_is_offered_prepare():
+    """#501: an inbox Issue has no mandate yet. Its affordance is pure
+    navigation to the compose/preview surface -- no authority answer is
+    consulted because none is needed, and the grant stays view-only."""
+    detail = _detail(_issue(workflow="workflow:inbox"), launch_eligible=False)
+    assert detail["next_action"] == {"kind": "prepare",
+                                     "label": "Prepare the mandate for approval"}
+    assert detail["view_capabilities"] == ["view:prepare"]
+
+
+def test_the_list_projection_emits_prepare_because_work_reads_the_list():
+    listed = _listed([_issue(workflow="workflow:inbox")])
+    assert listed[WS497]["next_action"]["kind"] == "prepare"
+    assert listed[WS497]["view_capabilities"] == ["view:prepare"]
+
+
+def test_detail_and_list_agree_on_prepare():
+    """The two projections must never disagree about what may be done next."""
+    issue = _issue(workflow="workflow:inbox")
+    detail = _detail(issue)
+    listed = _listed([issue])
+    assert detail["next_action"] == listed[WS497]["next_action"]
+    assert detail["view_capabilities"] == listed[WS497]["view_capabilities"]
+
+
+def test_no_state_other_than_inbox_is_ever_offered_prepare():
+    for workflow, kwargs in (("workflow:ready", {"launch_eligible": True}),
+                             ("workflow:in-progress", {"run_active": False}),
+                             ("workflow:review", {}),
+                             ("workflow:blocked", {"run_active": False}),
+                             ("workflow:done", {})):
+        detail = _detail(_issue(workflow=workflow), **kwargs)
+        assert (detail["next_action"] or {}).get("kind") != "prepare"
+
+
+def test_prepare_grant_stays_view_only_even_with_every_authority_granted():
+    """The most permissive authority answers must not turn prepare into
+    anything but a view: navigation grant."""
+    result = resolve_next_action("inbox", launch_eligible=True, run_active=False,
+                                 has_evidence=True)
+    assert result["next_action"] == {"kind": "prepare",
+                                     "label": "Prepare the mandate for approval"}
+    assert result["view_capabilities"] == ["view:prepare"]
+
+
 # --- the mutation boundary is untouched -----------------------------------
 
 def test_view_capabilities_can_never_express_a_mutation_grant():

@@ -27,7 +27,12 @@ answers the server has *already* computed from its own authorities:
 - unblockable is ``workflow:blocked`` plus the same positive run-liveness
   evidence recovery requires (``workflow.unblock-to-ready.v1``, #519). The
   port's other two requirements -- re-reading the label at write time and a
-  stated justification -- are its own and are not re-implemented here.
+  stated justification -- are its own and are not re-implemented here;
+- prepareable is ``workflow:inbox`` (#501): the Issue has no mandate yet, so
+  the affordance is pure navigation to the compose/preview surface. It
+  consults no authority because none is needed -- the mark-ready port
+  re-reads the label fail-closed at write time, so a view grant cannot
+  authorize a label change.
 
 Nothing here re-implements a policy. If a caller cannot supply an authority
 answer it passes ``None`` and the result is no next action at all -- absence of
@@ -50,23 +55,27 @@ KIND_LAUNCH = "launch"
 KIND_RECOVER = "recover"
 KIND_DECISION = "decision"
 KIND_UNBLOCK = "unblock"
+KIND_PREPARE = "prepare"
 
 VIEW_LAUNCH = "view:launch"
 VIEW_RECOVERY = "view:recovery"
 VIEW_DECISION = "view:decision"
 VIEW_UNBLOCK = "view:unblock"
+VIEW_PREPARE = "view:prepare"
 
 _LABELS = {
     KIND_LAUNCH: "Start the approved Run",
     KIND_RECOVER: "Return this Issue to ready",
     KIND_DECISION: "Record the operator decision",
     KIND_UNBLOCK: "Lift the block and return to ready",
+    KIND_PREPARE: "Prepare the mandate for approval",
 }
 _VIEWS = {
     KIND_LAUNCH: VIEW_LAUNCH,
     KIND_RECOVER: VIEW_RECOVERY,
     KIND_DECISION: VIEW_DECISION,
     KIND_UNBLOCK: VIEW_UNBLOCK,
+    KIND_PREPARE: VIEW_PREPARE,
 }
 
 
@@ -180,6 +189,15 @@ def resolve_next_action(workflow: str | None, *,
     elif state == "review":
         if has_evidence:
             kind = KIND_DECISION
+    elif state == "inbox":
+        # #501: an inbox Issue has no mandate yet, so the only affordance is
+        # pure navigation -- it hands the operator to the compose/preview
+        # surface and authorizes nothing else. No authority answer is
+        # consulted because none is needed: the mark-ready transition (the
+        # only label write in this surface) re-reads the label itself,
+        # fail-closed, at write time, so offering this affordance cannot make
+        # a label write possible where the port would refuse it.
+        kind = KIND_PREPARE
 
     if kind is None:
         return {"next_action": None, "view_capabilities": []}

@@ -408,12 +408,13 @@ SOURCE_STATE_SCHEMA = {"type": "object", "additionalProperties": False,
 NEXT_ACTION_SCHEMA = {"type": ["object", "null"], "additionalProperties": False,
                       "required": ["kind", "label"],
                       "properties": {"kind": {"type": "string",
-                                              "enum": ["launch", "recover", "decision", "unblock"]},
+                                              "enum": ["launch", "recover", "decision", "unblock",
+                                                       "prepare"]},
                                      "label": {"type": "string"}}}
 VIEW_CAPABILITIES_SCHEMA = {"type": "array",
                             "items": {"type": "string",
                                       "enum": ["view:launch", "view:recovery", "view:decision",
-                                               "view:unblock"]}}
+                                               "view:unblock", "view:prepare"]}}
 
 # Whether the authority stores could be read whole, and what the OS is
 # therefore withholding (#519/W7). Declared here rather than left as four
