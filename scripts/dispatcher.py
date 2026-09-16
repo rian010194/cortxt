@@ -54,6 +54,7 @@ an actual recovery path instead of only a stderr print from the caller.
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 import uuid

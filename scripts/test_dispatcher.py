@@ -824,6 +824,36 @@ def run_all_checks():
     check("no settlement observation for an ungated run",
           p_run.run_id not in d.DISPATCH_OBSERVATIONS)
 
+    print("== W-4 (#614): import sys pin -- the containment-hook stderr path is importable ==")
+    # The containment settlement hook swallows a recorder failure only AFTER
+    # printing it to stderr (dispatcher.py:485); without `import sys` that
+    # print itself would raise NameError inside the swallow and turn a
+    # best-effort hook into a settlement-breaking crash. The import has no
+    # runtime effect beyond that; it is pinned by making the module attribute
+    # actually exist.
+    check("dispatcher module carries the sys import for its stderr print",
+          getattr(d, "sys", None) is not None)
+
+    print("== W-4 (#614): containment hook failure is printed and NEVER masks the settlement ==")
+    hk_disp, _ = new_dispatcher({"o/r#34": ["workflow:ready"]})
+    hk_run = hk_disp.claim("o/r#34", "wf/v1", "observer", "hermes-readonly", 60)
+    hk_disp.registry.update(hk_run.run_id, request_id="req-ro")
+
+    def boom(_run_id):
+        raise RuntimeError("hook exploded on purpose")
+
+    hk_disp.containment_recorder = boom
+    hk_env = dict(ro_env)
+    hk_env["run_id"], hk_env["issue_id"] = hk_run.run_id, "o/r#34"
+    hk_disp.complete(hk_run.run_id, "succeeded", hk_env)
+    q34 = hk_disp.query(hk_run.run_id)
+    check("a raising containment hook does not change the gated verdict",
+          q34["status"] == "succeeded"
+          and q34["result"]["evidence_gate"] == "readonly_report_correlated")
+    check("the durable record is complete despite the hook failure",
+          q34["readonly_report_evidence"]["observed_digest"] == dig
+          and hk_run.run_id in d.DISPATCH_OBSERVATIONS)
+
 def test_all_checks_pass():
     """Pytest entry point: run the same checks as the standalone script."""
     run_all_checks()
