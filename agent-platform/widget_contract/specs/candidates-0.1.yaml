@@ -57,6 +57,46 @@ actions:
       required: true
     result_type: action.status.v1
     idempotency_key: "mark-ready"
+  - id: issue-create
+    port: github-transition
+    operation: github.issue-create.v1
+    input:
+      repo: owner/repo
+      title: "Composed mandate"
+      body: |
+        ## Scope
+
+        Describe the change.
+
+        ## Acceptance criteria
+
+        - Deterministic criterion.
+
+        ## Approval status
+
+        Positive operator approval of this exact scope, route, and limits.
+
+        ## Worker role and limits
+
+        - Workflow: work-launcher/v1.
+        - Worker role: builder.
+        - Max runtime: 1800 seconds.
+        - Max cost: USD 8.00.
+        - Max parallel workers: 1.
+        - Delegation depth: 1.
+
+        ## Engine policy
+
+        Reliability: verified
+    authorization:
+      mode: operator
+      reference: "operator-approval"
+    confirm:
+      summary: "Create the mandate Issue carrying exactly one workflow:inbox label"
+      effect_class: workflow-transition
+      required: true
+    result_type: action.status.v1
+    idempotency_key: "issue-create"
   - id: claim-run
     port: cli
     operation: workflow.claim-run.v1
@@ -71,4 +111,4 @@ actions:
       required: true
     result_type: action.status.v1
     idempotency_key: "claim-run"
-capabilities: [read:issues, act:mark-ready, act:claim-run]
+capabilities: [read:issues, act:mark-ready, act:claim-run, act:issue-create]

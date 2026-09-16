@@ -172,6 +172,23 @@
       "reason": "Operator-authorized action: approval reference + confirm required"
     },
     {
+      "id": "issue-create",
+      "operation": "github.issue-create.v1",
+      "enabled": true,
+      "port": "github-transition",
+      "effect_class": "workflow-transition",
+      "authorization": {
+        "mode": "operator",
+        "reference": "operator-approval"
+      },
+      "confirm": {
+        "summary": "Create the mandate Issue with one workflow:inbox label",
+        "effect_class": "workflow-transition",
+        "required": true
+      },
+      "reason": "Operator-authorized action: approval reference + confirm required"
+    },
+    {
       "id": "claim-run",
       "operation": "workflow.claim-run.v1",
       "enabled": true,
