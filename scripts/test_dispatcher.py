@@ -854,6 +854,82 @@ def run_all_checks():
           q34["readonly_report_evidence"]["observed_digest"] == dig
           and hk_run.run_id in d.DISPATCH_OBSERVATIONS)
 
+    run_staleness_checks()
+
+
+def run_staleness_checks():
+    """#617 staleness proof surface over the EXISTING dispatcher machinery.
+
+    Pins only -- no product change: an expired run is swept to a terminal
+    status and can never be settled again, and the gh-sync claim lease treats
+    an abandoned claim as stale so a crashed sync can be retried.
+    """
+    print("== #617 staleness: sweep_expired settles terminal and refuses a second complete ==")
+    disp, gh = new_dispatcher({"o/r#40": ["workflow:ready"]})
+    run = disp.claim("o/r#40", workflow="wedge-b", worker_role="builder",
+                     runtime="hermes", lease_seconds=5)
+    disp.registry.update(run.run_id, claimed_at=time.time() - 30,
+                         heartbeat_at=time.time() - 30)
+    check("the stalled run is expired before the sweep", run.is_expired())
+    swept = disp.sweep_expired()
+    check("the expired run is swept", run.run_id in swept, str(swept))
+    check("the sweep settled it timed_out with the lease error",
+          disp.registry.get(run.run_id).status == "timed_out"
+          and "lease expired" in str((disp.registry.get(run.run_id).result or {}).get("error")))
+    try:
+        disp.complete(run.run_id, "succeeded", {"status": "succeeded"})
+        check("a second terminal settlement is refused after the sweep", False)
+    except RuntimeError as exc:
+        check("a second terminal settlement is refused after the sweep",
+              "already terminal" in str(exc), str(exc))
+
+    print("== #617 staleness: an abandoned gh-sync claim goes stale and may be retried ==")
+    settled = disp.registry.get(run.run_id)
+    settled.gh_sync_claimed_at = time.time() - (d.GH_SYNC_CLAIM_LEASE_SECONDS + 5)
+    check("a claim older than the lease is stale", settled.gh_sync_claim_stale() is True)
+    settled.gh_sync_claimed_at = time.time()
+    check("a fresh claim is not stale", settled.gh_sync_claim_stale() is False)
+    settled.gh_sync_claimed_at = None
+    check("an unclaimed slot counts as stale", settled.gh_sync_claim_stale() is True)
+
+    print("== #617 staleness: the decision slot renders OUTCOME_STALE without merge ==")
+    platform_dir = REPO / "agent-platform"
+    if str(platform_dir) not in sys.path:
+        sys.path.insert(0, str(platform_dir))
+    from widget_contract.product_packaging.decision_slot import (
+        OUTCOME_STALE, DecisionSlot, build_decision_record,
+        decision_record_identity,
+    )
+
+    slot = DecisionSlot()
+    digest = "ab" * 32
+    win = slot.propose("cortxt-core", digest, "acceptance", "accepted")
+    check("the genesis decision commits as head",
+          win["outcome"] == "accepted" and win["head"] == slot.head
+          and win["stale"] is False)
+    win_identity = decision_record_identity(
+        build_decision_record("cortxt-core", digest, "acceptance",
+                              "operator-rikard", "accepted"))
+    child = slot.propose("cortxt-core", digest, "acceptance", "accepted",
+                         supersedes=win_identity)
+    check("the supersession commits as the new head",
+          child["outcome"] == "accepted"
+          and child["decision_record_identity"] == slot.head
+          and slot.head != win["decision_record_identity"])
+    re_delivery = slot.deliver(
+        build_decision_record("cortxt-core", digest, "acceptance",
+                              "operator-rikard", "accepted"))
+    check("the old head re-delivered after supersession renders OUTCOME_STALE",
+          re_delivery["outcome"] == OUTCOME_STALE)
+    check("the stale rendering is marked stale and never governing",
+          re_delivery["stale"] is True and re_delivery["governing"] is False)
+    check("the stale rendering names the current head as the superseder",
+          re_delivery["superseded_by"] == child["decision_record_identity"])
+    check("the stale delivery merged nothing: identities and head unchanged",
+          len(slot.committed_identities()) == 2
+          and slot.head == child["decision_record_identity"])
+
+
 def test_all_checks_pass():
     """Pytest entry point: run the same checks as the standalone script."""
     run_all_checks()

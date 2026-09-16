@@ -718,6 +718,113 @@ def _run_checks():
         check("isolation is still refused before the approval prerequisite",
               exc.code == "mutating_run_requires_isolation", exc.code)
 
+    print("== #617 staleness: an expired run is swept to a terminal refusal ==")
+    # The existing machinery, pinned end to end: Run.is_expired (lease from the
+    # last proof of life), Dispatcher.sweep_expired, and the launcher wrapper
+    # that also releases the execution-map claim. A run that outlives its lease
+    # must end terminal -- never succeeded, never still in_progress.
+    import time as _time
+    gh2q = FakeGitHub()
+    gh2q.labels["o/r#41"] = ["workflow:ready"]
+    disp2q = d.Dispatcher(d.RunRegistry(root2i / "runs-41.json"), gh2q)
+    launcher2q = w.WorkLauncher(
+        disp2q, gh2q, dispatch=lambda dispatcher, run, prompt, worktree=None: None,
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    result2q = launcher2q.resume("o/r#41", runtime="fake", worker_role="researcher",
+                                 workflow="v1", max_runtime_seconds=5,
+                                 prompt="stalls forever", mutating=False)
+    run_id2q = result2q["run_id"]
+    disp2q.registry.update(run_id2q, claimed_at=_time.time() - 30,
+                           heartbeat_at=_time.time() - 30)
+    check("the stalled run is expired before the sweep",
+          disp2q.registry.get(run_id2q).is_expired())
+    swept2q = launcher2q.sweep_expired()
+    check("the expired run is swept by the launcher wrapper", run_id2q in swept2q,
+          str(swept2q))
+    rec2q = disp2q.registry.get(run_id2q)
+    check("the swept run is terminal timed_out with the lease error",
+          rec2q.status == "timed_out"
+          and "lease expired" in str((rec2q.result or {}).get("error")),
+          f"{rec2q.status}/{rec2q.result}")
+    check("the swept run's label moved off in-progress",
+          "workflow:in-progress" not in gh2q.labels["o/r#41"],
+          str(gh2q.labels["o/r#41"]))
+    try:
+        disp2q.complete(run_id2q, "succeeded", {"status": "succeeded"})
+        check("a second terminal settlement is refused after the sweep", False)
+    except RuntimeError as exc:
+        check("a second terminal settlement is refused after the sweep",
+              "already terminal" in str(exc), str(exc))
+
+    print("== #617 staleness: an expired MUTATING run is swept and never succeeds ==")
+    gh2r = FakeGitHub()
+    gh2r.labels["o/r#42"] = ["workflow:ready"]
+    disp2r = d.Dispatcher(d.RunRegistry(root2i / "runs-42.json"), gh2r)
+    launcher2r = w.WorkLauncher(
+        disp2r, gh2r, dispatch=lambda dispatcher, run, prompt, worktree=None: None,
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    result2r = launcher2r.resume("o/r#42", runtime="fake", worker_role="builder",
+                                 workflow="v1", max_runtime_seconds=5,
+                                 prompt="mutating stall", isolate=True, mutating=True,
+                                 request_id="sha256:" + "f" * 64)
+    run_id2r = result2r["run_id"]
+    disp2r.registry.update(run_id2r, claimed_at=_time.time() - 30,
+                           heartbeat_at=_time.time() - 30)
+    swept2r = launcher2r.sweep_expired()
+    rec2r = disp2r.registry.get(run_id2r)
+    check("the expired mutating run is swept and never succeeds",
+          run_id2r in swept2r and rec2r.status != "succeeded"
+          and rec2r.status != "in_progress",
+          f"swept={swept2r} status={rec2r.status}")
+    check("the expired mutating run carries no correlated commit evidence",
+          rec2r.commit_evidence is None, str(rec2r.commit_evidence))
+    try:
+        disp2r.complete(run_id2r, "succeeded", {"status": "succeeded"})
+        check("no expired mutating run can be settled succeeded afterwards", False)
+    except RuntimeError:
+        check("no expired mutating run can be settled succeeded afterwards", True)
+
+    print("== #617 staleness: a stale claim generation is refused before any claim ==")
+    # The stale_issue_generation arm (launcher _gate re-read): the issue read
+    # at gate time must still match the fresh reread, or the launch is refused
+    # with a stable code and nothing was claimed.
+    class FlippingGitHub(FakeGitHub):
+        def get_issue(self, issue_id):
+            self.reads = getattr(self, "reads", 0) + 1
+            labels = ["workflow:ready"] if self.reads <= 1 else ["workflow:blocked"]
+            return {"issue_id": issue_id, "body": "", "state": "open",
+                    "labels": labels, "area": "dispatch", "milestone": "m1"}
+
+    gh2s = FlippingGitHub()
+    gh2s.labels["o/r#43"] = ["workflow:ready"]
+    disp2s = d.Dispatcher(d.RunRegistry(root2i / "runs-43.json"), gh2s)
+    dispatched2s = []
+    from execution_map import SqliteClaimStore
+    launcher2s = w.WorkLauncher(
+        disp2s, gh2s,
+        dispatch=lambda dispatcher, run, prompt, worktree=None: dispatched2s.append(run.run_id),
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        claim_store=SqliteClaimStore(root2i / "stale-gen.sqlite3"),
+        issue_reader=gh2s.get_issue,
+        repo_path=root2i,
+    )
+    try:
+        launcher2s.resume("o/r#43", runtime="fake", worker_role="builder", workflow="v1",
+                          max_runtime_seconds=60, prompt="changed under us")
+        check("a stale issue generation is refused", False)
+    except w.ExecutionGateError as exc:
+        check("a stale issue generation is refused",
+              exc.code == "stale_issue_generation", exc.code)
+    check("the stale-generation refusal claims and dispatches nothing",
+          not disp2s.registry._runs and dispatched2s == [])
+
 
 def test_all_checks_pass():
     """Pytest entry point: run the same checks as the standalone script.
