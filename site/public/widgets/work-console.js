@@ -934,6 +934,17 @@ function unblockAvailable(s, x) {
   if (!correlated(x) || x.workflow !== "blocked" || nextActionKind(x) !== "unblock") return false;
   return s.model.synthetic ? viewAuthorized(x, "view:unblock") : actAuthorized(s, "unblock-to-ready");
 }
+function prepareAvailable(s, x) {
+  /* #619: the start flow's prepare affordance. A typed `prepare` next action
+     is authorized the same fail-closed split as launch/recovery/unblock: a
+     live host needs the registered issue-create action, synthetic preview
+     needs the fixture's own view:prepare grant. The control performs no
+     mutation here -- it hands off to the Start app, which owns the compose
+     form (the real issue-create POST) and the read-only terms preview. */
+  if (!s || !s.model || !x) return false;
+  if (!correlated(x) || nextActionKind(x) !== "prepare") return false;
+  return s.model.synthetic ? viewAuthorized(x, "view:prepare") : actAuthorized(s, "issue-create");
+}
 function renderWork(winEl,ctx){
   var s=(ctx&&ctx.state)||state,x=(ctx&&ctx.workstream)||null;
   if(!x){
@@ -967,6 +978,7 @@ function renderWork(winEl,ctx){
   if(primaryKind==="launch"&&!launchAvailable(s,x))primaryKind=null;
   if(primaryKind==="recover"&&!recoveryAvailable(s,x))primaryKind=null;
   if(primaryKind==="unblock"&&!unblockAvailable(s,x))primaryKind=null;
+  if(primaryKind==="prepare"&&!prepareAvailable(s,x))primaryKind=null;
   if(primaryKind==="decision"&&!decision)primaryKind=null;
   var withheldStore=withheldByStore(s,x);
   var nextLabel=(x.next_action&&x.next_action.label)||null;
@@ -1029,7 +1041,13 @@ function renderWork(winEl,ctx){
                   ?'<button type="button" class="primary-action" data-unblock-open>'+esc(nextLabel||"Lift the block and return to ready →")+'</button>'
                   :(primaryKind==="decision"
                     ?'<button type="button" class="primary-action" data-deep-open="decisions">'+esc(nextLabel||"Open Decisions →")+'</button>'
-                    :''))))+
+                    :(primaryKind==="prepare"
+                      /* #619: opens the Start app, which owns the compose form
+                         and the read-only terms preview. Same discipline as
+                         the decision branch: the shell never performs the
+                         mutation, it hands off to the app that owns it. */
+                      ?'<button type="button" class="primary-action" data-deep-open="start">'+esc(nextLabel||"Prepare this mission →")+'</button>'
+                      :'')))))+
             /* #469: a Run that has already stopped had no control at all --
                its result was reachable only by hand-editing the deep link.
                For exactly the missions whose Run ended (blocked, review, done)
@@ -1436,5 +1454,5 @@ if(typeof document!=="undefined"&&typeof window!=="undefined"){
    renderer exports its own (#469): they decide whether a mutation-oriented
    control is offered at all, and a test that greps this file for a string
    passes while the behaviour is broken. */
-if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,migrateSavedState:migrateSavedState,migrateWorkConsole:migrateWorkConsole,LEGACY_APP_ALIASES:LEGACY_APP_ALIASES,isValidAttentionItem:isValidAttentionItem,AttentionItemProjection:AttentionItemProjection,runResultAvailable:runResultAvailable,RUN_RESULT_WORKFLOWS:RUN_RESULT_WORKFLOWS,nextActionKind:nextActionKind,launchAvailable:launchAvailable,recoveryAvailable:recoveryAvailable,unblockAvailable:unblockAvailable,renderWork:renderWork,withheldByStore:withheldByStore};
+if(typeof module==="object"&&module.exports)module.exports={tileRects:tileRects,migrateSavedState:migrateSavedState,migrateWorkConsole:migrateWorkConsole,LEGACY_APP_ALIASES:LEGACY_APP_ALIASES,isValidAttentionItem:isValidAttentionItem,AttentionItemProjection:AttentionItemProjection,runResultAvailable:runResultAvailable,RUN_RESULT_WORKFLOWS:RUN_RESULT_WORKFLOWS,nextActionKind:nextActionKind,launchAvailable:launchAvailable,recoveryAvailable:recoveryAvailable,unblockAvailable:unblockAvailable,prepareAvailable:prepareAvailable,renderWork:renderWork,withheldByStore:withheldByStore};
 })();
