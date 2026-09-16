@@ -481,6 +481,127 @@ def _run_checks():
     check("a previously present runtime is restored to its exact prior object",
           wa.ADAPTER_REGISTRY["fake"] is prior_fake)
 
+    print("== #489: resume(isolate=True) pins isolation, branch and artifact policy ==")
+    # The #489 fix already exists (resume(isolate=..., mutating=...) derives
+    # mutating from isolation and refuses mutating-without-isolation). These
+    # arms PIN the durable behavior: the Run record must carry the isolation
+    # that actually happened, the branch derived from its own run_id, the
+    # launcher-resolved base commit, and the approved artifact policy verbatim.
+    root2i = Path(tempfile.mkdtemp(prefix="launcher-resume-pin-"))
+    gh2i = FakeGitHub()
+    gh2i.labels["o/r#31"] = ["workflow:ready"]
+    disp2i = d.Dispatcher(d.RunRegistry(root2i / "runs.json"), gh2i)
+    dispatched2i = []
+    launcher2i = w.WorkLauncher(
+        disp2i, gh2i,
+        dispatch=lambda dispatcher, run, prompt, worktree=None: dispatched2i.append(run.run_id),
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    policy31 = ("Commit only English project artifacts on a feature branch. "
+                "Do not push, merge, close issues, expose secrets, copy full "
+                "prompts, or record model reasoning.")
+    result2i = launcher2i.resume("o/r#31", runtime="fake", worker_role="builder", workflow="v1",
+                                 max_runtime_seconds=60, prompt="isolated work",
+                                 isolate=True, mutating=True, artifact_policy=policy31,
+                                 artifact_paths=["scripts/work_launcher.py"])
+    rec2i = disp2i.registry.get(result2i["run_id"])
+    check("isolated resume reports isolation=worktree", result2i["isolation"] == "worktree")
+    check("Run.isolation is durable as worktree", rec2i.isolation == "worktree",
+          str(rec2i.isolation))
+    check("Run.branch is work/<run_id>", rec2i.branch == f"work/{result2i['run_id']}",
+          str(rec2i.branch))
+    check("Run.base_commit was resolved by the launcher", rec2i.base_commit == "0" * 40,
+          str(rec2i.base_commit))
+    check("Run.worktree was recorded and exists",
+          rec2i.worktree and Path(rec2i.worktree).is_dir(), str(rec2i.worktree))
+    check("Run.mutating was recorded by the launcher", rec2i.mutating is True,
+          str(rec2i.mutating))
+    check("Run.artifact_policy carries the approved policy verbatim",
+          rec2i.artifact_policy == policy31, repr(rec2i.artifact_policy))
+    check("Run.artifact_paths carries the approved scope",
+          rec2i.artifact_paths == ["scripts/work_launcher.py"], str(rec2i.artifact_paths))
+    check("the worker was dispatched for the isolated run", len(dispatched2i) == 1)
+
+    print("== #489: mutating derives from isolation on the resume path ==")
+    gh2j = FakeGitHub()
+    gh2j.labels["o/r#32"] = ["workflow:ready"]
+    disp2j = d.Dispatcher(d.RunRegistry(root2i / "runs-32.json"), gh2j)
+    launcher2j = w.WorkLauncher(
+        disp2j, gh2j, dispatch=lambda dispatcher, run, prompt, worktree=None: None,
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    launcher2j.resume("o/r#32", runtime="fake", worker_role="builder", workflow="v1",
+                      max_runtime_seconds=60, prompt="default derivation", isolate=True)
+    rec2j = next(iter(disp2j.registry._runs.values()))
+    check("resume(isolate=True) without mutating derives mutating=True",
+          rec2j.mutating is True, str(rec2j.mutating))
+    check("the derived-mutating run got its own worktree",
+          rec2j.isolation == "worktree", str(rec2j.isolation))
+
+    print("== #489: a non-mutating shared resume keeps today's shape ==")
+    gh2k = FakeGitHub()
+    gh2k.labels["o/r#33"] = ["workflow:ready"]
+    disp2k = d.Dispatcher(d.RunRegistry(root2i / "runs-33.json"), gh2k)
+    launcher2k = w.WorkLauncher(
+        disp2k, gh2k, dispatch=lambda dispatcher, run, prompt, worktree=None: None,
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    launcher2k.resume("o/r#33", runtime="fake", worker_role="builder", workflow="v1",
+                      max_runtime_seconds=60, prompt="read-only shared work", mutating=False)
+    rec2k = next(iter(disp2k.registry._runs.values()))
+    check("shared resume keeps isolation=shared-checkout and no branch",
+          rec2k.isolation == "shared-checkout" and rec2k.branch is None,
+          f"{rec2k.isolation!r}/{rec2k.branch!r}")
+    check("the shared resume did not record mutating", rec2k.mutating is False,
+          str(rec2k.mutating))
+
+    print("== #489: resume(mutating=True, isolate=False) refused at both entry paths ==")
+    gh2l = FakeGitHub()
+    gh2l.labels["o/r#34"] = ["workflow:ready"]
+    disp2l = d.Dispatcher(d.RunRegistry(root2i / "runs-34.json"), gh2l)
+    dispatched2l = []
+    launcher2l = w.WorkLauncher(
+        disp2l, gh2l,
+        dispatch=lambda dispatcher, run, prompt, worktree=None: dispatched2l.append(run.run_id),
+        worktree_root=root2i / "trees",
+        run_worktree=real_worktree_add(),
+        repo_path=root2i,
+    )
+    try:
+        launcher2l.resume("o/r#34", runtime="fake", worker_role="builder", workflow="v1",
+                          max_runtime_seconds=60, prompt="unsafe combination",
+                          mutating=True, isolate=False)
+        check("resume(mutating=True, isolate=False) raises ExecutionGateError", False)
+    except w.ExecutionGateError as exc:
+        check("resume(mutating=True, isolate=False) raises ExecutionGateError",
+              exc.code == "mutating_run_requires_isolation", exc.code)
+    check("no Dispatcher claim was created for the refused combination",
+          not disp2l.registry._runs and disp2l.registry.active_issue_ids() == set())
+    check("no worker was dispatched for the refused combination", dispatched2l == [])
+    check("issue label untouched (still workflow:ready)",
+          gh2l.labels["o/r#34"] == ["workflow:ready"])
+    # The second copy of the guard lives in _launch, so a direct launcher-level
+    # caller cannot route around the resume()-side refusal. The binding is
+    # present here so this arm keeps pinning the ISOLATION guard once the
+    # approval guard (#617 criterion 15) lands ahead of it.
+    try:
+        launcher2l._launch("o/r#34", "unsafe", runtime="fake", worker_role="builder",
+                           workflow="v1", max_runtime_seconds=60, create_worktree=False,
+                           mutating=True, request_id="sha256:" + "a" * 64)
+        check("the launcher-level guard independently refuses mutating without isolation",
+              False)
+    except w.ExecutionGateError as exc:
+        check("the launcher-level guard independently refuses mutating without isolation",
+              exc.code == "mutating_run_requires_isolation", exc.code)
+    check("the launcher-level refusal also never created a claim",
+          not disp2l.registry._runs and dispatched2l == [])
+
 
 def test_all_checks_pass():
     """Pytest entry point: run the same checks as the standalone script.
