@@ -293,6 +293,65 @@ class DiscoveryTestCase(unittest.TestCase):
         self.assertEqual(len(found), 2)
         self.assertNotIn("TRUNCATED", self.caveat_text(found[-1]))
 
+    def test_a_cap_below_one_is_refused_at_construction(self):
+        """The degenerate state, closed where it is constructible.
+
+        With a cap of 0 the first repository found trips truncation before
+        anything has been appended, so the notice has nothing to ride on and
+        discovery returns [] -- indistinguishable from a read area with no
+        repositories in it. That is the one configuration in which truncation
+        was silent, and silence is what this module exists to prevent.
+        """
+        with self.assertRaises(ValueError) as caught:
+            DiscoveryCaps(max_repositories=0)
+        self.assertIn("at least 1", str(caught.exception))
+
+    def test_a_negative_cap_is_refused_too(self):
+        with self.assertRaises(ValueError):
+            DiscoveryCaps(max_repositories=-1)
+
+    def test_the_refusal_says_how_to_scan_nothing(self):
+        # A refusal names the fix, not only the fault.
+        with self.assertRaises(ValueError) as caught:
+            DiscoveryCaps(max_repositories=0)
+        self.assertIn("pass no roots", str(caught.exception))
+
+    def test_a_cap_of_one_is_allowed_and_still_reports_truncation(self):
+        # The smallest cap that can describe its own result, so it must work.
+        for name in ("alpha", "bravo"):
+            self.make_repo(f"projects/{name}")
+        found = self.discover(caps=DiscoveryCaps(max_repositories=1))
+        self.assertEqual(len(found), 1)
+        self.assertIn("TRUNCATED", self.caveat_text(found[0]))
+
+    def test_a_negative_depth_is_refused(self):
+        # It silently behaved as 0 rather than meaning anything of its own.
+        with self.assertRaises(ValueError) as caught:
+            DiscoveryCaps(max_depth=-1)
+        self.assertIn("zero or greater", str(caught.exception))
+
+    def test_a_depth_of_zero_is_allowed_and_looks_only_at_the_roots(self):
+        (self.root / ".git").mkdir()
+        self.make_repo("nested/deeper")
+        found = self.discover(caps=DiscoveryCaps(max_depth=0))
+        self.assertEqual([o.path for o in found], [self.root])
+
+    def test_no_constructible_caps_can_truncate_silently(self):
+        """The reviewer's requirement, stated as one assertion.
+
+        Every cap DiscoveryCaps permits to exist must produce a result in
+        which truncation is visible. A rule that holds only for the values
+        callers happen to pass today is not a rule.
+        """
+        for name in ("alpha", "bravo", "charlie"):
+            self.make_repo(f"projects/{name}")
+        for cap in range(1, 5):
+            found = self.discover(caps=DiscoveryCaps(max_repositories=cap))
+            was_truncated = len(found) < 3
+            says_truncated = bool(found) and "TRUNCATED" in self.caveat_text(found[-1])
+            self.assertEqual(was_truncated, says_truncated,
+                             f"cap={cap} truncated={was_truncated} but said {says_truncated}")
+
     def test_the_default_caps_are_the_documented_ones(self):
         self.assertEqual((DiscoveryCaps().max_depth, DiscoveryCaps().max_repositories),
                          (3, 64))

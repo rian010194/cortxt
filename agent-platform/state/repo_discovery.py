@@ -70,10 +70,34 @@ class DiscoveryCaps:
     ``max_depth`` is counted below each root: a root that is itself a
     repository is depth 0. ``max_repositories`` truncates the result, and
     truncation is always reported as a caveat -- never silently.
+
+    The caps are validated on construction, because that promise is only
+    keepable for caps that can produce a reportable result. A truncation
+    caveat has to ride on an observation -- the return type is a list, with
+    nowhere to put a result-level flag -- so a cap below 1 would truncate
+    before anything existed to carry the notice, and the caller would get an
+    empty list indistinguishable from an empty read area. Refusing that
+    configuration is the honest answer; returning a result that cannot
+    describe itself is exactly the failure this module exists to prevent.
     """
 
     max_depth: int = 3
     max_repositories: int = 64
+
+    def __post_init__(self) -> None:
+        if self.max_repositories < 1:
+            raise ValueError(
+                f"max_repositories must be at least 1, not {self.max_repositories}. "
+                f"A cap below 1 truncates before any repository can be observed, "
+                f"and the truncation caveat has nowhere to ride -- discovery would "
+                f"return an empty list that cannot be told apart from a read area "
+                f"with no repositories in it. To scan nothing, pass no roots.")
+        if self.max_depth < 0:
+            raise ValueError(
+                f"max_depth must be zero or greater, not {self.max_depth}. "
+                f"Depth is counted below each root, so 0 already means 'look at "
+                f"the roots themselves and descend no further'; a negative value "
+                f"silently behaves as 0 rather than meaning anything of its own.")
 
 
 def _git(runner, path: Path, *args: str) -> tuple[bool, str]:
@@ -267,12 +291,19 @@ def discover_repositories(roots: Iterable[Path] | Sequence[Path], *,
                 f"repositories in the read area that were not observed, and "
                 f"the ones missing are not knowable from this result. Raise "
                 f"max_repositories or narrow the read area.")
-        if observations:
-            last = observations[-1]
-            observations[-1] = RepoObservation(
-                path=last.path, name=last.name, origin_url=last.origin_url,
-                branch=last.branch, head=last.head, dirty=last.dirty,
-                origin_main_ref=last.origin_main_ref,
-                caveats=last.caveats + (note,))
+        # Unconditional, and safe because DiscoveryCaps refuses a cap below 1:
+        # `truncated` can only be set after at least one observation has been
+        # appended, so there is always something to carry the notice. This was
+        # guarded by `if observations:` before, which silently dropped the
+        # notice in exactly the state that guard was hiding. A dead branch that
+        # swallows the truncation marker is worse than an IndexError: if the
+        # invariant above ever breaks, this must fail loudly rather than return
+        # an empty list that reads as an empty read area.
+        last = observations[-1]
+        observations[-1] = RepoObservation(
+            path=last.path, name=last.name, origin_url=last.origin_url,
+            branch=last.branch, head=last.head, dirty=last.dirty,
+            origin_main_ref=last.origin_main_ref,
+            caveats=last.caveats + (note,))
 
     return observations
