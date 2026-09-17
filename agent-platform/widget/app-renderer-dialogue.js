@@ -482,18 +482,33 @@
 
     /* Recompute the status line and the composer's disabled/cancel state
        from the latest transcript events. Text-only: status is never
-       communicated by colour alone (ADR-043). */
+       communicated by colour alone (ADR-043). The raw finished outcome of
+       the current turn drives the status detail: the word "interrupted" is
+       reserved for turns whose outcome is interrupted (order section 4);
+       a plain failed turn renders without it. */
+    function rawOutcome(events, turnId) {
+      for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        if (ev.event_type === "dialogue.turn.finished" && ev.payload &&
+            ev.payload.turn_id === turnId) {
+          return ev.payload.outcome || null;
+        }
+      }
+      return null;
+    }
+
     function updateComposer() {
       var slot = q("[data-dialogue-status-slot]");
       var send = q("[data-dialogue-send]");
       var cancel = q("[data-dialogue-cancel]");
+      var outcome = view.turnId ? rawOutcome(view.events || [], view.turnId) : null;
       var status = view.turnId
         ? turnStatus(view.events || [], view.turnId, view.localPhase)
         : (view.localPhase ? "sending" : null);
       var shown = status || (view.lastFailure ? "failed" : null);
       var detail = view.lastFailure
         ? view.lastFailure.kind + " — " + view.lastFailure.sentence
-        : (status === "failed" ? "interrupted" : null);
+        : (status === "failed" && outcome === "interrupted" ? "interrupted" : null);
       if (slot) slot.innerHTML = (status || view.lastFailure) ? renderStatus(shown, detail) : "";
       if (send) send.disabled = !(view.connected && !view.openTurnId && !view.localPhase);
       if (cancel) cancel.hidden = !(status === "sending" || status === "streaming");
@@ -501,8 +516,14 @@
 
     function sessionFailed(r) {
       var f = classifyFailure(r.httpStatus, r.body);
+      /* The Retry button belongs to state "error" only; "unavailable" has
+         no retry loop (order state table). */
       showState(f.state, '<div class="empty-state"><span class="eyebrow">' + esc(f.kind) + "</span><p>" +
-        esc(f.sentence) + '</p><button type="button" class="chrome-button" data-dialogue-retry>Retry</button></div>');
+        esc(f.sentence) + "</p>" +
+        (f.state === "error"
+          ? '<button type="button" class="chrome-button" data-dialogue-retry>Retry</button>'
+          : "") +
+        "</div>");
       qa("[data-dialogue-retry]").forEach(function (b) {
         b.addEventListener("click", function () {
           view.events = [];
@@ -532,17 +553,24 @@
       if (view.stopped) return;
       var ok = await readAll();
       if (!ok || view.stopped) return;
-      renderSessionView();
-      if (view.openTurnId || view.localPhase) { scheduleIfLive(); return; }
+      /* A terminal outcome for the current turn ends the send phase: the
+         localPhase latch clears BEFORE the re-render, so the composer
+         re-enables (connected && open_turn_id == null) and the
+         one-final-poll rule below is reachable (RD-1). */
       var status = view.turnId
         ? turnStatus(view.events, view.turnId, view.localPhase)
         : null;
       var terminal = status === "completed" || status === "failed" || status === "cancelled";
+      if (view.turnId && terminal) view.localPhase = null;
+      renderSessionView();
+      if (view.openTurnId || view.localPhase) { scheduleIfLive(); return; }
       if (view.turnId && terminal && !view.finalReadDone) {
         /* The open turn has a terminal outcome; one further poll completes
-           the stream, then polling stops (idle: no polling). */
+           the stream, then polling stops (idle: no polling). Scheduled
+           explicitly: scheduleIfLive's gateway refuses to re-arm once
+           localPhase has cleared, which is exactly the idle state. */
         view.finalReadDone = true;
-        scheduleIfLive();
+        if (!view.timer && !view.stopped) view.timer = setTimeout(tick, POLL_MS);
       }
     }
 

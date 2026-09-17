@@ -9,7 +9,10 @@ parity (``test_os_shell_core.py``), so the Node tests ``require()`` the
 
 Every assertion below is pinned to the frozen route table of
 ``b15c-order.md`` section D2 and the behaviour rows of ``b15d-order.md``
-(T-D1 .. T-D15). A missing ``node`` binary is a FAILURE, never a skip.
+(T-D1 .. T-D15), plus the review-gate r1 rework regressions T-D17 .. T-D20
+(composer re-enable after a terminal turn, polling idle, the reserved
+"interrupted" detail, retry only in state error).
+A missing ``node`` binary is a FAILURE, never a skip.
 """
 import json
 import re
@@ -465,3 +468,282 @@ def test_td13_dialogue_app_is_registered_as_a_window_app():
         assert "_cortxtStopDialogue" in console
     # the renderer registers itself into the shared registry
     assert 'OSRenderer.register("dialogue", renderDialogue' in SOURCE
+
+
+# --- review-gate r1 rework regressions (T-D17 .. T-D20) -----------------------
+#
+# These drive the DOM layer of the widget copy in Node with a scripted
+# environment (stubbed timers, stubbed fetch, a stub element whose
+# querySelector/querySelectorAll parse the rendered innerHTML) and prove
+# the r1 gate findings are fixed:
+#   T-D17  after a terminal outcome for the current turn the composer's
+#          Send button re-enables (connected && open_turn_id == null) —
+#          the localPhase latch must clear (P1);
+#   T-D18  polling actually stops: after the turn's terminal outcome and
+#          the one final read, no further GET is issued and no timer is
+#          armed (P1, RD-1 "no polling while idle");
+#   T-D19  the status detail word "interrupted" is reserved for turns whose
+#          finished outcome is interrupted; a plain failed turn renders
+#          without it (P2-1, order section 4);
+#   T-D20  the session-failure view renders its Retry button only in state
+#          "error", never in state "unavailable" (P2-2, state table).
+#
+# The harness is fully deterministic: setTimeout is stubbed into an "armed"
+# list the test flushes explicitly, fetch is a scripted stub, and every
+# await chain is drained by adopting promises — no sleeps, no races, no
+# network (order STOP RULE: no sleep-based race, no network call).
+
+
+_DIALOGUE_DOM_LIB = """
+const d = require(__RENDERER__);
+function makeEnv() {
+  const armed = [];
+  const urls = [];
+  const inflight = [];
+  const clicks = {};
+  const stubs = {};
+  const textArea = { value: "" };
+  let respond = () => ({ status: 500, json: async () => (
+    { schema_version: 1, status: "error", error: { kind: "dialogue_error", message: "unexpected" } }) });
+  function parseOne(html, attr) {
+    const m = html.match(new RegExp(attr + '="([^"]*)"'));
+    return m ? m[1] : null;
+  }
+  const win = {
+    innerHTML: "",
+    querySelector(sel) {
+      const name = sel.slice(1, -1);
+      const html = win.innerHTML || "";
+      if (!html.includes(name)) return null;
+      if (name === "data-dialogue-text") return textArea;
+      if (!stubs[name]) {
+        stubs[name] = {
+          disabled: false, hidden: false, innerHTML: "", value: "",
+          getAttribute(attr) { return parseOne(win.innerHTML || "", attr); },
+          addEventListener(t, fn) { if (t === "click") clicks[sel] = fn; },
+        };
+      }
+      return stubs[name];
+    },
+    querySelectorAll(sel) {
+      const name = sel.slice(1, -1);
+      const html = win.innerHTML || "";
+      if (name === "data-dialogue-open") {
+        const out = [];
+        const re = /data-dialogue-open="([^"]+)"/g;
+        let m;
+        while ((m = re.exec(html))) {
+          const id = m[1];
+          out.push({ getAttribute() { return id; },
+                     addEventListener(t, fn) { if (t === "click") clicks[sel] = fn; } });
+        }
+        return out;
+      }
+      const one = win.querySelector(sel);
+      return one ? [one] : [];
+    },
+  };
+  const fetchStub = (u, i) => {
+    urls.push(u);
+    const p = Promise.resolve().then(() => respond(u, i || {}));
+    inflight.push(p);
+    return p;
+  };
+  globalThis.fetch = fetchStub;
+  globalThis.setTimeout = (fn) => { armed.push(fn); return armed.length; };
+  globalThis.clearTimeout = () => {};
+  async function drain() {
+    /* Adopt every pending fetch, then yield microtask rounds so the
+       renderer's continuation chains (render, listener registration,
+       re-arm decisions) settle. Deterministic: promises only, no timers,
+       no sleeps. */
+    for (let i = 0; i < 200; i++) {
+      if (inflight.length) {
+        const batch = inflight.splice(0, inflight.length);
+        await Promise.all(batch);
+      }
+      await Promise.resolve();
+    }
+  }
+  async function flushOne() {
+    const fn = armed.shift();
+    if (!fn) throw new Error("no timer armed");
+    await Promise.resolve().then(fn);
+  }
+  function fire(sel) {
+    const fn = clicks[sel];
+    if (!fn) return Promise.reject(new Error("no click handler for " + sel));
+    return Promise.resolve().then(fn);
+  }
+  return { win: win, urls: urls, armed: armed, drain: drain,
+           flushOne: flushOne, fire: fire, setRespond: (f) => { respond = f; },
+           textArea: textArea };
+}
+
+/* Mounts one dialogue window over a scripted host and drives it to the
+   requested state. opts.finish = "completed" | "failed" | "interrupted"
+   runs the full flow (list -> open -> connect -> send -> terminal outcome
+   persisted, poll timer armed but NOT yet flushed). opts.fail answers the
+   first R3 read with a failure envelope instead. */
+async function runFlow(opts) {
+  const env = makeEnv();
+  const SID = "session_" + "a".repeat(32);
+  const TID = "turn_1";
+  let connected = false;
+  let lastSeq = 0;
+  const events = [];
+  env.setRespond((u, i) => {
+    const method = (i && i.method) || "GET";
+    if (u === "api/dialogue/sessions" && method === "GET") {
+      return { status: 200, json: async () => ({ schema_version: 1, status: "ok",
+        root_exists: true,
+        sessions: [{ cortxt_session_id: SID, created_at: "t", turn_count: 0,
+                     open_turn_id: null, connected: false }],
+        unreadable: [] }) };
+    }
+    if (u.startsWith("api/dialogue/session?")) {
+      if (env.failOnce) { const f = env.failOnce; env.failOnce = null; return f; }
+      return { status: 200, json: async () => ({ schema_version: 1, status: "ok",
+        cortxt_session_id: SID, acp_session_id: null, connected: connected,
+        open_turn_id: null, origin: "live", events: events.slice(),
+        cursor: { after: 0, next: lastSeq, has_more: false },
+        last_persisted_sequence: lastSeq, store_error: null }) };
+    }
+    if (u === "api/dialogue/connect" && method === "POST") {
+      connected = true;
+      return { status: 200, json: async () => ({ schema_version: 1, status: "ok",
+        mode: "new", load: { replayed_update_count: 0, zero_replay: true },
+        agent_info: { agent_name: "fake", agent_version: "1" } }) };
+    }
+    if (u === "api/dialogue/turn" && method === "POST") {
+      events.push({ sequence: ++lastSeq, event_type: "dialogue.turn.started",
+                    payload: { turn_id: TID, prompt_text: "hi" } });
+      events.push({ sequence: ++lastSeq, event_type: "dialogue.updates",
+                    payload: { turn_id: TID, events: [
+                      { wire_seq: 1, origin: "live", kind: "session_update",
+                        update_type: "agent_message_chunk",
+                        payload: { update: { content: { type: "text", text: "yo" } } },
+                        decision: null }] } });
+      events.push({ sequence: ++lastSeq, event_type: "dialogue.turn.finished",
+                    payload: { turn_id: TID, outcome: opts.finish,
+                               stop_reason: "end_turn", detail: null } });
+      return { status: 202, json: async () => ({ schema_version: 1, status: "ok",
+        turn_id: TID, duplicate: false }) };
+    }
+    return { status: 500, json: async () => (
+      { schema_version: 1, status: "error", error: { kind: "dialogue_error", message: "unexpected" } }) };
+  });
+  const m = d.renderDialogue(env.win, { state: { token: "tok" } });
+  if (m && typeof m.then === "function") await m;
+  await env.drain();
+  if (opts.fail) {
+    env.failOnce = { status: opts.fail.status, json: async () => opts.fail.body };
+  }
+  await env.fire("[data-dialogue-open]");
+  await env.drain();
+  if (opts.finish) {
+    await env.fire("[data-dialogue-connect]");
+    await env.drain();
+    env.textArea.value = "hi";
+    await env.fire("[data-dialogue-send]");
+    await env.drain();
+    env.sendBtn = env.win.querySelector("[data-dialogue-send]");
+    env.statusSlot = env.win.querySelector("[data-dialogue-status-slot]");
+  }
+  return env;
+}
+
+"""
+
+
+def _dialogue_dom_script(suffix: str) -> str:
+    return (_DIALOGUE_DOM_LIB.replace("__RENDERER__", json.dumps(str(RENDERER)))
+            + "\n(async () => {\n" + suffix
+            + "\n})().catch(e => { console.error(e && (e.stack || e.message)); process.exit(99); });\n")
+
+
+def test_td17_send_reenables_after_terminal_outcome():
+    """P1: after a terminal outcome for the current turn, Send re-enables
+    (connected && open_turn_id == null) instead of latching on localPhase."""
+    script = _dialogue_dom_script("""
+const env = await runFlow({ finish: "completed" });
+if (!env.sendBtn) process.exit(2);
+if (env.sendBtn.disabled !== true) process.exit(3);
+await env.flushOne();
+await env.drain();
+if (env.sendBtn.disabled !== false) process.exit(4);
+if (!env.statusSlot.innerHTML.includes('data-dialogue-turn-status="completed"')) process.exit(5);
+console.log("ok");
+""")
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_td18_polling_stops_after_the_one_final_read():
+    """RD-1: after the terminal-observing poll and the one final poll, no
+    timer is armed and no further GET is issued (idle: no polling)."""
+    script = _dialogue_dom_script("""
+const env = await runFlow({ finish: "completed" });
+const reads = () => env.urls.filter(u => u.startsWith("api/dialogue/session?")).length;
+/* After send: one observing poll is armed. Reads so far: open(1) +
+   post-connect read(2). */
+if (!env.armed.length) process.exit(2);
+await env.flushOne();
+await env.drain();
+if (reads() !== 3) process.exit(3);
+await env.flushOne();
+await env.drain();
+if (reads() !== 4) process.exit(4);
+for (let i = 0; i < 6; i++) {
+  if (!env.armed.length) break;
+  await env.flushOne();
+  await env.drain();
+}
+if (env.armed.length !== 0) process.exit(5);
+if (reads() !== 4) process.exit(6);
+console.log("ok");
+""")
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_td19_interrupted_detail_is_reserved_for_interrupted_turns():
+    script = _dialogue_dom_script("""
+const failed = await runFlow({ finish: "failed" });
+await failed.flushOne();
+await failed.drain();
+const fhtml = failed.statusSlot ? failed.statusSlot.innerHTML : "";
+if (!fhtml.includes('data-dialogue-turn-status="failed"')) process.exit(2);
+if (fhtml.includes("interrupted")) process.exit(3);
+const interrupted = await runFlow({ finish: "interrupted" });
+await interrupted.flushOne();
+await interrupted.drain();
+const ihtml = interrupted.statusSlot ? interrupted.statusSlot.innerHTML : "";
+if (!ihtml.includes('data-dialogue-turn-status="failed"')) process.exit(4);
+if (!ihtml.includes("interrupted")) process.exit(5);
+console.log("ok");
+""")
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
+def test_td20_retry_button_only_in_error_state():
+    script = _dialogue_dom_script("""
+const un = await runFlow({ fail: { status: 503, body: { schema_version: 1,
+  status: "unavailable", error: { kind: "dialogue_unavailable", message: "m" } } } });
+if (!un.win.innerHTML.includes('data-dialogue-state="unavailable"')) process.exit(2);
+if (un.win.innerHTML.includes("data-dialogue-retry")) process.exit(3);
+const err = await runFlow({ fail: { status: 500, body: { schema_version: 1,
+  status: "error", error: { kind: "dialogue_error", message: "m" } } } });
+if (!err.win.innerHTML.includes('data-dialogue-state="error"')) process.exit(4);
+if (!err.win.innerHTML.includes("data-dialogue-retry")) process.exit(5);
+console.log("ok");
+""")
+    out = _run_node(script)
+    assert out.returncode == 0, out.stderr or out.stdout
+    assert "ok" in out.stdout
+
+
