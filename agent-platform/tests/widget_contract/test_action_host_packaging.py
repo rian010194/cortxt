@@ -14,6 +14,7 @@ import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -343,3 +344,123 @@ def test_http_unknown_post_route_still_404(packaging_server):
     status, body = _request(f"{packaging_server}/api/definitely-not-a-route", method="POST",
                             body=b"{}", headers={"Content-Type": "application/json"})
     assert status == 404
+
+
+# --- B-1: main() wires the store from the data home -------------------------
+#
+# The W-3 constructor above has always accepted `packaging_store`; `main()`
+# never passed one, so every documented start served a host whose packaging
+# routes answered 503. These checks pin the caller, not the constructor.
+
+
+@pytest.fixture
+def captured_main(monkeypatch):
+    """Run `action_host.main` without ever binding a socket.
+
+    The host under test is captured at construction, and `serve_forever` is a
+    no-op, so the wiring can be inspected without a listener. An invalid data
+    home must fail before any of this is reached -- which is exactly what the
+    recorded `bound` list proves.
+    """
+    from widget import action_host
+
+    captured = SimpleNamespace(host=None, bound=[], out=None)
+    real_action_host = action_host.ActionHost
+
+    def _construct(**kwargs):
+        captured.host = real_action_host(**kwargs)
+        return captured.host
+
+    class _NoServer:
+        def __init__(self, address, handler):
+            captured.bound.append(address)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def serve_forever(self):
+            return None
+
+    monkeypatch.setattr(action_host, "ActionHost", _construct)
+    monkeypatch.setattr(action_host, "_ReusableThreadingHTTPServer", _NoServer)
+    monkeypatch.delenv("CORTXT_DATA_HOME", raising=False)
+    captured.run = lambda **kwargs: action_host.main(port=0, **kwargs)
+    return captured
+
+
+def _outside_home(tmp_path, monkeypatch):
+    """A data home the resolver will accept: absolute, outside the checkout.
+
+    `tmp_path` really is under the system temp directory, which the resolver
+    refuses on purpose, so the temp-root seam is moved aside for these checks.
+    The refusal itself is proven in state/test_data_home.py.
+    """
+    from state import data_home as data_home_module
+
+    monkeypatch.setattr(data_home_module.tempfile, "gettempdir",
+                        lambda: str(tmp_path / "pretend-temp"))
+    return tmp_path / "cortxt-data"
+
+
+def test_main_without_a_data_home_leaves_the_store_unconfigured(captured_main, capsys):
+    assert captured_main.run() == 0
+    assert captured_main.host is not None
+    # Unchanged default: no store, and the read routes keep their 503.
+    assert captured_main.host.packaging is None
+    assert "store=not configured" in capsys.readouterr().out
+
+
+def test_main_with_a_data_home_wires_the_packaging_api(captured_main, capsys, tmp_path,
+                                                       monkeypatch):
+    home = _outside_home(tmp_path, monkeypatch)
+    assert captured_main.run(data_home=home) == 0
+    assert captured_main.host.packaging is not None
+    # The store is the data home's `core` root, not the module's location.
+    assert str(home / "core") in capsys.readouterr().out
+    assert (home / "core").is_dir()  # created by CoreStore, not by the resolver
+
+
+def test_main_reads_the_environment_when_no_argument_is_given(captured_main, capsys,
+                                                              tmp_path, monkeypatch):
+    home = _outside_home(tmp_path, monkeypatch)
+    monkeypatch.setenv("CORTXT_DATA_HOME", str(home))
+    assert captured_main.run() == 0
+    assert captured_main.host.packaging is not None
+    assert str(home / "core") in capsys.readouterr().out
+
+
+def test_main_refuses_an_invalid_data_home_before_binding(captured_main, capsys):
+    # Relative: it would resolve against the process working directory.
+    assert captured_main.run(data_home="relative-data-home") == 1
+    assert captured_main.bound == []      # never bound a port
+    assert captured_main.host is None     # never constructed a host
+    out = capsys.readouterr().out
+    assert "refusing to start" in out and "not_absolute" in out and "--data-home" in out
+
+
+def test_main_refuses_a_data_home_inside_the_checkout(captured_main, capsys):
+    inside = Path(__file__).resolve().parents[2] / "state" / "runtime-data"
+    assert captured_main.run(data_home=inside) == 1
+    assert captured_main.bound == []
+    out = capsys.readouterr().out
+    assert "inside_checkout" in out
+
+
+def test_main_names_the_environment_variable_when_it_is_the_bad_source(captured_main,
+                                                                      capsys, monkeypatch):
+    monkeypatch.setenv("CORTXT_DATA_HOME", "relative-data-home")
+    assert captured_main.run() == 1
+    assert captured_main.bound == []
+    assert "CORTXT_DATA_HOME" in capsys.readouterr().out
+
+
+def test_main_still_accepts_a_spec_path_alongside_the_store(captured_main, tmp_path,
+                                                            monkeypatch):
+    home = _outside_home(tmp_path, monkeypatch)
+    decisions = SPEC_PATH.parent / "decisions-0.1.yaml"
+    assert captured_main.run(spec_path=decisions, data_home=home) == 0
+    assert captured_main.host._spec_path == decisions
+    assert captured_main.host.packaging is not None

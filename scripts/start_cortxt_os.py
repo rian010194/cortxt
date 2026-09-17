@@ -42,6 +42,7 @@ FREE_ROUTE_VARS = ("CORTXT_FREE_PROVIDER", "CORTXT_FREE_MODEL")
 FREE_ROUTE_EXAMPLE = {"CORTXT_FREE_PROVIDER": "nous",
                       "CORTXT_FREE_MODEL": "upstage/solar-pro4:free"}
 REPO_ROOT_MARKER = ("agent-platform", "widget", "action_host.py")
+DATA_HOME_ENV = "CORTXT_DATA_HOME"
 
 
 def _say(message: str) -> None:
@@ -121,6 +122,20 @@ def _registry_path(host) -> Path:
     return Path(host.AGENT_PLATFORM_DIR) / ".dispatch" / "runs.json"
 
 
+def _data_home(args) -> Path | None:
+    """The data home the host will be given, as given -- never validated here.
+
+    `action_host.main` resolves and refuses; repeating the refusal in this
+    script would create two authorities for one rule, and they would drift.
+    This reports the *input*, so a value the host is about to reject is still
+    visible on the line above the refusal that names it.
+    """
+    if args.data_home is not None:
+        return Path(args.data_home)
+    value = os.environ.get(DATA_HOME_ENV)
+    return Path(value) if value else None
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="start_cortxt_os.py",
@@ -137,6 +152,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--require-clean", action="store_true",
                         help="Passed through to action_host: fail closed unless the worktree "
                              "is clean. Opt-in proof tooling, not a default.")
+    parser.add_argument("--data-home", type=Path, default=None,
+                        help="Durable Cortxt data home; the Core store is served from "
+                             "<data-home>/core. Overrides CORTXT_DATA_HOME. Must be an "
+                             "absolute directory outside this checkout and outside the "
+                             "system temp directory. Without this flag and without "
+                             "CORTXT_DATA_HOME, no store is configured and the packaging "
+                             "routes stay unavailable (503 store_unavailable). Passed "
+                             "through to action_host, which owns the refusal.")
     parser.add_argument("--no-free-route", action="store_true",
                         help="Skip the free-route environment and `hermes` checks, for use "
                              "where no dispatch is intended. This does not make the host "
@@ -199,6 +222,16 @@ def main(argv: list[str] | None = None, *, host=None, connect=None, run=None, wh
     _say(f"commit: {_git('rev-parse', 'HEAD', cwd=cwd, run=run)}  "
          f"branch: {_git('rev-parse', '--abbrev-ref', 'HEAD', cwd=cwd, run=run)}")
     _say(f"registry: {registry} (exists: {'yes' if registry.is_file() else 'no'})")
+    # Both durable locations are named, deliberately. The run registry still
+    # resolves from the host module's own location while the Core store now
+    # resolves from the data home; printing only one would hide the split and
+    # leave an operator assuming a single root. When they are unified, this
+    # line is where the change becomes visible.
+    data_home = _data_home(args)
+    _say(f"data home: {data_home} (core store: {data_home / 'core'})"
+         if data_home is not None else
+         f"data home: not configured (packaging routes stay unavailable; pass "
+         f"--data-home or set {DATA_HOME_ENV})")
     if args.no_free_route:
         _say("free route: disabled (--no-free-route)")
     else:
@@ -213,7 +246,8 @@ def main(argv: list[str] | None = None, *, host=None, connect=None, run=None, wh
          f"http://{LOOPBACK}:{args.port}/index.html")
 
     return host.main(port=args.port, spec_path=args.spec,
-                     require_commit=args.require_commit, require_clean=args.require_clean)
+                     require_commit=args.require_commit, require_clean=args.require_clean,
+                     data_home=args.data_home)
 
 
 if __name__ == "__main__":
