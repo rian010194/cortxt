@@ -5,7 +5,7 @@ description: The Accepted-only ADR index mirrored from the repository authority.
 
 <!-- docs-currency:auto:begin -->
 
-This page is generated from the repository ADR files by `scripts/docs_currency.py`; do not hand-edit the generated block. As of 2026-09-16. [Open the authoritative ADR index](https://github.com/rian010194/cortxt/blob/main/docs/adr/README.md).
+This page is generated from the repository ADR files by `scripts/docs_currency.py`; do not hand-edit the generated block. As of 2026-09-17 (rev2; original draft 2026-09-16). [Open the authoritative ADR index](https://github.com/rian010194/cortxt/blob/main/docs/adr/README.md).
 
 | ADR | Decision |
 | --- | --- |
@@ -43,6 +43,7 @@ This page is generated from the repository ADR files by `scripts/docs_currency.p
 | [048](https://github.com/rian010194/cortxt/blob/main/docs/adr/048-product-packaging-domain-authority.md) | Product-packaging domain authority — local Core store, GitHub as reference only |
 | [049](https://github.com/rian010194/cortxt/blob/main/docs/adr/049-acp-session-identity-is-issued-by-the-agent.md) | The ACP session identity is issued by the agent, not by Cortxt |
 | [050](https://github.com/rian010194/cortxt/blob/main/docs/adr/050-work-record-domain-authority.md) | Work-record domain authority — the thinking lives in Core, before any repository or issue |
+| [051](https://github.com/rian010194/cortxt/blob/main/docs/adr/051-local-dialogue-routes-on-the-action-host.md) | Local dialogue routes on the action host (revision 2) |
 
 :::note
 **Proposed** records ([ADR-029](https://github.com/rian010194/cortxt/blob/main/docs/adr/029-unattended-daemon-credential-isolation.md) (Proposed), [ADR-030](https://github.com/rian010194/cortxt/blob/main/docs/adr/030-plan-vs-actual-divergence-tracking.md) (Proposed (Part 1 implemented; Part 2 spec-only))) are reviewable designs, not Accepted decisions; they are intentionally absent from the Accepted table above. **Superseded** records ([ADR-011](https://github.com/rian010194/cortxt/blob/main/docs/adr/011-model-router.md), [ADR-012](https://github.com/rian010194/cortxt/blob/main/docs/adr/012-disaster-recovery.md), [ADR-013](https://github.com/rian010194/cortxt/blob/main/docs/adr/013-skill-composition.md)) are historical references kept for traceability only.
