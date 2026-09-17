@@ -422,7 +422,7 @@ def test_td15_post_only_inside_click_handlers():
     fns = list(_all_function_spans(SOURCE))
     names = {name for name, _s, _e in fns}
     assert set(_ALLOWED_POST_FNS) <= names, "click handlers missing: %s" % (_ALLOWED_POST_FNS - names)
-    for pos, match in enumerate(re.finditer(r'"POST"', SOURCE)):
+    for match in re.finditer(r'"POST"', SOURCE):
         enclosing = [name for name, start, end in fns if start <= match.start() <= end]
         assert enclosing, "POST at offset %d outside any function" % match.start()
         innermost = enclosing[-1]
@@ -432,3 +432,36 @@ def test_td15_post_only_inside_click_handlers():
     for handler in sorted(_ALLOWED_POST_FNS):
         assert any(name == handler and '"POST"' in SOURCE[start:end]
                    for name, start, end in fns), "%s lost its POST call site" % handler
+
+
+# --- T-D13: window registration across both carriers -----------------------------
+
+APPS = json.loads((WIDGET / "apps.json").read_text(encoding="utf-8"))
+HTML = (WIDGET / "index.html").read_text(encoding="utf-8")
+SOURCE_CONSOLE = (WIDGET / "work-console.js").read_text(encoding="utf-8")
+MIRROR = Path(__file__).resolve().parents[3] / "site" / "public" / "widgets"
+MIRROR_HTML = (MIRROR / "index.html").read_text(encoding="utf-8")
+MIRROR_CONSOLE = (MIRROR / "work-console.js").read_text(encoding="utf-8")
+
+
+def test_td13_dialogue_app_is_registered_as_a_window_app():
+    entry = {"id": "dialogue", "title": "Dialogue", "short": "Dialogue",
+             "icon": "dialogue", "route": "/dialogue", "kind": "window",
+             "window": "dialogue", "widgets": None,
+             "capabilities": ["read:dialogue-session", "act:dialogue-turn"],
+             "mode": "operator", "mobile": True}
+    by_id = {a["id"]: a for a in APPS["apps"]}
+    assert by_id["dialogue"] == entry
+    assert APPS["apps"][-1]["id"] == "dialogue"
+    # both index.html carriers: window section + body + script before work-console.js
+    for html in (HTML, MIRROR_HTML):
+        assert 'data-window="dialogue"' in html
+        assert "data-dialogue-body" in html
+        assert 'src="app-renderer-dialogue.js"' in html
+        assert html.index('src="app-renderer-dialogue.js"') < html.index('src="work-console.js"')
+    # both work-console copies: open-gated render + poller stop hook
+    for console in (SOURCE_CONSOLE, MIRROR_CONSOLE):
+        assert "state.ui.open.dialogue" in console
+        assert "_cortxtStopDialogue" in console
+    # the renderer registers itself into the shared registry
+    assert 'OSRenderer.register("dialogue", renderDialogue' in SOURCE

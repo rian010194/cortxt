@@ -1261,6 +1261,7 @@ function propagateContext(){
     if(typeof l._cortxtStopLiveRun==="function")l._cortxtStopLiveRun();
     l.innerHTML="";
   }
+  var dl=q("[data-dialogue-body]");if(dl&&state.ui.open.dialogue){OSRenderer.render("dialogue",dl,ctx)}else if(dl){if(typeof dl._cortxtStopDialogue==="function")dl._cortxtStopDialogue();dl.innerHTML=""}
   var p=q("[data-policies-body]");
   if(p)p.innerHTML=x?'':'';
   qa("[data-studio-frame]").forEach(function(frame){
