@@ -24,8 +24,9 @@ them, because choosing a model is an operator act. Add `--no-free-route` to
 start without dispatch -- it skips the free-route checks and does **not** make
 the host read-only, since `POST /api/action` is mounted either way. `--port`
 and `--spec` change the listener and the served spec, `--data-home` chooses
-where durable state lives (see below), and `--require-commit` /
-`--require-clean` pass through to the host's opt-in source-integrity checks.
+where durable state lives (see below), `--read-area` chooses where Cortxt may
+look (see below), and `--require-commit` / `--require-clean` pass through to
+the host's opt-in source-integrity checks.
 
 ## The data home
 
@@ -50,6 +51,42 @@ registry still resolves from the host module's own location (see below), while
 the Core store resolves from the data home. The start report names both,
 adjacent, so the split is visible rather than assumed away.
 
+## The read area
+
+`--read-area` (or `CORTXT_READ_AREA`) names where Cortxt is allowed to
+**look**: one or more absolute, existing directories separated by the
+platform's path separator (`;` on Windows, `:` elsewhere), so the value
+behaves the way `PATH` does. `GET /api/repositories` then reports the
+repositories beneath those roots -- each with its branch, its commit, whether
+the working copy is dirty, its origin URL, and its local `origin/main` ref.
+
+**A read area grants no write access.** It bounds what discovery may read; it
+is not an allowlist, and no write path anywhere is derived from it. Choosing
+one is also never a prerequisite: discovery informs a proposal, it never gates
+one. Without the flag and without the variable, no read area is configured,
+the host starts exactly as before, and `GET /api/repositories` answers
+`503 read_area_unconfigured` -- reported at start as `read area: not
+configured`. That 503 is deliberate: "Cortxt was never told where to look" and
+"there is nothing there" are different answers, and only one of them has a fix.
+
+Every repository is reported **with its revision state and with caveats**,
+never by path alone. The caveats say what could not be established, and the
+one that matters most is on `origin_main_ref`: it is a *local* ref reflecting
+the last fetch, never verified against the remote, which may be arbitrarily
+far ahead. Discovery makes **no network calls** -- no `fetch`, no `ls-remote`
+-- which is what keeps that caveat honest rather than something a network call
+would appear to resolve. Any fact that could not be read comes back as `null`
+with a caveat beside it, never as a guess or an empty string.
+
+A read area that is set but unusable is a refusal, never a fallback: the roots
+must be absolute, must already exist as directories, must contain no `..`
+component, and must not repeat or nest inside one another. `action_host.main`
+prints the refusal code and the input that carried the value and returns 1
+**before binding the port**; the start script does not repeat the check --
+one rule, one authority. Unlike the data home, a read area inside this
+checkout is perfectly valid: a read area exists in order to contain
+repository checkouts.
+
 ## The four commands that start something, and when each applies
 
 Three of them start the action host; the fourth starts the read-only server
@@ -64,8 +101,8 @@ instead. Only the first is the documented way.
 
 `--enable-actions` belongs to `cortxt widget`, which uses it to choose between
 the action host and the read-only `serve.py`; the module's own parser accepts
-only `--port`, `--spec`, `--require-commit` and `--require-clean`, so running
-it directly always mounts the mutation route. `cortxt widget --enable-actions`
+only `--port`, `--spec`, `--require-commit`, `--require-clean`, `--data-home`
+and `--read-area`, so running it directly always mounts the mutation route. `cortxt widget --enable-actions`
 calls `action_host.main()` with neither port nor spec, so it always binds 8765
 and always serves `widget_contract/specs/candidates-0.1.yaml`; a `--port` typed
 on that command line is an argparse error and exits 2. Use the start script

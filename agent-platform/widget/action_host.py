@@ -16,6 +16,7 @@ untouched and remains the default `cortxt widget` surface.
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import time
@@ -28,6 +29,11 @@ from typing import Any, Callable, Deque, Mapping, Sequence
 from urllib.parse import parse_qs
 
 from state.data_home import DATA_HOME_ENV, DataHomeError, core_root, resolve_data_home
+# B-16: where Cortxt is allowed to *look*, and what it finds there. Strictly
+# read-only -- neither import creates a write path, and a configured read area
+# is not an allowlist for anything.
+from state.read_area import READ_AREA_ENV, ReadAreaError, resolve_read_area
+from state.repo_discovery import DiscoveryCaps, discover_repositories
 from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
 # W-6 (#501 round trip): `execute()` assembles the compose Action directly on
@@ -271,7 +277,8 @@ class ActionHost:
                  token: str | None = None, clock: Callable[[], float] = time.monotonic,
                  wall_clock: Callable[[], str] | None = None,
                  max_requests: int = MAX_REQUESTS_PER_MINUTE,
-                 packaging_store: Any = None) -> None:
+                 packaging_store: Any = None,
+                 read_area: tuple[Path, ...] = ()) -> None:
         self._spec_path = Path(spec_path)
         self._labels_reader = labels_reader
         self._transition_writer = transition_writer
@@ -303,6 +310,17 @@ class ActionHost:
         # to None so every existing construction path is unchanged.
         self._packaging_api: PackagingOpsApi | None = (
             PackagingOpsApi(packaging_store) if packaging_store is not None else None)
+        # B-16: the read area, resolved by the caller (main() refuses an
+        # invalid one before binding). Empty means unconfigured, which is a
+        # normal state: GET /api/repositories then answers an explicit 503
+        # and nothing else about the host changes. This grants no write
+        # access anywhere -- it bounds what discovery may look at, nothing more.
+        self._read_area: tuple[Path, ...] = tuple(Path(root) for root in read_area)
+
+    @property
+    def read_area(self) -> tuple[Path, ...]:
+        """The configured read-area roots, empty when none is configured."""
+        return self._read_area
 
     @property
     def packaging(self) -> PackagingOpsApi | None:
@@ -942,6 +960,37 @@ class ActionHost:
             raise InvalidRequest(str(exc)) from exc
         return {"operation": action_id, "outcome": envelope}
 
+    # --- read-area discovery (B-16) --------------------------------------
+
+    def repositories(self) -> dict:
+        """The repositories in the configured read area, with revision state.
+
+        A pure read: it runs read-only git commands inside the read area and
+        makes no network call. It grants nothing -- a repository appearing
+        here is not a place Cortxt may write, and this method produces no
+        allowlist and no write target.
+
+        Every observation's ``caveats`` are carried through verbatim. They
+        are not decoration: `origin_main_ref` is a local ref that was never
+        checked against the remote, and a consumer that drops the caveats
+        reproduces the 2026-09-16 failure in which four of five checkouts
+        disagreed with their remote and nothing said so.
+        """
+        observations = discover_repositories(self._read_area, caps=DiscoveryCaps())
+        return {
+            "schema_version": 1,
+            "status": "ok",
+            "read_area": [str(root) for root in self._read_area],
+            "repositories": [
+                {"path": str(observation.path), "name": observation.name,
+                 "origin_url": observation.origin_url, "branch": observation.branch,
+                 "head": observation.head, "dirty": observation.dirty,
+                 "origin_main_ref": observation.origin_main_ref,
+                 "caveats": list(observation.caveats)}
+                for observation in observations
+            ],
+        }
+
     def generate_widget(self, *, prompt: str, confirm: bool) -> dict:
         """Studio's describe/proposal/validate flow (issue #339, ADR-038 SS5/SS6).
 
@@ -1065,6 +1114,12 @@ class ActionHandler(SimpleHTTPRequestHandler):
         if path in ("/api/packaging-evidence", "/api/packaging-evidence/"):
             self._handle_packaging("evidence")
             return
+        # B-16: read-area discovery. A read route beside the others, and a
+        # read route only -- there is no POST counterpart and nothing here
+        # grants write access to anything it reports.
+        if path in ("/api/repositories", "/api/repositories/"):
+            self._handle_repositories()
+            return
         super().do_GET()
 
     def _issue_ref_from_query(self) -> tuple[str, int] | None:
@@ -1146,6 +1201,25 @@ class ActionHandler(SimpleHTTPRequestHandler):
         except OpsApiError as exc:
             self._json(exc.http_status, {"schema_version": 1, "status": "unavailable",
                                          "error": {"kind": exc.kind, "message": str(exc)}})
+        except Exception as exc:
+            self._json(503, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": "read_error", "message": str(exc)}})
+
+    def _handle_repositories(self) -> None:
+        # B-16: the same explicit-503 shape the packaging read routes use when
+        # their store is not configured, with its own `kind`. An unconfigured
+        # read area must not read as an empty success -- "Cortxt has not been
+        # told where to look" and "there is nothing there" are different
+        # answers, and only one of them has a fix.
+        if not self.host.read_area:
+            self._json(503, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": "read_area_unconfigured",
+                                       "message": ("no read area is configured; start the "
+                                                   "action host with --read-area or set "
+                                                   f"{READ_AREA_ENV}")}})
+            return
+        try:
+            self._json(200, self.host.repositories())
         except Exception as exc:
             self._json(503, {"schema_version": 1, "status": "unavailable",
                              "error": {"kind": "read_error", "message": str(exc)}})
@@ -1414,7 +1488,8 @@ def source_signature(*, run_subprocess: Callable = None, repo_dir: Path | None =
 
 def main(*, port: int = PORT, spec_path: Path | None = None,
          require_commit: str | None = None, require_clean: bool = False,
-         data_home: str | Path | None = None) -> int:
+         data_home: str | Path | None = None,
+         read_area: str | Path | None = None) -> int:
     signature = source_signature()
     clean_status = signature.get("clean_status", "unknown")
     print(f"Cortxt widget action host source: file={signature['module_file']} "
@@ -1450,14 +1525,31 @@ def main(*, port: int = PORT, spec_path: Path | None = None,
     # exactly as they did before this parameter existed.
     packaging_store = core_root(resolved_home) if resolved_home is not None else None
 
-    kwargs: dict[str, Any] = {"packaging_store": packaging_store}
+    # B-16: the read area, resolved and refused BEFORE the port is bound, for
+    # the same reason as the data home above -- a host that serves with a
+    # misconfigured read area would answer discovery questions about a tree
+    # the operator did not choose, and a wrong answer that looks complete is
+    # the failure this whole unit exists to prevent. An unconfigured read area
+    # is NOT a refusal: it yields (), the repositories route answers its 503
+    # read_area_unconfigured, and nothing else about the start changes.
+    try:
+        resolved_read_area = resolve_read_area(read_area)
+    except ReadAreaError as error:
+        source = "--read-area" if read_area is not None else READ_AREA_ENV
+        print(f"[action_host] refusing to start: read area ({source}) rejected "
+              f"[{error.code}]: {error}")
+        return 1
+
+    kwargs: dict[str, Any] = {"packaging_store": packaging_store,
+                              "read_area": resolved_read_area}
     if spec_path:
         kwargs["spec_path"] = spec_path
     host = ActionHost(**kwargs)
     with _ReusableThreadingHTTPServer((HOST, port), _make_handler(host)) as httpd:
         print(f"Cortxt widget action host: http://{HOST}:{port}/index.html "
               f"(operator-gated mutations enabled via POST /api/action, spec={host._spec_path.name}, "
-              f"store={packaging_store if packaging_store is not None else 'not configured'})")
+              f"store={packaging_store if packaging_store is not None else 'not configured'}, "
+              f"read_area={os.pathsep.join(str(root) for root in resolved_read_area) if resolved_read_area else 'not configured'})")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
@@ -1487,6 +1579,16 @@ if __name__ == "__main__":
                              f"system temp directory. Without this flag and without "
                              f"{DATA_HOME_ENV}, no store is configured and the packaging "
                              f"routes stay unavailable (503 store_unavailable).")
+    parser.add_argument("--read-area", default=None,
+                        help=f"Where Cortxt may look: one or more absolute, existing "
+                             f"directories separated by {os.pathsep!r}. "
+                             f"GET /api/repositories reports the repositories beneath "
+                             f"them with their revision state. Overrides {READ_AREA_ENV}. "
+                             f"This is READ-ONLY and grants no write access to anything "
+                             f"it reports. Without this flag and without {READ_AREA_ENV}, "
+                             f"no read area is configured and the repositories route "
+                             f"stays unavailable (503 read_area_unconfigured).")
     args = parser.parse_args()
     raise SystemExit(main(port=args.port, spec_path=args.spec, require_commit=args.require_commit,
-                          require_clean=args.require_clean, data_home=args.data_home))
+                          require_clean=args.require_clean, data_home=args.data_home,
+                          read_area=args.read_area))

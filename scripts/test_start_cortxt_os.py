@@ -222,15 +222,16 @@ def test_registry_line_reports_the_hosts_own_resolution_not_cwd():
           "(exists: no)" in r.out)
 
 
-def test_success_lines_are_exactly_the_six_documented_ones():
+def test_success_lines_are_exactly_the_seven_documented_ones():
     with run_script([], env=free_route_env(), host=recording_host(),
                     connect=_never_connects, which=_hermes_present) as r:
         pass
     lines = [line for line in r.out.splitlines() if line.strip()]
-    check("exactly six lines are printed before the host takes over", len(lines) == 6)
+    check("exactly seven lines are printed before the host takes over", len(lines) == 7)
     check("every line carries the prefix",
           all(line.startswith(f"{s.PREFIX} ") for line in lines))
-    prefixes = ["repo root:", "commit:", "registry:", "data home:", "free route:", "url ("]
+    prefixes = ["repo root:", "commit:", "registry:", "data home:", "read area:",
+                "free route:", "url ("]
     check("the lines are in the documented order",
           all(line.startswith(f"{s.PREFIX} {want}")
               for line, want in zip(lines, prefixes)) and len(lines) == len(prefixes))
@@ -299,6 +300,60 @@ def test_the_script_does_not_duplicate_the_hosts_data_home_refusal():
                     host=host, connect=_never_connects) as r:
         pass
     check("an invalid data home still reaches the host", len(host.calls) == 1)
+    check("the script returns the host's refusal code unchanged", r.code == 1)
+    check("the script prints no refusal of its own",
+          f"{s.PREFIX} refusing to start:" not in r.out)
+
+
+def test_read_area_reaches_the_host_and_is_reported():
+    host = recording_host()
+    area = "C:/Cortxt" if os.name == "nt" else "/srv/cortxt"
+    with run_script([f"--read-area={area}", "--no-free-route"],
+                    host=host, connect=_never_connects) as r:
+        pass
+    check("the script returns the host's exit code", r.code == 0)
+    call = host.calls[0] if host.calls else {}
+    check("read_area reaches action_host.main as read_area", call.get("read_area") == area)
+    check("the report names the read area", f"read area: {area}" in r.out)
+
+
+def test_read_area_is_read_from_the_environment_for_the_report():
+    host = recording_host()
+    area = "C:/Cortxt" if os.name == "nt" else "/srv/cortxt"
+    env = free_route_env(CORTXT_READ_AREA=area)
+    with run_script(["--no-free-route"], env=env, host=host, connect=_never_connects) as r:
+        pass
+    check("the report names the read area from the environment",
+          f"read area: {area}" in r.out)
+    check("no --read-area value is invented for the host",
+          host.calls and host.calls[0].get("read_area") is None)
+
+
+def test_an_unconfigured_read_area_is_reported_as_such_with_the_fix():
+    host = recording_host()
+    with run_script(["--no-free-route"], env=free_route_env(),
+                    host=host, connect=_never_connects) as r:
+        pass
+    check("the script still starts without a read area", r.code == 0)
+    check("the report says it is not configured", "read area: not configured" in r.out)
+    check("the report says what that costs",
+          "repositories route stays unavailable" in r.out)
+    check("the report names both ways to set one",
+          "--read-area" in r.out and s.READ_AREA_ENV in r.out)
+
+
+def test_the_script_does_not_duplicate_the_hosts_read_area_refusal():
+    """One authority for one rule: action_host refuses, this script reports.
+
+    The same shape as the data-home case. A relative read area is invalid and
+    the host will reject it; the script must still hand it over, because a
+    second refusal here would drift from the host's the moment either changed.
+    """
+    host = recording_host(exit_code=1)
+    with run_script(["--read-area=relative-read-area", "--no-free-route"],
+                    host=host, connect=_never_connects) as r:
+        pass
+    check("an invalid read area still reaches the host", len(host.calls) == 1)
     check("the script returns the host's refusal code unchanged", r.code == 1)
     check("the script prints no refusal of its own",
           f"{s.PREFIX} refusing to start:" not in r.out)
