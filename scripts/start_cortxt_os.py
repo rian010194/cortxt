@@ -186,6 +186,18 @@ def build_parser() -> argparse.ArgumentParser:
                              f"CORTXT_READ_AREA, the repositories route stays unavailable "
                              f"(503 read_area_unconfigured). Passed through to "
                              f"action_host, which owns the refusal.")
+    parser.add_argument("--dialogue-agent-command", default=None,
+                        help="Executable of the dialogue agent (e.g. hermes) that the "
+                             "connect/turn routes spawn. Without it the dialogue routes "
+                             "answer 503 agent_unavailable on connect/turn. Passed through "
+                             "to action_host, which owns the refusal.")
+    parser.add_argument("--dialogue-agent-arg", action="append", default=[],
+                        help="One argument passed to the dialogue agent command; "
+                             "repeatable. Passed through to action_host.")
+    parser.add_argument("--dialogue-agent-env", action="append", default=[],
+                        help="Name of one environment variable copied into the dialogue "
+                             "agent's environment when present; values are never logged. "
+                             "Passed through to action_host.")
     parser.add_argument("--no-free-route", action="store_true",
                         help="Skip the free-route environment and `hermes` checks, for use "
                              "where no dispatch is intended. This does not make the host "
@@ -258,6 +270,22 @@ def main(argv: list[str] | None = None, *, host=None, connect=None, run=None, wh
          if data_home is not None else
          f"data home: not configured (packaging routes stay unavailable; pass "
          f"--data-home or set {DATA_HOME_ENV})")
+    # D10: the dialogue locations and the agent argv, reported the same way as
+    # the two durable locations above. Names only, never values -- the report
+    # must never carry an environment variable's contents. No validation here:
+    # one authority, the service answers agent_unavailable.
+    if data_home is not None:
+        _say(f"dialogue root: {Path(data_home) / 'dialogue'}")
+    else:
+        _say(f"dialogue root: not configured (dialogue routes answer 503 "
+             f"dialogue_unavailable; pass --data-home or set {DATA_HOME_ENV})")
+    if args.dialogue_agent_command:
+        env_names = ", ".join(args.dialogue_agent_env) if args.dialogue_agent_env else "none"
+        _say(f"dialogue agent: {args.dialogue_agent_command} "
+             f"{' '.join(args.dialogue_agent_arg)} (env names: {env_names})")
+    else:
+        _say("dialogue agent: not configured (connect/turn answer 503 "
+             "agent_unavailable; pass --dialogue-agent-command)")
     # One more durable-location line, for the same reason the data-home line
     # exists: what Cortxt may read is now a configured input, and an operator
     # who cannot see it on the report cannot tell an empty workspace from an
@@ -282,7 +310,10 @@ def main(argv: list[str] | None = None, *, host=None, connect=None, run=None, wh
 
     return host.main(port=args.port, spec_path=args.spec,
                      require_commit=args.require_commit, require_clean=args.require_clean,
-                     data_home=args.data_home, read_area=args.read_area)
+                     data_home=args.data_home, read_area=args.read_area,
+                     dialogue_agent_command=args.dialogue_agent_command,
+                     dialogue_agent_args=args.dialogue_agent_arg,
+                     dialogue_agent_env=args.dialogue_agent_env)
 
 
 if __name__ == "__main__":

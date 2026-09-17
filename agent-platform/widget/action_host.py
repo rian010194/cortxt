@@ -28,12 +28,16 @@ from pathlib import Path
 from typing import Any, Callable, Deque, Mapping, Sequence
 from urllib.parse import parse_qs
 
-from state.data_home import DATA_HOME_ENV, DataHomeError, core_root, resolve_data_home
+from state.data_home import DATA_HOME_ENV, DataHomeError, core_root, dialogue_root, resolve_data_home
 # B-16: where Cortxt is allowed to *look*, and what it finds there. Strictly
 # read-only -- neither import creates a write path, and a configured read area
 # is not an allowlist for anything.
 from state.read_area import READ_AREA_ENV, ReadAreaError, resolve_read_area
 from state.repo_discovery import DiscoveryCaps, discover_repositories
+# B1.5c (ADR-051): the local dialogue routes forward to this service and to
+# nothing else -- everything agent-side stays behind it (D3, enforced by
+# T-C4a/b/c). The host adds only routes, a guard order and a send bucket.
+from widget.dialogue_service import AgentCommand, DialogueRefused, DialogueService
 from widget_contract.action_executor import AuthorizationDenied
 from widget_contract.action_ports import UnknownAction, build_action, build_executor
 # W-6 (#501 round trip): `execute()` assembles the compose Action directly on
@@ -82,6 +86,59 @@ HOST = "127.0.0.1"
 PORT = 8765
 MAX_BODY_BYTES = 8 * 1024
 MAX_REQUESTS_PER_MINUTE = 12
+
+# B1.5c (ADR-051 D2): the closed dialogue route set. A module constant is the
+# single source; every dialogue path not listed here answers 404 not_found for
+# every method, and a listed path answered with the other method answers 405.
+DIALOGUE_ROUTES = frozenset({
+    ("GET", "/api/dialogue/sessions"), ("POST", "/api/dialogue/sessions"),
+    ("GET", "/api/dialogue/session"),
+    ("POST", "/api/dialogue/connect"), ("POST", "/api/dialogue/turn"), ("POST", "/api/dialogue/cancel"),
+})
+DIALOGUE_PREFIX = "/api/dialogue/"
+# D8: an operator prompt with a pasted paragraph exceeds the action bound; the
+# dialogue body bound is its own 64 KiB, never MAX_BODY_BYTES.
+MAX_DIALOGUE_BODY_BYTES = 64 * 1024
+# D8: own send bucket (create + connect + turn for one session is three
+# sends); cancel is exempt and GETs are never limited.
+DIALOGUE_SENDS_PER_MINUTE = 30
+
+DIALOGUE_SESSIONS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {},
+}
+DIALOGUE_CONNECT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["session_id"],
+    "properties": {"session_id": {"type": "string"}},
+}
+DIALOGUE_TURN_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["session_id", "text", "client_request_id"],
+    "properties": {
+        "session_id": {"type": "string"},
+        "text": {"type": "string"},
+        "client_request_id": {"type": "string"},
+    },
+}
+DIALOGUE_CANCEL_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["session_id", "turn_id"],
+    "properties": {
+        "session_id": {"type": "string"},
+        "turn_id": {"type": "string"},
+    },
+}
+DIALOGUE_REQUEST_SCHEMAS = {
+    "/api/dialogue/sessions": DIALOGUE_SESSIONS_SCHEMA,
+    "/api/dialogue/connect": DIALOGUE_CONNECT_SCHEMA,
+    "/api/dialogue/turn": DIALOGUE_TURN_SCHEMA,
+    "/api/dialogue/cancel": DIALOGUE_CANCEL_SCHEMA,
+}
 
 ACTION_REQUEST_SCHEMA = {
     "type": "object",
@@ -278,7 +335,8 @@ class ActionHost:
                  wall_clock: Callable[[], str] | None = None,
                  max_requests: int = MAX_REQUESTS_PER_MINUTE,
                  packaging_store: Any = None,
-                 read_area: tuple[Path, ...] = ()) -> None:
+                 read_area: tuple[Path, ...] = (),
+                 dialogue: DialogueService | None = None) -> None:
         self._spec_path = Path(spec_path)
         self._labels_reader = labels_reader
         self._transition_writer = transition_writer
@@ -316,6 +374,17 @@ class ActionHost:
         # and nothing else about the host changes. This grants no write
         # access anywhere -- it bounds what discovery may look at, nothing more.
         self._read_area: tuple[Path, ...] = tuple(Path(root) for root in read_area)
+        # B1.5c: the dialogue service, optional and injectable like the
+        # packaging store. None keeps every existing construction path
+        # unchanged: the dialogue routes then answer 503 dialogue_unavailable
+        # and nothing else about the host changes.
+        self._dialogue = dialogue
+        self._dialogue_calls: Deque[float] = deque()
+
+    @property
+    def dialogue(self) -> DialogueService | None:
+        """The dialogue service when one was wired in, else None."""
+        return self._dialogue
 
     @property
     def read_area(self) -> tuple[Path, ...]:
@@ -1053,6 +1122,12 @@ class ActionHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
+        # B1.5c (ADR-051 D9): dialogue paths are matched FIRST, before the
+        # token route and before static serving -- a dialogue path never
+        # falls through to the static widget files or the existing routes.
+        if path.startswith(DIALOGUE_PREFIX):
+            self._handle_dialogue("GET", path)
+            return
         if path in ("/api/token", "/api/token/"):
             self._json(200, {"token": self.host.token})
             return
@@ -1231,8 +1306,162 @@ class ActionHandler(SimpleHTTPRequestHandler):
         self.send_header("Allow", "GET, HEAD, POST")
         self.end_headers()
 
+    # --- B1.5c: local dialogue routes (ADR-051 D2, D7, D9) ------------------
+
+    def _check_dialogue_rate(self) -> None:
+        # D9: the dialogue send bucket -- own deque, own window, the same
+        # injectable clock. Never shared with the action bucket, which stays
+        # untouched on every dialogue path.
+        now = self.host._clock()
+        self.host._dialogue_calls.append(now)
+        while self.host._dialogue_calls and now - self.host._dialogue_calls[0] > 60:
+            self.host._dialogue_calls.popleft()
+        if len(self.host._dialogue_calls) > DIALOGUE_SENDS_PER_MINUTE:
+            raise RateLimited("too many dialogue requests; wait and retry")
+
+    def _dialogue_error(self, status: int, kind: str, message: str, *,
+                        store_kind: str | None = None) -> None:
+        body: dict[str, Any] = {"schema_version": 1, "status": "error" if status < 500 else "unavailable",
+                                "error": {"kind": kind, "message": message}}
+        if store_kind:
+            body["error"]["store_kind"] = store_kind
+        self._json(status, body)
+
+    def _handle_dialogue(self, method: str, path: str) -> None:
+        """Guard order of D2, then one service call mapped per D7.
+
+        1 closed route set (404 / 405); 2 token on every method, GET included;
+        3 availability (503 dialogue_unavailable when no service is wired);
+        4 POST-only body guards; 5 send bucket on POST sessions/connect/turn
+        (never cancel, never GET); 6 the call, mapped 1:1.
+        """
+        if (method_key := (self.command, path)) not in DIALOGUE_ROUTES:
+            # Path known for the other method -> 405; unknown for every
+            # method -> 404. Both are JSON, never static fallthrough.
+            known_other = any(stored_path == path and stored_method != self.command
+                              for stored_method, stored_path in DIALOGUE_ROUTES)
+            if known_other:
+                self._json(405, {"schema_version": 1, "status": "error",
+                                 "error": {"kind": "method_not_allowed",
+                                           "message": f"{self.command} is not supported on {path}"}})
+            else:
+                self._json(404, {"schema_version": 1, "status": "error",
+                                 "error": {"kind": "not_found",
+                                           "message": f"no dialogue route {path}"}})
+            return
+        token = self.headers.get("X-Cortxt-Token") or ""
+        if not token or not secrets.compare_digest(token, self.host.token):
+            self._json(403, {"schema_version": 1, "status": "error",
+                             "error": {"kind": "authorization_denied",
+                                       "message": "missing or invalid session token"}})
+            return
+        if self.host.dialogue is None:
+            self._json(503, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": "dialogue_unavailable",
+                                       "message": ("no data home is configured; start the "
+                                                   "action host with --data-home or set "
+                                                   f"{DATA_HOME_ENV}")}})
+            return
+        if self.command == "POST":
+            schema_error = self._dialogue_read_body(DIALOGUE_REQUEST_SCHEMAS[path])
+            if schema_error is not None:
+                return
+            try:
+                if path != "/api/dialogue/cancel":
+                    self._check_dialogue_rate()
+            except ActionHostError as exc:
+                # The send bucket answers 429 rate_limited like the action
+                # bucket does on /api/action -- never an unhandled 500.
+                self._json(exc.http_status, {"schema_version": 1, "status": "error",
+                                             "error": {"kind": exc.kind, "message": str(exc)}})
+                return
+        try:
+            self._dialogue_route(method_key, path)
+        except DialogueRefused as exc:
+            error: dict[str, Any] = {"kind": exc.kind, "message": exc.message}
+            if exc.store_kind:
+                error["store_kind"] = exc.store_kind
+            self._json(exc.http_status, {"schema_version": 1,
+                                         "status": "error" if exc.http_status < 500 else "unavailable",
+                                         "error": error})
+        except Exception as exc:  # never a bare 500 with a swallowed cause
+            self._json(500, {"schema_version": 1, "status": "unavailable",
+                             "error": {"kind": "dialogue_error",
+                                       "message": f"{type(exc).__name__}: {exc}"}})
+
+    def _dialogue_read_body(self, schema: Mapping[str, Any]) -> None:
+        """POST body guards in D2's order; answers and returns None on failure."""
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            self._json(415, {"schema_version": 1, "status": "error",
+                             "error": {"kind": "validation_error",
+                                       "message": "Content-Type must be application/json"}})
+            return "content_type"
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        # Checked BEFORE reading the body: an oversized request is refused
+        # without its bytes ever being read.
+        if length <= 0 or length > MAX_DIALOGUE_BODY_BYTES:
+            self._json(413, {"schema_version": 1, "status": "error",
+                             "error": {"kind": "validation_error",
+                                       "message": "body too large or missing"}})
+            return "size"
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._json(400, {"schema_version": 1, "status": "error",
+                             "error": {"kind": "validation_error",
+                                       "message": "body is not valid JSON"}})
+            return "json"
+        try:
+            validate(payload, schema)
+        except ValidationError as exc:
+            self._json(400, {"schema_version": 1, "status": "error",
+                             "error": {"kind": "validation_error", "message": str(exc)}})
+            return "schema"
+        self._dialogue_body = payload
+        return None
+
+    def _dialogue_route(self, method_key: tuple[str, str], path: str) -> None:
+        service = self.host.dialogue
+        assert service is not None  # availability was checked by the caller
+        if method_key == ("GET", "/api/dialogue/sessions"):
+            self._json(200, service.list_sessions())
+            return
+        if self.command == "GET":
+            after_text = self._query_value("after")
+            try:
+                after = int(after_text) if after_text else -1
+            except ValueError:
+                after = None  # type: ignore[assignment]
+            if after is None or after < -1:
+                self._json(400, {"schema_version": 1, "status": "error",
+                                 "error": {"kind": "invalid_cursor",
+                                           "message": "after must be an integer >= -1"}})
+                return
+            self._json(200, service.session_events(self._query_value("id"), after))
+            return
+        payload = self._dialogue_body
+        if path == "/api/dialogue/sessions":
+            self._json(201, service.create_session())
+        elif path == "/api/dialogue/connect":
+            self._json(200, service.connect(payload["session_id"]))
+        elif path == "/api/dialogue/turn":
+            self._json(202, service.send_turn(payload["session_id"], payload["text"],
+                                              payload["client_request_id"]))
+        else:
+            self._json(202, service.cancel_turn(payload["session_id"], payload["turn_id"]))
+
     def do_POST(self) -> None:
         route = self.path.split("?", 1)[0]
+        # B1.5c: dialogue paths are matched FIRST, before the packaging route
+        # and before the existing POST 404 -- a dialogue path never reaches
+        # either (D2 guard rule 1).
+        if route.startswith(DIALOGUE_PREFIX):
+            self._handle_dialogue("POST", route)
+            return
         # W-3 (#612): new packaging action route added alongside (never
         # replacing) the existing routes. It enforces the SAME guard set as
         # POST /api/action: session token, closed-schema JSON body, and the
@@ -1489,7 +1718,10 @@ def source_signature(*, run_subprocess: Callable = None, repo_dir: Path | None =
 def main(*, port: int = PORT, spec_path: Path | None = None,
          require_commit: str | None = None, require_clean: bool = False,
          data_home: str | Path | None = None,
-         read_area: str | Path | None = None) -> int:
+         read_area: str | Path | None = None,
+         dialogue_agent_command: str | None = None,
+         dialogue_agent_args: Sequence[str] = (),
+         dialogue_agent_env: Sequence[str] = ()) -> int:
     signature = source_signature()
     clean_status = signature.get("clean_status", "unknown")
     print(f"Cortxt widget action host source: file={signature['module_file']} "
@@ -1524,6 +1756,20 @@ def main(*, port: int = PORT, spec_path: Path | None = None,
     # and the packaging read routes keep answering their 503 store_unavailable
     # exactly as they did before this parameter existed.
     packaging_store = core_root(resolved_home) if resolved_home is not None else None
+    # B1.5c: the dialogue service, derived from the same resolved data home.
+    # None (no data home) keeps every dialogue route answering its explicit
+    # 503 dialogue_unavailable, exactly like the packaging routes. A set but
+    # invalid data home already returned 1 above, BEFORE any construction --
+    # so no DialogueService is ever built on a root the operator did not
+    # choose, and no writer lock is taken before the refusal.
+    dialogue: DialogueService | None = None
+    dialogue_agent = AgentCommand(
+        command=dialogue_agent_command,
+        args=tuple(dialogue_agent_args),
+        env_names=tuple(dialogue_agent_env)) if dialogue_agent_command else None
+    if resolved_home is not None:
+        dialogue = DialogueService(dialogue_root(resolved_home),
+                                   agent=dialogue_agent if dialogue_agent_command else None)
 
     # B-16: the read area, resolved and refused BEFORE the port is bound, for
     # the same reason as the data home above -- a host that serves with a
@@ -1541,19 +1787,29 @@ def main(*, port: int = PORT, spec_path: Path | None = None,
         return 1
 
     kwargs: dict[str, Any] = {"packaging_store": packaging_store,
-                              "read_area": resolved_read_area}
+                              "read_area": resolved_read_area,
+                              "dialogue": dialogue}
     if spec_path:
         kwargs["spec_path"] = spec_path
     host = ActionHost(**kwargs)
+    dialogue_line = (f"dialogue={dialogue_root(resolved_home)}" if resolved_home is not None
+                     else "dialogue=not configured")
+    writer_line = f"dialogue_writer={'held' if dialogue is not None and dialogue.writer_held else 'busy'}"
+    agent_line = (f"dialogue_agent={dialogue_agent_command} {' '.join(dialogue_agent_args)}".rstrip()
+                  if dialogue_agent_command else "dialogue_agent=not configured")
     with _ReusableThreadingHTTPServer((HOST, port), _make_handler(host)) as httpd:
         print(f"Cortxt widget action host: http://{HOST}:{port}/index.html "
               f"(operator-gated mutations enabled via POST /api/action, spec={host._spec_path.name}, "
               f"store={packaging_store if packaging_store is not None else 'not configured'}, "
-              f"read_area={os.pathsep.join(str(root) for root in resolved_read_area) if resolved_read_area else 'not configured'})")
+              f"read_area={os.pathsep.join(str(root) for root in resolved_read_area) if resolved_read_area else 'not configured'}, "
+              f"{dialogue_line}, {writer_line}, {agent_line})")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
             pass
+        finally:
+            if dialogue is not None:
+                dialogue.close()
     return 0
 
 
@@ -1588,7 +1844,24 @@ if __name__ == "__main__":
                              f"it reports. Without this flag and without {READ_AREA_ENV}, "
                              f"no read area is configured and the repositories route "
                              f"stays unavailable (503 read_area_unconfigured).")
+    parser.add_argument("--dialogue-agent-command", default=None,
+                        help="Executable of the dialogue agent the connect/turn routes "
+                             "spawn (e.g. hermes). Without it the dialogue routes answer "
+                             "503 agent_unavailable on connect/turn; reads and session "
+                             "creation still work when a data home is configured.")
+    parser.add_argument("--dialogue-agent-arg", action="append", default=[],
+                        help="One argument passed to the dialogue agent command; "
+                             "repeatable. Without a --dialogue-agent-command these are "
+                             "unused (connect/turn answer 503 agent_unavailable).")
+    parser.add_argument("--dialogue-agent-env", action="append", default=[],
+                        help="Name of one environment variable copied into the dialogue "
+                             "agent's environment when present; values are never logged. "
+                             "Without a --dialogue-agent-command, connect/turn answer "
+                             "503 agent_unavailable.")
     args = parser.parse_args()
     raise SystemExit(main(port=args.port, spec_path=args.spec, require_commit=args.require_commit,
                           require_clean=args.require_clean, data_home=args.data_home,
-                          read_area=args.read_area))
+                          read_area=args.read_area,
+                          dialogue_agent_command=args.dialogue_agent_command,
+                          dialogue_agent_args=args.dialogue_agent_arg,
+                          dialogue_agent_env=args.dialogue_agent_env))
