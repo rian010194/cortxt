@@ -227,10 +227,14 @@ def test_success_lines_are_exactly_the_seven_documented_ones():
                     connect=_never_connects, which=_hermes_present) as r:
         pass
     lines = [line for line in r.out.splitlines() if line.strip()]
-    check("exactly seven lines are printed before the host takes over", len(lines) == 7)
+    # B1.5c (D10): the report grew from seven to nine lines -- the dialogue
+    # root and dialogue agent lines follow the read-area line, before the
+    # free-route/url lines.
+    check("exactly nine lines are printed before the host takes over", len(lines) == 9)
     check("every line carries the prefix",
           all(line.startswith(f"{s.PREFIX} ") for line in lines))
-    prefixes = ["repo root:", "commit:", "registry:", "data home:", "read area:",
+    prefixes = ["repo root:", "commit:", "registry:", "data home:",
+                "dialogue root:", "dialogue agent:", "read area:",
                 "free route:", "url ("]
     check("the lines are in the documented order",
           all(line.startswith(f"{s.PREFIX} {want}")
@@ -357,6 +361,89 @@ def test_the_script_does_not_duplicate_the_hosts_read_area_refusal():
     check("the script returns the host's refusal code unchanged", r.code == 1)
     check("the script prints no refusal of its own",
           f"{s.PREFIX} refusing to start:" not in r.out)
+
+
+def _never_connects(address, timeout=None):
+    raise OSError("nothing is listening")
+
+
+# --- B1.5c D10 (ADR-051): the dialogue report lines and pass-through (T-P1..T-P4).
+# Every case runs with the injected recording host and a stub `connect`, so the
+# pre-bind probe never opens a connection (the default port would be probed
+# otherwise) and no server is ever bound. --no-free-route keeps dispatch out.
+
+
+def test_dialogue_root_is_reported_when_a_data_home_is_given():
+    """T-P1: with a data home the report names <data-home>/dialogue (FR1)."""
+    host = recording_host()
+    with tempfile.TemporaryDirectory() as tmp:
+        home = str(Path(tmp).resolve())
+        with run_script([f"--data-home={home}", "--no-free-route"],
+                        host=host, connect=_never_connects) as r:
+            pass
+    check("the report names the dialogue root path-joined",
+          f"dialogue root: {Path(home) / 'dialogue'}" in r.out)
+    check("the report does not call the dialogue root not configured",
+          "dialogue root: not configured" not in r.out)
+    check("the dialogue root reaches action_host.main as data_home",
+          len(host.calls) == 1 and host.calls[0].get("data_home") is not None)
+
+
+def test_dialogue_root_not_configured_names_the_503_and_the_fix():
+    """T-P2: without a data home the dialogue root line says so and why."""
+    host = recording_host()
+    env = free_route_env()
+    env.pop("CORTXT_DATA_HOME", None)
+    with run_script(["--no-free-route"], env=env, host=host, connect=_never_connects) as r:
+        pass
+    check("the report says the dialogue root is not configured",
+          "dialogue root: not configured" in r.out)
+    check("it says what that costs", "503 dialogue_unavailable" in r.out)
+    check("it names both ways to configure one",
+          "--data-home" in r.out and s.DATA_HOME_ENV in r.out)
+
+
+def test_dialogue_agent_argv_is_reported_and_passed_without_values():
+    """T-P3: the agent line names command, args and env NAMES, never values."""
+    host = recording_host()
+    env = free_route_env(CORTXT_SECRET_SENTINEL="secret-value-7f3a")
+    with run_script(["--no-free-route",
+                     "--dialogue-agent-command=hermes",
+                     "--dialogue-agent-arg=acp",
+                     "--dialogue-agent-env=CORTXT_SECRET_SENTINEL"],
+                    env=env, host=host, connect=_never_connects) as r:
+        pass
+    check("the report names the command and args",
+          "dialogue agent: hermes acp" in r.out)
+    check("the report names the env variable, not its value",
+          "CORTXT_SECRET_SENTINEL" in r.out and "(env names:" in r.out)
+    check("the output never carries the environment value",
+          "secret-value-7f3a" not in r.out and "secret-value-7f3a" not in r.err)
+    call = host.calls[0] if host.calls else {}
+    check("the host receives dialogue_agent_command as given",
+          call.get("dialogue_agent_command") == "hermes")
+    check("the host receives the args as a list",
+          call.get("dialogue_agent_args") == ["acp"])
+    check("the host receives the env NAMES, never values",
+          call.get("dialogue_agent_env") == ["CORTXT_SECRET_SENTINEL"])
+
+
+def test_dialogue_agent_not_configured_reports_the_hint_and_passes_none():
+    """T-P4: no agent command -> the report says so; the host gets None/[]/[]]."""
+    host = recording_host()
+    with run_script(["--no-free-route"], env=free_route_env(),
+                    host=host, connect=_never_connects) as r:
+        pass
+    check("the report says the dialogue agent is not configured",
+          "dialogue agent: not configured" in r.out)
+    check("it says what that costs", "503 agent_unavailable" in r.out)
+    check("it names the way to configure one",
+          "--dialogue-agent-command" in r.out)
+    call = host.calls[0] if host.calls else {}
+    check("the host receives None command and empty lists",
+          call.get("dialogue_agent_command") is None
+          and call.get("dialogue_agent_args") == []
+          and call.get("dialogue_agent_env") == [])
 
 
 def test_git_metadata_is_unknown_rather_than_guessed():

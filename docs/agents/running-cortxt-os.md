@@ -87,6 +87,67 @@ one rule, one authority. Unlike the data home, a read area inside this
 checkout is perfectly valid: a read area exists in order to contain
 repository checkouts.
 
+## Dialogue
+
+The action host also mounts six local dialogue routes under
+`/api/dialogue/` (ADR-051): `GET/POST /api/dialogue/sessions`,
+`GET /api/dialogue/session`, and `POST /api/dialogue/connect`,
+`/api/dialogue/turn`, `/api/dialogue/cancel`. They persist per-session
+dialogue state under `<data-home>/dialogue` and drive an ACP agent process
+the operator names at start.
+
+Three options configure the dialogue agent, on both
+`scripts/start_cortxt_os.py` and `action_host.py` directly (pass-through, same
+style as `--data-home`):
+
+- `--dialogue-agent-command <exe>` -- the executable the connect/turn routes
+  spawn (e.g. `hermes`). **Without it, reads and session creation still work
+  when a data home is configured, but connect and turn answer
+  `503 agent_unavailable`** -- the absence is reported at start as
+  `dialogue agent: not configured`.
+- `--dialogue-agent-arg <arg>` -- one agent argument, repeatable
+  (`--dialogue-agent-arg acp`).
+- `--dialogue-agent-env <NAME>` -- the *name* of one environment variable
+  copied into the agent's environment when present; values are never logged,
+  only names.
+
+Without `--data-home` (or `CORTXT_DATA_HOME`) there is no dialogue root:
+every dialogue route answers `503 dialogue_unavailable`, reported at start
+as `dialogue root: not configured`. Sessions live under
+`<data-home>/dialogue/sessions`, per-session agent workspaces under
+`<data-home>/dialogue/workspaces/<cortxt session id>` (never a checkout or
+the data-home root), and agent stderr under
+`<data-home>/dialogue/logs/<cortxt session id>.agent-stderr.log`.
+
+A second host process pointed at the same data home becomes a **read-only
+observer**: one OS-level writer lock per dialogue root means the second
+host's reads work while its writes answer `409 dialogue_writer_busy`.
+
+The 503 kinds an operator will see on the dialogue routes and what each
+means: `dialogue_unavailable` (no data home -- pass `--data-home`),
+`agent_unavailable` (no agent command configured, or the command did not
+resolve on PATH), `acp_unavailable` (the agent SDK is unusable -- upgrade
+`agent-client-protocol`), `agent_capacity` (the live-agent cap is reached),
+`agent_protocol_error` (the agent answered null for session/load or spoke
+off-protocol), and on writes `agent_connection_lost` (502; the connection
+died mid-turn -- reopen the session). Not-configured kinds are reported at
+start; the rest are runtime answers, never startup refusals.
+
+The documented dialogue smoke start (free port in 18800-18899, never
+8765/8791/8792/8793; `<dir>` an absolute directory outside every checkout and
+outside the system temp directory; `--no-free-route` because the free-route
+checks concern dispatch, not dialogue):
+
+```
+python scripts/start_cortxt_os.py --port <p> --data-home <dir> --no-free-route \
+  --dialogue-agent-command hermes --dialogue-agent-arg acp
+```
+
+Expected report lines include `[start-cortxt-os] dialogue root:
+<dir>/dialogue` and `dialogue agent: hermes acp (env names: none)`; the
+host's serving line includes `dialogue=<dir>/dialogue` and
+`dialogue_writer=held`.
+
 ## The four commands that start something, and when each applies
 
 Three of them start the action host; the fourth starts the read-only server
