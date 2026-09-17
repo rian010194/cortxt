@@ -149,3 +149,8 @@ def resolve_data_home(explicit: str | Path | None = None, *,
 def core_root(data_home: str | Path) -> Path:
     """The Core store root beneath a data home. A pure path join."""
     return Path(data_home) / "core"
+
+
+def dialogue_root(data_home: str | Path) -> Path:
+    """The dialogue root beneath a data home. A pure path join."""
+    return Path(data_home) / "dialogue"

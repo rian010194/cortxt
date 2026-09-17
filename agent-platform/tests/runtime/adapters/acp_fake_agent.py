@@ -17,6 +17,9 @@ Behaviour by prompt text:
                   received at initialize, then end_turn
   ECHO-ENV        stream one chunk with the JSON list of this process's
                   environment variable names, then end_turn
+  ECHO-CWD        stream one chunk with the JSON of this process's working
+                  directory and its entry count ({"cwd": ..., "entries": ...}),
+                  then end_turn
 
 session/load of a known id sends --replay N updates before responding, then
 one available_commands_update after responding (mirrors hermes-agent
@@ -144,6 +147,11 @@ class FakeAgent:
 
         if text == "ECHO-ENV":
             await self._chunk(session_id, json.dumps(sorted(os.environ)))
+            return PromptResponse(stop_reason="end_turn")
+
+        if text == "ECHO-CWD":
+            await self._chunk(session_id, json.dumps(
+                {"cwd": os.getcwd(), "entries": len(os.listdir(os.getcwd()))}))
             return PromptResponse(stop_reason="end_turn")
 
         await self._chunk(session_id, f"session {session_id}")
