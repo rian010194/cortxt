@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cortxt:work_record:record.schema.json",
+  "title": "Work Record",
+  "description": "The durable artefact a dialogue produces (ADR-050): observations, proposals, open questions, goals, limits and acceptance criteria, readable and revisable BEFORE any repository is chosen and BEFORE any GitHub issue exists. A work record therefore never requires an issue_ref or a repository; the store envelope's issue_ref stays optional. Revision is supersession, never mutation: a changed record is a NEW record appended with supersedes pointing at the earlier one, which stays readable and byte-identical. A work record may be a finished result: state=\"settled\" with no code change, no issue and no Run is a delivery, not an incomplete step toward one. Deliberately absent, and the absence IS the decision: no pinned sha, no permitted effects, no isolation, no limits-on-effects and no write allowlist. Those belong to the frozen packaging revision form and to mandate preparation (ADR-050 D5); do not add them and do not add placeholders for them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_kind",
+    "work_id",
+    "title",
+    "state",
+    "observations",
+    "proposals",
+    "open_questions",
+    "goals",
+    "limits",
+    "acceptance_criteria",
+    "possibly_affected_repositories"
+  ],
+  "properties": {
+    "record_kind": {
+      "const": "work_record",
+      "description": "Discriminator. The Core store holds several domains in one append-only log, so iter_records() must be filtered on this field."
+    },
+    "work_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable across every revision of one piece of work. The supersession chain of a work is found by this field, never by append order."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "enum": ["open", "settled"],
+      "description": "A CONTENT field, not an outcome record: the verdict lives inside the record exactly as the packaging decision slot's verdict does. \"settled\" says this record is a finished result in its own right."
+    },
+    "observations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What the dialogue observed. Required, may be empty."
+    },
+    "proposals": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What the dialogue proposes. Required, may be empty."
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What is still undecided. Required, may be empty."
+    },
+    "goals": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What the work is for. Required, may be empty."
+    },
+    "limits": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The operator's scope boundaries for this work. Required, may be empty."
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What would make this work accepted. Required, may be empty."
+    },
+    "possibly_affected_repositories": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The MIDDLE of the product's three levels — available context, POSSIBLY AFFECTED REPOSITORIES, approved change targets — and the middle one only. Free-text names or paths as surfaced by discovery. It carries NO sha, NO permission, NO effect and NO ordering, and it MUST NEVER be read as a change target: discovery and read access never grant write access. An approved change target is a separate, later, operator-approved artefact. Required, may be empty."
+    }
+  }
+}
